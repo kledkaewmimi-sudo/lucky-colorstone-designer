@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LUCKY.COLORSTONE - Custom Bracelet Designer</title>
+  <meta name="description" content="Design your custom stone bracelet and order directly via LINE. Select your wrist size, bead size, and customize with premium natural stones.">
+  <link rel="stylesheet" href="index.css">
+  
+  <!-- LINE LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Fixed Navigation Header -->
+    <header class="app-header">
+      <div class="header-top">
+        <a href="#" class="brand-logo" id="headerLogo">LUCKY.COLORSTONE</a>
+        <button class="home-btn" id="btnHome" aria-label="Home">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Progress Stepper -->
+      <div class="stepper-container">
+        <div class="stepper-line"></div>
+        <div class="stepper-line-progress" id="stepProgressLine"></div>
+        <div class="step-node active" data-step="1" id="stepNode1">1</div>
+        <div class="step-node" data-step="2" id="stepNode2">2</div>
+        <div class="step-node" data-step="3" id="stepNode3">3</div>
+        <div class="step-node" data-step="4" id="stepNode4">4</div>
+      </div>
+      <div class="step-indicator-text" id="stepIndicatorLabel">Step 1: Wrist Measurement</div>
+    </header>
+
+    <!-- Main Content Container (Step Views) -->
+    <main class="app-content">
+      
+      <!-- STEP 1: WRIST MEASUREMENT -->
+      <section class="step-view active" id="stepView1">
+        <h2 class="step-title">Measure Your Wrist</h2>
+        <p class="step-subtitle">วัดขนาดข้อมือเพื่อขนาดกำไลที่พอดีที่สุดสำหรับคุณ</p>
+        
+        <!-- Premium Visual Aid Illustration -->
+        <div class="wrist-visual-card">
+          <svg class="wrist-illustration-svg" viewBox="0 0 200 200" fill="none">
+            <!-- Background glow -->
+            <circle cx="100" cy="100" r="80" fill="rgba(212, 175, 55, 0.04)" stroke="rgba(212, 175, 55, 0.1)" stroke-width="1"/>
+            
+            <!-- Wrist Outline -->
+            <path d="M70,190 C70,160 65,90 100,80 C135,90 130,160 130,190" stroke="#1C2541" stroke-width="6" stroke-linecap="round"/>
+            <path d="M75,190 C75,165 71,95 100,86 C129,95 125,165 125,190" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
+            
+            <!-- Measuring Tape Wrapping Around -->
+            <!-- Back part of tape (behind wrist) -->
+            <path d="M70,135 C80,128 120,128 130,135" stroke="#AA7C11" stroke-width="16" stroke-linecap="round" opacity="0.4"/>
+            <!-- Front part of tape wrapping around -->
+            <path d="M63,142 C80,150 120,150 137,142" stroke="#D4AF37" stroke-width="18" stroke-linecap="round" id="measuringTapePath"/>
+            
+            <!-- Ruler markings (Ticks) -->
+            <path d="M68,143.5 L69.5,147 M75,145.5 L76.5,149 M82,147 L83,150 M89,147.8 L90,150.8 M96,148 L96.5,151 M103,148 L103,151 M110,147.8 L109,150.8 M117,147 L116,150 M124,145.5 L122.5,149 M131,143.5 L129.5,147" stroke="#1C2541" stroke-width="1.5"/>
+            <!-- Major ticks -->
+            <path d="M70.5,144.2 L72.5,149.2 M85.5,147.2 L87,152.2 M100,148 L100,153 M113.5,147.2 L112,152.2 M127.5,144.2 L125.5,149.2" stroke="#AA7C11" stroke-width="2.5"/>
+            
+            <!-- Measurement Pin Label -->
+            <rect x="80" y="45" width="40" height="24" rx="6" fill="#1C2541" filter="drop-shadow(0px 4px 6px rgba(0,0,0,0.15))"/>
+            <text x="100" y="61" fill="#D4AF37" font-family="'Inter', sans-serif" font-size="11" font-weight="bold" text-anchor="middle" id="visualWristSizeText">16.0 cm</text>
+            <path d="M100,69 L100,75" stroke="#1C2541" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          
+          <div class="wrist-tip">
+            <strong>Tip:</strong> Use a soft tape measure or piece of string around your wrist bone. Keep it snug but comfortable. We automatically add 1.5 cm tolerance.
+          </div>
+        </div>
+
+        <!-- Wrist Size Buttons (14.0 to 20.0 cm) -->
+        <div class="size-selection-grid" id="wristSizeGrid">
+          <!-- Dynamically populated in app.js -->
+        </div>
+
+        <!-- Personalization Field -->
+        <div class="name-input-group">
+          <label class="name-label" for="braceletOwnerName">Bracelet Owner Name (Optional)</label>
+          <input type="text" id="braceletOwnerName" class="name-input" placeholder="e.g. Somchai, Emma (ชื่อเจ้าของกำไล)" maxlength="20">
+        </div>
+      </section>
+
+      <!-- STEP 2: BEAD SIZE SELECTION -->
+      <section class="step-view" id="stepView2">
+        <h2 class="step-title">Select Bead Size</h2>
+        <p class="step-subtitle">เลือกขนาดของเม็ดหินที่ต้องการร้อยกำไล</p>
+        
+        <div class="bead-size-options" id="beadSizeOptionsList">
+          <!-- Card: 4mm -->
+          <div class="bead-size-card" data-bead-size="4">
+            <div class="bead-size-info">
+              <div class="bead-size-preview">
+                <div class="bead-preview-circle" style="width: 24px; height: 24px;"></div>
+              </div>
+              <div class="bead-size-details">
+                <h4>Small Mini (4 mm)</h4>
+                <p>Delicate, minimal, and perfect for stacking.</p>
+              </div>
+            </div>
+            <div class="radio-check"></div>
+          </div>
+
+          <!-- Card: 6mm -->
+          <div class="bead-size-card" data-bead-size="6">
+            <div class="bead-size-info">
+              <div class="bead-size-preview">
+                <div class="bead-preview-circle" style="width: 32px; height: 32px;"></div>
+              </div>
+              <div class="bead-size-details">
+                <h4>Elegant (6 mm)</h4>
+                <p>Perfect standard size for a subtle luxury look.</p>
+              </div>
+            </div>
+            <div class="radio-check"></div>
+          </div>
+
+          <!-- Card: 8mm -->
+          <div class="bead-size-card" data-bead-size="8">
+            <div class="bead-size-info">
+              <div class="bead-size-preview">
+                <div class="bead-preview-circle" style="width: 40px; height: 40px;"></div>
+              </div>
+              <div class="bead-size-details">
+                <h4>Statement (8 mm)</h4>
+                <p>Bold, energetic, showcases stone details fully.</p>
+              </div>
+            </div>
+            <div class="radio-check"></div>
+          </div>
+
+          <!-- Card: Mixed Sizes -->
+          <div class="bead-size-card" data-bead-size="mixed">
+            <div class="bead-size-info">
+              <div class="bead-size-preview" style="display: flex; gap: 2px; align-items: center;">
+                <div class="bead-preview-circle" style="width: 18px; height: 18px;"></div>
+                <div class="bead-preview-circle" style="width: 26px; height: 26px;"></div>
+                <div class="bead-preview-circle" style="width: 20px; height: 20px;"></div>
+              </div>
+              <div class="bead-size-details">
+                <h4>Mixed Sizes (ผสมขนาด)</h4>
+                <p>Customize and combine 4mm, 6mm, & 8mm freely.</p>
+              </div>
+            </div>
+            <div class="radio-check"></div>
+          </div>
+        </div>
+
+        <div class="bead-estimation-banner">
+          Based on your <strong id="estimationWristSizeText">16.0 cm</strong> wrist size, your bracelet length will be <strong id="estimationLengthText">17.5 cm (175mm)</strong>.
+          <br>
+          <span id="estimationCapacityText">Fits approximately 29 beads (6mm).</span>
+        </div>
+      </section>
+
+      <!-- STEP 3: INTERACTIVE CANVAS & STONE CATALOG -->
+      <section class="step-view" id="stepView3">
+        <div class="designer-workspace">
+          
+          <!-- Interactive Loop Canvas Card -->
+          <div class="canvas-card">
+            
+            <!-- Real-time Stats Header above Canvas -->
+            <div class="canvas-stats-row">
+              <div class="canvas-stat">
+                <span class="canvas-stat-label">Price / ราคา</span>
+                <span class="canvas-stat-val" id="canvasPriceText">฿0</span>
+              </div>
+              <div class="canvas-stat">
+                <span class="canvas-stat-label">Beads / เม็ด</span>
+                <span class="canvas-stat-val" id="canvasBeadCountText">0 / 29</span>
+              </div>
+              <div class="canvas-stat">
+                <span class="canvas-stat-label">Space / พื้นที่</span>
+                <span class="canvas-stat-val" id="canvasSpaceText">เหลือ 175.0 mm</span>
+              </div>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="canvas-container">
+              <svg width="250" height="250" viewBox="0 0 250 250" id="braceletSvg">
+                <!-- SVG content rendered dynamically -->
+              </svg>
+              
+              <!-- Core center stats info display -->
+              <div class="canvas-center-info">
+                <span class="center-title" id="canvasCenterTitle">LUCKY</span>
+                <span class="center-value" id="canvasCenterValue">16.0cm</span>
+                <span class="center-subvalue fit" id="canvasCenterSub">Perfect Fit</span>
+              </div>
+            </div>
+
+            <!-- Controls bar -->
+            <div class="canvas-controls-bar">
+              <button class="ctrl-btn" id="btnBackToSteps">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m15 18-6-6 6-6"/>
+                </svg>
+                Sizes Selection
+              </button>
+              <button class="ctrl-btn reset-btn" id="btnResetBracelet">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                Reset Bracelet (รีเซ็ต)
+              </button>
+            </div>
+          </div>
+
+          <!-- Mixed Size Selector - Visible only when "mixed" bead size is selected -->
+          <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" style="display: none;">
+            <span class="mixed-label">Placing Bead Size:</span>
+            <div class="mixed-toggles">
+              <button class="mixed-toggle-btn" data-size="4">4mm</button>
+              <button class="mixed-toggle-btn active" data-size="6">6mm</button>
+              <button class="mixed-toggle-btn" data-size="8">8mm</button>
+            </div>
+          </div>
+
+          <!-- Stone Catalog Section -->
+          <div class="catalog-container">
+            <!-- Scrollable Category Tabs -->
+            <div class="catalog-filters" id="catalogFiltersContainer">
+              <!-- Rendered dynamically -->
+            </div>
+            
+            <!-- Stone Cards Grid -->
+            <div class="stone-catalog-grid" id="stoneCatalogGrid">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- STEP 4: FINAL SUMMARY & BILLING -->
+      <section class="step-view" id="stepView4">
+        <h2 class="step-title">Order Summary</h2>
+        <p class="step-subtitle">ตรวจสอบความถูกต้องและสั่งซื้อกำไลของคุณ</p>
+        
+        <div class="summary-container">
+          <!-- Summary Header -->
+          <div class="summary-header">
+            <h3 class="summary-customer-title" id="summaryTitleText">LUCKY.COLORSTONE for Khun Guest</h3>
+            <div class="summary-date" id="summaryDateText">Date: 23 June 2026</div>
+          </div>
+
+          <!-- Specs Box (4-column layout) -->
+          <div class="specs-grid">
+            <div class="spec-box">
+              <div class="spec-box-label">Wrist Size</div>
+              <div class="spec-box-value" id="specWristSize">16.0 cm</div>
+            </div>
+            <div class="spec-box">
+              <div class="spec-box-label">Length</div>
+              <div class="spec-box-value" id="specLength">17.5 cm</div>
+            </div>
+            <div class="spec-box">
+              <div class="spec-box-label">Bead Size</div>
+              <div class="spec-box-value" id="specBeadSize">6mm</div>
+            </div>
+            <div class="spec-box">
+              <div class="spec-box-label">Beads</div>
+              <div class="spec-box-value" id="specBeadsCount">29 เม็ด</div>
+            </div>
+          </div>
+
+          <!-- Itemized Billing Card -->
+          <div class="billing-card">
+            <h4 class="billing-title">Itemized Billing (รายละเอียดหิน)</h4>
+            <div class="billing-list" id="billingItemsList">
+              <!-- Filled dynamically in app.js -->
+            </div>
+
+            <!-- Pricing Section -->
+            <div class="pricing-breakdown">
+              <div class="price-row subtotal">
+                <span class="price-lbl">Subtotal</span>
+                <span class="price-val" id="priceSubtotal">฿1,475</span>
+              </div>
+              <div class="discount-box">
+                <span class="discount-badge">LINE SPECIAL DISCOUNT 20%</span>
+                <span class="discount-value" id="priceDiscount">-฿295</span>
+              </div>
+              <div class="price-row total">
+                <span class="price-lbl">Special Price</span>
+                <span class="price-val" id="priceTotal">฿1,180</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aggregated Stone Meanings -->
+          <div class="meanings-card">
+            <h4 class="meanings-title">Stone Meanings (ความหมายของหินในกำไล)</h4>
+            <div class="meanings-list" id="meaningsList">
+              <!-- Filled dynamically -->
+            </div>
+          </div>
+
+          <!-- Trust disclaimer -->
+          <div class="trust-disclaimer-box">
+            <div class="trust-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div class="trust-text">
+              <strong>Natural Unique Stones Disclaimer</strong>
+              หินธรรมชาติแต่ละเม็ดจะมีลวดลายธรรมชาติและสีสันที่แตกต่างกันออกไปเล็กน้อย ทางร้านจะส่งรูปถ่ายของเส้นจริงที่ประกอบเสร็จเรียบร้อยให้คุณตรวจสอบทาง LINE ก่อนทำการแพ็คจัดส่ง
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Sticky Footer Navigation -->
+    <footer class="app-footer">
+      <button class="footer-btn btn-back" id="btnBack">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m15 18-6-6 6-6"/>
+        </svg>
+        Back
+      </button>
+      <button class="footer-btn btn-next" id="btnNext">
+        Next
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m9 18 6-6-6-6"/>
+        </svg>
+      </button>
+    </footer>
+
+    <!-- Stone Information Detail Modal -->
+    <div class="modal-backdrop" id="stoneInfoModal">
+      <div class="modal-content-card">
+        <div class="modal-header">
+          <h3 id="modalStoneName">Stone Information</h3>
+          <button class="modal-close-btn" id="btnModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-bead-img-row">
+            <img class="modal-bead-img" id="modalStoneImg" src="assets/golden_rutile.png" alt="Stone Bead">
+          </div>
+          <div class="modal-stone-details">
+            <h4 class="modal-stone-title-th" id="modalStoneTitleTh">ไหมทอง</h4>
+            <h5 class="modal-stone-title-en" id="modalStoneTitleEn">Golden Rutile Quartz</h5>
+            
+            <div class="modal-stone-meaning-box" id="modalStoneMeaning">
+              พลังแห่งโชคลาภและความมั่งคั่ง เสริมดวงการค้าขาย
+            </div>
+            
+            <div class="modal-stone-price" id="modalStonePrice">฿150 / เม็ด</div>
+            
+            <button class="modal-action-btn" id="btnModalAdd">Add to Bracelet (+ เพิ่มเข้ากำไล)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast message overlay -->
+    <div class="tooltip-toast" id="toastMessage">Toast message goes here</div>
+
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
