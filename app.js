@@ -167,7 +167,7 @@ async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (typeof liff !== 'undefined') {
     try {
-      await liff.init({ liffId: "2006325990-2eND805V" });
+      await liff.init({ liffId: "2010525799-qImIuhla" });
       console.log("LIFF Initialized successfully");
       State.liffInitialized = true;
       if (liff.isLoggedIn()) {
