@@ -1,4 +1,11 @@
-import { STONES, CATEGORIES } from './data.js';
+import { STONES, CATEGORIES, refreshCatalog, getSharedSettings, addSharedOrder, getStonePriceForSize } from './data.js';
+
+// Clear session helper for testing/debugging
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearStorage')) {
+  localStorage.clear();
+  window.location.href = window.location.pathname;
+}
 
 // ==========================================
 // 1. Global Application State
@@ -9,10 +16,12 @@ const State = {
   beadSize: '6',            // '4', '6', '8', or 'mixed'
   mixedPlacingSize: 6,      // Default size to place in mixed mode
   ownerName: '',            // Personalized bracelet owner name
+  liffInitialized: false,   // Ready flag for LINE LIFF Login API
   selectedStones: [],       // Array of placed beads: { stoneId: string, size: number, uniqueId: number }
   activeCategory: 'all',    // Current category filter in Step 3
   activeSlotIndex: null,    // Index of selected slot in Step 3 (-1 or null for append)
-  uniqueCounter: 0          // For generating unique IDs for animation keys
+  uniqueCounter: 0,         // For generating unique IDs for animation keys
+  newlyAddedIds: []         // Track newly added bead unique IDs for pop animation
 };
 
 // ==========================================
@@ -47,6 +56,7 @@ const DOM = {
   wristSizeGrid: document.getElementById('wristSizeGrid'),
   braceletOwnerName: document.getElementById('braceletOwnerName'),
   visualWristSizeText: document.getElementById('visualWristSizeText'),
+  displaySizeValue: document.getElementById('displaySizeValue'),
   
   // Step 2: Bead Size
   beadSizeCards: document.querySelectorAll('.bead-size-card'),
@@ -91,7 +101,19 @@ const DOM = {
   modalStonePrice: document.getElementById('modalStonePrice'),
   btnModalClose: document.getElementById('btnModalClose'),
   btnModalAdd: document.getElementById('btnModalAdd'),
-  toastMessage: document.getElementById('toastMessage')
+  btnModalFillAll: document.getElementById('btnModalFillAll'),
+  confirmModal: document.getElementById('confirmModal'),
+  confirmModalTitle: document.getElementById('confirmModalTitle'),
+  confirmModalMessage: document.getElementById('confirmModalMessage'),
+  btnConfirmClose: document.getElementById('btnConfirmClose'),
+  btnConfirmCancel: document.getElementById('btnConfirmCancel'),
+  btnConfirmOK: document.getElementById('btnConfirmOK'),
+  toastMessage: document.getElementById('toastMessage'),
+  
+  // Landing Page & Loading selectors
+  landingView: document.getElementById('landingView'),
+  btnLandingLogin: document.getElementById('btnLandingLogin'),
+  liffLoadingOverlay: document.getElementById('liffLoadingOverlay')
 };
 
 // ==========================================
@@ -103,12 +125,19 @@ const TOLERANCE_CM = 1.5; // Adding 1.5 cm standard padding for bracelets
 // ==========================================
 // 4. Initialisation
 // ==========================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Show loading overlay during LIFF boot
+  const loader = document.getElementById('liffLoadingOverlay');
+  if (loader) loader.style.display = 'flex';
+
   // Load persisted state if exists
   loadPersistedState();
   
   // Setup LIFF (LINE Front-end Framework)
-  initLIFF();
+  await initLIFF();
+  
+  // Fetch initial catalog from API
+  await refreshCatalog();
   
   // Initialise step UI components
   initWristSizeGrid();
@@ -119,31 +148,81 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNavigationEvents();
   setupDesignerEvents();
   setupModalEvents();
+  setupLandingEvents();
+  
+  // Polling for updates every 3 seconds to reflect CRM changes instantly
+  setInterval(async () => {
+    const updated = await refreshCatalog();
+    if (updated) {
+      await renderApp();
+    }
+  }, 3000);
   
   // Perform first render
-  renderApp();
+  await renderApp();
 });
 
 // LIFF Initialization
-function initLIFF() {
+async function initLIFF() {
+  const loader = document.getElementById('liffLoadingOverlay');
   if (typeof liff !== 'undefined') {
-    liff.init({ liffId: "2006325990-2eND805V" }) // Example LIFF ID, can be replaced by users later
-      .then(() => {
-        console.log("LIFF Initialized successfully");
-        if (liff.isLoggedIn()) {
-          liff.getProfile().then(profile => {
-            if (profile.displayName && !State.ownerName) {
-              State.ownerName = profile.displayName;
-              DOM.braceletOwnerName.value = profile.displayName;
-              renderApp();
-            }
-          });
+    try {
+      await liff.init({ liffId: "2006325990-2eND805V" });
+      console.log("LIFF Initialized successfully");
+      State.liffInitialized = true;
+      if (liff.isLoggedIn()) {
+        const profile = await liff.getProfile();
+        if (profile.displayName) {
+          State.ownerName = profile.displayName;
+          DOM.braceletOwnerName.value = profile.displayName;
         }
-      })
-      .catch((err) => {
-        console.warn("LIFF Initialization failed. Fallback URL will be used.", err);
-      });
+      }
+    } catch (err) {
+      console.warn("LIFF Initialization failed. Fallback URL will be used.", err);
+      State.liffInitialized = false;
+    } finally {
+      if (loader) loader.style.display = 'none';
+    }
+  } else {
+    State.liffInitialized = false;
+    if (loader) loader.style.display = 'none';
   }
+}
+
+function setupLandingEvents() {
+  DOM.btnLandingLogin.addEventListener('click', () => {
+    const loader = DOM.liffLoadingOverlay;
+    if (loader) loader.style.display = 'flex';
+    
+    if (typeof liff !== 'undefined' && State.liffInitialized) {
+      liff.login();
+    } else {
+      // Mock desktop login fallback
+      setTimeout(() => {
+        if (loader) loader.style.display = 'none';
+        
+        // Bypass native prompt in automated/headless testing or when query param is present
+        if (window.navigator.webdriver || urlParams.has('webdriver') || urlParams.has('test') || urlParams.has('mock')) {
+          State.ownerName = "Somchai";
+          DOM.braceletOwnerName.value = State.ownerName;
+          showToast(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${State.ownerName}`);
+          renderApp();
+          return;
+        }
+        
+        const testName = prompt("กรุณากรอกชื่อของคุณเพื่อเข้าสู่ระบบ (จำลอง LINE Login):", State.ownerName || "Aou");
+        if (testName && testName.trim()) {
+          State.ownerName = testName.trim();
+          DOM.braceletOwnerName.value = State.ownerName;
+          showToast(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${State.ownerName}`);
+          renderApp();
+        } else {
+          // If prompt cancelled/dismissed, hide spinner
+          if (loader) loader.style.display = 'none';
+        }
+      }, 600);
+    }
+  });
 }
 
 // Load State from LocalStorage
@@ -157,8 +236,18 @@ function loadPersistedState() {
       State.mixedPlacingSize = parsed.mixedPlacingSize || 6;
       State.ownerName = parsed.ownerName || '';
       State.selectedStones = parsed.selectedStones || [];
-      State.currentStep = parsed.currentStep || 1;
       
+      // Normalize unique IDs to prevent clashes and empty values
+      const seenIds = new Set();
+      State.selectedStones.forEach((b, idx) => {
+        if (!b.uniqueId || seenIds.has(b.uniqueId)) {
+          b.uniqueId = idx + 1;
+        }
+        seenIds.add(b.uniqueId);
+      });
+      State.uniqueCounter = State.selectedStones.length;
+      
+      State.currentStep = parsed.currentStep || 1;
       DOM.braceletOwnerName.value = State.ownerName;
     } catch (e) {
       console.error("Failed to parse persisted state", e);
@@ -182,9 +271,13 @@ function saveState() {
 // ==========================================
 // 5. App Render Routing
 // ==========================================
-function renderApp() {
+async function renderApp() {
+  const isLandingActive = !State.ownerName && (typeof liff === 'undefined' || !liff.isLoggedIn());
+  if (DOM.landingView) {
+    DOM.landingView.style.display = isLandingActive ? 'flex' : 'none';
+  }
   renderStepper();
-  renderStepViews();
+  await renderStepViews();
   saveState();
 }
 
@@ -211,7 +304,7 @@ function renderStepper() {
 
   // Update text label above stepper
   const stepLabels = [
-    "Step 1: Wrist Measurement",
+    "Step 1: Select Wrist Size",
     "Step 2: Bead Size Selection",
     "Step 3: Custom Bracelet Designer",
     "Step 4: Summary & Order"
@@ -219,8 +312,7 @@ function renderStepper() {
   DOM.stepIndicatorLabel.innerText = stepLabels[State.currentStep - 1];
 }
 
-// Switch between Step Views
-function renderStepViews() {
+async function renderStepViews() {
   DOM.stepViews.forEach((view, idx) => {
     const stepNum = idx + 1;
     if (stepNum === State.currentStep) {
@@ -238,13 +330,13 @@ function renderStepViews() {
   } else if (State.currentStep === 3) {
     renderStep3();
   } else if (State.currentStep === 4) {
-    renderStep4();
+    await renderStep4();
   }
 
   // Configure navigation buttons in sticky footer
   if (State.currentStep === 1) {
     DOM.btnBack.style.visibility = 'hidden';
-    DOM.btnNext.innerHTML = `Select Bead Size &nbsp;
+    DOM.btnNext.innerHTML = `ถัดไป &nbsp;
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="m9 18 6-6-6-6"/>
       </svg>`;
@@ -254,14 +346,14 @@ function renderStepViews() {
     DOM.btnBack.style.visibility = 'visible';
     
     if (State.currentStep === 2) {
-      DOM.btnNext.innerHTML = `Start Designing &nbsp;
+      DOM.btnNext.innerHTML = `ถัดไป &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m9 18 6-6-6-6"/>
         </svg>`;
       DOM.btnNext.className = 'footer-btn btn-next';
       DOM.btnNext.disabled = false;
     } else if (State.currentStep === 3) {
-      DOM.btnNext.innerHTML = `Review Order &nbsp;
+      DOM.btnNext.innerHTML = `ถัดไป &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m9 18 6-6-6-6"/>
         </svg>`;
@@ -269,7 +361,7 @@ function renderStepViews() {
       // Disable next only if no stones are added
       DOM.btnNext.disabled = State.selectedStones.length === 0;
     } else if (State.currentStep === 4) {
-      DOM.btnNext.innerHTML = `Order via LINE &nbsp;
+      DOM.btnNext.innerHTML = `สั่งซื้อผ่าน LINE &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>`;
@@ -280,35 +372,43 @@ function renderStepViews() {
 }
 
 // Navigate to step
-function goToStep(step) {
+async function goToStep(step) {
   if (step < 1 || step > 4) return;
   State.currentStep = step;
-  renderApp();
+  await renderApp();
 }
 
 // Setup Back/Next Events
 function setupNavigationEvents() {
-  DOM.btnBack.addEventListener('click', () => {
-    goToStep(State.currentStep - 1);
+  DOM.btnBack.addEventListener('click', async () => {
+    await goToStep(State.currentStep - 1);
   });
   
-  DOM.btnNext.addEventListener('click', () => {
+  DOM.btnNext.addEventListener('click', async () => {
     if (State.currentStep === 4) {
-      handleLineOrder();
+      await handleLineOrder();
     } else {
-      goToStep(State.currentStep + 1);
+      await goToStep(State.currentStep + 1);
     }
   });
 
   // Home Button clicks
-  const goHome = (e) => {
+  const goHome = async (e) => {
     e.preventDefault();
     if (confirm("Go back to Step 1? Your current design will be saved.")) {
-      goToStep(1);
+      await goToStep(1);
     }
   };
   DOM.btnHome.addEventListener('click', goHome);
   DOM.headerLogo.addEventListener('click', goHome);
+
+  // CRM Sandbox direct submit button
+  const btnSubmitCRM = document.getElementById('btnSubmitCRM');
+  if (btnSubmitCRM) {
+    btnSubmitCRM.addEventListener('click', () => {
+      submitOrderToCRM();
+    });
+  }
 }
 
 // ==========================================
@@ -329,6 +429,9 @@ function initWristSizeGrid() {
       
       State.wristSize = size;
       DOM.visualWristSizeText.textContent = `${size.toFixed(1)} cm`;
+      if (DOM.displaySizeValue) {
+        DOM.displaySizeValue.textContent = size.toFixed(1);
+      }
       
       // Save owner name
       State.ownerName = DOM.braceletOwnerName.value.trim();
@@ -353,6 +456,9 @@ function initWristSizeGrid() {
 
 function renderStep1() {
   DOM.visualWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
+  if (DOM.displaySizeValue) {
+    DOM.displaySizeValue.textContent = State.wristSize.toFixed(1);
+  }
   DOM.braceletOwnerName.value = State.ownerName;
 }
 
@@ -361,35 +467,19 @@ function renderStep1() {
 // ==========================================
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
-    card.addEventListener('click', () => {
-      DOM.beadSizeCards.forEach(c => c.classList.remove('active'));
-      card.classList.add('active');
-      
+    card.addEventListener('click', async () => {
       const prevBeadSize = State.beadSize;
-      State.beadSize = card.getAttribute('data-bead-size');
-      saveState();
+      const targetBeadSize = card.getAttribute('data-bead-size');
       
-      updateEstimationText();
-      
-      // Alert/adjust beads if bead size changes
-      if (prevBeadSize !== State.beadSize && State.selectedStones.length > 0) {
-        if (confirm("Changing bead size will clear or resize your current bracelet design. Proceed?")) {
-          if (State.beadSize === 'mixed') {
-            // Keep existing beads but allow mixed sizing
-            State.selectedStones.forEach(b => {
-              b.size = parseInt(prevBeadSize) || 6;
-            });
-          } else {
-            // Set all existing beads to the new size
-            const newSize = parseInt(State.beadSize);
-            State.selectedStones.forEach(b => {
-              b.size = newSize;
-            });
-            adjustBeadsToNewCapacity();
-          }
-        } else {
-          // Revert selection
-          State.beadSize = prevBeadSize;
+      if (prevBeadSize === targetBeadSize) return;
+
+      if (State.selectedStones.length > 0) {
+        const proceed = await showCustomConfirm(
+          "Changing bead size will clear or resize your current bracelet design. Proceed?",
+          "Change Bead Size"
+        );
+        if (!proceed) {
+          // Keep visual active state on previous
           DOM.beadSizeCards.forEach(c => {
             if (c.getAttribute('data-bead-size') === prevBeadSize) {
               c.classList.add('active');
@@ -397,8 +487,40 @@ function initBeadSizeOptions() {
               c.classList.remove('active');
             }
           });
+          return;
         }
       }
+
+      // Update state
+      State.beadSize = targetBeadSize;
+      
+      DOM.beadSizeCards.forEach(c => {
+        if (c.getAttribute('data-bead-size') === State.beadSize) {
+          c.classList.add('active');
+        } else {
+          c.classList.remove('active');
+        }
+      });
+      
+      updateEstimationText();
+      
+      if (State.selectedStones.length > 0) {
+        if (State.beadSize === 'mixed') {
+          // Keep existing beads but allow mixed sizing
+          State.selectedStones.forEach(b => {
+            b.size = parseInt(prevBeadSize) || 6;
+          });
+        } else {
+          // Set all existing beads to the new size
+          const newSize = parseInt(State.beadSize);
+          State.selectedStones.forEach(b => {
+            b.size = newSize;
+          });
+          adjustBeadsToNewCapacity();
+        }
+      }
+      
+      saveState();
     });
   });
 }
@@ -445,13 +567,19 @@ function renderStep2() {
 // ==========================================
 function setupDesignerEvents() {
   // Reset Button
-  DOM.btnResetBracelet.addEventListener('click', () => {
-    if (State.selectedStones.length > 0 && confirm("Are you sure you want to clear your current bracelet design? (รีเซ็ตกำไล)")) {
-      State.selectedStones = [];
-      State.activeSlotIndex = null;
-      showToast("Bracelet cleared!");
-      renderStep3();
-      saveState();
+  DOM.btnResetBracelet.addEventListener('click', async () => {
+    if (State.selectedStones.length > 0) {
+      const proceed = await showCustomConfirm(
+        "Are you sure you want to clear your current bracelet design? (รีเซ็ตกำไล)",
+        "Reset Bracelet"
+      );
+      if (proceed) {
+        State.selectedStones = [];
+        State.activeSlotIndex = null;
+        showToast("Bracelet cleared!");
+        renderStep3();
+        saveState();
+      }
     }
   });
 
@@ -493,9 +621,12 @@ function initCatalogFilters() {
 function renderCatalogGrid() {
   DOM.stoneCatalogGrid.innerHTML = '';
   
+  // Filter out of stock items
+  const availableStones = STONES.filter(s => s.inStock !== false);
+  
   const filtered = State.activeCategory === 'all' 
-    ? STONES 
-    : STONES.filter(s => s.category === State.activeCategory);
+    ? availableStones 
+    : availableStones.filter(s => s.category === State.activeCategory);
     
   filtered.forEach(stone => {
     const card = document.createElement('div');
@@ -543,7 +674,9 @@ function renderCatalogGrid() {
     
     const priceTag = document.createElement('div');
     priceTag.className = 'stone-price-tag';
-    priceTag.textContent = `฿${stone.price}`;
+    const currentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
+    const price = getStonePriceForSize(stone, currentSize);
+    priceTag.textContent = `฿${price}`;
     priceRow.appendChild(priceTag);
     
     const addBtn = document.createElement('button');
@@ -567,6 +700,36 @@ function renderCatalogGrid() {
   });
 }
 
+// Fill entire loop with one stone type
+function fillEntireBracelet(stoneId) {
+  const stoneData = STONES.find(s => s.id === stoneId);
+  if (!stoneData) return;
+  
+  const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
+  const braceletLengthMm = (State.wristSize + TOLERANCE_CM) * 10;
+  
+  // Fill the entire capacity with this stone
+  State.selectedStones = [];
+  State.newlyAddedIds = [];
+  let currentTotalDiameter = 0;
+  
+  while (currentTotalDiameter + placedSize <= braceletLengthMm + 1.0) {
+    State.uniqueCounter++;
+    State.selectedStones.push({
+      stoneId: stoneId,
+      size: placedSize,
+      uniqueId: State.uniqueCounter
+    });
+    State.newlyAddedIds.push(State.uniqueCounter);
+    currentTotalDiameter += placedSize;
+  }
+  
+  State.activeSlotIndex = null;
+  showToast(`Filled entire bracelet with ${stoneData.nameTh}.`);
+  renderStep3();
+  saveState();
+}
+
 // Add Stone Logic
 function addStoneToBracelet(stoneId) {
   const stoneData = STONES.find(s => s.id === stoneId);
@@ -578,9 +741,12 @@ function addStoneToBracelet(stoneId) {
   // Calculate total diameter of current beads
   const currentTotalDiameter = State.selectedStones.reduce((sum, s) => sum + s.size, 0);
   
+  // Dynamic remainingMm Calculation to prevent over-filling
+  const remainingMm = braceletLengthMm - currentTotalDiameter;
+  
   // Check if there is enough space left for this bead
-  if (currentTotalDiameter + placedSize > braceletLengthMm + 1.0) { // Allow 1mm tolerance for tight fit
-    showToast("Bracelet is full! (กำไลเต็มแล้ว)");
+  if (remainingMm < placedSize) {
+    showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดหินที่จะใส่: ${placedSize}mm)`);
     return;
   }
   
@@ -590,6 +756,7 @@ function addStoneToBracelet(stoneId) {
     size: placedSize,
     uniqueId: State.uniqueCounter
   };
+  State.newlyAddedIds = [newBead.uniqueId];
   
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
     // Insert at active slot
@@ -604,7 +771,6 @@ function addStoneToBracelet(stoneId) {
   renderStep3();
   saveState();
   
-  // Re-evaluate next button disable status
   DOM.btnNext.disabled = State.selectedStones.length === 0;
 }
 
@@ -618,7 +784,6 @@ function removeStoneFromBracelet(index) {
   renderStep3();
   saveState();
   
-  // Re-evaluate next button disable status
   DOM.btnNext.disabled = State.selectedStones.length === 0;
 }
 
@@ -626,13 +791,30 @@ function removeStoneFromBracelet(index) {
 function renderBraceletCanvas() {
   const svg = DOM.braceletSvg;
   // Clear SVG first, keeping defs
-  const defs = svg.querySelector('defs') || createSvgDefs();
+  let defs = svg.querySelector('defs');
+  if (defs) {
+    const oldClips = defs.querySelectorAll('clipPath');
+    oldClips.forEach(clip => clip.remove());
+  } else {
+    defs = createSvgDefs();
+  }
   svg.innerHTML = '';
   svg.appendChild(defs);
   
   const cx = 125;
   const cy = 125;
   const rCanvas = 82; // SVG radius for drawing
+  
+  // Draw subtle Cream-to-White gradient placeholder rail ring
+  const bgRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  bgRing.setAttribute("cx", cx);
+  bgRing.setAttribute("cy", cy);
+  bgRing.setAttribute("r", rCanvas);
+  bgRing.setAttribute("fill", "none");
+  bgRing.setAttribute("stroke", "url(#creamWhiteGradient)");
+  bgRing.setAttribute("stroke-width", "10");
+  bgRing.setAttribute("opacity", "0.6");
+  svg.appendChild(bgRing);
   
   const braceletLenMm = (State.wristSize + TOLERANCE_CM) * 10;
   
@@ -663,16 +845,16 @@ function renderBraceletCanvas() {
   const totalVirtualDiameter = elementSizes.reduce((sum, size) => sum + size, 0);
   
   // Scale factor from mm to SVG px circumference
-  // Max circumference of loop in mm is totalVirtualDiameter or braceletLenMm, whichever is larger (to avoid shrinking)
-  const maxLoopCircumferenceMm = Math.max(braceletLenMm, totalVirtualDiameter);
-  const scaleMmToPx = (2 * Math.PI * rCanvas) / maxLoopCircumferenceMm;
+  // Scale dynamically to totalVirtualDiameter so that all beads touch perfectly and cover 360 degrees
+  const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletLenMm;
+  const scaleMmToPx = (2 * Math.PI * rCanvas) / loopCircumferenceMm;
   
   // Render nodes
   let accumulatedAngle = -Math.PI / 2; // Start rendering at top of circle (-90 deg)
   
   for (let i = 0; i < totalItems; i++) {
     const sizeMm = elementSizes[i];
-    const itemAngleWidth = (sizeMm / maxLoopCircumferenceMm) * 2 * Math.PI;
+    const itemAngleWidth = (sizeMm / loopCircumferenceMm) * 2 * Math.PI;
     const centerAngle = accumulatedAngle + itemAngleWidth / 2;
     
     // Convert polar coordinates to rectangular SVG coords
@@ -684,10 +866,13 @@ function renderBraceletCanvas() {
     
     // Group element for bead visual nodes
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    group.setAttribute("class", `bead-node ${isPlaced ? 'placed' : 'placeholder'}`);
     
     if (isPlaced) {
-      const stoneId = placedList[i].stoneId;
+      const bead = placedList[i];
+      const isNewBead = State.newlyAddedIds && State.newlyAddedIds.includes(bead.uniqueId);
+      group.setAttribute("class", `bead-node placed ${isNewBead ? 'newly-added' : ''}`);
+      
+      const stoneId = bead.stoneId;
       const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
       const uniqueClipId = `clip-${placedList[i].uniqueId}`;
       
@@ -709,16 +894,24 @@ function renderBraceletCanvas() {
       baseCircle.setAttribute("fill", stoneData.color || '#E2E8F0');
       group.appendChild(baseCircle);
       
-      // 3. Render stone image clipped
+      // Wrapper group for absolute clipping
+      const imgGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
+      
+      // 3. Render stone image clipped with outward rotation
       const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
       img.setAttributeNS("http://www.w3.org/1999/xlink", "href", stoneData.image);
-      img.setAttribute("x", bx - bRadiusPx);
-      img.setAttribute("y", by - bRadiusPx);
-      img.setAttribute("width", bRadiusPx * 2);
-      img.setAttribute("height", bRadiusPx * 2);
-      img.setAttribute("clip-path", `url(#${uniqueClipId})`);
+      const scaleFactor = 1.3;
+      const imgSize = bRadiusPx * 2 * scaleFactor;
+      img.setAttribute("x", bx - imgSize / 2);
+      img.setAttribute("y", by - imgSize / 2);
+      img.setAttribute("width", imgSize);
+      img.setAttribute("height", imgSize);
       img.setAttribute("class", "bead-image");
-      group.appendChild(img);
+      const angleDeg = (centerAngle * 180 / Math.PI) + 90;
+      img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+      imgGroup.appendChild(img);
+      group.appendChild(imgGroup);
       
       // 4. Render 3D sheen overlay gradient
       const sheenCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -741,27 +934,44 @@ function renderBraceletCanvas() {
       border.setAttribute("opacity", "0.5");
       group.appendChild(border);
       
-      // Remove bead on click
+      // If active highlighted slot, render the active glowing ring
+      if (i === State.activeSlotIndex) {
+        const activeRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        activeRing.setAttribute("cx", bx);
+        activeRing.setAttribute("cy", by);
+        activeRing.setAttribute("r", bRadiusPx + 2.5);
+        activeRing.setAttribute("fill", "none");
+        activeRing.setAttribute("stroke", "var(--color-accent-velvet)");
+        activeRing.setAttribute("stroke-width", "2.5");
+        activeRing.setAttribute("stroke-dasharray", "3 2");
+        activeRing.setAttribute("class", "active-bead-glow");
+        activeRing.setAttribute("filter", "drop-shadow(0 0 4px var(--color-accent-velvet))");
+        group.appendChild(activeRing);
+      }
+      
+      // Click bead to select/highlight it
       const currentIdx = i;
       group.addEventListener('click', () => removeStoneFromBracelet(currentIdx));
       
     } else {
-      // It is a placeholder empty slot
+      group.setAttribute("class", "bead-node placeholder");
+      // It is a placeholder empty slot, rendered as a Pastel Purple dotted circle outline
       const isFirstPlaceholder = i === placedCount;
       
-      // Dashed circle slot
+      // Dotted/dashed circle slot
       const slot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       slot.setAttribute("cx", bx);
       slot.setAttribute("cy", by);
       slot.setAttribute("r", bRadiusPx - 1);
       slot.setAttribute("fill", "none");
-      slot.setAttribute("stroke", isFirstPlaceholder ? "var(--color-gold)" : "var(--color-navy-muted)");
-      slot.setAttribute("stroke-width", isFirstPlaceholder ? "2" : "1.5");
+      // Use Velvet Red for the active target placeholder, and Pastel Purple (var(--color-lavender-dark)) for other empty slots
+      slot.setAttribute("stroke", isFirstPlaceholder ? "var(--color-accent-velvet)" : "var(--color-lavender-dark)");
+      slot.setAttribute("stroke-width", isFirstPlaceholder ? "2.5" : "1.5");
       slot.setAttribute("stroke-dasharray", isFirstPlaceholder ? "4 2" : "3 3");
       slot.setAttribute("class", "bead-slot-border");
       
       if (isFirstPlaceholder) {
-        slot.setAttribute("filter", "drop-shadow(0 0 4px var(--color-gold))");
+        slot.setAttribute("filter", "drop-shadow(0 0 5px var(--color-accent-velvet))");
         // Pulse glow for target insertion slot
         group.classList.add("active");
       }
@@ -774,7 +984,7 @@ function renderBraceletCanvas() {
         plus1.setAttribute("y1", by);
         plus1.setAttribute("x2", bx + 4);
         plus1.setAttribute("y2", by);
-        plus1.setAttribute("stroke", "var(--color-gold-dark)");
+        plus1.setAttribute("stroke", "var(--color-accent-velvet)");
         plus1.setAttribute("stroke-width", "1.5");
         
         const plus2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -782,7 +992,7 @@ function renderBraceletCanvas() {
         plus2.setAttribute("y1", by - 4);
         plus2.setAttribute("x2", bx);
         plus2.setAttribute("y2", by + 4);
-        plus2.setAttribute("stroke", "var(--color-gold-dark)");
+        plus2.setAttribute("stroke", "var(--color-accent-velvet)");
         plus2.setAttribute("stroke-width", "1.5");
         
         group.appendChild(plus1);
@@ -839,6 +1049,31 @@ function createSvgDefs() {
   radGrad.appendChild(stop4);
   defs.appendChild(radGrad);
   
+  // Cream to White linear gradient for the placeholder rail ring
+  const creamWhiteGrad = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+  creamWhiteGrad.setAttribute("id", "creamWhiteGradient");
+  creamWhiteGrad.setAttribute("x1", "0%");
+  creamWhiteGrad.setAttribute("y1", "0%");
+  creamWhiteGrad.setAttribute("x2", "100%");
+  creamWhiteGrad.setAttribute("y2", "100%");
+  
+  const gStop1 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+  gStop1.setAttribute("offset", "0%");
+  gStop1.setAttribute("stop-color", "#FFFDF9");
+  
+  const gStop2 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+  gStop2.setAttribute("offset", "50%");
+  gStop2.setAttribute("stop-color", "#E8E2D5");
+  
+  const gStop3 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+  gStop3.setAttribute("offset", "100%");
+  gStop3.setAttribute("stop-color", "#FAF6EE");
+  
+  creamWhiteGrad.appendChild(gStop1);
+  creamWhiteGrad.appendChild(gStop2);
+  creamWhiteGrad.appendChild(gStop3);
+  defs.appendChild(creamWhiteGrad);
+  
   return defs;
 }
 
@@ -846,7 +1081,7 @@ function createSvgDefs() {
 function renderStep3() {
   const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
     const sData = STONES.find(s => s.id === b.stoneId);
-    return sum + (sData ? sData.price : 0);
+    return sum + getStonePriceForSize(sData, b.size);
   }, 0);
   
   const totalDiameter = State.selectedStones.reduce((sum, b) => sum + b.size, 0);
@@ -880,7 +1115,20 @@ function renderStep3() {
   }
   DOM.canvasBeadCountText.textContent = capText;
   
-  DOM.canvasSpaceText.textContent = `เหลือ ${remainingSpace.toFixed(1)} mm`;
+  const remainingSpaceText = `เหลือ ${remainingSpace.toFixed(1)} mm`;
+  DOM.canvasSpaceText.textContent = remainingSpaceText;
+  
+  // Update mixed space context if exists
+  const mixedSpaceText = document.getElementById('mixedSpaceText');
+  if (mixedSpaceText) {
+    mixedSpaceText.textContent = remainingSpaceText;
+  }
+  
+  // Update wrist context label
+  const wristContext = document.getElementById('canvasWristContext');
+  if (wristContext) {
+    wristContext.textContent = `ข้อมือ ${State.wristSize.toFixed(1)} cm`;
+  }
   
   // Center label inside circular design canvas
   DOM.canvasCenterValue.textContent = `${State.wristSize.toFixed(1)} cm`;
@@ -895,12 +1143,15 @@ function renderStep3() {
   // Render SVG loop and catalog
   renderBraceletCanvas();
   renderCatalogGrid();
+  
+  // Clear newly added IDs after rendering so they only animate on insertion
+  State.newlyAddedIds = [];
 }
 
 // ==========================================
 // 9. Step 4: Final Summary & Commercial Logic
 // ==========================================
-function renderStep4() {
+async function renderStep4() {
   const nameLabel = State.ownerName ? State.ownerName : "Khun Guest";
   DOM.summaryTitleText.textContent = `LUCKY.COLORSTONE for ${nameLabel}`;
   
@@ -931,7 +1182,7 @@ function renderStep4() {
     uniqueStoneIds.add(placedBead.stoneId);
     
     const stoneData = STONES.find(s => s.id === placedBead.stoneId);
-    const price = stoneData ? stoneData.price : 0;
+    const price = getStonePriceForSize(stoneData, placedBead.size);
     
     if (aggregatedStones[key]) {
       aggregatedStones[key].count++;
@@ -976,12 +1227,20 @@ function renderStep4() {
     DOM.billingItemsList.appendChild(div);
   });
   
-  // Calculate special discount (20%)
-  const discount = Math.round(subtotal * 0.20);
+  // Hardcoded 20% LINE promotion discount logic
+  const discountPercent = 20;
+  const discount = Math.round(subtotal * 0.2);
   const finalPrice = subtotal - discount;
   
   DOM.priceSubtotal.textContent = `฿${subtotal.toLocaleString()}`;
   DOM.priceDiscount.textContent = `-฿${discount.toLocaleString()}`;
+  
+  // Update discount badge text dynamically
+  const discountBadge = document.getElementById('priceDiscountBadge');
+  if (discountBadge) {
+    discountBadge.textContent = `LINE SPECIAL DISCOUNT ${discountPercent}%`;
+  }
+  
   DOM.priceTotal.textContent = `฿${finalPrice.toLocaleString()}`;
   
   // Populate stone meanings
@@ -998,10 +1257,436 @@ function renderStep4() {
       DOM.meaningsList.appendChild(div);
     }
   });
+
+  // Trigger HTML5 Canvas image compilation in the background asynchronously
+  document.getElementById('exportHeroPreview').style.display = 'none';
+  document.getElementById('exportHeroLoading').style.display = 'block';
+  document.getElementById('exportReceiptPreview').style.display = 'none';
+  document.getElementById('exportReceiptLoading').style.display = 'block';
+  document.getElementById('btnDownloadHero').disabled = true;
+  document.getElementById('btnDownloadReceipt').disabled = true;
+
+  setTimeout(async () => {
+    try {
+      await generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds);
+    } catch (e) {
+      console.error("Canvas compilation failed", e);
+    }
+  }, 100);
+}
+
+// Asynchronously pre-load bead texture images
+async function preloadBeadImages(urls) {
+  const cache = {};
+  const promises = urls.map(url => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        cache[url] = img;
+        resolve();
+      };
+      img.onerror = () => {
+        console.error("Failed to preload canvas image:", url);
+        resolve();
+      };
+      img.src = url;
+    });
+  });
+  await Promise.all(promises);
+  return cache;
+}
+
+// Draw the designed bracelet and invoice to canvas
+async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds) {
+  const uniqueUrls = [];
+  State.selectedStones.forEach(b => {
+    const stoneData = STONES.find(s => s.id === b.stoneId);
+    if (stoneData && stoneData.image && !uniqueUrls.includes(stoneData.image)) {
+      uniqueUrls.push(stoneData.image);
+    }
+  });
+
+  const imageCache = await preloadBeadImages(uniqueUrls);
+
+  // 1. Hero Shot (1080x1080)
+  const heroCanvas = document.createElement("canvas");
+  heroCanvas.width = 1080;
+  heroCanvas.height = 1080;
+  const ctx = heroCanvas.getContext("2d");
+
+  // Cream background
+  ctx.fillStyle = "#FDF5E6";
+  ctx.fillRect(0, 0, 1080, 1080);
+
+  const cx = 540;
+  const cy = 540;
+  const rCanvas = 360;
+
+  const braceletLenMm = (State.wristSize + TOLERANCE_CM) * 10;
+  const placedList = State.selectedStones;
+  const sumPlacedDiameter = placedList.reduce((sum, b) => sum + b.size, 0);
+  const loopCircumferenceMm = sumPlacedDiameter > 0 ? sumPlacedDiameter : braceletLenMm;
+  const scaleMmToPx = (2 * Math.PI * rCanvas) / loopCircumferenceMm;
+
+  let accumulatedAngle = -Math.PI / 2;
+
+  placedList.forEach(bead => {
+    const sizeMm = bead.size;
+    const itemAngleWidth = (sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
+
+    const bx = cx + rCanvas * Math.cos(centerAngle);
+    const by = cy + rCanvas * Math.sin(centerAngle);
+    const bRadiusPx = (sizeMm / 2) * scaleMmToPx;
+
+    const stoneData = STONES.find(s => s.id === bead.stoneId) || STONES[0];
+    const imgUrl = stoneData ? stoneData.image : "";
+    const imgObj = imageCache[imgUrl];
+
+    ctx.save();
+    ctx.translate(bx, by);
+    const angleDeg = centerAngle + Math.PI / 2;
+    ctx.rotate(angleDeg); // Rotate to face outward
+
+    // Base circle
+    ctx.beginPath();
+    ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
+    ctx.fillStyle = stoneData.color || "#E2E8F0";
+    ctx.fill();
+
+    // Clip & Draw bead image
+    if (imgObj) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
+      ctx.clip();
+      const scaleFactor = 1.3;
+      const imgSize = bRadiusPx * 2 * scaleFactor;
+      ctx.drawImage(imgObj, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+      ctx.restore();
+    }
+
+    // Shading overlay
+    const sheen = ctx.createRadialGradient(-bRadiusPx * 0.36, -bRadiusPx * 0.36, bRadiusPx * 0.1, 0, 0, bRadiusPx);
+    sheen.addColorStop(0, "rgba(255, 255, 255, 0.65)");
+    sheen.addColorStop(0.45, "rgba(255, 255, 255, 0.15)");
+    sheen.addColorStop(0.85, "rgba(0, 0, 0, 0.35)");
+    sheen.addColorStop(1, "rgba(0, 0, 0, 0.75)");
+    ctx.fillStyle = sheen;
+    ctx.beginPath();
+    ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Highlight border stroke
+    ctx.beginPath();
+    ctx.arc(0, 0, bRadiusPx - 0.5, 0, 2 * Math.PI);
+    ctx.strokeStyle = stoneData.color || "#000000";
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.stroke();
+
+    ctx.restore();
+    accumulatedAngle += itemAngleWidth;
+  });
+
+  const heroDataUrl = heroCanvas.toDataURL("image/png");
+  const heroPreview = document.getElementById("exportHeroPreview");
+  const heroLoading = document.getElementById("exportHeroLoading");
+  const btnHero = document.getElementById("btnDownloadHero");
+
+  heroPreview.src = heroDataUrl;
+  heroPreview.style.display = "block";
+  heroLoading.style.display = "none";
+  btnHero.disabled = false;
+  btnHero.onclick = () => triggerDownload(heroDataUrl, `lucky-colorstone-hero-${State.ownerName || "design"}.png`);
+
+  // 2. Receipt Image (800x1200)
+  const receiptCanvas = document.createElement("canvas");
+  receiptCanvas.width = 800;
+  receiptCanvas.height = 1200;
+  const rCtx = receiptCanvas.getContext("2d");
+
+  // Background
+  rCtx.fillStyle = "#FDF5E6";
+  rCtx.fillRect(0, 0, 800, 1200);
+
+  // Border outline
+  rCtx.strokeStyle = "#E6E6FA";
+  rCtx.lineWidth = 6;
+  rCtx.strokeRect(20, 20, 760, 1160);
+
+  // Header Title
+  rCtx.fillStyle = "#40304D";
+  rCtx.font = "bold 36px Georgia, serif";
+  rCtx.textAlign = "center";
+  rCtx.fillText("LUCKY.COLORSTONE", 400, 90);
+
+  rCtx.fillStyle = "#8B0000";
+  rCtx.font = "bold 13px Arial, sans-serif";
+  rCtx.fillText("CUSTOM BRACELET ORDER RECEIPT", 400, 125);
+
+  function drawDashedDivider(y) {
+    rCtx.strokeStyle = "#B5A9DB";
+    rCtx.lineWidth = 1.5;
+    rCtx.setLineDash([5, 5]);
+    rCtx.beginPath();
+    rCtx.moveTo(50, y);
+    rCtx.lineTo(750, y);
+    rCtx.stroke();
+    rCtx.setLineDash([]);
+  }
+
+  drawDashedDivider(155);
+
+  // Customer metadata
+  rCtx.textAlign = "left";
+  rCtx.fillStyle = "#554466";
+  rCtx.font = "14px Arial, sans-serif";
+  const formattedDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  rCtx.fillText(`👤 Customer:  ${State.ownerName || "Khun Guest"}`, 70, 195);
+  rCtx.fillText(`📅 Date:           ${formattedDate}`, 70, 225);
+
+  // Specs block card background
+  rCtx.fillStyle = "#FFFDF5";
+  rCtx.fillRect(70, 260, 660, 75);
+  rCtx.strokeStyle = "#E8E1D5";
+  rCtx.lineWidth = 1;
+  rCtx.strokeRect(70, 260, 660, 75);
+
+  rCtx.textAlign = "center";
+  rCtx.fillStyle = "#40304D";
+  rCtx.font = "bold 14px Arial, sans-serif";
+  rCtx.fillText("Wrist Size", 150, 285);
+  rCtx.fillText("Length", 310, 285);
+  rCtx.fillText("Bead Size", 470, 285);
+  rCtx.fillText("Beads Count", 630, 285);
+
+  rCtx.fillStyle = "#8B0000";
+  rCtx.font = "bold 18px Arial, sans-serif";
+  rCtx.fillText(`${State.wristSize.toFixed(1)} cm`, 150, 315);
+  rCtx.fillText(`${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`, 310, 315);
+  rCtx.fillText(State.beadSize === 'mixed' ? "Mixed" : `${State.beadSize}mm`, 470, 315);
+  rCtx.fillText(`${State.selectedStones.length} beads`, 630, 315);
+
+  drawDashedDivider(370);
+
+  // Stringing Map Header
+  rCtx.textAlign = "center";
+  rCtx.fillStyle = "#40304D";
+  rCtx.font = "bold 15px Arial, sans-serif";
+  rCtx.fillText("VISUAL STRINGING MAP (ลำดับการร้อย)", 400, 410);
+
+  const mapY = 465;
+  const totalBeadSizeMm = placedList.reduce((sum, b) => sum + b.size, 0);
+  const horizontalPadding = 80;
+  const availableWidth = 800 - 2 * horizontalPadding;
+  const beadScale = totalBeadSizeMm > 0 ? (availableWidth / totalBeadSizeMm) : 5;
+  const maxRadius = 18;
+  const linearScale = Math.min(beadScale, maxRadius * 2 / 6);
+
+  let accumulatedX = 400 - (totalBeadSizeMm * linearScale) / 2;
+
+  placedList.forEach(bead => {
+    const sizeMm = bead.size;
+    const bRad = (sizeMm / 2) * linearScale;
+    const bx = accumulatedX + bRad;
+
+    const stoneData = STONES.find(s => s.id === bead.stoneId) || STONES[0];
+    const imgUrl = stoneData ? stoneData.image : "";
+    const imgObj = imageCache[imgUrl];
+
+    rCtx.save();
+    rCtx.translate(bx, mapY);
+
+    rCtx.beginPath();
+    rCtx.arc(0, 0, bRad, 0, 2 * Math.PI);
+    rCtx.fillStyle = stoneData.color || "#E2E8F0";
+    rCtx.fill();
+
+    if (imgObj) {
+      rCtx.save();
+      rCtx.beginPath();
+      rCtx.arc(0, 0, bRad, 0, 2 * Math.PI);
+      rCtx.clip();
+      const scaleFactor = 1.3;
+      const imgSize = bRad * 2 * scaleFactor;
+      rCtx.drawImage(imgObj, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+      rCtx.restore();
+    }
+
+    const sheen = rCtx.createRadialGradient(-bRad * 0.36, -bRad * 0.36, bRad * 0.1, 0, 0, bRad);
+    sheen.addColorStop(0, "rgba(255, 255, 255, 0.6)");
+    sheen.addColorStop(0.45, "rgba(255, 255, 255, 0.15)");
+    sheen.addColorStop(0.85, "rgba(0, 0, 0, 0.3)");
+    sheen.addColorStop(1, "rgba(0, 0, 0, 0.7)");
+    rCtx.fillStyle = sheen;
+    rCtx.beginPath();
+    rCtx.arc(0, 0, bRad, 0, 2 * Math.PI);
+    rCtx.fill();
+
+    rCtx.restore();
+    accumulatedX += sizeMm * linearScale;
+  });
+
+  drawDashedDivider(525);
+
+  // Pricing lines
+  rCtx.textAlign = "left";
+  rCtx.fillStyle = "#554466";
+  rCtx.font = "15px Arial, sans-serif";
+  rCtx.fillText("Original Subtotal:", 70, 570);
+  rCtx.fillText("LINE Special Promotion (20% Discount):", 70, 605);
+  
+  rCtx.font = "bold 20px Arial, sans-serif";
+  rCtx.fillStyle = "#40304D";
+  rCtx.fillText("Total Net Price:", 70, 650);
+
+  rCtx.textAlign = "right";
+  rCtx.font = "15px Arial, sans-serif";
+  rCtx.fillStyle = "#554466";
+  rCtx.fillText(`฿${subtotal.toLocaleString()}`, 730, 570);
+  rCtx.fillStyle = "#8B0000";
+  rCtx.fillText(`-฿${discount.toLocaleString()}`, 730, 605);
+
+  rCtx.font = "bold 24px Arial, sans-serif";
+  rCtx.fillStyle = "#8B0000";
+  rCtx.fillText(`฿${finalPrice.toLocaleString()}`, 730, 650);
+
+  drawDashedDivider(690);
+
+  // Meanings list
+  rCtx.textAlign = "left";
+  rCtx.fillStyle = "#40304D";
+  rCtx.font = "bold 16px Arial, sans-serif";
+  rCtx.fillText("✨ STONE MEANINGS & METAPHYSICAL BENEFITS", 70, 735);
+
+  let meaningY = 770;
+  uniqueStoneIds.forEach(id => {
+    const stone = STONES.find(s => s.id === id);
+    if (stone && meaningY < 1120) {
+      rCtx.fillStyle = "#8B0000";
+      rCtx.font = "bold 14px Arial, sans-serif";
+      rCtx.fillText(`• ${stone.nameTh} (${stone.name})`, 70, meaningY);
+      
+      rCtx.fillStyle = "#554466";
+      rCtx.font = "italic 12px Arial, sans-serif";
+      const desc = `${stone.meaningTh} - ${stone.meaning}`;
+      
+      const maxTextWidth = 660;
+      const words = desc.split(' ');
+      let currentLine = '';
+      const linesArr = [];
+      
+      words.forEach(w => {
+        const testLine = currentLine ? `${currentLine} ${w}` : w;
+        const testWidth = rCtx.measureText(testLine).width;
+        if (testWidth > maxTextWidth) {
+          linesArr.push(currentLine);
+          currentLine = w;
+        } else {
+          currentLine = testLine;
+        }
+      });
+      if (currentLine) {
+        linesArr.push(currentLine);
+      }
+
+      meaningY += 20;
+      linesArr.forEach(lineStr => {
+        rCtx.fillText(lineStr, 85, meaningY);
+        meaningY += 18;
+      });
+      meaningY += 10;
+    }
+  });
+
+  rCtx.textAlign = "center";
+  rCtx.fillStyle = "#9E8DAE";
+  rCtx.font = "italic 13px Arial, sans-serif";
+  rCtx.fillText("Thank you for designing with LUCKY.COLORSTONE!", 400, 1160);
+
+  const receiptDataUrl = receiptCanvas.toDataURL("image/png");
+  const receiptPreview = document.getElementById("exportReceiptPreview");
+  const receiptLoading = document.getElementById("exportReceiptLoading");
+  const btnReceipt = document.getElementById("btnDownloadReceipt");
+
+  receiptPreview.src = receiptDataUrl;
+  receiptPreview.style.display = "block";
+  receiptLoading.style.display = "none";
+  btnReceipt.disabled = false;
+  btnReceipt.onclick = () => triggerDownload(receiptDataUrl, `lucky-colorstone-receipt-${State.ownerName || "design"}.png`);
+}
+
+function triggerDownload(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Submit Order to CRM backend database
+async function submitOrderToCRM(showToastNotification = true) {
+  if (State.selectedStones.length === 0) {
+    if (showToastNotification) showToast("Bracelet is empty!");
+    return null;
+  }
+  
+  const discountPercent = 20;
+  
+  const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
+    const sData = STONES.find(s => s.id === b.stoneId);
+    return sum + getStonePriceForSize(sData, b.size);
+  }, 0);
+  const discount = Math.round(totalStonesPrice * 0.2);
+  const netPrice = totalStonesPrice - discount;
+  
+  // Design details encoded payload
+  const designData = {
+    w: State.wristSize,
+    b: State.beadSize,
+    n: State.ownerName,
+    s: State.selectedStones.map(s => ({ i: s.stoneId, z: s.size }))
+  };
+  const jsonString = JSON.stringify(designData);
+  const base64Code = btoa(unescape(encodeURIComponent(jsonString)));
+  
+  const orderPayload = {
+    customerName: State.ownerName || "Khun Guest",
+    wristSize: State.wristSize,
+    beadSize: State.beadSize,
+    totalBeads: State.selectedStones.length,
+    beads: State.selectedStones.map(s => {
+      const stoneData = STONES.find(st => st.id === s.stoneId);
+      return {
+        stoneId: s.stoneId,
+        name: stoneData ? stoneData.name : 'Unknown Stone',
+        nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
+        color: stoneData ? stoneData.color : '#E2E8F0',
+        image: stoneData ? stoneData.image : '',
+        size: s.size
+      };
+    }),
+    subtotal: totalStonesPrice,
+    discountPercent: discountPercent,
+    discountAmount: discount,
+    netPrice: netPrice,
+    configurationCode: base64Code
+  };
+  
+  const order = await addSharedOrder(orderPayload);
+  if (showToastNotification && order) {
+    showToast(`Order ${order.id} submitted to CRM!`);
+  }
+  return order;
 }
 
 // Generate Formatted LINE Order Message & Redirection
-function handleLineOrder() {
+async function handleLineOrder() {
+  // First, submit order to CRM database so it syncs immediately
+  await submitOrderToCRM(false);
+  
   const dateFormatted = DOM.summaryDateText.textContent.replace('Date: ', '');
   const ownerLabel = State.ownerName ? State.ownerName : "Khun Guest";
   const lenCm = State.wristSize + TOLERANCE_CM;
@@ -1044,9 +1729,9 @@ function handleLineOrder() {
   // Pricing
   const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
     const sData = STONES.find(s => s.id === b.stoneId);
-    return sum + (sData ? sData.price : 0);
+    return sum + getStonePriceForSize(sData, b.size);
   }, 0);
-  const discount = Math.round(totalStonesPrice * 0.20);
+  const discount = Math.round(totalStonesPrice * 0.2);
   const netPrice = totalStonesPrice - discount;
   
   lines.push(`💳 *Pricing Summary:*`);
@@ -1127,7 +1812,7 @@ function openStoneInfoModal(stone) {
   DOM.modalStoneTitleTh.textContent = stone.nameTh;
   DOM.modalStoneTitleEn.textContent = stone.name;
   DOM.modalStoneMeaning.textContent = `${stone.meaningTh} / ${stone.meaning}`;
-  DOM.modalStonePrice.textContent = `฿${stone.price} / เม็ด`;
+  DOM.modalStonePrice.textContent = `฿${stone.p4 || 0} (4mm) / ฿${stone.p6 || 0} (6mm) / ฿${stone.p8 || 0} (8mm)`;
   
   DOM.stoneInfoModal.classList.add('show');
 }
@@ -1152,6 +1837,13 @@ function setupModalEvents() {
       closeStoneInfoModal();
     }
   });
+  
+  DOM.btnModalFillAll.addEventListener('click', () => {
+    if (currentModalStone) {
+      fillEntireBracelet(currentModalStone.id);
+      closeStoneInfoModal();
+    }
+  });
 }
 
 // Toast Helper
@@ -1163,4 +1855,35 @@ function showToast(message) {
   setTimeout(() => {
     toast.classList.remove('show');
   }, 2500);
+}
+
+// Custom Confirmation Dialog Helper
+function showCustomConfirm(message, title = "Confirm") {
+  return new Promise((resolve) => {
+    DOM.confirmModalTitle.textContent = title;
+    DOM.confirmModalMessage.textContent = message;
+    DOM.confirmModal.classList.add('show');
+
+    const cleanUp = (value) => {
+      DOM.confirmModal.classList.remove('show');
+      DOM.btnConfirmOK.removeEventListener('click', onOK);
+      DOM.btnConfirmCancel.removeEventListener('click', onCancel);
+      DOM.btnConfirmClose.removeEventListener('click', onCancel);
+      DOM.confirmModal.removeEventListener('click', onBackdrop);
+      resolve(value);
+    };
+
+    const onOK = () => cleanUp(true);
+    const onCancel = () => cleanUp(false);
+    const onBackdrop = (e) => {
+      if (e.target === DOM.confirmModal) {
+        cleanUp(false);
+      }
+    };
+
+    DOM.btnConfirmOK.addEventListener('click', onOK);
+    DOM.btnConfirmCancel.addEventListener('click', onCancel);
+    DOM.btnConfirmClose.addEventListener('click', onCancel);
+    DOM.confirmModal.addEventListener('click', onBackdrop);
+  });
 }

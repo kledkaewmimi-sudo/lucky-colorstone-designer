@@ -14,6 +14,87 @@
 
   <div class="app-container">
     
+    <!-- LIFF LOADING OVERLAY -->
+    <div class="liff-loading-overlay" id="liffLoadingOverlay">
+      <div class="spinner-container">
+        <div class="pastel-spinner"></div>
+        <span class="loading-text">กำลังเชื่อมต่อกับ LINE...</span>
+      </div>
+    </div>
+
+    <!-- LANDING PAGE VIEW -->
+    <section class="landing-view" id="landingView">
+      <!-- Rebranded Logo at Top -->
+      <div class="landing-logo">LUCKY.COLORSTONE</div>
+      
+      <!-- Premium Orbital Graphic Card -->
+      <div class="orbital-container">
+        <svg class="orbital-svg" viewBox="0 0 300 300" fill="none">
+          <!-- Ambient glowing background -->
+          <circle cx="150" cy="150" r="130" fill="rgba(230, 230, 250, 0.25)" filter="blur(15px)"/>
+          
+          <!-- Concentric Orbit Rings (3 levels) -->
+          <ellipse cx="150" cy="150" rx="120" ry="110" stroke="rgba(181, 169, 219, 0.3)" stroke-width="1" stroke-dasharray="3 3"/>
+          <ellipse cx="150" cy="150" rx="90" ry="80" stroke="rgba(181, 169, 219, 0.4)" stroke-width="1"/>
+          <ellipse cx="150" cy="150" rx="60" ry="55" stroke="rgba(181, 169, 219, 0.2)" stroke-width="1"/>
+          
+          <!-- Center Branding Text Overlay -->
+          <g transform="translate(150, 150)">
+            <text x="0" y="-8" fill="#1E293B" font-family="'Inter', sans-serif" font-size="14" font-weight="900" text-anchor="middle" letter-spacing="1">YOUR STORY,</text>
+            <text x="0" y="10" fill="#8B0000" font-family="'Inter', sans-serif" font-size="14" font-weight="900" text-anchor="middle" letter-spacing="1">YOUR BRACELET</text>
+          </g>
+          
+          <!-- Floating Stones (Placed along orbits at various angles) -->
+          <!-- Inner Orbit (Radius x=60, y=55) -->
+          <image href="assets/rose_quartz.png" x="110" y="80" width="26" height="26" />
+          <image href="assets/citrine.png" x="180" y="140" width="26" height="26" />
+          <image href="assets/amethyst.png" x="80" y="130" width="26" height="26" />
+          
+          <!-- Middle Orbit (Radius x=90, y=80) -->
+          <image href="assets/golden_rutile.png" x="185" y="90" width="30" height="30" />
+          <image href="assets/green_aventurine.png" x="80" y="70" width="30" height="30" />
+          <image href="assets/black_obsidian.png" x="100" y="200" width="30" height="30" />
+          <image href="assets/tigers_eye.png" x="210" y="160" width="30" height="30" />
+          
+          <!-- Outer Orbit (Radius x=120, y=110) -->
+          <image href="assets/lapis_lazuli.png" x="40" y="100" width="32" height="32" />
+          <image href="assets/malachite.png" x="140" y="235" width="32" height="32" />
+          <image href="assets/red_jasper.png" x="240" y="90" width="32" height="32" />
+          
+          <!-- Sparkles & Badge Emojis for Vibe -->
+          <text x="35" y="160" font-size="16">🏆</text>
+          <text x="120" y="50" font-size="16">❤️</text>
+          <text x="245" y="200" font-size="16">💰</text>
+          <text x="165" y="215" font-size="16">🍀</text>
+          
+          <!-- Star Sparkles (SVG Paths) -->
+          <path d="M 80,45 L 82,49 L 86,50 L 82,51 L 80,55 L 78,51 L 74,50 L 78,49 Z" fill="#D4AF37"/>
+          <path d="M 220,70 L 221.5,73.5 L 225,74 L 221.5,74.5 L 220,78 L 218.5,74.5 L 215,74 L 218.5,73.5 Z" fill="#D4AF37"/>
+          <path d="M 230,135 L 231.5,138.5 L 235,139 L 231.5,139.5 L 230,143 L 228.5,139.5 L 225,139 L 228.5,138.5 Z" fill="#B5A9DB"/>
+          <path d="M 90,175 L 91.5,178.5 L 95,179 L 91.5,179.5 L 90,183 L 88.5,179.5 L 85,179 L 88.5,178.5 Z" fill="#B5A9DB"/>
+        </svg>
+      </div>
+      
+      <!-- Text Copy writing -->
+      <div class="landing-text-content">
+        <h1 class="landing-title-text">กำไลที่มีเพียงเส้นเดียวในโลก<br>เพราะคุณเป็นคนออกแบบเอง</h1>
+        <p class="landing-subtitle-text">มีคนออกแบบแล้วกว่า 3,000+ เส้น</p>
+      </div>
+      
+      <!-- CTA Action Button -->
+      <div class="landing-cta-container">
+        <button class="landing-login-btn" id="btnLandingLogin">
+          <span class="btn-main-text">เริ่มออกแบบฟรี</span>
+          <span class="btn-sub-text">เข้าระบบผ่าน LINE</span>
+        </button>
+      </div>
+    </section>
+    
+    <!-- Testing Mode Banner -->
+    <div class="sandbox-banner">
+      <span>🛠️ CRM Sandbox: <a href="crm.html" target="_blank">Open Admin Panel ↗</a></span>
+    </div>
+    
     <!-- Fixed Navigation Header -->
     <header class="app-header">
       <div class="header-top">
@@ -35,7 +116,7 @@
         <div class="step-node" data-step="3" id="stepNode3">3</div>
         <div class="step-node" data-step="4" id="stepNode4">4</div>
       </div>
-      <div class="step-indicator-text" id="stepIndicatorLabel">Step 1: Wrist Measurement</div>
+      <div class="step-indicator-text" id="stepIndicatorLabel">Step 1: Select Wrist Size</div>
     </header>
 
     <!-- Main Content Container (Step Views) -->
@@ -43,39 +124,49 @@
       
       <!-- STEP 1: WRIST MEASUREMENT -->
       <section class="step-view active" id="stepView1">
-        <h2 class="step-title">Measure Your Wrist</h2>
-        <p class="step-subtitle">วัดขนาดข้อมือเพื่อขนาดกำไลที่พอดีที่สุดสำหรับคุณ</p>
+        <h2 class="step-title">วัดขนาดข้อมือ</h2>
+        <p class="step-subtitle">วัดรอบข้อมือแบบพอดี (หน่วยเซนติเมตร)</p>
         
         <!-- Premium Visual Aid Illustration -->
         <div class="wrist-visual-card">
-          <svg class="wrist-illustration-svg" viewBox="0 0 200 200" fill="none">
-            <!-- Background glow -->
-            <circle cx="100" cy="100" r="80" fill="rgba(212, 175, 55, 0.04)" stroke="rgba(212, 175, 55, 0.1)" stroke-width="1"/>
+          <svg class="wrist-illustration-svg-horizontal" viewBox="0 0 200 80" fill="none">
+            <!-- Arm and Hand Silhouette (Horizontal pointing right) -->
+            <path d="M 10,25 L 95,25 C 102,25 105,23 107,25 C 113,25 119,16 128,16 C 134,16 139,4 148,4 C 156,4 158,11 144,17 C 154,17 170,17 170,25 C 170,29 160,29 148,29 C 158,29 180,29 180,36 C 180,41 166,41 148,41 C 158,41 174,41 174,48 C 174,53 162,53 145,53 C 155,53 164,53 164,60 C 164,65 152,65 137,60 C 125,56 110,56 100,56 L 10,56" fill="#FFFDF5" stroke="#1E293B" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
             
-            <!-- Wrist Outline -->
-            <path d="M70,190 C70,160 65,90 100,80 C135,90 130,160 130,190" stroke="#1C2541" stroke-width="6" stroke-linecap="round"/>
-            <path d="M75,190 C75,165 71,95 100,86 C129,95 125,165 125,190" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
+            <!-- Separating lines between fingers to make them look distinct -->
+            <path d="M 132,18 C 135,21 138,22 143,23" stroke="#1E293B" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+            <path d="M 139,29 L 148,29" stroke="#1E293B" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+            <path d="M 138,41 L 146,41" stroke="#1E293B" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+            <path d="M 134,53 L 142,53" stroke="#1E293B" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.8"/>
             
-            <!-- Measuring Tape Wrapping Around -->
-            <!-- Back part of tape (behind wrist) -->
-            <path d="M70,135 C80,128 120,128 130,135" stroke="#AA7C11" stroke-width="16" stroke-linecap="round" opacity="0.4"/>
-            <!-- Front part of tape wrapping around -->
-            <path d="M63,142 C80,150 120,150 137,142" stroke="#D4AF37" stroke-width="18" stroke-linecap="round" id="measuringTapePath"/>
+            <!-- Measuring Tape BACK (behind wrist) -->
+            <rect x="94" y="25" width="8" height="31" fill="#D4AF37" opacity="0.3"/>
             
-            <!-- Ruler markings (Ticks) -->
-            <path d="M68,143.5 L69.5,147 M75,145.5 L76.5,149 M82,147 L83,150 M89,147.8 L90,150.8 M96,148 L96.5,151 M103,148 L103,151 M110,147.8 L109,150.8 M117,147 L116,150 M124,145.5 L122.5,149 M131,143.5 L129.5,147" stroke="#1C2541" stroke-width="1.5"/>
-            <!-- Major ticks -->
-            <path d="M70.5,144.2 L72.5,149.2 M85.5,147.2 L87,152.2 M100,148 L100,153 M113.5,147.2 L112,152.2 M127.5,144.2 L125.5,149.2" stroke="#AA7C11" stroke-width="2.5"/>
+            <!-- Measuring Tape FRONT (in front of wrist) -->
+            <rect x="94" y="21" width="8" height="39" rx="1.5" fill="#F5C518" stroke="#1E293B" stroke-width="1.8"/>
             
-            <!-- Measurement Pin Label -->
-            <rect x="80" y="45" width="40" height="24" rx="6" fill="#1C2541" filter="drop-shadow(0px 4px 6px rgba(0,0,0,0.15))"/>
-            <text x="100" y="61" fill="#D4AF37" font-family="'Inter', sans-serif" font-size="11" font-weight="bold" text-anchor="middle" id="visualWristSizeText">16.0 cm</text>
-            <path d="M100,69 L100,75" stroke="#1C2541" stroke-width="2" stroke-linecap="round"/>
+            <!-- Ticks on the tape -->
+            <path d="M 94,25 L 97,25 M 94,29 L 96,29 M 94,33 L 96,33 M 94,37 L 97,37 M 94,41 L 96,41 M 94,45 L 96,45 M 94,49 L 97,49 M 94,53 L 96,53 M 94,57 L 97,57" stroke="#1E293B" stroke-width="0.8"/>
+            
+            <!-- Buckle/Loop detail in middle -->
+            <rect x="92.5" y="36" width="11" height="6" rx="0.8" fill="#FFFDF5" stroke="#1E293B" stroke-width="1.8"/>
+            
+            <!-- Dynamic Pin on top (Subtle, pointing to wrist measuring area) -->
+            <g transform="translate(0, -6)" opacity="0">
+              <!-- Hide this original pin inside SVG so it doesn't clutter, we use the display card below -->
+              <text x="0" y="0" id="visualWristSizeText">16.0 cm</text>
+            </g>
           </svg>
           
-          <div class="wrist-tip">
-            <strong>Tip:</strong> Use a soft tape measure or piece of string around your wrist bone. Keep it snug but comfortable. We automatically add 1.5 cm tolerance.
+          <div class="wrist-visual-caption">
+            วัดรอบข้อมือบริเวณข้อมือ — สายวัดแนบพอดี ไม่หลวมไม่แน่น
           </div>
+        </div>
+
+        <!-- Large Selected Size Display Card -->
+        <div class="selected-size-display-card">
+          <span class="display-size-value" id="displaySizeValue">16.0</span>
+          <span class="display-size-unit">cm</span>
         </div>
 
         <!-- Wrist Size Buttons (14.0 to 20.0 cm) -->
@@ -85,8 +176,8 @@
 
         <!-- Personalization Field -->
         <div class="name-input-group">
-          <label class="name-label" for="braceletOwnerName">Bracelet Owner Name (Optional)</label>
-          <input type="text" id="braceletOwnerName" class="name-input" placeholder="e.g. Somchai, Emma (ชื่อเจ้าของกำไล)" maxlength="20">
+          <label class="name-label" for="braceletOwnerName">ชื่อเจ้าของกำไล (ไม่บังคับ)</label>
+          <input type="text" id="braceletOwnerName" class="name-input" placeholder="ใส่ชื่อเจ้าของกำไล เช่น เอ็ม, นัท" maxlength="20">
         </div>
       </section>
 
@@ -184,6 +275,12 @@
                 <span class="canvas-stat-val" id="canvasSpaceText">เหลือ 175.0 mm</span>
               </div>
             </div>
+            
+            <!-- Context & Tooltip Row -->
+            <div class="canvas-info-row">
+              <span class="wrist-context-label" id="canvasWristContext">ข้อมือ 16.0 cm</span>
+              <span class="helper-tooltip">แตะที่หินเพื่อลบ</span>
+            </div>
 
             <!-- Canvas Container -->
             <div class="canvas-container">
@@ -205,25 +302,31 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="m15 18-6-6 6-6"/>
                 </svg>
-                Sizes Selection
+                ย้อนกลับ
               </button>
               <button class="ctrl-btn reset-btn" id="btnResetBracelet">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
                   <path d="M3 3v5h5"/>
                 </svg>
-                Reset Bracelet (รีเซ็ต)
+                รีเซ็ตกำไล
               </button>
             </div>
           </div>
 
           <!-- Mixed Size Selector - Visible only when "mixed" bead size is selected -->
           <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" style="display: none;">
-            <span class="mixed-label">Placing Bead Size:</span>
-            <div class="mixed-toggles">
-              <button class="mixed-toggle-btn" data-size="4">4mm</button>
-              <button class="mixed-toggle-btn active" data-size="6">6mm</button>
-              <button class="mixed-toggle-btn" data-size="8">8mm</button>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <span class="mixed-label">Placing Bead Size:</span>
+              <div class="mixed-toggles">
+                <button class="mixed-toggle-btn" data-size="4">4mm</button>
+                <button class="mixed-toggle-btn active" data-size="6">6mm</button>
+                <button class="mixed-toggle-btn" data-size="8">8mm</button>
+              </div>
+            </div>
+            <div class="mixed-space-container">
+              <span class="mixed-space-label">Remaining Space</span>
+              <span class="mixed-space-val" id="mixedSpaceText">เหลือ 175.0 mm</span>
             </div>
           </div>
 
@@ -275,6 +378,32 @@
             </div>
           </div>
 
+          <!-- Image Exports Card -->
+          <div class="billing-card" style="margin-top: 15px;">
+            <h4 class="billing-title">📷 Bracelet Design & LINE Receipt Export</h4>
+            <p style="font-size: 12px; color: var(--color-navy-muted); margin-bottom: 12px;">
+              คุณสามารถดาวน์โหลดรูปภาพออกแบบ 3D และใบสั่งซื้อแบบยาวเพื่อส่งเข้า LINE ได้ทันที
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+              <div style="text-align: center;">
+                <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">Hero Shot (1080x1080)</div>
+                <div style="aspect-ratio: 1; background-color: var(--color-bg-cream); border-radius: 8px; border: 1px solid var(--color-gray-border); overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                  <img id="exportHeroPreview" style="max-width: 100%; max-height: 100%; display: none;" alt="Hero Shot Preview">
+                  <span id="exportHeroLoading" style="font-size: 11px; color: var(--color-navy-muted);">Generating...</span>
+                </div>
+                <button type="button" class="btn btn-outline" id="btnDownloadHero" style="width: 100%; padding: 8px; font-size: 12px; margin-top: 8px; border-color: var(--color-velvet-red); color: var(--color-velvet-red);" disabled>Download</button>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">LINE Receipt Image</div>
+                <div style="aspect-ratio: 1; background-color: var(--color-bg-cream); border-radius: 8px; border: 1px solid var(--color-gray-border); overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                  <img id="exportReceiptPreview" style="max-width: 100%; max-height: 100%; display: none;" alt="Receipt Preview">
+                  <span id="exportReceiptLoading" style="font-size: 11px; color: var(--color-navy-muted);">Generating...</span>
+                </div>
+                <button type="button" class="btn btn-outline" id="btnDownloadReceipt" style="width: 100%; padding: 8px; font-size: 12px; margin-top: 8px; border-color: var(--color-velvet-red); color: var(--color-velvet-red);" disabled>Download</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Itemized Billing Card -->
           <div class="billing-card">
             <h4 class="billing-title">Itemized Billing (รายละเอียดหิน)</h4>
@@ -289,7 +418,7 @@
                 <span class="price-val" id="priceSubtotal">฿1,475</span>
               </div>
               <div class="discount-box">
-                <span class="discount-badge">LINE SPECIAL DISCOUNT 20%</span>
+                <span class="discount-badge" id="priceDiscountBadge">LINE SPECIAL DISCOUNT 20%</span>
                 <span class="discount-value" id="priceDiscount">-฿295</span>
               </div>
               <div class="price-row total">
@@ -297,6 +426,13 @@
                 <span class="price-val" id="priceTotal">฿1,180</span>
               </div>
             </div>
+          </div>
+
+          <!-- Sandbox Ordering controls -->
+          <div class="crm-sandbox-card">
+            <h4>🛠️ CRM Order Sync Sandbox</h4>
+            <p>Submit this order directly to the CRM dashboard to test real-time order processing.</p>
+            <button type="button" class="crm-btn" id="btnSubmitCRM">Send Order to CRM</button>
           </div>
 
           <!-- Aggregated Stone Meanings -->
@@ -362,7 +498,29 @@
             
             <div class="modal-stone-price" id="modalStonePrice">฿150 / เม็ด</div>
             
-            <button class="modal-action-btn" id="btnModalAdd">Add to Bracelet (+ เพิ่มเข้ากำไล)</button>
+            <button class="modal-action-btn" id="btnModalAdd">Replace Selected (+ ใส่แทนที่)</button>
+            <button class="modal-action-btn" id="btnModalFillAll" style="margin-top: 10px;">Fill Entire Bracelet (ใส่ทั้งวง)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div class="modal-backdrop" id="confirmModal">
+      <div class="modal-content-card">
+        <div class="modal-header">
+          <h3 id="confirmModalTitle">Confirm Action</h3>
+          <button class="modal-close-btn" id="btnConfirmClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-stone-details">
+            <div class="modal-stone-meaning-box" id="confirmModalMessage" style="border-left-color: var(--color-velvet-red); margin-bottom: 20px;">
+              Are you sure you want to proceed?
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <button class="modal-action-btn" id="btnConfirmCancel">Cancel</button>
+              <button class="modal-action-btn" id="btnConfirmOK">Confirm</button>
+            </div>
           </div>
         </div>
       </div>
