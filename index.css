@@ -7,8 +7,8 @@
 
 :root {
   /* Gen Z & Millennial 60-30-10 Color Scheme */
-  --color-bg-cream: #FDF5E6; /* Cream Background */
-  --color-card-cream: #FFFDF5;
+  --color-bg-cream: #F6F2FF; /* Soft Pastel Lavender Primary Background */
+  --color-card-cream: #FCFBFF; /* Brighter Card Background */
   
   --color-lavender-light: #F6F6FF;
   --color-lavender: #E6E6FA; /* Pastel Purple Accent */
@@ -40,8 +40,8 @@
   --color-green-light: var(--color-velvet-red-light);
   --color-red: var(--color-velvet-red);
   --color-red-light: var(--color-velvet-red-light);
-  --color-gray-border: #E8E1D5;
-  --color-gray-bg: #F4EFE6;
+  --color-gray-border: #E8DFF5; /* Soft light lavender-gray border */
+  --color-gray-bg: #F4EEFF; /* Soft light lavender-gray bg */
   
   /* Transitions */
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -81,12 +81,27 @@ body {
   max-width: 480px;
   height: 100vh;
   min-height: 100vh;
-  background-color: var(--color-bg-light);
+  background: linear-gradient(180deg, #FBF9FF 0%, #F6F2FF 55%, #F2ECFF 100%);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Subtle luxury cosmetic packaging style glitter overlay */
+.app-container::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Ccircle cx='15' cy='20' r='0.6' fill='%23ffffff' opacity='0.7'/%3E%3Ccircle cx='55' cy='12' r='0.8' fill='%23B5A9DB' opacity='0.5'/%3E%3Ccircle cx='110' cy='35' r='0.5' fill='%23ffffff' opacity='0.8'/%3E%3Ccircle cx='140' cy='18' r='0.7' fill='%23B5A9DB' opacity='0.6'/%3E%3Ccircle cx='8' cy='70' r='1.0' fill='%23ffffff' opacity='0.6'/%3E%3Ccircle cx='75' cy='65' r='0.6' fill='%23B5A9DB' opacity='0.8'/%3E%3Ccircle cx='125' cy='90' r='0.8' fill='%23ffffff' opacity='0.7'/%3E%3Ccircle cx='48' cy='105' r='0.4' fill='%23B5A9DB' opacity='0.5'/%3E%3Ccircle cx='28' cy='135' r='0.8' fill='%23ffffff' opacity='0.7'/%3E%3Ccircle cx='92' cy='130' r='0.4' fill='%23B5A9DB' opacity='0.8'/%3E%3Ccircle cx='132' cy='145' r='0.6' fill='%23ffffff' opacity='0.6'/%3E%3Ccircle cx='68' cy='155' r='1.0' fill='%23B5A9DB' opacity='0.5'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  opacity: 0.04; /* Extremely subtle 4% opacity */
+  pointer-events: none;
+  z-index: 9999;
 }
 
 /* Fixed Navigation Header */
@@ -1744,7 +1759,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--color-bg-cream);
+  background: linear-gradient(180deg, #FBF9FF 0%, #F6F2FF 55%, #F2ECFF 100%);
   z-index: 200;
   display: flex;
   flex-direction: column;
@@ -1851,7 +1866,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--color-bg-cream);
+  background: linear-gradient(180deg, #FBF9FF 0%, #F6F2FF 55%, #F2ECFF 100%);
   z-index: 1000;
   display: none; /* Managed dynamically in JS */
   align-items: center;
