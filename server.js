@@ -170,13 +170,48 @@ const DEFAULT_STONES = [
 ];
 
 function seedDatabase(force = false) {
-  if (force || !fs.existsSync(STONES_FILE)) {
+  let shouldSeedStones = force || !fs.existsSync(STONES_FILE);
+  if (!shouldSeedStones) {
+    try {
+      const content = fs.readFileSync(STONES_FILE, 'utf8').trim();
+      if (content === '' || content === '[]' || content === '{}') {
+        shouldSeedStones = true;
+      }
+    } catch (e) {
+      shouldSeedStones = true;
+    }
+  }
+  if (shouldSeedStones) {
     fs.writeFileSync(STONES_FILE, JSON.stringify(DEFAULT_STONES, null, 2), 'utf8');
   }
-  if (force || !fs.existsSync(ORDERS_FILE)) {
+
+  let shouldSeedOrders = force || !fs.existsSync(ORDERS_FILE);
+  if (!shouldSeedOrders) {
+    try {
+      const content = fs.readFileSync(ORDERS_FILE, 'utf8').trim();
+      if (content === '') {
+        shouldSeedOrders = true;
+      }
+    } catch (e) {
+      shouldSeedOrders = true;
+    }
+  }
+  if (shouldSeedOrders) {
     fs.writeFileSync(ORDERS_FILE, JSON.stringify([], null, 2), 'utf8');
   }
-  if (force || !fs.existsSync(SETTINGS_FILE)) {
+
+  let shouldSeedSettings = force || !fs.existsSync(SETTINGS_FILE);
+  if (!shouldSeedSettings) {
+    try {
+      const content = fs.readFileSync(SETTINGS_FILE, 'utf8').trim();
+      if (content === '') {
+        shouldSeedSettings = true;
+      }
+    } catch (e) {
+      shouldSeedSettings = true;
+    }
+  }
+  if (shouldSeedSettings) {
     const defaultSettings = { globalDiscountPercent: 20 };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2), 'utf8');
   }

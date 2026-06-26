@@ -467,31 +467,13 @@ function renderStep1() {
 // ==========================================
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
-    card.addEventListener('click', async () => {
+    card.addEventListener('click', () => {
       const prevBeadSize = State.beadSize;
       const targetBeadSize = card.getAttribute('data-bead-size');
       
       if (prevBeadSize === targetBeadSize) return;
 
-      if (State.selectedStones.length > 0) {
-        const proceed = await showCustomConfirm(
-          "Changing bead size will clear or resize your current bracelet design. Proceed?",
-          "Change Bead Size"
-        );
-        if (!proceed) {
-          // Keep visual active state on previous
-          DOM.beadSizeCards.forEach(c => {
-            if (c.getAttribute('data-bead-size') === prevBeadSize) {
-              c.classList.add('active');
-            } else {
-              c.classList.remove('active');
-            }
-          });
-          return;
-        }
-      }
-
-      // Update state
+      // Update state immediately without confirm dialog
       State.beadSize = targetBeadSize;
       
       DOM.beadSizeCards.forEach(c => {
