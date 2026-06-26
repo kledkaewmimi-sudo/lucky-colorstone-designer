@@ -187,6 +187,30 @@ seedDatabase();
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Host-based routing middleware for subdomain separation
+app.use((req, res, next) => {
+  const host = req.headers.host || '';
+  const isCrmSubdomain = host.toLowerCase().startsWith('crm.');
+  
+  if (isCrmSubdomain) {
+    // If accessing the crm subdomain root, serve the CRM dashboard
+    if (req.path === '/' || req.path === '/index.html') {
+      return res.sendFile(path.join(__dirname, 'crm.html'));
+    }
+  } else {
+    // If accessing the customize domain, hide backend CRM dashboard and assets for security
+    if (
+      req.path.toLowerCase().startsWith('/crm.html') || 
+      req.path.toLowerCase().startsWith('/crm.js') || 
+      req.path.toLowerCase().startsWith('/crm.css')
+    ) {
+      return res.status(404).send('Not Found');
+    }
+  }
+  next();
+});
+
 app.use(express.static(__dirname));
 
 // API Routes
