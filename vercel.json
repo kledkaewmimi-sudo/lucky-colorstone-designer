@@ -1,4 +1,6 @@
 {
+  "buildCommand": "",
+  "framework": null,
   "rewrites": [
     {
       "source": "/api/(.*)",
