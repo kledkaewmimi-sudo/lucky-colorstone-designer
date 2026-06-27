@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>LUCKY.COLORSTONE - Custom Bracelet Designer</title>
   <meta name="description" content="Design your custom stone bracelet and order directly via LINE. Select your wrist size, bead size, and customize with premium natural stones.">
-  <link rel="stylesheet" href="index.css">
+  // ponytail: absolute path for Vercel static serving
+  <link rel="stylesheet" href="/index.css">
   
   <!-- LINE LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -46,20 +47,30 @@
           
           <!-- Floating Stones (Placed along orbits at various angles) -->
           <!-- Inner Orbit (Radius x=60, y=55) -->
-          <image href="assets/rose_quartz.png" x="110" y="80" width="26" height="26" />
-          <image href="assets/citrine.png" x="180" y="140" width="26" height="26" />
-          <image href="assets/amethyst.png" x="80" y="130" width="26" height="26" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/rose_quartz.png" x="110" y="80" width="26" height="26" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/citrine.png" x="180" y="140" width="26" height="26" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/amethyst.png" x="80" y="130" width="26" height="26" />
           
           <!-- Middle Orbit (Radius x=90, y=80) -->
-          <image href="assets/golden_rutile.png" x="185" y="90" width="30" height="30" />
-          <image href="assets/green_aventurine.png" x="80" y="70" width="30" height="30" />
-          <image href="assets/black_obsidian.png" x="100" y="200" width="30" height="30" />
-          <image href="assets/tigers_eye.png" x="210" y="160" width="30" height="30" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/golden_rutile.png" x="185" y="90" width="30" height="30" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/green_aventurine.png" x="80" y="70" width="30" height="30" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/black_obsidian.png" x="100" y="200" width="30" height="30" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/tigers_eye.png" x="210" y="160" width="30" height="30" />
           
           <!-- Outer Orbit (Radius x=120, y=110) -->
-          <image href="assets/lapis_lazuli.png" x="40" y="100" width="32" height="32" />
-          <image href="assets/malachite.png" x="140" y="235" width="32" height="32" />
-          <image href="assets/red_jasper.png" x="240" y="90" width="32" height="32" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/lapis_lazuli.png" x="40" y="100" width="32" height="32" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/malachite.png" x="140" y="235" width="32" height="32" />
+          // ponytail: absolute path for Vercel static serving
+          <image href="/assets/red_jasper.png" x="240" y="90" width="32" height="32" />
           
           <!-- Sparkles & Badge Emojis for Vibe -->
           <text x="35" y="160" font-size="16">🏆</text>
@@ -486,7 +497,8 @@
         </div>
         <div class="modal-body">
           <div class="modal-bead-img-row">
-            <img class="modal-bead-img" id="modalStoneImg" src="assets/golden_rutile.png" alt="Stone Bead">
+            // ponytail: absolute path for Vercel static serving
+            <img class="modal-bead-img" id="modalStoneImg" src="/assets/golden_rutile.png" alt="Stone Bead">
           </div>
           <div class="modal-stone-details">
             <h4 class="modal-stone-title-th" id="modalStoneTitleTh">ไหมทอง</h4>
