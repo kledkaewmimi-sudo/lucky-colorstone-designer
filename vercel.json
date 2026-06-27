@@ -3,10 +3,6 @@
     {
       "source": "/api/(.*)",
       "destination": "https://lucky-colorstone-designer.onrender.com/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/$1"
     }
   ]
 }
