@@ -11,9 +11,10 @@ const STONES_FILE = path.join(DATA_DIR, 'stones.json');
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
-// Ensure data directory and files exist
+// Ensure data directory exists (create if missing)
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  console.log('✅ Data folder created at', DATA_DIR);
 }
 
 const DEFAULT_STONES = [
