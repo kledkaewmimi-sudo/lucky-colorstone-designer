@@ -5,11 +5,6 @@
       "destination": "https://lucky-colorstone-designer.onrender.com/api/$1"
     },
     {
-      // ponytail: serve static assets from /assets folder
-      "source": "/assets/(.*)",
-      "destination": "/assets/$1"
-    },
-    {
       "source": "/(.*)",
       "destination": "/$1"
     }
