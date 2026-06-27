@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LUCKY.COLORSTONE - Back-office CRM System</title>
+  <meta name="description" content="Comprehensive administrative CRM and Order Management System for LUCKY.COLORSTONE.">
+  <link rel="stylesheet" href="crm.css">
+</head>
+<body>
+
+  <!-- ==========================================
+       ADMIN LOGIN PORTAL
+       ========================================== -->
+  <div class="login-portal-backdrop" id="loginPortal">
+    <div class="login-card">
+      <div class="login-header">
+        <h1 class="brand-logo">LUCKY.COLORSTONE</h1>
+        <p class="login-subtitle">Back-office CRM System</p>
+      </div>
+      
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <label for="adminUsername">Username</label>
+          <input type="text" id="adminUsername" required placeholder="Enter username">
+        </div>
+        
+        <div class="form-group">
+          <label for="adminPassword">Password</label>
+          <input type="password" id="adminPassword" required placeholder="Enter password">
+        </div>
+        
+        <div class="error-msg" id="loginErrorMsg" style="display: none;">
+          Incorrect username or password. Please try again.
+        </div>
+        
+        <button type="submit" class="btn btn-login">Sign In to Dashboard</button>
+      </form>
+      
+      <div class="login-footer">
+        <p>Default Login: <code>admin</code> / <code>lucky123</code></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MAIN CRM DASHBOARD CONTAINER
+       ========================================== -->
+  <div class="dashboard-container" id="dashboardContainer" style="display: none;">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-text">LUCKY.COLORSTONE</span>
+        <span class="brand-badge">CRM Admin</span>
+      </div>
+      
+      <div class="admin-profile">
+        <div class="admin-avatar">A</div>
+        <div class="admin-info">
+          <div class="admin-name">Administrator</div>
+          <div class="admin-role">System Developer</div>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <ul>
+          <li>
+            <button class="nav-item active" data-tab="overview" id="btnTabOverview">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="9" rx="1"/>
+                <rect x="14" y="3" width="7" height="5" rx="1"/>
+                <rect x="14" y="12" width="7" height="9" rx="1"/>
+                <rect x="3" y="16" width="7" height="5" rx="1"/>
+              </svg>
+              Overview
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-tab="inventory" id="btnTabInventory">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m7.5 4.27 9 5.15"/>
+                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                <path d="m3.27 6.96 8.73 5 8.73-5"/>
+                <path d="M12 22.08V12"/>
+              </svg>
+              Stone Inventory
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-tab="orders" id="btnTabOrders">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="9" cy="21" r="1"/>
+                <circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              Order Management
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-tab="settings" id="btnTabSettings">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              CRM Settings
+            </button>
+          </li>
+        </ul>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <a href="index.html" target="_blank" class="designer-app-link">
+          <span>Customer App ↗</span>
+        </a>
+        <button class="logout-btn" id="btnSignOut">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Logout
+        </button>
+      </div>
+    </aside>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav class="mobile-bottom-nav">
+      <button class="mobile-nav-item active" data-tab="overview" id="btnMobTabOverview">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="9" rx="1"/>
+          <rect x="14" y="3" width="7" height="5" rx="1"/>
+          <rect x="14" y="12" width="7" height="9" rx="1"/>
+          <rect x="3" y="16" width="7" height="5" rx="1"/>
+        </svg>
+        <span>Overview</span>
+      </button>
+      <button class="mobile-nav-item" data-tab="inventory" id="btnMobTabInventory">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m7.5 4.27 9 5.15"/>
+          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+          <path d="m3.27 6.96 8.73 5 8.73-5"/>
+          <path d="M12 22.08V12"/>
+        </svg>
+        <span>Inventory</span>
+      </button>
+      <button class="mobile-nav-item" data-tab="orders" id="btnMobTabOrders">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="9" cy="21" r="1"/>
+          <circle cx="20" cy="21" r="1"/>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+        </svg>
+        <span>Orders</span>
+      </button>
+      <button class="mobile-nav-item" data-tab="settings" id="btnMobTabSettings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- Top navbar -->
+      <header class="main-header">
+        <div class="header-left">
+          <h2 class="section-title" id="crmSectionTitle">CRM Overview</h2>
+        </div>
+        <div class="header-right">
+          <span class="sync-status text-green" id="syncIndicator">
+            <span class="pulse-dot"></span> Real-time Connected
+          </span>
+          <div class="system-time" id="systemClock">20:30:00</div>
+        </div>
+      </header>
+
+      <!-- TAB CONTAINER -->
+      <div class="tab-content-container">
+        
+        <!-- ==========================================
+             TAB 1: OVERVIEW
+             ========================================== -->
+        <section class="tab-view active" id="tabOverview">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Total Orders</span>
+                <h3 class="metric-value" id="metricTotalOrders">0</h3>
+                <span class="metric-sub text-green">&uarr; Live incoming</span>
+              </div>
+              <div class="metric-icon bg-navy-light">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-gold)">
+                  <circle cx="9" cy="21" r="1"/>
+                  <circle cx="20" cy="21" r="1"/>
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" stroke="var(--color-gold)" stroke-width="2"/>
+                </svg>
+              </div>
+            </div>
+            
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Net Revenue</span>
+                <h3 class="metric-value" id="metricTotalRevenue">฿0</h3>
+                <span class="metric-sub text-gold">20% discount applied</span>
+              </div>
+              <div class="metric-icon bg-gold-glow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-gold)" stroke-width="2">
+                  <line x1="12" y1="1" x2="12" y2="23"/>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Active Stones</span>
+                <h3 class="metric-value" id="metricActiveStones">0</h3>
+                <span class="metric-sub" id="metricOosAlert">0 Out of Stock</span>
+              </div>
+              <div class="metric-icon bg-navy-light">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-gold)" stroke-width="2">
+                  <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+                  <line x1="12" y1="22" x2="12" y2="12"/>
+                  <line x1="2" y1="8.5" x2="12" y2="12"/>
+                  <line x1="22" y1="8.5" x2="12" y2="12"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Global Discount</span>
+                <h3 class="metric-value" id="metricDiscountRate">20%</h3>
+                <span class="metric-sub text-gold-dark">Active on Designer</span>
+              </div>
+              <div class="metric-icon bg-gold-glow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-gold)" stroke-width="2">
+                  <line x1="19" y1="5" x2="5" y2="19"/>
+                  <circle cx="6.5" cy="6.5" r="2.5"/>
+                  <circle cx="17.5" cy="17.5" r="2.5"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Grid: Recent Activity & Global Actions -->
+          <div class="overview-split-grid">
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Recent Live Orders</h4>
+                <button class="panel-action-btn" id="btnOverviewViewAllOrders">View All</button>
+              </div>
+              <div class="panel-body">
+                <div class="recent-orders-list" id="overviewRecentOrders">
+                  <!-- Generated Dynamically -->
+                  <div class="empty-state">No orders received yet. Try placing one on the Designer app.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Quick Actions & System Status</h4>
+              </div>
+              <div class="panel-body quick-actions-body">
+                <div class="action-card">
+                  <h5>Adjust Campaigns</h5>
+                  <p>Increase or decrease discounts for active marketing events.</p>
+                  <button class="btn btn-outline" id="quickBtnSettings">Go to Settings</button>
+                </div>
+                <div class="action-card">
+                  <h5>Inventory Quick Check</h5>
+                  <p>Browse stone catalogs and verify sizes in stock.</p>
+                  <button class="btn btn-outline" id="quickBtnInventory">Check Inventory</button>
+                </div>
+                <div class="system-logs-container">
+                  <h5>Real-time Sync Log</h5>
+                  <div class="system-logs" id="crmSystemLogs">
+                    <div class="log-line">System initialized. Waiting for connections...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 2: STONE INVENTORY (CRUD)
+             ========================================== -->
+        <section class="tab-view" id="tabInventory">
+          <div class="table-actions-header">
+            <div class="search-box">
+              <input type="text" id="inventorySearch" placeholder="Search stones by name or meaning...">
+            </div>
+            <button class="btn btn-primary" id="btnOpenAddStoneModal">
+              <span class="icon-plus">+</span> Add New Stone
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="crm-table" id="inventoryTable">
+              <thead>
+                <tr>
+                  <th width="80">Bead</th>
+                  <th>Stone Name (EN / TH)</th>
+                  <th>Price</th>
+                  <th>Sizes</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Metaphysical Meanings</th>
+                  <th width="150" class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTableBody">
+                <!-- Populated Dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 3: ORDER MANAGEMENT SYSTEM (OMS)
+             ========================================== -->
+        <section class="tab-view" id="tabOrders">
+          <div class="table-actions-header">
+            <div class="filter-group">
+              <label for="orderStatusFilter">Status:</label>
+              <select id="orderStatusFilter" class="form-control-select">
+                <option value="all">All Statuses</option>
+                <option value="New Order">New Order</option>
+                <option value="Stone Selection Photo Sent">Photo Sent</option>
+                <option value="Payment Received">Payment Received</option>
+                <option value="Shipped">Shipped</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+            <div class="search-box">
+              <input type="text" id="ordersSearch" placeholder="Search orders by customer or ID...">
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="crm-table" id="ordersTable">
+              <thead>
+                <tr>
+                  <th>Order ID / Date</th>
+                  <th>Customer Name</th>
+                  <th>Bracelet Specs</th>
+                  <th width="320">Visual Bead Sequence Map (Artisan Layout)</th>
+                  <th>Price Summary</th>
+                  <th>Status Workflow</th>
+                  <th width="160" class="text-right">Invoice</th>
+                </tr>
+              </thead>
+              <tbody id="ordersTableBody">
+                <!-- Populated Dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 4: SETTINGS
+             ========================================== -->
+        <section class="tab-view" id="tabSettings">
+          <div class="settings-card-container">
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Global Discount Configuration</h4>
+              </div>
+              <div class="panel-body">
+                <form id="globalSettingsForm">
+                  <div class="form-group-row">
+                    <div class="form-group">
+                      <label for="globalDiscountPercent">Global Discount Percentage (%)</label>
+                      <input type="number" id="globalDiscountPercent" min="0" max="100" required placeholder="e.g. 20">
+                      <p class="form-tip">This discount will be applied dynamically in real-time on the Step 4 client checkout page.</p>
+                    </div>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Save Global Configuration</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="panel card-panel border-danger">
+              <div class="panel-header text-red">
+                <h4>Developer Sandbox Controls & Seed Data</h4>
+              </div>
+              <div class="panel-body">
+                <p class="form-tip mb-15">Resetting the database will overwrite all inventory updates, settings changes, and orders in LocalStorage with initial mock values.</p>
+                <div class="btn-group-row">
+                  <button class="btn btn-danger-outline" id="btnResetDatabase">Reset to Original Seed Data</button>
+                  <button class="btn btn-outline" id="btnSeedDemoOrders">Seed Demo Orders (Add 3 mock orders)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ==========================================
+       MODAL: ADD/EDIT STONE (INVENTORY CRUD)
+       ========================================== -->
+  <div class="modal-backdrop" id="stoneCrudModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="stoneModalTitle">Add New Stone Type</h3>
+        <button class="modal-close-btn" id="btnStoneModalClose">&times;</button>
+      </div>
+      <form id="stoneCrudForm" class="modal-form">
+        <!-- Hidden field for ID when editing -->
+        <input type="hidden" id="crudStoneId">
+        
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudStoneNameEn">Name (English)</label>
+            <input type="text" id="crudStoneNameEn" required placeholder="e.g. Tiger's Eye">
+          </div>
+          <div class="form-group">
+            <label for="crudStoneNameTh">Name (Thai)</label>
+            <input type="text" id="crudStoneNameTh" required placeholder="e.g. ไทเกอร์อาย">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudStoneCategory">Category</label>
+            <select id="crudStoneCategory" required>
+              <option value="wealth">Wealth & Luck (โชคลาภ/การงาน)</option>
+              <option value="love">Love & Relationships (ความรัก/เมตตา)</option>
+              <option value="calm">Calm & Wisdom (สงบ/สติปัญญา)</option>
+              <option value="protection">Protection (ปกป้อง/คุ้มครอง)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label for="crudStonePriceP4">Price 4mm (฿ THB)</label>
+            <input type="number" id="crudStonePriceP4" min="0" required placeholder="e.g. 100">
+          </div>
+          <div class="form-group">
+            <label for="crudStonePriceP6">Price 6mm (฿ THB)</label>
+            <input type="number" id="crudStonePriceP6" min="0" required placeholder="e.g. 150">
+          </div>
+          <div class="form-group">
+            <label for="crudStonePriceP8">Price 8mm (฿ THB)</label>
+            <input type="number" id="crudStonePriceP8" min="0" required placeholder="e.g. 200">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudStoneImage">Bead Texture/Color Image</label>
+            <select id="crudStoneImage" required>
+              <option value="assets/golden_rutile.png">Golden Rutile (ไหมทอง)</option>
+              <option value="assets/amethyst.png">Amethyst (อเมทิสต์)</option>
+              <option value="assets/rose_quartz.png">Rose Quartz (โรสควอตซ์)</option>
+              <option value="assets/lapis_lazuli.png">Lapis Lazuli (ลาพิส ลาซูลี)</option>
+              <option value="assets/tigers_eye.png">Tiger's Eye (ไทเกอร์อาย)</option>
+              <option value="assets/black_obsidian.png">Black Obsidian (ออบซิเดียน)</option>
+              <option value="assets/green_aventurine.png">Green Aventurine (กรีน อเวนเจอรีน)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="crudStoneColor">Aesthetic Solid Color (Hex code representation)</label>
+            <input type="color" id="crudStoneColor" value="#E2C974">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Bead Size Availability</label>
+          <div class="checkbox-group-row">
+            <label class="checkbox-lbl"><input type="checkbox" class="crud-size-chk" value="4" checked> 4mm</label>
+            <label class="checkbox-lbl"><input type="checkbox" class="crud-size-chk" value="6" checked> 6mm</label>
+            <label class="checkbox-lbl"><input type="checkbox" class="crud-size-chk" value="8" checked> 8mm</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-lbl font-semibold">
+            <input type="checkbox" id="crudStoneInStock" checked> In Stock & Available for Customizer App
+          </label>
+          <p class="form-tip">If unchecked, this stone will be instantly hidden from the user's catalog list.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="crudStoneMeaningTh">Metaphysical Meaning (Thai Description)</label>
+          <textarea id="crudStoneMeaningTh" rows="2" required placeholder="เช่น ดึงดูดความมั่งคั่ง โชคลาภ และความสำเร็จ..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="crudStoneMeaningEn">Metaphysical Meaning (English Description)</label>
+          <textarea id="crudStoneMeaningEn" rows="2" required placeholder="e.g. Attracts wealth, prosperity, and success in business..."></textarea>
+        </div>
+
+        <div class="modal-actions-footer">
+          <button type="button" class="btn btn-outline" id="btnCancelStoneForm">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveStoneForm">Save Stone Type</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: EXPORT INVOICE PREVIEW
+       ========================================== -->
+  <div class="modal-backdrop" id="invoiceExportModal">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h3>Invoice Export Summary (LINE Share Ready)</h3>
+        <button class="modal-close-btn" id="btnInvoiceModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Printable Invoice Container -->
+        <div class="invoice-container-paper" id="invoicePaper">
+          <div class="invoice-header-row">
+            <div class="invoice-brand">
+              <h2>LUCKY.COLORSTONE</h2>
+              <p>Natural gemstone bracelets customized by you</p>
+            </div>
+            <div class="invoice-title-block">
+              <h3>ORDER RECEIPT</h3>
+              <p id="invId">ORD-000000</p>
+              <p id="invDate">Date: 24 June 2026</p>
+            </div>
+          </div>
+          
+          <hr class="invoice-divider">
+
+          <div class="invoice-meta-grid">
+            <div>
+              <strong>Customer Name:</strong>
+              <p id="invCustomer">Khun Guest</p>
+            </div>
+            <div>
+              <strong>Order Status:</strong>
+              <p id="invStatusBadge"><span class="badge badge-new">New Order</span></p>
+            </div>
+            <div>
+              <strong>Wrist Measurement:</strong>
+              <p id="invWrist">16.0 cm</p>
+            </div>
+            <div>
+              <strong>Total Bracelet Length:</strong>
+              <p id="invLength">17.5 cm (Tolerance included)</p>
+            </div>
+          </div>
+
+          <h4 class="invoice-sub-title">Bracelet Design Configuration</h4>
+          <div class="invoice-bead-visual-strip">
+            <svg id="invBeadSvg" width="100%" height="80" viewBox="0 0 500 80">
+              <!-- Beads sequence represented in line -->
+            </svg>
+          </div>
+
+          <h4 class="invoice-sub-title">Itemized Pricing Breakdown</h4>
+          <table class="invoice-pricing-table">
+            <thead>
+              <tr>
+                <th>Stone (หินมงคล)</th>
+                <th>Size (ขนาด)</th>
+                <th>Qty (จำนวน)</th>
+                <th class="text-right">Unit Price</th>
+                <th class="text-right">Total Price</th>
+              </tr>
+            </thead>
+            <tbody id="invItemsBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+
+          <div class="invoice-summary-block">
+            <div class="invoice-summary-row">
+              <span>Subtotal:</span>
+              <span id="invSubtotal">฿1,475</span>
+            </div>
+            <div class="invoice-summary-row text-gold">
+              <span id="invDiscountLabel">LINE Special Discount (20%):</span>
+              <span id="invDiscountAmount">-฿295</span>
+            </div>
+            <hr>
+            <div class="invoice-summary-row net-total">
+              <span>Grand Total:</span>
+              <span id="invNetTotal">฿1,180</span>
+            </div>
+          </div>
+
+          <div class="invoice-footer-block">
+            <div class="invoice-config-code-box">
+              <strong>Bracelet Configuration Key:</strong>
+              <p id="invConfigCode">Y29uZmlndXJhdGlvbg==</p>
+            </div>
+            <p class="invoice-greeting">Thank you for ordering with LUCKY.COLORSTONE! We hope your custom bracelet brings you prosperity and joy.</p>
+          </div>
+        </div>
+
+        <div class="invoice-control-actions">
+          <p class="form-tip">Tip: Use your computer's print dialog to save as PDF, or click copy summary message to clipboard for LINE.</p>
+          <div class="btn-group-row">
+            <button class="btn btn-primary" id="btnPrintInvoice">Print Receipt / Save PDF</button>
+            <button class="btn btn-outline" id="btnCopyInvoiceMessage">Copy LINE Text Message</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Confirmation Modal -->
+  <div class="modal-backdrop" id="confirmModal">
+    <div class="modal-card" style="max-width: 380px;">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Confirm Action</h3>
+        <button class="modal-close-btn" id="btnConfirmClose">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p id="confirmModalMessage" style="color: #cbd5e1; margin-bottom: 20px; font-size: 14px; line-height: 1.5;">Are you sure you want to proceed?</p>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" class="btn btn-outline" id="btnConfirmCancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnConfirmOK">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Alert notifications -->
+  <div class="toast-alert" id="crmToast">Notification goes here</div>
+
+  <!-- CRM Script module -->
+  <script type="module" src="crm.js"></script>
+</body>
+</html>
