@@ -1,12 +1,9 @@
 {
+  "//": "ponytail: Remove catch-all rewrite to prevent infinite redirection loops on static assets. Vercel serves static files out of the box.",
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "https://lucky-colorstone-designer.onrender.com/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/$1"
     }
   ]
 }
