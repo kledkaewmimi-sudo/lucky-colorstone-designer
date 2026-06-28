@@ -1205,6 +1205,7 @@ async function renderStep4() {
   if (DOM.summaryTitleText) {
     DOM.summaryTitleText.textContent = '';
   }
+  renderBraceletShowcaseCard();
   
   // Specs boxes
   DOM.specWristSize.textContent = `${State.wristSize.toFixed(1)} cm`;
@@ -1305,12 +1306,12 @@ async function renderStep4() {
   });
 
   // Trigger HTML5 Canvas image compilation in the background asynchronously
-  document.getElementById('exportHeroPreview').style.display = 'none';
-  document.getElementById('exportHeroLoading').style.display = 'block';
-  document.getElementById('exportReceiptPreview').style.display = 'none';
-  document.getElementById('exportReceiptLoading').style.display = 'block';
-  document.getElementById('btnDownloadHero').disabled = true;
-  document.getElementById('btnDownloadReceipt').disabled = true;
+  const heroPreview = document.getElementById('exportHeroPreview');
+  const heroLoading = document.getElementById('exportHeroLoading');
+  const btnHero = document.getElementById('btnDownloadHero');
+  if (heroPreview) heroPreview.style.display = 'none';
+  if (heroLoading) heroLoading.style.display = 'block';
+  if (btnHero) btnHero.disabled = true;
 
   setTimeout(async () => {
     try {
@@ -1319,6 +1320,23 @@ async function renderStep4() {
       console.error("Canvas compilation failed", e);
     }
   }, 100);
+}
+
+function renderBraceletShowcaseCard() {
+  const step4 = document.getElementById('stepView4');
+  if (!step4) return;
+
+  const showcaseCard = step4.querySelector('.billing-card');
+  if (!showcaseCard || showcaseCard.dataset.braceletShowcaseReady === '1') return;
+
+  showcaseCard.classList.add('bracelet-showcase-card');
+  showcaseCard.innerHTML = `
+    <div class="bracelet-showcase-frame">
+      <img id="exportHeroPreview" class="bracelet-showcase-image" style="display: none;" alt="Bracelet Preview">
+      <span id="exportHeroLoading" class="bracelet-showcase-loading">Generating...</span>
+    </div>
+  `;
+  showcaseCard.dataset.braceletShowcaseReady = '1';
 }
 
 // Asynchronously pre-load bead texture images
@@ -1440,11 +1458,19 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   const heroLoading = document.getElementById("exportHeroLoading");
   const btnHero = document.getElementById("btnDownloadHero");
 
-  heroPreview.src = heroDataUrl;
-  heroPreview.style.display = "block";
-  heroLoading.style.display = "none";
-  btnHero.disabled = false;
-  btnHero.onclick = () => triggerDownload(heroDataUrl, `lucky-colorstone-hero-${State.ownerName || "design"}.png`);
+  if (heroPreview) {
+    heroPreview.src = heroDataUrl;
+    heroPreview.style.display = "block";
+  }
+  if (heroLoading) {
+    heroLoading.style.display = "none";
+  }
+  if (btnHero) {
+    btnHero.disabled = false;
+    btnHero.onclick = () => triggerDownload(heroDataUrl, `lucky-colorstone-hero-${State.ownerName || "design"}.png`);
+  }
+
+  return;
 
   // 2. Receipt Image (800x1200)
   const receiptCanvas = document.createElement("canvas");
