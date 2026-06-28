@@ -137,7 +137,7 @@ body {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  transform: scale(1.03);
+  transform: none;
   z-index: 1;
 }
 
@@ -150,7 +150,8 @@ body {
   background:
     linear-gradient(180deg, rgba(252, 248, 255, 0.18) 0%, rgba(252, 248, 255, 0.28) 42%, rgba(42, 27, 105, 0.22) 100%),
     radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.26), transparent 42%);
-  backdrop-filter: blur(1px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   z-index: 2;
 }
 
@@ -1310,28 +1311,28 @@ body {
 }
 
 .discount-box {
-  background-color: var(--color-velvet-red);
-  border: 1px solid var(--color-velvet-red-dark);
+  background: linear-gradient(135deg, #eaf7ef 0%, #d7f0df 100%);
+  border: 1px solid #9cc9aa;
   padding: 8px 12px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: 4px;
-  box-shadow: 0 4px 10px rgba(107, 29, 47, 0.25);
+  box-shadow: 0 4px 10px rgba(64, 112, 79, 0.16);
 }
 
 .discount-badge {
   font-size: 11px;
   font-weight: 700;
-  color: var(--color-white);
+  color: #2f6f48;
   text-transform: uppercase;
 }
 
 .discount-value {
   font-size: 12px;
   font-weight: 700;
-  color: var(--color-white);
+  color: #2f6f48;
 }
 
 .price-row.total {
@@ -1349,7 +1350,7 @@ body {
 .price-row.total .price-val {
   font-size: 20px;
   font-weight: 800;
-  color: var(--color-velvet-red);
+  color: #2f6f48;
 }
 
 /* Stone Meanings Section */
@@ -2316,13 +2317,52 @@ body {
 }
 
 .landing-page .landing-background {
-  transform: scale(1.01);
+  transform: none;
 }
 
 .landing-page .landing-overlay {
   background:
     linear-gradient(180deg, rgba(252, 248, 255, 0.18) 0%, rgba(252, 248, 255, 0.30) 45%, rgba(42, 27, 105, 0.18) 100%),
     radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.24), transparent 42%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#stepView4 .step-subtitle,
+#stepView4 .summary-customer-title,
+#stepView4 .billing-card:first-of-type .billing-title,
+#stepView4 .billing-card:first-of-type > p,
+#stepView4 #exportReceiptPreview,
+#stepView4 #exportReceiptLoading,
+#stepView4 #btnDownloadReceipt {
+  display: none !important;
+}
+
+#stepView4 .billing-card:first-of-type > div {
+  grid-template-columns: 1fr !important;
+  justify-items: center;
+}
+
+#stepView4 .billing-card:first-of-type > div > div:last-child {
+  display: none !important;
+}
+
+#stepView4 .billing-card:first-of-type > div > div:first-child {
+  width: min(100%, 320px);
+}
+
+#stepView4 .billing-card:first-of-type > div > div:first-child > div {
+  width: 100%;
+}
+
+#stepView4 .billing-card:first-of-type {
+  text-align: center;
+}
+
+#stepView4 .billing-card:first-of-type img#exportHeroPreview {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 .landing-page .landing-container {

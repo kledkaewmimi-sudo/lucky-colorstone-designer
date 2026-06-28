@@ -1198,13 +1198,13 @@ function renderStep3() {
 // 9. Step 4: Final Summary & Commercial Logic
 // ==========================================
 async function renderStep4() {
-  const nameLabel = State.ownerName ? State.ownerName : "Khun Guest";
-  DOM.summaryTitleText.textContent = `LUCKY.COLORSTONE for ${nameLabel}`;
-  
   // Set today's date formatted
   const options = { day: 'numeric', month: 'long', year: 'numeric' };
   const today = new Date();
   DOM.summaryDateText.textContent = `Date: ${today.toLocaleDateString('en-US', options)}`;
+  if (DOM.summaryTitleText) {
+    DOM.summaryTitleText.textContent = '';
+  }
   
   // Specs boxes
   DOM.specWristSize.textContent = `${State.wristSize.toFixed(1)} cm`;
