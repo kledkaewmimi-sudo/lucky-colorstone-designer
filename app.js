@@ -17,6 +17,7 @@ const State = {
   mixedPlacingSize: 6,      // Default size to place in mixed mode
   ownerName: '',            // Personalized bracelet owner name
   liffInitialized: false,   // Ready flag for LINE LIFF Login API
+  landingDismissed: false,  // Keep landing visible until CTA is clicked
   selectedStones: [],       // Array of placed beads: { stoneId: string, size: number, uniqueId: number }
   activeCategory: 'all',    // Current category filter in Step 3
   activeSlotIndex: null,    // Index of selected slot in Step 3 (-1 or null for append)
@@ -212,6 +213,7 @@ function setupLandingEvents() {
     if (appContainer) {
       appContainer.style.display = 'block';
     }
+    State.landingDismissed = true;
     
     const loader = DOM.liffLoadingOverlay;
     if (loader) loader.style.display = 'flex';
@@ -294,9 +296,8 @@ function saveState() {
 // 5. App Render Routing
 // ==========================================
 async function renderApp() {
-  const isLandingActive = !State.ownerName && (typeof liff === 'undefined' || !liff.isLoggedIn());
   if (DOM.landingView) {
-    DOM.landingView.style.display = isLandingActive ? 'flex' : 'none';
+    DOM.landingView.style.display = State.landingDismissed ? 'none' : 'flex';
   }
   renderStepper();
   await renderStepViews();
