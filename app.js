@@ -201,6 +201,18 @@ async function initLIFF() {
 
 function setupLandingEvents() {
   DOM.btnLandingLogin.addEventListener('click', () => {
+    // ซ่อน Landing Page
+    const landingView = document.getElementById('landingView');
+    if (landingView) {
+      landingView.style.display = 'none';
+    }
+    
+    // แสดง App Container (Stepper & Steps)
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) {
+      appContainer.style.display = 'block';
+    }
+    
     const loader = DOM.liffLoadingOverlay;
     if (loader) loader.style.display = 'flex';
     
