@@ -485,10 +485,7 @@ function initWristSizeGrid() {
       btn.classList.add('active');
       
       State.wristSize = size;
-      DOM.visualWristSizeText.textContent = `${size.toFixed(1)} cm`;
-      if (DOM.displaySizeValue) {
-        DOM.displaySizeValue.textContent = size.toFixed(1);
-      }
+      syncWristSizeDisplay();
       
       // Save owner name
       State.ownerName = DOM.braceletOwnerName.value.trim();
@@ -512,11 +509,21 @@ function initWristSizeGrid() {
 }
 
 function renderStep1() {
-  DOM.visualWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
+  syncWristSizeDisplay();
+  DOM.braceletOwnerName.value = State.ownerName;
+}
+
+function syncWristSizeDisplay() {
+  if (DOM.visualWristSizeText) {
+    DOM.visualWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
+  }
   if (DOM.displaySizeValue) {
     DOM.displaySizeValue.textContent = State.wristSize.toFixed(1);
   }
-  DOM.braceletOwnerName.value = State.ownerName;
+  document.querySelectorAll('.size-btn').forEach((button) => {
+    const buttonSize = Number(button.getAttribute('data-size'));
+    button.classList.toggle('active', buttonSize === State.wristSize);
+  });
 }
 
 // ==========================================
