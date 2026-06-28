@@ -2338,9 +2338,19 @@ body {
   display: none !important;
 }
 
-#stepView4 .billing-card:first-of-type > div {
-  grid-template-columns: 1fr !important;
-  justify-items: center;
+#stepView4 .billing-card:first-of-type {
+  text-align: center;
+  border-style: dashed;
+  border-width: 1px;
+  border-color: var(--color-lavender-dark);
+}
+
+#stepView4 .billing-card:first-of-type > div[style*="grid-template-columns"] {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 0 !important;
+  margin-bottom: 0 !important;
 }
 
 #stepView4 .billing-card:first-of-type > div > div:last-child {
@@ -2348,21 +2358,40 @@ body {
 }
 
 #stepView4 .billing-card:first-of-type > div > div:first-child {
-  width: min(100%, 320px);
+  width: min(100%, 360px);
 }
 
-#stepView4 .billing-card:first-of-type > div > div:first-child > div {
+#stepView4 .billing-card:first-of-type > div > div:first-child > div:first-child,
+#stepView4 .billing-card:first-of-type > div > div:first-child > button {
+  display: none !important;
+}
+
+#stepView4 .billing-card:first-of-type > div > div:first-child > div:nth-child(2) {
   width: 100%;
-}
-
-#stepView4 .billing-card:first-of-type {
-  text-align: center;
+  aspect-ratio: 1 / 1;
+  background: linear-gradient(180deg, #fffef9 0%, #faf7ff 100%);
+  border-radius: 50%;
+  border: 1px solid var(--color-lavender);
+  box-shadow: inset 0 0 0 1px rgba(181, 169, 219, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 12px;
+  margin: 0 auto;
 }
 
 #stepView4 .billing-card:first-of-type img#exportHeroPreview {
   width: 100%;
   height: auto;
   display: block;
+  object-fit: contain;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#stepView4 .billing-card:first-of-type > div > div:first-child > div:nth-child(2) > img#exportHeroPreview {
+  border-radius: 50%;
 }
 
 .landing-page .landing-container {
