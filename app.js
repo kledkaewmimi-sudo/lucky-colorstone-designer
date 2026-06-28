@@ -4,8 +4,11 @@ import { STONES, CATEGORIES, refreshCatalog, getSharedSettings, addSharedOrder, 
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearStorage')) {
   localStorage.clear();
+  sessionStorage.removeItem('lucky_colorstone_landing_dismissed');
   window.location.href = window.location.pathname;
 }
+
+const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 
 // ==========================================
 // 1. Global Application State
@@ -133,6 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load persisted state if exists
   loadPersistedState();
+  syncShellVisibility();
   
   // Auto-login/bypass for testing
   if (urlParams.has('mock') || urlParams.has('bypass') || urlParams.has('dev') || window.navigator.webdriver) {
@@ -146,6 +150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Setup LIFF (LINE Front-end Framework)
   await initLIFF();
+  clearOAuthQueryParams();
   
   // Fetch initial catalog from API
   await refreshCatalog();
@@ -211,9 +216,10 @@ function setupLandingEvents() {
     // แสดง App Container (Stepper & Steps)
     const appContainer = document.querySelector('.app-container');
     if (appContainer) {
-      appContainer.style.display = 'block';
+      appContainer.style.display = 'flex';
     }
     State.landingDismissed = true;
+    persistLandingDismissed();
     
     const loader = DOM.liffLoadingOverlay;
     if (loader) loader.style.display = 'flex';
@@ -277,6 +283,8 @@ function loadPersistedState() {
       console.error("Failed to parse persisted state", e);
     }
   }
+
+  State.landingDismissed = sessionStorage.getItem(LANDING_DISMISSED_KEY) === '1';
 }
 
 // Persist State to LocalStorage
@@ -292,16 +300,42 @@ function saveState() {
   localStorage.setItem('lucky_colorstone_state', JSON.stringify(stateCopy));
 }
 
+function persistLandingDismissed() {
+  if (State.landingDismissed) {
+    sessionStorage.setItem(LANDING_DISMISSED_KEY, '1');
+  } else {
+    sessionStorage.removeItem(LANDING_DISMISSED_KEY);
+  }
+}
+
+function syncShellVisibility() {
+  if (DOM.landingView) {
+    DOM.landingView.style.display = State.landingDismissed ? 'none' : 'flex';
+  }
+  const appContainer = document.querySelector('.app-container');
+  if (appContainer) {
+    appContainer.style.display = State.landingDismissed ? 'flex' : 'none';
+  }
+}
+
+function clearOAuthQueryParams() {
+  const oauthKeys = ['code', 'state', 'liff.state', 'access_token', 'id_token', 'scope', 'expires_in', 'token_type'];
+  const hasOauthParams = oauthKeys.some((key) => urlParams.has(key));
+  if (!hasOauthParams) return;
+
+  const nextUrl = `${window.location.pathname}${window.location.hash || ''}`;
+  window.history.replaceState({}, document.title, nextUrl);
+}
+
 // ==========================================
 // 5. App Render Routing
 // ==========================================
 async function renderApp() {
-  if (DOM.landingView) {
-    DOM.landingView.style.display = State.landingDismissed ? 'none' : 'flex';
-  }
+  syncShellVisibility();
   renderStepper();
   await renderStepViews();
   saveState();
+  persistLandingDismissed();
 }
 
 // Stepper bar rendering logic
