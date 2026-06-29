@@ -287,3 +287,21 @@ Not included in Phase 3.2:
 - pendant rendering
 - pricing changes
 - business-rule changes
+
+## Phase 3.3 Summary
+
+Phase 3.3 adds initial charm rendering to the Step 3 bracelet preview.
+
+Delivered:
+
+- `selectedCharmId` is normalized into `BraceletComponentList` as a `charm` component
+- `ResolvedLayout` now includes anchored accessory geometry for non-loop components
+- Step 3 SVG preview renders a single selected charm from resolved geometry
+- `No Charm` continues to produce no accessory node
+
+Current Phase 3.3 limits:
+
+- only one charm is rendered
+- charm placement is fixed at the 12 o'clock anchor
+- charm rendering does not affect bead count, remaining space, or pricing
+- hero/export surfaces remain bead-only in this phase

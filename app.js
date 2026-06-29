@@ -850,6 +850,11 @@ function getCharmDisplayMeta(charm) {
   };
 }
 
+function getSelectedCharmCatalogEntry() {
+  if (!State.selectedCharmId) return null;
+  return getVisibleCharmCatalog().find((charm) => charm.id === State.selectedCharmId) || null;
+}
+
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
@@ -1111,24 +1116,48 @@ function createBraceletConfig() {
 }
 
 function createBraceletComponentList() {
-  return State.selectedStones.map((bead, index) => ({
+  const stoneComponents = State.selectedStones.map((bead, index) => ({
     id: bead.uniqueId,
     type: 'stone',
+    layoutRole: 'loop',
     sourceIndex: index,
     stoneId: bead.stoneId,
     sizeMm: bead.size,
     uniqueId: bead.uniqueId
   }));
+
+  const selectedCharm = getSelectedCharmCatalogEntry();
+  if (!selectedCharm) {
+    return stoneComponents;
+  }
+
+  return [
+    ...stoneComponents,
+    {
+      id: `charm-${selectedCharm.id}`,
+      type: 'charm',
+      layoutRole: 'anchored',
+      anchor: 'top-center',
+      sourceId: selectedCharm.id,
+      charmId: selectedCharm.id,
+      image: selectedCharm.image,
+      sizeCm: selectedCharm.sizeCm,
+      sizeMm: selectedCharm.sizeCm * 10,
+      uniqueId: `charm-${selectedCharm.id}`
+    }
+  ];
 }
 
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
-  const placedCount = braceletComponentList.length;
-  const sumPlacedDiameter = braceletComponentList.reduce((sum, component) => sum + component.sizeMm, 0);
+  const loopComponents = braceletComponentList.filter((component) => component.layoutRole !== 'anchored');
+  const anchoredComponents = braceletComponentList.filter((component) => component.layoutRole === 'anchored');
+  const placedCount = loopComponents.length;
+  const sumPlacedDiameter = loopComponents.reduce((sum, component) => sum + component.sizeMm, 0);
   const spaceLeft = braceletConfig.braceletLengthMm - sumPlacedDiameter;
   const numPlaceholders = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
 
   const loopItems = [
-    ...braceletComponentList.map((component) => ({
+    ...loopComponents.map((component) => ({
       kind: 'component',
       component,
       sizeMm: component.sizeMm
@@ -1176,6 +1205,27 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     return resolvedNode;
   });
 
+  const accessoryNodes = anchoredComponents.map((component, index) => {
+    const centerAngle = -Math.PI / 2;
+    const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
+    const centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(centerAngle);
+    const renderDiameterPx = component.sizeMm * scaleMmToPx;
+
+    return {
+      index,
+      kind: 'accessory',
+      type: component.type,
+      anchor: component.anchor || 'top-center',
+      sizeMm: component.sizeMm,
+      centerAngle,
+      centerX,
+      centerY,
+      renderWidthPx: renderDiameterPx,
+      renderHeightPx: renderDiameterPx,
+      component
+    };
+  });
+
   return {
     braceletConfig,
     braceletComponentList,
@@ -1189,7 +1239,8 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       loopCircumferenceMm,
       scaleMmToPx
     },
-    nodes
+    nodes,
+    accessoryNodes
   };
 }
 
@@ -1256,6 +1307,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
   const {
     braceletConfig,
     nodes,
+    accessoryNodes = [],
     summary
   } = resolvedLayout;
   const { centerX: cx, centerY: cy, radiusPx: rCanvas } = braceletConfig.svg;
@@ -1419,6 +1471,24 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
     }
     
     svg.appendChild(group);
+  });
+
+  accessoryNodes.forEach((node) => {
+    if (node.type !== 'charm') return;
+
+    const charmGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    charmGroup.setAttribute("class", "bracelet-accessory charm-node");
+
+    const charmImage = document.createElementNS("http://www.w3.org/2000/svg", "image");
+    charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", node.component.image);
+    charmImage.setAttribute("x", node.centerX - node.renderWidthPx / 2);
+    charmImage.setAttribute("y", node.centerY - node.renderHeightPx / 2);
+    charmImage.setAttribute("width", node.renderWidthPx);
+    charmImage.setAttribute("height", node.renderHeightPx);
+    charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    charmGroup.appendChild(charmImage);
+
+    svg.appendChild(charmGroup);
   });
 }
 
