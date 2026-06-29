@@ -94,6 +94,7 @@ body {
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  overflow-x: hidden;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
 }
 
@@ -529,6 +530,7 @@ body {
 .app-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 110px 16px 90px 16px;
   display: flex;
   flex-direction: column;
@@ -537,12 +539,18 @@ body {
 .step-view {
   display: none;
   animation: fadeIn 0.4s ease-out forwards;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .step-view.active {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 @keyframes fadeIn {
@@ -790,6 +798,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .component-section {
@@ -798,6 +809,9 @@ body {
   border-radius: 18px;
   padding: 16px;
   box-shadow: var(--shadow-sm);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .section-heading {
@@ -821,15 +835,24 @@ body {
   line-height: 1.4;
 }
 
+.section-heading > div {
+  min-width: 0;
+}
+
 .charm-options-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .charm-option-card,
 .future-card {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border-radius: 16px;
   border: 1px solid var(--color-gray-border);
   background: linear-gradient(180deg, var(--color-white), rgba(248, 244, 255, 0.92));
@@ -845,6 +868,7 @@ body {
   gap: 12px;
   cursor: pointer;
   transition: var(--transition-smooth);
+  flex-wrap: nowrap;
 }
 
 .charm-option-card:hover {
@@ -877,6 +901,7 @@ body {
   flex: 0 0 72px;
   width: 72px;
   height: 72px;
+  max-width: 72px;
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(212, 175, 55, 0.12), rgba(255, 255, 255, 0.9));
   border: 1px solid rgba(212, 175, 55, 0.16);
@@ -898,6 +923,7 @@ body {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .charm-option-copy strong {
@@ -923,6 +949,9 @@ body {
 .future-components-grid {
   display: grid;
   grid-template-columns: 1fr;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .future-card {
@@ -933,6 +962,7 @@ body {
   opacity: 0.78;
   color: var(--color-navy-muted);
   border-style: dashed;
+  flex-wrap: nowrap;
 }
 
 .future-card strong {
