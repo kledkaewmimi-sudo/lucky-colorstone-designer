@@ -10,7 +10,7 @@ export const CATEGORIES = {
   protection: { en: "Protection", th: "ปกป้อง/คุ้มครอง" }
 };
 
-export const CHARM_PLACEHOLDER_IMAGE = "assets/charms/_placeholder.png";
+export const CHARM_PLACEHOLDER_IMAGE = "/assets/charms/_placeholder.png";
 
 export const CHARM_CATALOG = [
   {
@@ -20,7 +20,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX01",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px01.png",
+    image: "/assets/charms/pixiu/px01.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -34,7 +34,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX02",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px02.png",
+    image: "/assets/charms/pixiu/px02.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -48,7 +48,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX03",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px03.png",
+    image: "/assets/charms/pixiu/px03.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -62,7 +62,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX04",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px04.png",
+    image: "/assets/charms/pixiu/px04.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -76,7 +76,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX05",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px05.png",
+    image: "/assets/charms/pixiu/px05.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -90,7 +90,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX06",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px06.png",
+    image: "/assets/charms/pixiu/px06.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -104,7 +104,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX07",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px07.png",
+    image: "/assets/charms/pixiu/px07.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -118,7 +118,7 @@ export const CHARM_CATALOG = [
     nameEn: "Pi Xiu PX08",
     type: "pi_xiu",
     collection: "pixiu",
-    image: "assets/charms/pixiu/px08.png",
+    image: "/assets/charms/pixiu/px08.png",
     sizeCm: 2.4,
     price: 0,
     meaningTh: "",
@@ -132,7 +132,7 @@ export const CHARM_CATALOG = [
     nameEn: "Takrud Ganesha Silver TG01",
     type: "takrud_ganesha",
     collection: "takrud",
-    image: "assets/charms/takrud/tg01.png",
+    image: "/assets/charms/takrud/tg01.png",
     sizeCm: 3.0,
     price: 0,
     meaningTh: "",

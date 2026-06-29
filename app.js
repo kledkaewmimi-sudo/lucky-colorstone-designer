@@ -68,7 +68,7 @@ const DOM = {
   estimationWristSizeText: document.getElementById('estimationWristSizeText'),
   estimationLengthText: document.getElementById('estimationLengthText'),
   estimationCapacityText: document.getElementById('estimationCapacityText'),
-  charmOptionsGrid: document.getElementById('charmOptionsGrid'),
+  charmSectionMount: document.getElementById('charmSectionMount'),
   
   // Step 3: Designer Workspace
   canvasPriceText: document.getElementById('canvasPriceText'),
@@ -397,6 +397,10 @@ async function renderStepViews() {
     await renderStep4();
   }
 
+  if (State.currentStep !== 3 && DOM.charmSectionMount) {
+    DOM.charmSectionMount.innerHTML = '';
+  }
+
   // Configure navigation buttons in sticky footer
   if (State.currentStep === 1) {
     DOM.btnBack.style.visibility = 'hidden';
@@ -579,16 +583,28 @@ function initBeadSizeOptions() {
 }
 
 function updateEstimationText() {
+  if (!DOM.estimationWristSizeText && !DOM.estimationLengthText && !DOM.estimationCapacityText) {
+    return;
+  }
+
   const braceletLenMm = (State.wristSize + TOLERANCE_CM) * 10;
-  DOM.estimationWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
-  DOM.estimationLengthText.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm (${braceletLenMm}mm)`;
+  if (DOM.estimationWristSizeText) {
+    DOM.estimationWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
+  }
+  if (DOM.estimationLengthText) {
+    DOM.estimationLengthText.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm (${braceletLenMm}mm)`;
+  }
   
   if (State.beadSize === 'mixed') {
-    DOM.estimationCapacityText.textContent = `Varies dynamically as you design using 4mm, 6mm, & 8mm stones.`;
+    if (DOM.estimationCapacityText) {
+      DOM.estimationCapacityText.textContent = `Varies dynamically as you design using 4mm, 6mm, & 8mm stones.`;
+    }
   } else {
     const size = parseInt(State.beadSize);
     const capacity = Math.floor(braceletLenMm / size);
-    DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
+    if (DOM.estimationCapacityText) {
+      DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
+    }
   }
 }
 
@@ -612,14 +628,13 @@ function renderStep2() {
       c.classList.remove('active');
     }
   });
-  renderCharmOptions();
   updateEstimationText();
 }
 
 function initCharmSelection() {
-  if (!DOM.charmOptionsGrid) return;
+  if (!DOM.charmSectionMount) return;
 
-  DOM.charmOptionsGrid.addEventListener('click', (event) => {
+  DOM.charmSectionMount.addEventListener('click', (event) => {
     const button = event.target.closest('[data-charm-id]');
     if (!button || button.disabled) return;
 
@@ -630,8 +645,6 @@ function initCharmSelection() {
     saveState();
     renderCharmOptions();
   });
-
-  renderCharmOptions();
 }
 
 function getVisibleCharmCatalog() {
@@ -639,7 +652,7 @@ function getVisibleCharmCatalog() {
 }
 
 function renderCharmOptions() {
-  if (!DOM.charmOptionsGrid) return;
+  if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
   const visibleCharms = getVisibleCharmCatalog();
   const selectedCharmId = visibleCharms.some((charm) => charm.id === State.selectedCharmId) ? State.selectedCharmId : null;
@@ -676,7 +689,20 @@ function renderCharmOptions() {
     `);
   });
 
-  DOM.charmOptionsGrid.innerHTML = cards.join('');
+  DOM.charmSectionMount.innerHTML = `
+    <section class="component-section">
+      <div class="section-heading">
+        <div>
+          <h3>Charm</h3>
+          <p>Select one charm or leave the bracelet without one.</p>
+        </div>
+      </div>
+
+      <div class="charm-options-grid">
+        ${cards.join('')}
+      </div>
+    </section>
+  `;
 }
 
 // ==========================================
@@ -1260,6 +1286,7 @@ function renderStep3() {
   // Render SVG loop and catalog
   renderBraceletCanvas();
   renderCatalogGrid();
+  renderCharmOptions();
   
   // Clear newly added IDs after rendering so they only animate on insertion
   State.newlyAddedIds = [];

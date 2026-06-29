@@ -81,6 +81,7 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* Mobile Frame Wrapper (Vibe: Mobile-first & LINE LIFF optimized) */
@@ -778,21 +779,6 @@ body {
   display: block;
 }
 
-.bead-estimation-banner {
-  margin-top: 24px;
-  padding: 16px;
-  background-color: var(--color-white);
-  border-radius: 12px;
-  border: 1px dashed var(--color-gold);
-  text-align: center;
-  font-size: 13px;
-  color: var(--color-navy-muted);
-}
-
-.bead-estimation-banner strong {
-  color: var(--color-navy-dark);
-}
-
 /* Step 2: Bracelet Components */
 .component-stack {
   display: flex;
@@ -812,6 +798,11 @@ body {
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+
+#charmSectionMount {
+  width: 100%;
+  min-width: 0;
 }
 
 .section-heading {
@@ -985,6 +976,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 /* Interactive Canvas card */
