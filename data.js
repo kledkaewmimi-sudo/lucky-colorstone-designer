@@ -22,7 +22,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px01.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 490,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -36,7 +36,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px02.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 490,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -50,7 +50,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px03.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 590,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -64,7 +64,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px04.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 590,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -78,7 +78,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px05.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 690,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -92,7 +92,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px06.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 690,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -106,7 +106,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px07.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 790,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -120,7 +120,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: "/assets/charms/pixiu/px08.png",
     sizeCm: 2.4,
-    price: 0,
+    price: 790,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -134,7 +134,7 @@ export const CHARM_CATALOG = [
     collection: "takrud",
     image: "/assets/charms/takrud/tg01.png",
     sizeCm: 3.0,
-    price: 0,
+    price: 990,
     meaningTh: "",
     meaningEn: "",
     inStock: true
@@ -148,7 +148,7 @@ export const CHARM_CATALOG = [
     collection: "pixiu",
     image: CHARM_PLACEHOLDER_IMAGE,
     sizeCm: 2.4,
-    price: 0,
+    price: 890,
     meaningTh: "",
     meaningEn: "",
     inStock: false
@@ -157,26 +157,26 @@ export const CHARM_CATALOG = [
     id: "tg02",
     sku: "TG02",
     nameTh: "ตะกรุดพระลักษมี ทอง",
+    nameEn: "Takrud Ganesha Gold",
+    type: "takrud_ganesha",
+    collection: "takrud",
+    image: "/assets/charms/takrud/tg02.png",
+    sizeCm: 3.0,
+    price: 1290,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "tl01",
+    sku: "TL01",
+    nameTh: "ตะกรุดพระพิฆเนศ ทอง",
     nameEn: "Takrud Lakshmi Gold",
     type: "takrud_lakshmi",
     collection: "takrud",
     image: CHARM_PLACEHOLDER_IMAGE,
     sizeCm: 3.0,
-    price: 0,
-    meaningTh: "",
-    meaningEn: "",
-    inStock: false
-  },
-  {
-    id: "tg03",
-    sku: "TG03",
-    nameTh: "ตะกรุดพระพิฆเนศ ทอง",
-    nameEn: "Takrud Ganesha Gold",
-    type: "takrud_ganesha",
-    collection: "takrud",
-    image: CHARM_PLACEHOLDER_IMAGE,
-    sizeCm: 3.0,
-    price: 0,
+    price: 1190,
     meaningTh: "",
     meaningEn: "",
     inStock: false

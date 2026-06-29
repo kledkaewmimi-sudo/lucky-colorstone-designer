@@ -647,8 +647,135 @@ function initCharmSelection() {
   });
 }
 
+function formatDisplayPrice(value) {
+  return `฿${Number(value || 0).toLocaleString()}`;
+}
+
+function buildStoneCard({
+  rootTag = 'div',
+  dataAttributeName,
+  dataAttributeValue,
+  image,
+  imageAlt,
+  imageClassName = 'stone-img',
+  mediaLabel = '',
+  nameTh,
+  nameEn,
+  priceText,
+  isSelected = false,
+  onCardClick = null,
+  onInfoClick = null,
+  onActionClick = null,
+  actionText = '+',
+  actionTitle = ''
+}) {
+  const card = document.createElement(rootTag);
+  card.className = `stone-card${isSelected ? ' selected' : ''}`;
+
+  if (rootTag === 'button') {
+    card.type = 'button';
+    card.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+  }
+
+  if (dataAttributeName) {
+    card.setAttribute(`data-${dataAttributeName}`, dataAttributeValue ?? '');
+  }
+
+  if (onInfoClick) {
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'info-icon-btn';
+    infoBtn.type = 'button';
+    infoBtn.innerHTML = 'i';
+    infoBtn.title = 'View Information';
+    infoBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onInfoClick();
+    });
+    card.appendChild(infoBtn);
+  }
+
+  const imgCont = document.createElement('div');
+  imgCont.className = 'stone-img-container';
+
+  if (image) {
+    const img = document.createElement('img');
+    img.src = image;
+    img.alt = imageAlt;
+    img.className = imageClassName;
+    imgCont.appendChild(img);
+  } else if (mediaLabel) {
+    const label = document.createElement('span');
+    label.className = 'stone-card-media-label';
+    label.textContent = mediaLabel;
+    imgCont.appendChild(label);
+  }
+
+  card.appendChild(imgCont);
+
+  const details = document.createElement('div');
+  details.className = 'stone-details';
+
+  const thName = document.createElement('div');
+  thName.className = 'stone-name-th';
+  thName.textContent = nameTh;
+  details.appendChild(thName);
+
+  const enName = document.createElement('div');
+  enName.className = 'stone-name-en';
+  enName.textContent = nameEn;
+  details.appendChild(enName);
+
+  const priceRow = document.createElement('div');
+  priceRow.className = 'stone-price-row';
+
+  const priceTag = document.createElement('div');
+  priceTag.className = 'stone-price-tag';
+  priceTag.textContent = priceText;
+  priceRow.appendChild(priceTag);
+
+  if (onActionClick) {
+    const actionBtn = document.createElement('button');
+    actionBtn.className = `stone-add-btn${isSelected ? ' selected' : ''}`;
+    actionBtn.type = 'button';
+    actionBtn.innerHTML = actionText;
+    if (actionTitle) actionBtn.title = actionTitle;
+    actionBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onActionClick();
+    });
+    priceRow.appendChild(actionBtn);
+  }
+
+  details.appendChild(priceRow);
+  card.appendChild(details);
+
+  if (onCardClick) {
+    card.addEventListener('click', onCardClick);
+  }
+
+  return card;
+}
+
 function getVisibleCharmCatalog() {
   return CHARM_CATALOG.filter((charm) => charm && charm.inStock !== false && charm.image && charm.image !== CHARM_PLACEHOLDER_IMAGE);
+}
+
+function getCharmDisplayMeta(charm) {
+  const overrides = {
+    tg02: {
+      nameTh: '\u0E15\u0E30\u0E01\u0E23\u0E38\u0E14\u0E1E\u0E23\u0E30\u0E1E\u0E34\u0E06\u0E40\u0E19\u0E28 \u0E17\u0E2D\u0E07',
+      nameEn: 'Takrud Ganesha Gold'
+    },
+    tl01: {
+      nameTh: '\u0E15\u0E30\u0E01\u0E23\u0E38\u0E14\u0E1E\u0E23\u0E30\u0E25\u0E31\u0E01\u0E29\u0E21\u0E35 \u0E17\u0E2D\u0E07',
+      nameEn: 'Takrud Lakshmi Gold'
+    }
+  };
+
+  return {
+    nameTh: overrides[charm.id]?.nameTh || charm.nameTh,
+    nameEn: overrides[charm.id]?.nameEn || charm.nameEn
+  };
 }
 
 function renderCharmOptions() {
@@ -656,53 +783,69 @@ function renderCharmOptions() {
 
   const visibleCharms = getVisibleCharmCatalog();
   const selectedCharmId = visibleCharms.some((charm) => charm.id === State.selectedCharmId) ? State.selectedCharmId : null;
+  DOM.charmSectionMount.innerHTML = '';
 
-  const escapeHtml = (value) => String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  const section = document.createElement('section');
+  section.className = 'component-section';
 
-  const cards = [];
-  cards.push(`
-    <button class="charm-option-card ${selectedCharmId === null ? 'active' : ''}" type="button" data-charm-id="" aria-pressed="${selectedCharmId === null}">
-      <span class="charm-option-badge">Default</span>
-      <strong>No Charm</strong>
-      <span>Keep the bracelet clean and charm-free.</span>
-    </button>
-  `);
+  const heading = document.createElement('div');
+  heading.className = 'section-heading';
+  heading.innerHTML = `
+    <div>
+      <h3>Charm</h3>
+      <p>Select one charm or leave the bracelet without one.</p>
+    </div>
+  `;
+  section.appendChild(heading);
+
+  const grid = document.createElement('div');
+  grid.className = 'stone-catalog-grid';
+
+  const selectCharm = (charmId) => {
+    State.selectedCharmId = charmId;
+    saveState();
+    renderCharmOptions();
+  };
+
+  grid.appendChild(buildStoneCard({
+    rootTag: 'div',
+    dataAttributeName: 'charm-id',
+    dataAttributeValue: '',
+    mediaLabel: 'No Charm',
+    nameTh: 'No Charm',
+    nameEn: 'Leave bracelet clean',
+    priceText: formatDisplayPrice(0),
+    isSelected: selectedCharmId === null,
+    onCardClick: () => selectCharm(null),
+    onActionClick: () => selectCharm(null),
+    actionText: '+',
+    actionTitle: 'Select No Charm'
+  }));
 
   visibleCharms.forEach((charm) => {
-    const isActive = selectedCharmId === charm.id;
-    cards.push(`
-      <button class="charm-option-card ${isActive ? 'active' : ''}" type="button" data-charm-id="${escapeHtml(charm.id)}" aria-pressed="${isActive}">
-        <div class="charm-option-media">
-          <img src="${escapeHtml(charm.image)}" alt="${escapeHtml(charm.nameEn)}" class="charm-option-image">
-        </div>
-        <div class="charm-option-copy">
-          <span class="charm-option-sku">${escapeHtml(charm.sku)}</span>
-          <strong>${escapeHtml(charm.nameEn)}</strong>
-          <span>${escapeHtml(charm.nameTh)}</span>
-        </div>
-      </button>
-    `);
+    const isSelected = selectedCharmId === charm.id;
+    const charmMeta = getCharmDisplayMeta(charm);
+    grid.appendChild(buildStoneCard({
+      rootTag: 'div',
+      dataAttributeName: 'charm-id',
+      dataAttributeValue: charm.id,
+      image: charm.image,
+      imageAlt: charmMeta.nameEn,
+      imageClassName: 'stone-img charm-card-img',
+      nameTh: charmMeta.nameTh,
+      nameEn: charmMeta.nameEn,
+      priceText: formatDisplayPrice(charm.price),
+      isSelected,
+      onCardClick: () => selectCharm(charm.id),
+      onInfoClick: () => openCharmInfoModal(charm),
+      onActionClick: () => selectCharm(charm.id),
+      actionText: '+',
+      actionTitle: isSelected ? 'Selected Charm' : 'Select Charm'
+    }));
   });
 
-  DOM.charmSectionMount.innerHTML = `
-    <section class="component-section">
-      <div class="section-heading">
-        <div>
-          <h3>Charm</h3>
-          <p>Select one charm or leave the bracelet without one.</p>
-        </div>
-      </div>
-
-      <div class="charm-options-grid">
-        ${cards.join('')}
-      </div>
-    </section>
-  `;
+  section.appendChild(grid);
+  DOM.charmSectionMount.appendChild(section);
 }
 
 // ==========================================
@@ -772,74 +915,22 @@ function renderCatalogGrid() {
     : availableStones.filter(s => s.category === State.activeCategory);
     
   filtered.forEach(stone => {
-    const card = document.createElement('div');
-    card.className = 'stone-card';
-    card.setAttribute('data-stone-id', stone.id);
-    
-    // Add Info Icon Button
-    const infoBtn = document.createElement('button');
-    infoBtn.className = 'info-icon-btn';
-    infoBtn.innerHTML = 'i';
-    infoBtn.title = "View Meanings";
-    infoBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Avoid triggering card addition
-      openStoneInfoModal(stone);
-    });
-    card.appendChild(infoBtn);
-    
-    // Stone Image Container
-    const imgCont = document.createElement('div');
-    imgCont.className = 'stone-img-container';
-    const img = document.createElement('img');
-    img.src = stone.image;
-    img.alt = stone.name;
-    img.className = 'stone-img';
-    imgCont.appendChild(img);
-    card.appendChild(imgCont);
-    
-    // Details
-    const details = document.createElement('div');
-    details.className = 'stone-details';
-    
-    const thName = document.createElement('div');
-    thName.className = 'stone-name-th';
-    thName.textContent = stone.nameTh;
-    details.appendChild(thName);
-    
-    const enName = document.createElement('div');
-    enName.className = 'stone-name-en';
-    enName.textContent = stone.name;
-    details.appendChild(enName);
-    
-    // Price & Add button row
-    const priceRow = document.createElement('div');
-    priceRow.className = 'stone-price-row';
-    
-    const priceTag = document.createElement('div');
-    priceTag.className = 'stone-price-tag';
-    const currentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-    const price = getStonePriceForSize(stone, currentSize);
-    priceTag.textContent = `฿${price}`;
-    priceRow.appendChild(priceTag);
-    
-    const addBtn = document.createElement('button');
-    addBtn.className = 'stone-add-btn';
-    addBtn.innerHTML = '+';
-    addBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      addStoneToBracelet(stone.id);
-    });
-    priceRow.appendChild(addBtn);
-    
-    details.appendChild(priceRow);
-    card.appendChild(details);
-    
-    // Add card click to add to loop
-    card.addEventListener('click', () => {
-      addStoneToBracelet(stone.id);
-    });
-    
-    DOM.stoneCatalogGrid.appendChild(card);
+    const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
+    const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
+    DOM.stoneCatalogGrid.appendChild(buildStoneCard({
+      dataAttributeName: 'stone-id',
+      dataAttributeValue: stone.id,
+      image: stone.image,
+      imageAlt: stone.name,
+      nameTh: stone.nameTh,
+      nameEn: stone.name,
+      priceText: formatDisplayPrice(catalogPrice),
+      onCardClick: () => addStoneToBracelet(stone.id),
+      onInfoClick: () => openStoneInfoModal(stone),
+      onActionClick: () => addStoneToBracelet(stone.id),
+      actionText: '+',
+      actionTitle: 'Add Stone'
+    }));
   });
 }
 
@@ -1981,22 +2072,80 @@ function fallbackLineOrder(messageText) {
 // 10. Modals & Detail Popups
 // ==========================================
 let currentModalStone = null;
+let currentModalAddHandler = null;
+let currentModalFillHandler = null;
+
+function configureInfoModal({
+  heading,
+  image,
+  titleTh,
+  titleEn,
+  meaning,
+  priceText,
+  showAddButton = false,
+  showFillButton = false,
+  addButtonLabel = 'Replace Selected',
+  fillButtonLabel = 'Fill Entire Bracelet'
+}) {
+  DOM.modalStoneName.textContent = heading;
+  DOM.modalStoneImg.src = image;
+  DOM.modalStoneTitleTh.textContent = titleTh;
+  DOM.modalStoneTitleEn.textContent = titleEn;
+  DOM.modalStoneMeaning.textContent = meaning;
+  DOM.modalStonePrice.textContent = priceText;
+  DOM.btnModalAdd.textContent = addButtonLabel;
+  DOM.btnModalFillAll.textContent = fillButtonLabel;
+  DOM.btnModalAdd.style.display = showAddButton ? '' : 'none';
+  DOM.btnModalFillAll.style.display = showFillButton ? '' : 'none';
+}
 
 function openStoneInfoModal(stone) {
   currentModalStone = stone;
-  DOM.modalStoneName.textContent = stone.name;
-  DOM.modalStoneImg.src = stone.image;
-  DOM.modalStoneTitleTh.textContent = stone.nameTh;
-  DOM.modalStoneTitleEn.textContent = stone.name;
-  DOM.modalStoneMeaning.textContent = `${stone.meaningTh} / ${stone.meaning}`;
-  DOM.modalStonePrice.textContent = `฿${stone.p4 || 0} (4mm) / ฿${stone.p6 || 0} (6mm) / ฿${stone.p8 || 0} (8mm)`;
-  
+  currentModalAddHandler = () => addStoneToBracelet(stone.id);
+  currentModalFillHandler = () => fillEntireBracelet(stone.id);
+  configureInfoModal({
+    heading: stone.name,
+    image: stone.image,
+    titleTh: stone.nameTh,
+    titleEn: stone.name,
+    meaning: `${stone.meaningTh} / ${stone.meaning}`,
+    priceText: `฿${stone.p4 || 0} (4mm) / ฿${stone.p6 || 0} (6mm) / ฿${stone.p8 || 0} (8mm)`,
+    showAddButton: true,
+    showFillButton: true,
+    addButtonLabel: 'Replace Selected (+ ใส่แทนที่)',
+    fillButtonLabel: 'Fill Entire Bracelet (ใส่ทั้งวง)'
+  });
+  DOM.stoneInfoModal.classList.add('show');
+}
+
+function openCharmInfoModal(charm) {
+  currentModalStone = null;
+  currentModalAddHandler = null;
+  currentModalFillHandler = null;
+  const charmMeta = getCharmDisplayMeta(charm);
+
+  const meaning = charm.meaningTh || charm.meaningEn
+    ? `${charm.meaningTh || '-'} / ${charm.meaningEn || '-'}`
+    : 'No additional charm details available.';
+
+  configureInfoModal({
+    heading: 'Charm Information',
+    image: charm.image,
+    titleTh: charmMeta.nameTh,
+    titleEn: charmMeta.nameEn,
+    meaning,
+    priceText: formatDisplayPrice(charm.price),
+    showAddButton: false,
+    showFillButton: false
+  });
   DOM.stoneInfoModal.classList.add('show');
 }
 
 function closeStoneInfoModal() {
   DOM.stoneInfoModal.classList.remove('show');
   currentModalStone = null;
+  currentModalAddHandler = null;
+  currentModalFillHandler = null;
 }
 
 function setupModalEvents() {
@@ -2009,15 +2158,15 @@ function setupModalEvents() {
   });
   
   DOM.btnModalAdd.addEventListener('click', () => {
-    if (currentModalStone) {
-      addStoneToBracelet(currentModalStone.id);
+    if (currentModalAddHandler) {
+      currentModalAddHandler();
       closeStoneInfoModal();
     }
   });
   
   DOM.btnModalFillAll.addEventListener('click', () => {
-    if (currentModalStone) {
-      fillEntireBracelet(currentModalStone.id);
+    if (currentModalFillHandler) {
+      currentModalFillHandler();
       closeStoneInfoModal();
     }
   });
