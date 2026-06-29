@@ -125,6 +125,8 @@ const DOM = {
 // ==========================================
 const WRIST_SIZES = Array.from({ length: 13 }, (_, i) => 14.0 + i * 0.5); // 14.0, 14.5, ..., 20.0
 const TOLERANCE_CM = 1.5; // Adding 1.5 cm standard padding for bracelets
+let braceletShowcaseRenderKey = '';
+let braceletShowcaseGenerationInFlight = false;
 
 // ==========================================
 // 4. Initialisation
@@ -1206,6 +1208,22 @@ async function renderStep4() {
     DOM.summaryTitleText.textContent = '';
   }
   renderBraceletShowcaseCard();
+
+  const currentPreviewKey = getBraceletShowcaseRenderKey();
+  braceletShowcaseRenderKey = currentPreviewKey;
+  const heroPreview = document.getElementById('exportHeroPreview');
+  const heroLoading = document.getElementById('exportHeroLoading');
+  const btnHero = document.getElementById('btnDownloadHero');
+  const isPreviewReady = heroPreview && heroPreview.dataset.previewKey === currentPreviewKey && heroPreview.src;
+
+  if (isPreviewReady) {
+    if (heroLoading) heroLoading.style.display = 'none';
+    if (btnHero) btnHero.disabled = false;
+  } else if (!braceletShowcaseGenerationInFlight) {
+    if (heroPreview) heroPreview.style.display = 'none';
+    if (heroLoading) heroLoading.style.display = 'block';
+    if (btnHero) btnHero.disabled = true;
+  }
   
   // Specs boxes
   DOM.specWristSize.textContent = `${State.wristSize.toFixed(1)} cm`;
@@ -1306,18 +1324,21 @@ async function renderStep4() {
   });
 
   // Trigger HTML5 Canvas image compilation in the background asynchronously
-  const heroPreview = document.getElementById('exportHeroPreview');
-  const heroLoading = document.getElementById('exportHeroLoading');
-  const btnHero = document.getElementById('btnDownloadHero');
-  if (heroPreview) heroPreview.style.display = 'none';
-  if (heroLoading) heroLoading.style.display = 'block';
-  if (btnHero) btnHero.disabled = true;
+  if (isPreviewReady || braceletShowcaseGenerationInFlight) {
+    return;
+  }
 
+  braceletShowcaseGenerationInFlight = true;
   setTimeout(async () => {
     try {
-      await generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds);
+      await generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, currentPreviewKey);
     } catch (e) {
       console.error("Canvas compilation failed", e);
+    } finally {
+      braceletShowcaseGenerationInFlight = false;
+      if (braceletShowcaseRenderKey !== currentPreviewKey) {
+        await renderStep4();
+      }
     }
   }, 100);
 }
@@ -1337,6 +1358,15 @@ function renderBraceletShowcaseCard() {
     </div>
   `;
   showcaseCard.dataset.braceletShowcaseReady = '1';
+}
+
+function getBraceletShowcaseRenderKey() {
+  return JSON.stringify({
+    wristSize: State.wristSize,
+    beadSize: State.beadSize,
+    mixedPlacingSize: State.mixedPlacingSize,
+    selectedStones: State.selectedStones.map((bead) => `${bead.stoneId}:${bead.size}`)
+  });
 }
 
 // Asynchronously pre-load bead texture images
@@ -1361,7 +1391,7 @@ async function preloadBeadImages(urls) {
 }
 
 // Draw the designed bracelet and invoice to canvas
-async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds) {
+async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, previewKey = '') {
   const uniqueUrls = [];
   State.selectedStones.forEach(b => {
     const stoneData = STONES.find(s => s.id === b.stoneId);
@@ -1378,9 +1408,8 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   heroCanvas.height = 1080;
   const ctx = heroCanvas.getContext("2d");
 
-  // Cream background
-  ctx.fillStyle = "#FDF5E6";
-  ctx.fillRect(0, 0, 1080, 1080);
+  // Transparent canvas background; the showcase frame provides the neutral surface.
+  ctx.clearRect(0, 0, 1080, 1080);
 
   const cx = 540;
   const cy = 540;
@@ -1412,12 +1441,6 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const angleDeg = centerAngle + Math.PI / 2;
     ctx.rotate(angleDeg); // Rotate to face outward
 
-    // Base circle
-    ctx.beginPath();
-    ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
-    ctx.fillStyle = stoneData.color || "#E2E8F0";
-    ctx.fill();
-
     // Clip & Draw bead image
     if (imgObj) {
       ctx.save();
@@ -1430,25 +1453,6 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
       ctx.restore();
     }
 
-    // Shading overlay
-    const sheen = ctx.createRadialGradient(-bRadiusPx * 0.36, -bRadiusPx * 0.36, bRadiusPx * 0.1, 0, 0, bRadiusPx);
-    sheen.addColorStop(0, "rgba(255, 255, 255, 0.65)");
-    sheen.addColorStop(0.45, "rgba(255, 255, 255, 0.15)");
-    sheen.addColorStop(0.85, "rgba(0, 0, 0, 0.35)");
-    sheen.addColorStop(1, "rgba(0, 0, 0, 0.75)");
-    ctx.fillStyle = sheen;
-    ctx.beginPath();
-    ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
-    ctx.fill();
-
-    // Highlight border stroke
-    ctx.beginPath();
-    ctx.arc(0, 0, bRadiusPx - 0.5, 0, 2 * Math.PI);
-    ctx.strokeStyle = stoneData.color || "#000000";
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.5;
-    ctx.stroke();
-
     ctx.restore();
     accumulatedAngle += itemAngleWidth;
   });
@@ -1458,9 +1462,14 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   const heroLoading = document.getElementById("exportHeroLoading");
   const btnHero = document.getElementById("btnDownloadHero");
 
+  if (previewKey && braceletShowcaseRenderKey !== previewKey) {
+    return;
+  }
+
   if (heroPreview) {
     heroPreview.src = heroDataUrl;
     heroPreview.style.display = "block";
+    heroPreview.dataset.previewKey = previewKey;
   }
   if (heroLoading) {
     heroLoading.style.display = "none";
