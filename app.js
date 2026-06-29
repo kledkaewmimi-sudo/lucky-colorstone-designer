@@ -1021,8 +1021,114 @@ function removeStoneFromBracelet(index) {
   DOM.btnNext.disabled = State.selectedStones.length === 0;
 }
 
+function createBraceletConfig() {
+  return {
+    wristSizeCm: State.wristSize,
+    toleranceCm: TOLERANCE_CM,
+    braceletLengthMm: (State.wristSize + TOLERANCE_CM) * 10,
+    beadSizeMode: State.beadSize,
+    placingSizeMm: State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize),
+    activeSlotIndex: State.activeSlotIndex,
+    newlyAddedIds: State.newlyAddedIds || [],
+    svg: {
+      centerX: 125,
+      centerY: 125,
+      radiusPx: 82
+    }
+  };
+}
+
+function createBraceletComponentList() {
+  return State.selectedStones.map((bead, index) => ({
+    id: bead.uniqueId,
+    type: 'stone',
+    sourceIndex: index,
+    stoneId: bead.stoneId,
+    sizeMm: bead.size,
+    uniqueId: bead.uniqueId
+  }));
+}
+
+function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
+  const placedCount = braceletComponentList.length;
+  const sumPlacedDiameter = braceletComponentList.reduce((sum, component) => sum + component.sizeMm, 0);
+  const spaceLeft = braceletConfig.braceletLengthMm - sumPlacedDiameter;
+  const numPlaceholders = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
+
+  const loopItems = [
+    ...braceletComponentList.map((component) => ({
+      kind: 'component',
+      component,
+      sizeMm: component.sizeMm
+    })),
+    ...Array.from({ length: numPlaceholders }, (_, index) => ({
+      kind: 'placeholder',
+      placeholderIndex: index,
+      sizeMm: braceletConfig.placingSizeMm
+    }))
+  ];
+
+  const totalVirtualDiameter = loopItems.reduce((sum, item) => sum + item.sizeMm, 0);
+  const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm;
+  const scaleMmToPx = (2 * Math.PI * braceletConfig.svg.radiusPx) / loopCircumferenceMm;
+
+  let accumulatedAngle = -Math.PI / 2;
+  const nodes = loopItems.map((item, index) => {
+    const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
+    const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
+    const centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(centerAngle);
+    const radiusPx = (item.sizeMm / 2) * scaleMmToPx;
+    const resolvedNode = {
+      index,
+      kind: item.kind,
+      sizeMm: item.sizeMm,
+      itemAngleWidth,
+      centerAngle,
+      centerX,
+      centerY,
+      radiusPx,
+      isPlaced: item.kind === 'component',
+      isFirstPlaceholder: item.kind === 'placeholder' && index === placedCount
+    };
+
+    if (item.kind === 'component') {
+      resolvedNode.component = item.component;
+      resolvedNode.sourceIndex = item.component.sourceIndex;
+      resolvedNode.uniqueClipId = `clip-${item.component.uniqueId}`;
+      resolvedNode.isNewlyAdded = braceletConfig.newlyAddedIds.includes(item.component.uniqueId);
+      resolvedNode.isActiveSlot = index === braceletConfig.activeSlotIndex;
+    }
+
+    accumulatedAngle += itemAngleWidth;
+    return resolvedNode;
+  });
+
+  return {
+    braceletConfig,
+    braceletComponentList,
+    summary: {
+      placedCount,
+      sumPlacedDiameter,
+      spaceLeft,
+      numPlaceholders,
+      totalItems: loopItems.length,
+      totalVirtualDiameter,
+      loopCircumferenceMm,
+      scaleMmToPx
+    },
+    nodes
+  };
+}
+
+function createCurrentBraceletResolvedLayout() {
+  const braceletConfig = createBraceletConfig();
+  const braceletComponentList = createBraceletComponentList();
+  return createResolvedBraceletLayout(braceletConfig, braceletComponentList);
+}
+
 // Core Loop Rendering (Dynamic SVG circular path)
-function renderBraceletCanvas() {
+function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout()) {
   const svg = DOM.braceletSvg;
   // Clear SVG first, keeping defs
   let defs = svg.querySelector('defs');
@@ -1034,10 +1140,14 @@ function renderBraceletCanvas() {
   }
   svg.innerHTML = '';
   svg.appendChild(defs);
-  
-  const cx = 125;
-  const cy = 125;
-  const rCanvas = 82; // SVG radius for drawing
+
+  const {
+    braceletConfig,
+    nodes,
+    summary
+  } = resolvedLayout;
+  const { centerX: cx, centerY: cy, radiusPx: rCanvas } = braceletConfig.svg;
+  const placedCount = summary.placedCount;
   
   // Draw subtle Cream-to-White gradient placeholder rail ring
   const bgRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -1049,66 +1159,22 @@ function renderBraceletCanvas() {
   bgRing.setAttribute("stroke-width", "10");
   bgRing.setAttribute("opacity", "0.6");
   svg.appendChild(bgRing);
-  
-  const braceletLenMm = (State.wristSize + TOLERANCE_CM) * 10;
-  
-  // Get active size to place
-  const placingSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  
-  // Placed beads list
-  const placedList = State.selectedStones;
-  const placedCount = placedList.length;
-  const sumPlacedDiameter = placedList.reduce((sum, b) => sum + b.size, 0);
-  
-  // Calculate remaining space and placeholders
-  const spaceLeft = braceletLenMm - sumPlacedDiameter;
-  const numPlaceholders = Math.max(0, Math.floor(spaceLeft / placingSize));
-  
-  const totalItems = placedCount + numPlaceholders;
-  
-  // Construct arrays of diameters for all elements in layout
-  const elementSizes = [];
-  for (let i = 0; i < placedCount; i++) {
-    elementSizes.push(placedList[i].size);
-  }
-  for (let i = 0; i < numPlaceholders; i++) {
-    elementSizes.push(placingSize);
-  }
-  
-  // Total sum of all diameters in circular layout
-  const totalVirtualDiameter = elementSizes.reduce((sum, size) => sum + size, 0);
-  
-  // Scale factor from mm to SVG px circumference
-  // Scale dynamically to totalVirtualDiameter so that all beads touch perfectly and cover 360 degrees
-  const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletLenMm;
-  const scaleMmToPx = (2 * Math.PI * rCanvas) / loopCircumferenceMm;
-  
-  // Render nodes
-  let accumulatedAngle = -Math.PI / 2; // Start rendering at top of circle (-90 deg)
-  
-  for (let i = 0; i < totalItems; i++) {
-    const sizeMm = elementSizes[i];
-    const itemAngleWidth = (sizeMm / loopCircumferenceMm) * 2 * Math.PI;
-    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
-    
-    // Convert polar coordinates to rectangular SVG coords
-    const bx = cx + rCanvas * Math.cos(centerAngle);
-    const by = cy + rCanvas * Math.sin(centerAngle);
-    const bRadiusPx = (sizeMm / 2) * scaleMmToPx;
-    
-    const isPlaced = i < placedCount;
-    
+
+  nodes.forEach((node) => {
+    const bx = node.centerX;
+    const by = node.centerY;
+    const bRadiusPx = node.radiusPx;
+
     // Group element for bead visual nodes
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    
-    if (isPlaced) {
-      const bead = placedList[i];
-      const isNewBead = State.newlyAddedIds && State.newlyAddedIds.includes(bead.uniqueId);
-      group.setAttribute("class", `bead-node placed ${isNewBead ? 'newly-added' : ''}`);
-      
-      const stoneId = bead.stoneId;
+
+    if (node.isPlaced) {
+      const component = node.component;
+      group.setAttribute("class", `bead-node placed ${node.isNewlyAdded ? 'newly-added' : ''}`);
+
+      const stoneId = component.stoneId;
       const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
-      const uniqueClipId = `clip-${placedList[i].uniqueId}`;
+      const uniqueClipId = node.uniqueClipId;
       
       // 1. Create clip path dynamically
       const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
@@ -1142,7 +1208,7 @@ function renderBraceletCanvas() {
       img.setAttribute("width", imgSize);
       img.setAttribute("height", imgSize);
       img.setAttribute("class", "bead-image");
-      const angleDeg = (centerAngle * 180 / Math.PI) + 90;
+      const angleDeg = (node.centerAngle * 180 / Math.PI) + 90;
       img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
       imgGroup.appendChild(img);
       group.appendChild(imgGroup);
@@ -1169,7 +1235,7 @@ function renderBraceletCanvas() {
       group.appendChild(border);
       
       // If active highlighted slot, render the active glowing ring
-      if (i === State.activeSlotIndex) {
+      if (node.isActiveSlot) {
         const activeRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         activeRing.setAttribute("cx", bx);
         activeRing.setAttribute("cy", by);
@@ -1184,13 +1250,13 @@ function renderBraceletCanvas() {
       }
       
       // Click bead to select/highlight it
-      const currentIdx = i;
+      const currentIdx = node.sourceIndex;
       group.addEventListener('click', () => removeStoneFromBracelet(currentIdx));
       
     } else {
       group.setAttribute("class", "bead-node placeholder");
       // It is a placeholder empty slot, rendered as a Pastel Purple dotted circle outline
-      const isFirstPlaceholder = i === placedCount;
+      const isFirstPlaceholder = node.isFirstPlaceholder;
       
       // Dotted/dashed circle slot
       const slot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -1241,10 +1307,7 @@ function renderBraceletCanvas() {
     }
     
     svg.appendChild(group);
-    
-    // Progress the angle
-    accumulatedAngle += itemAngleWidth;
-  }
+  });
 }
 
 // Setup SVG defs for sheen gradient
@@ -1313,13 +1376,14 @@ function createSvgDefs() {
 
 // Render step 3 workspace elements
 function renderStep3() {
+  const resolvedLayout = createCurrentBraceletResolvedLayout();
   const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
     const sData = STONES.find(s => s.id === b.stoneId);
     return sum + getStonePriceForSize(sData, b.size);
   }, 0);
   
-  const totalDiameter = State.selectedStones.reduce((sum, b) => sum + b.size, 0);
-  const braceletLengthMm = (State.wristSize + TOLERANCE_CM) * 10;
+  const braceletLengthMm = resolvedLayout.braceletConfig.braceletLengthMm;
+  const totalDiameter = resolvedLayout.summary.sumPlacedDiameter;
   const remainingSpace = Math.max(0, braceletLengthMm - totalDiameter);
   
   // Toggle mixed sizes bar if mixed selection
@@ -1375,7 +1439,7 @@ function renderStep3() {
   }
   
   // Render SVG loop and catalog
-  renderBraceletCanvas();
+  renderBraceletCanvas(resolvedLayout);
   renderCatalogGrid();
   renderCharmOptions();
   

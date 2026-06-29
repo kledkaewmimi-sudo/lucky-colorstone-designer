@@ -75,3 +75,15 @@ The project is designed to work in three ways:
 - Sync is polling-based and event-based, not push-based.
 - Business rules are duplicated in client and CRM code.
 - Shared product catalogs can exist as static data models before they are connected to UI.
+
+## Renderer Decisions
+
+Bracelet renderer architecture is governed by the accepted decisions in `DECISIONS.md`.
+
+Key rules:
+
+- Accessory customization belongs to Step 3.
+- `BraceletComponentList` is the canonical rendering pipeline.
+- `ResolvedLayout` is the single source of geometric truth.
+- Render surfaces must not compute layout independently.
+- Business state and rendering state must remain separated.
