@@ -55,6 +55,7 @@ const DOM = {
   btnBack: document.getElementById('btnBack'),
   btnNext: document.getElementById('btnNext'),
   btnHome: document.getElementById('btnHome'),
+  appFooter: document.querySelector('.app-footer'),
   headerLogo: document.getElementById('headerLogo'),
   
   // Step 1: Wrist Size
@@ -376,6 +377,67 @@ function renderStepper() {
   DOM.stepIndicatorLabel.innerText = stepLabels[State.currentStep - 1];
 }
 
+function getStep3ValidationState() {
+  const braceletLengthMm = (State.wristSize + TOLERANCE_CM) * 10;
+  const totalDiameter = State.selectedStones.reduce((sum, bead) => sum + bead.size, 0);
+  const placingSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
+  const remainingSpaceRaw = braceletLengthMm - totalDiameter;
+  const remainingSpace = Math.max(0, remainingSpaceRaw);
+  const numPlaceholders = Math.max(0, Math.floor(remainingSpaceRaw / placingSize));
+  const capacity = State.beadSize === 'mixed' ? null : Math.floor(braceletLengthMm / parseInt(State.beadSize));
+  const isFull = State.selectedStones.length > 0 && numPlaceholders === 0;
+
+  return {
+    braceletLengthMm,
+    totalDiameter,
+    remainingSpace,
+    numPlaceholders,
+    capacity,
+    isFull,
+    warningText: isFull ? '' : 'กรุณาเลือกหินให้เต็มวงกำไลก่อนดำเนินการต่อ'
+  };
+}
+
+function ensureStep3WarningElement() {
+  let warningEl = document.getElementById('step3NextWarning');
+  if (warningEl) return warningEl;
+  if (!DOM.appFooter) return null;
+
+  warningEl = document.createElement('div');
+  warningEl.id = 'step3NextWarning';
+  warningEl.className = 'step3-next-warning';
+  warningEl.setAttribute('aria-live', 'polite');
+  warningEl.style.display = 'none';
+  DOM.appFooter.appendChild(warningEl);
+  return warningEl;
+}
+
+function syncStep3NextValidationUI(validationState = getStep3ValidationState()) {
+  const warningEl = ensureStep3WarningElement();
+  const isStep3 = State.currentStep === 3;
+
+  if (DOM.appFooter) {
+    DOM.appFooter.classList.toggle('step3-validation-active', isStep3 && !validationState.isFull);
+  }
+
+  if (!isStep3) {
+    if (warningEl) {
+      warningEl.textContent = '';
+      warningEl.style.display = 'none';
+    }
+    return validationState;
+  }
+
+  DOM.btnNext.disabled = !validationState.isFull;
+
+  if (warningEl) {
+    warningEl.textContent = validationState.warningText;
+    warningEl.style.display = validationState.isFull ? 'none' : 'block';
+  }
+
+  return validationState;
+}
+
 async function renderStepViews() {
   DOM.stepViews.forEach((view, idx) => {
     const stepNum = idx + 1;
@@ -426,8 +488,7 @@ async function renderStepViews() {
           <path d="m9 18 6-6-6-6"/>
         </svg>`;
       DOM.btnNext.className = 'footer-btn btn-next';
-      // Disable next only if no stones are added
-      DOM.btnNext.disabled = State.selectedStones.length === 0;
+      syncStep3NextValidationUI();
     } else if (State.currentStep === 4) {
       DOM.btnNext.innerHTML = `สั่งซื้อผ่าน LINE &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -436,6 +497,13 @@ async function renderStepViews() {
       DOM.btnNext.className = 'footer-btn btn-order';
       DOM.btnNext.disabled = false;
     }
+  }
+
+  if (State.currentStep !== 3) {
+    syncStep3NextValidationUI({
+      isFull: true,
+      warningText: ''
+    });
   }
 }
 
@@ -456,6 +524,10 @@ function setupNavigationEvents() {
     if (State.currentStep === 4) {
       await handleLineOrder();
     } else {
+      if (State.currentStep === 3) {
+        const validationState = syncStep3NextValidationUI();
+        if (!validationState.isFull) return;
+      }
       await goToStep(State.currentStep + 1);
     }
   });
@@ -1005,7 +1077,7 @@ function addStoneToBracelet(stoneId) {
   renderStep3();
   saveState();
   
-  DOM.btnNext.disabled = State.selectedStones.length === 0;
+  syncStep3NextValidationUI();
 }
 
 // Remove Stone Logic
@@ -1018,7 +1090,7 @@ function removeStoneFromBracelet(index) {
   renderStep3();
   saveState();
   
-  DOM.btnNext.disabled = State.selectedStones.length === 0;
+  syncStep3NextValidationUI();
 }
 
 function createBraceletConfig() {
@@ -1377,14 +1449,15 @@ function createSvgDefs() {
 // Render step 3 workspace elements
 function renderStep3() {
   const resolvedLayout = createCurrentBraceletResolvedLayout();
+  const validationState = getStep3ValidationState();
   const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
     const sData = STONES.find(s => s.id === b.stoneId);
     return sum + getStonePriceForSize(sData, b.size);
   }, 0);
   
-  const braceletLengthMm = resolvedLayout.braceletConfig.braceletLengthMm;
-  const totalDiameter = resolvedLayout.summary.sumPlacedDiameter;
-  const remainingSpace = Math.max(0, braceletLengthMm - totalDiameter);
+  const braceletLengthMm = validationState.braceletLengthMm;
+  const totalDiameter = validationState.totalDiameter;
+  const remainingSpace = validationState.remainingSpace;
   
   // Toggle mixed sizes bar if mixed selection
   if (State.beadSize === 'mixed') {
@@ -1410,6 +1483,9 @@ function renderStep3() {
     const size = parseInt(State.beadSize);
     const capacity = Math.floor(braceletLengthMm / size);
     capText = `${State.selectedStones.length} / ${capacity} เม็ด`;
+  }
+  if (State.beadSize !== 'mixed') {
+    capText = `${State.selectedStones.length} / ${validationState.capacity} เม็ด`;
   }
   DOM.canvasBeadCountText.textContent = capText;
   
@@ -1442,6 +1518,7 @@ function renderStep3() {
   renderBraceletCanvas(resolvedLayout);
   renderCatalogGrid();
   renderCharmOptions();
+  syncStep3NextValidationUI(validationState);
   
   // Clear newly added IDs after rendering so they only animate on insertion
   State.newlyAddedIds = [];

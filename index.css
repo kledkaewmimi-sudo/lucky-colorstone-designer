@@ -1698,6 +1698,10 @@ button.stone-card {
   gap: 12px;
 }
 
+.app-footer.step3-validation-active {
+  flex-wrap: wrap;
+}
+
 .footer-btn {
   border-radius: 12px;
   padding: 14px 20px;
@@ -1745,6 +1749,16 @@ button.stone-card {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.step3-next-warning {
+  width: 100%;
+  margin-top: -4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-velvet-red);
+  text-align: center;
 }
 
 /* Checkout Button (high contrast green) */
