@@ -1199,6 +1199,46 @@ function createCurrentBraceletResolvedLayout() {
   return createResolvedBraceletLayout(braceletConfig, braceletComponentList);
 }
 
+function getPlacedResolvedLayoutNodes(resolvedLayout) {
+  return resolvedLayout.nodes.filter((node) => node.isPlaced);
+}
+
+function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout);
+  const baseRadiusPx = resolvedLayout.braceletConfig.svg.radiusPx;
+  const radiusScale = baseRadiusPx > 0 ? surfaceConfig.radiusPx / baseRadiusPx : 1;
+
+  return placedNodes.map((node) => ({
+    ...node,
+    renderCenterX: surfaceConfig.centerX + surfaceConfig.radiusPx * Math.cos(node.centerAngle),
+    renderCenterY: surfaceConfig.centerY + surfaceConfig.radiusPx * Math.sin(node.centerAngle),
+    renderRadiusPx: node.radiusPx * radiusScale,
+    renderRotationRad: node.centerAngle + Math.PI / 2
+  }));
+}
+
+function projectResolvedLayoutToLinearMap(resolvedLayout, surfaceConfig) {
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout);
+  const totalBeadSizeMm = resolvedLayout.summary.sumPlacedDiameter;
+  const widthScale = totalBeadSizeMm > 0 ? (surfaceConfig.availableWidth / totalBeadSizeMm) : 5;
+  const linearScale = Math.min(widthScale, surfaceConfig.maxRadiusPx * 2 / surfaceConfig.referenceSizeMm);
+
+  let accumulatedX = surfaceConfig.centerX - (totalBeadSizeMm * linearScale) / 2;
+  return placedNodes.map((node) => {
+    const renderRadiusPx = (node.sizeMm / 2) * linearScale;
+    const renderCenterX = accumulatedX + renderRadiusPx;
+    accumulatedX += node.sizeMm * linearScale;
+
+    return {
+      ...node,
+      renderCenterX,
+      renderCenterY: surfaceConfig.centerY,
+      renderRadiusPx,
+      renderScalePxPerMm: linearScale
+    };
+  });
+}
+
 // Core Loop Rendering (Dynamic SVG circular path)
 function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout()) {
   const svg = DOM.braceletSvg;
@@ -1720,6 +1760,7 @@ async function preloadBeadImages(urls) {
 
 // Draw the designed bracelet and invoice to canvas
 async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, previewKey = '') {
+  const resolvedLayout = createCurrentBraceletResolvedLayout();
   const uniqueUrls = [];
   State.selectedStones.forEach(b => {
     const stoneData = STONES.find(s => s.id === b.stoneId);
@@ -1743,31 +1784,23 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   const cy = 540;
   const rCanvas = 360;
 
-  const braceletLenMm = (State.wristSize + TOLERANCE_CM) * 10;
-  const placedList = State.selectedStones;
-  const sumPlacedDiameter = placedList.reduce((sum, b) => sum + b.size, 0);
-  const loopCircumferenceMm = sumPlacedDiameter > 0 ? sumPlacedDiameter : braceletLenMm;
-  const scaleMmToPx = (2 * Math.PI * rCanvas) / loopCircumferenceMm;
+  const heroNodes = projectResolvedLayoutToCircle(resolvedLayout, {
+    centerX: cx,
+    centerY: cy,
+    radiusPx: rCanvas
+  });
 
-  let accumulatedAngle = -Math.PI / 2;
-
-  placedList.forEach(bead => {
-    const sizeMm = bead.size;
-    const itemAngleWidth = (sizeMm / loopCircumferenceMm) * 2 * Math.PI;
-    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
-
-    const bx = cx + rCanvas * Math.cos(centerAngle);
-    const by = cy + rCanvas * Math.sin(centerAngle);
-    const bRadiusPx = (sizeMm / 2) * scaleMmToPx;
-
-    const stoneData = STONES.find(s => s.id === bead.stoneId) || STONES[0];
+  heroNodes.forEach((node) => {
+    const bx = node.renderCenterX;
+    const by = node.renderCenterY;
+    const bRadiusPx = node.renderRadiusPx;
+    const stoneData = STONES.find(s => s.id === node.component.stoneId) || STONES[0];
     const imgUrl = stoneData ? stoneData.image : "";
     const imgObj = imageCache[imgUrl];
 
     ctx.save();
     ctx.translate(bx, by);
-    const angleDeg = centerAngle + Math.PI / 2;
-    ctx.rotate(angleDeg); // Rotate to face outward
+    ctx.rotate(node.renderRotationRad); // Rotate to face outward
 
     // Clip & Draw bead image
     if (imgObj) {
@@ -1782,7 +1815,6 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     }
 
     ctx.restore();
-    accumulatedAngle += itemAngleWidth;
   });
 
   const heroDataUrl = heroCanvas.toDataURL("image/png");
@@ -1886,21 +1918,19 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   rCtx.fillText("VISUAL STRINGING MAP (ลำดับการร้อย)", 400, 410);
 
   const mapY = 465;
-  const totalBeadSizeMm = placedList.reduce((sum, b) => sum + b.size, 0);
-  const horizontalPadding = 80;
-  const availableWidth = 800 - 2 * horizontalPadding;
-  const beadScale = totalBeadSizeMm > 0 ? (availableWidth / totalBeadSizeMm) : 5;
-  const maxRadius = 18;
-  const linearScale = Math.min(beadScale, maxRadius * 2 / 6);
+  const linearMapNodes = projectResolvedLayoutToLinearMap(resolvedLayout, {
+    centerX: 400,
+    centerY: mapY,
+    availableWidth: 800 - 160,
+    maxRadiusPx: 18,
+    referenceSizeMm: 6
+  });
 
-  let accumulatedX = 400 - (totalBeadSizeMm * linearScale) / 2;
+  linearMapNodes.forEach((node) => {
+    const bRad = node.renderRadiusPx;
+    const bx = node.renderCenterX;
 
-  placedList.forEach(bead => {
-    const sizeMm = bead.size;
-    const bRad = (sizeMm / 2) * linearScale;
-    const bx = accumulatedX + bRad;
-
-    const stoneData = STONES.find(s => s.id === bead.stoneId) || STONES[0];
+    const stoneData = STONES.find(s => s.id === node.component.stoneId) || STONES[0];
     const imgUrl = stoneData ? stoneData.image : "";
     const imgObj = imageCache[imgUrl];
 
@@ -1934,7 +1964,6 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     rCtx.fill();
 
     rCtx.restore();
-    accumulatedX += sizeMm * linearScale;
   });
 
   drawDashedDivider(525);

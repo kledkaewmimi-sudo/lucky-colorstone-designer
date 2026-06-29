@@ -212,8 +212,9 @@ Current surfaces:
 Recommended model:
 
 - Each surface should consume the same canonical geometry model where practical.
-- Step 3 SVG is the first surface migrated to `ResolvedLayout` in Phase 3.1.
-- Hero shot remains behaviorally unchanged in Phase 3.1.
+- Step 3 SVG is migrated to `ResolvedLayout`.
+- Phase 3.2 migrates hero and export surface geometry to `ResolvedLayout` projections as well.
+- Surface adapters may project the same resolved geometry into circular or linear presentation formats, but they must not resolve bracelet layout independently.
 
 Long-term rule:
 
@@ -266,3 +267,23 @@ Not included in Phase 3.1:
 - pendant rendering
 - pricing changes
 - export redesign
+
+## Phase 3.2 Summary
+
+Phase 3.2 unifies bracelet geometry across render surfaces.
+
+Delivered:
+
+- Step 3 SVG preview uses `ResolvedLayout`
+- Hero preview uses `ResolvedLayout`
+- Export/receipt preview geometry uses `ResolvedLayout`
+- duplicate bracelet layout calculations are removed from render surfaces
+
+Not included in Phase 3.2:
+
+- charm rendering
+- spacer rendering
+- separator rendering
+- pendant rendering
+- pricing changes
+- business-rule changes
