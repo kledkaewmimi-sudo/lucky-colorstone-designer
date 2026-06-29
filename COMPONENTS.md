@@ -52,7 +52,7 @@ Collect the customer wrist size and optional owner name.
 
 ## Purpose
 
-Let the customer choose the bead size used for the bracelet design.
+Let the customer choose bracelet components used for the bracelet design.
 
 ## Responsibilities
 
@@ -61,6 +61,9 @@ Let the customer choose the bead size used for the bracelet design.
 - Update the active bead-size state.
 - Adjust selected beads when the bead size changes.
 - Update bracelet capacity and estimation text.
+- Render charm selection from the shared charm catalog.
+- Support a single selected charm with `No Charm` as the default.
+- Show disabled `Coming Soon` cards for spacer color and separator.
 
 ## Files
 

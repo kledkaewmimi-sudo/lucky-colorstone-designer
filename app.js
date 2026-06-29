@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, refreshCatalog, getSharedSettings, addSharedOrder, getStonePriceForSize } from './data.js';
+import { STONES, CATEGORIES, CHARM_CATALOG, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, getSharedSettings, addSharedOrder, getStonePriceForSize } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -68,6 +68,7 @@ const DOM = {
   estimationWristSizeText: document.getElementById('estimationWristSizeText'),
   estimationLengthText: document.getElementById('estimationLengthText'),
   estimationCapacityText: document.getElementById('estimationCapacityText'),
+  charmOptionsGrid: document.getElementById('charmOptionsGrid'),
   
   // Step 3: Designer Workspace
   canvasPriceText: document.getElementById('canvasPriceText'),
@@ -161,6 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialise step UI components
   initWristSizeGrid();
   initBeadSizeOptions();
+  initCharmSelection();
   initCatalogFilters();
   
   // Setup Event Listeners
@@ -610,7 +612,71 @@ function renderStep2() {
       c.classList.remove('active');
     }
   });
+  renderCharmOptions();
   updateEstimationText();
+}
+
+function initCharmSelection() {
+  if (!DOM.charmOptionsGrid) return;
+
+  DOM.charmOptionsGrid.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-charm-id]');
+    if (!button || button.disabled) return;
+
+    const nextCharmId = button.dataset.charmId || null;
+    if (State.selectedCharmId === nextCharmId) return;
+
+    State.selectedCharmId = nextCharmId;
+    saveState();
+    renderCharmOptions();
+  });
+
+  renderCharmOptions();
+}
+
+function getVisibleCharmCatalog() {
+  return CHARM_CATALOG.filter((charm) => charm && charm.inStock !== false && charm.image && charm.image !== CHARM_PLACEHOLDER_IMAGE);
+}
+
+function renderCharmOptions() {
+  if (!DOM.charmOptionsGrid) return;
+
+  const visibleCharms = getVisibleCharmCatalog();
+  const selectedCharmId = visibleCharms.some((charm) => charm.id === State.selectedCharmId) ? State.selectedCharmId : null;
+
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const cards = [];
+  cards.push(`
+    <button class="charm-option-card ${selectedCharmId === null ? 'active' : ''}" type="button" data-charm-id="" aria-pressed="${selectedCharmId === null}">
+      <span class="charm-option-badge">Default</span>
+      <strong>No Charm</strong>
+      <span>Keep the bracelet clean and charm-free.</span>
+    </button>
+  `);
+
+  visibleCharms.forEach((charm) => {
+    const isActive = selectedCharmId === charm.id;
+    cards.push(`
+      <button class="charm-option-card ${isActive ? 'active' : ''}" type="button" data-charm-id="${escapeHtml(charm.id)}" aria-pressed="${isActive}">
+        <div class="charm-option-media">
+          <img src="${escapeHtml(charm.image)}" alt="${escapeHtml(charm.nameEn)}" class="charm-option-image">
+        </div>
+        <div class="charm-option-copy">
+          <span class="charm-option-sku">${escapeHtml(charm.sku)}</span>
+          <strong>${escapeHtml(charm.nameEn)}</strong>
+          <span>${escapeHtml(charm.nameTh)}</span>
+        </div>
+      </button>
+    `);
+  });
+
+  DOM.charmOptionsGrid.innerHTML = cards.join('');
 }
 
 // ==========================================

@@ -129,12 +129,21 @@
         </div>
       </section>
 
-      <!-- STEP 2: BEAD SIZE SELECTION -->
+      <!-- STEP 2: BRACELET COMPONENTS SELECTION -->
       <section class="step-view" id="stepView2">
-        <h2 class="step-title">Select Bead Size</h2>
+        <h2 class="step-title">Bracelet Components</h2>
         <p class="step-subtitle">เลือกขนาดของเม็ดหินที่ต้องการร้อยกำไล</p>
 
-        <div class="bead-size-options" id="beadSizeOptionsList">
+        <div class="component-stack">
+          <section class="component-section">
+            <div class="section-heading">
+              <div>
+                <h3>Bead Size</h3>
+                <p>Keep the current sizing behavior unchanged.</p>
+              </div>
+            </div>
+
+            <div class="bead-size-options" id="beadSizeOptionsList">
           <!-- Card: 4mm -->
           <div class="bead-size-card" data-bead-size="4">
             <div class="bead-size-info">
@@ -192,6 +201,57 @@
             </div>
             <div class="radio-check"></div>
           </div>
+        </div>
+
+            </div>
+          </section>
+
+          <section class="component-section">
+            <div class="section-heading">
+              <div>
+                <h3>Charm</h3>
+                <p>Select one charm or leave the bracelet without one.</p>
+              </div>
+            </div>
+
+            <div class="charm-options-grid" id="charmOptionsGrid">
+              <!-- Rendered dynamically in app.js -->
+            </div>
+          </section>
+
+          <section class="component-section">
+            <div class="section-heading">
+              <div>
+                <h3>Spacer Color</h3>
+                <p>Coming soon.</p>
+              </div>
+            </div>
+
+            <div class="future-components-grid">
+              <button class="future-card" type="button" disabled>
+                <span class="future-card-label">Coming Soon</span>
+                <strong>Spacer Color</strong>
+                <span>Accent spacers will be available later.</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="component-section">
+            <div class="section-heading">
+              <div>
+                <h3>Separator</h3>
+                <p>Coming soon.</p>
+              </div>
+            </div>
+
+            <div class="future-components-grid">
+              <button class="future-card" type="button" disabled>
+                <span class="future-card-label">Coming Soon</span>
+                <strong>Separator</strong>
+                <span>Separator options will be added later.</span>
+              </button>
+            </div>
+          </section>
         </div>
 
         <div class="bead-estimation-banner">
