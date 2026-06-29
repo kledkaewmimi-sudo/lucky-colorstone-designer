@@ -10,6 +10,179 @@ export const CATEGORIES = {
   protection: { en: "Protection", th: "ปกป้อง/คุ้มครอง" }
 };
 
+export const CHARM_PLACEHOLDER_IMAGE = "assets/charms/_placeholder.png";
+
+export const CHARM_CATALOG = [
+  {
+    id: "px01",
+    sku: "PX01",
+    nameTh: "ปี่เซียะ PX01",
+    nameEn: "Pi Xiu PX01",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px01.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px02",
+    sku: "PX02",
+    nameTh: "ปี่เซียะ PX02",
+    nameEn: "Pi Xiu PX02",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px02.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px03",
+    sku: "PX03",
+    nameTh: "ปี่เซียะ PX03",
+    nameEn: "Pi Xiu PX03",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px03.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px04",
+    sku: "PX04",
+    nameTh: "ปี่เซียะ PX04",
+    nameEn: "Pi Xiu PX04",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px04.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px05",
+    sku: "PX05",
+    nameTh: "ปี่เซียะ PX05",
+    nameEn: "Pi Xiu PX05",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px05.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px06",
+    sku: "PX06",
+    nameTh: "ปี่เซียะ PX06",
+    nameEn: "Pi Xiu PX06",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px06.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px07",
+    sku: "PX07",
+    nameTh: "ปี่เซียะ PX07",
+    nameEn: "Pi Xiu PX07",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px07.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px08",
+    sku: "PX08",
+    nameTh: "ปี่เซียะ PX08",
+    nameEn: "Pi Xiu PX08",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: "assets/charms/pixiu/px08.png",
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "tg01",
+    sku: "TG01",
+    nameTh: "ตะกรุดพระพิฆเนศ เงิน TG01",
+    nameEn: "Takrud Ganesha Silver TG01",
+    type: "takrud_ganesha",
+    collection: "takrud",
+    image: "assets/charms/takrud/tg01.png",
+    sizeCm: 3.0,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
+    id: "px09",
+    sku: "PX09",
+    nameTh: "ปี่เซียะ PX09",
+    nameEn: "Pi Xiu PX09",
+    type: "pi_xiu",
+    collection: "pixiu",
+    image: CHARM_PLACEHOLDER_IMAGE,
+    sizeCm: 2.4,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: false
+  },
+  {
+    id: "tg02",
+    sku: "TG02",
+    nameTh: "ตะกรุดพระลักษมี ทอง",
+    nameEn: "Takrud Lakshmi Gold",
+    type: "takrud_lakshmi",
+    collection: "takrud",
+    image: CHARM_PLACEHOLDER_IMAGE,
+    sizeCm: 3.0,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: false
+  },
+  {
+    id: "tg03",
+    sku: "TG03",
+    nameTh: "ตะกรุดพระพิฆเนศ ทอง",
+    nameEn: "Takrud Ganesha Gold",
+    type: "takrud_ganesha",
+    collection: "takrud",
+    image: CHARM_PLACEHOLDER_IMAGE,
+    sizeCm: 3.0,
+    price: 0,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: false
+  }
+];
+
 // --- In-memory cache ---
 export let STONES = [];
 export let SETTINGS = { globalDiscountPercent: 20 };
@@ -180,4 +353,3 @@ export async function updateOrderStatus(orderId, newStatus) {
   }
   return false;
 }
-

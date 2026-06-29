@@ -128,6 +128,39 @@ Present the final summary, billing, export images, and order submission flow.
 - `app.js`
 - `data.js`
 
+# Charm Catalog
+
+## Purpose
+
+Provide shared charm metadata for future customer and CRM surfaces without changing current bracelet UI behavior.
+
+## Responsibilities
+
+- Store charm records in a shared catalog structure in `data.js`.
+- Keep charm metadata available as data only during Phase 1.
+- Support existing Pi Xiu and Takrud assets with stable IDs and SKUs.
+- Reserve placeholder records for future charms when needed, without requiring current UI changes.
+
+## Charm fields
+
+- `id`
+- `sku`
+- `nameTh`
+- `nameEn`
+- `type`
+- `collection`
+- `image`
+- `sizeCm`
+- `price`
+- `meaningTh`
+- `meaningEn`
+- `inStock`
+
+## Files
+
+- `data.js`
+- `app.js` for the backward-compatible `selectedCharmId` state default
+
 # Bracelet Renderer
 
 The bracelet renderer is implemented inside `app.js`.
@@ -212,7 +245,7 @@ Data moves through the app in this order:
 - `app.js`: customer flow state, step rendering, bracelet design logic, preview generation, LIFF handling, and order submission.
 - `crm.html`: CRM dashboard markup, login form, tabs, modals, and invoice layout.
 - `crm.js`: CRM authentication, dashboard logic, inventory CRUD, order management, and sandbox tooling.
-- `data.js`: shared API access, shared catalog/settings/orders helpers, and price lookup helper.
+- `data.js`: shared API access, shared catalog/settings/orders helpers, price lookup helper, and charm catalog data.
 - `server.ps1`: local JSON-backed backend and static file server.
 - `data/stones.json`, `data/orders.json`, `data/settings.json`: persisted shared data files.
 

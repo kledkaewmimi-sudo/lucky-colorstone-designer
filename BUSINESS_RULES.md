@@ -64,6 +64,14 @@ The current implementation uses the stone catalog price for each selected bead s
 
 This document does not define or change the pricing formula beyond what is already implemented.
 
+# Charm Rules
+
+- The charm catalog is a shared data model stored in `data.js`.
+- Each charm entry includes `id`, `sku`, `nameTh`, `nameEn`, `type`, `collection`, `image`, `sizeCm`, `price`, `meaningTh`, `meaningEn`, and `inStock`.
+- Phase 1 only defines the catalog data shape and default charm state.
+- Existing charm assets are supported without changing the customer flow or bracelet rendering.
+- Future charm placeholders may exist in the catalog, but they remain data-only until the UI is explicitly updated.
+
 # CRM Rules
 
 - The customer order is synced to CRM when the customer submits the LINE order from Step 4.
@@ -96,6 +104,7 @@ Important customer-flow state values used by the current implementation:
 - `ownerName`
 - `liffInitialized`
 - `landingDismissed`
+- `selectedCharmId`
 - `selectedStones`
 - `activeCategory`
 - `activeSlotIndex`
@@ -118,6 +127,7 @@ The following business rules must not change unless explicitly requested:
 - The shared-data sync model between customer app and CRM.
 - The CRM role as the receiver and manager of submitted orders.
 - The persisted customer design state and landing dismissal state.
+- The charm catalog data model does not alter current customer or CRM UI behavior in Phase 1.
 - The current bracelet preview and export generation behavior.
 
 ## Summary

@@ -47,6 +47,8 @@ The CRM is a separate single-page dashboard:
 - `addSharedOrder()`
 - `updateOrderStatus()`
 
+It also hosts shared static catalog constants, including the charm catalog data model added in Phase 1.
+
 This layer first attempts `/api/*` and falls back to bundled JSON for stones.
 
 ## Server Layer
@@ -72,4 +74,4 @@ The project is designed to work in three ways:
 - No server-side authentication exists.
 - Sync is polling-based and event-based, not push-based.
 - Business rules are duplicated in client and CRM code.
-
+- Shared product catalogs can exist as static data models before they are connected to UI.

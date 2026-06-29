@@ -19,6 +19,7 @@ const State = {
   beadSize: '6',            // '4', '6', '8', or 'mixed'
   mixedPlacingSize: 6,      // Default size to place in mixed mode
   ownerName: '',            // Personalized bracelet owner name
+  selectedCharmId: null,    // Reserved for charm selection state
   liffInitialized: false,   // Ready flag for LINE LIFF Login API
   landingDismissed: false,  // Keep landing visible until CTA is clicked
   selectedStones: [],       // Array of placed beads: { stoneId: string, size: number, uniqueId: number }
@@ -267,6 +268,7 @@ function loadPersistedState() {
       State.beadSize = parsed.beadSize || '6';
       State.mixedPlacingSize = parsed.mixedPlacingSize || 6;
       State.ownerName = parsed.ownerName || '';
+      State.selectedCharmId = parsed.selectedCharmId ?? null;
       State.selectedStones = parsed.selectedStones || [];
       
       // Normalize unique IDs to prevent clashes and empty values
@@ -296,6 +298,7 @@ function saveState() {
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
     ownerName: State.ownerName,
+    selectedCharmId: State.selectedCharmId,
     selectedStones: State.selectedStones,
     currentStep: State.currentStep
   };
