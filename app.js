@@ -1833,6 +1833,24 @@ function getComponentRenderImageUrl(component) {
   return '';
 }
 
+function getContainedImageSize(image, maxWidth, maxHeight) {
+  const sourceWidth = image?.naturalWidth || image?.width || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || 0;
+
+  if (!sourceWidth || !sourceHeight) {
+    return {
+      width: maxWidth,
+      height: maxHeight
+    };
+  }
+
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+  return {
+    width: sourceWidth * scale,
+    height: sourceHeight * scale
+  };
+}
+
 // Asynchronously pre-load render texture images
 async function preloadRenderImages(urls) {
   const cache = {};
@@ -1902,7 +1920,14 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     if (component.type === 'charm') {
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
-        ctx.drawImage(imgObj, -charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
+        const containedSize = getContainedImageSize(imgObj, charmSizePx, charmSizePx);
+        ctx.drawImage(
+          imgObj,
+          -containedSize.width / 2,
+          -containedSize.height / 2,
+          containedSize.width,
+          containedSize.height
+        );
       }
     } else if (imgObj) {
       ctx.save();

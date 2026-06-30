@@ -332,6 +332,7 @@ Delivered:
 
 - Step 4 hero/showcase uses `ResolvedLayout` circle projection with both `stone` and `charm` nodes
 - selected charm image is preloaded through the same render-image cache path as stones
+- Step 4 hero/showcase renders charm assets with contain-style sizing so source aspect ratio is preserved
 - `No Charm` continues to render a bead-only Step 4 showcase
 - Step 4 showcase cache invalidation now includes `selectedCharmId`
 
