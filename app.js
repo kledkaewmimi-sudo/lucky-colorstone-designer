@@ -946,6 +946,36 @@ function calculateCurrentOrderPricing() {
   };
 }
 
+function getResolvedNodeRotationRad(node) {
+  if (node?.component?.type === 'charm') {
+    // Charm assets are authored upright, so add an extra quarter-turn
+    // relative to bead-facing rotation to keep them lying horizontally.
+    return node.centerAngle + Math.PI;
+  }
+  return node.centerAngle + Math.PI / 2;
+}
+
+async function removeSelectedCharm(showToastNotification = true) {
+  if (!State.selectedCharmId) return;
+
+  State.selectedCharmId = null;
+  State.activeSlotIndex = null;
+  updateEstimationText();
+  saveState();
+
+  if (State.currentStep === 3) {
+    renderCharmOptions();
+    renderStep3();
+    syncStep3NextValidationUI();
+  } else if (State.currentStep === 4) {
+    await renderStep4();
+  }
+
+  if (showToastNotification) {
+    showToast("Charm removed.");
+  }
+}
+
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
@@ -1020,15 +1050,19 @@ function renderCharmOptions() {
 function setupDesignerEvents() {
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
-    if (State.selectedStones.length > 0) {
+    if (State.selectedStones.length > 0 || State.selectedCharmId) {
       const proceed = await showCustomConfirm(
         "Are you sure you want to clear your current bracelet design? (รีเซ็ตกำไล)",
         "Reset Bracelet"
       );
       if (proceed) {
         State.selectedStones = [];
+        State.selectedCharmId = null;
         State.activeSlotIndex = null;
+        State.newlyAddedIds = [];
+        updateEstimationText();
         showToast("Bracelet cleared!");
+        renderCharmOptions();
         renderStep3();
         saveState();
       }
@@ -1340,7 +1374,7 @@ function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
     renderCenterX: surfaceConfig.centerX + surfaceConfig.radiusPx * Math.cos(node.centerAngle),
     renderCenterY: surfaceConfig.centerY + surfaceConfig.radiusPx * Math.sin(node.centerAngle),
     renderRadiusPx: node.radiusPx * radiusScale,
-    renderRotationRad: node.centerAngle + Math.PI / 2
+    renderRotationRad: getResolvedNodeRotationRad(node)
   }));
 }
 
@@ -1420,9 +1454,12 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("width", charmDiameterPx);
         charmImage.setAttribute("height", charmDiameterPx);
         charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
-        const angleDeg = (node.centerAngle * 180 / Math.PI) + 90;
+        const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
         group.appendChild(charmImage);
+        group.addEventListener('click', async () => {
+          await removeSelectedCharm();
+        });
       } else {
         const stoneId = component.stoneId;
         const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];

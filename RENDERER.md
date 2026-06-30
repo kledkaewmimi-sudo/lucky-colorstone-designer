@@ -342,3 +342,19 @@ Current Phase 3.5 limits:
 - charm position is still the fixed top sequence position from Phase 3.4
 - pricing, CRM payload, and Step 4 text summary behavior remain unchanged
 - receipt/linear export rendering remains stone-only
+
+## Phase 3.5.1 Summary
+
+Phase 3.5.1 aligns inline charm orientation and interaction behavior across the live preview and hero/showcase surface.
+
+Delivered:
+
+- charm rotation now uses a component-specific orientation offset so inline charm assets lie horizontally on the bracelet loop
+- Step 3 charm tap/click removes the selected charm using the existing state-driven rerender flow
+- reset bracelet clears both stones and the selected charm state
+
+Current Phase 3.5.1 limits:
+
+- only one charm is supported
+- charm position remains the fixed top sequence position
+- pricing, CRM payload, and receipt/linear export behavior remain unchanged in this renderer phase
