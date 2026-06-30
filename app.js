@@ -1692,6 +1692,8 @@ async function renderStep4() {
   // Aggregate stones selected for receipt and meanings
   const aggregatedStones = {}; // key: stoneId_size, val: { stoneId, size, count, totalPrice }
   const uniqueStoneIds = new Set();
+  const selectedCharm = getSelectedCharmCatalogEntry();
+  const selectedCharmMeta = selectedCharm ? getCharmDisplayMeta(selectedCharm) : null;
   
   State.selectedStones.forEach(placedBead => {
     const key = `${placedBead.stoneId}_${placedBead.size}`;
@@ -1742,6 +1744,28 @@ async function renderStep4() {
     
     DOM.billingItemsList.appendChild(div);
   });
+
+  if (selectedCharm && selectedCharmMeta) {
+    const charmPrice = Number(selectedCharm.price || 0);
+    subtotal += charmPrice;
+
+    const div = document.createElement('div');
+    div.className = 'billing-item';
+    div.innerHTML = `
+      <div class="billing-item-info">
+        <div class="billing-item-thumbnail">
+          <img class="billing-thumbnail-img" src="${selectedCharm.image}" alt="${selectedCharmMeta.nameEn}">
+        </div>
+        <div class="billing-item-name">
+          <h5>${selectedCharmMeta.nameTh} (${selectedCharmMeta.nameEn})</h5>
+          <p>${selectedCharm.sizeCm.toFixed(1)} cm (${getCharmFootprintMm(selectedCharm)}mm) x 1 ชิ้น</p>
+        </div>
+      </div>
+      <div class="billing-item-price">฿${charmPrice.toLocaleString()}</div>
+    `;
+
+    DOM.billingItemsList.appendChild(div);
+  }
   
   // Hardcoded 20% LINE promotion discount logic
   const discountPercent = 20;
