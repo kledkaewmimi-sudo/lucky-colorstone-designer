@@ -305,3 +305,21 @@ Current Phase 3.3 limits:
 - charm placement is fixed at the 12 o'clock anchor
 - charm rendering does not affect bead count, remaining space, or pricing
 - hero/export surfaces remain bead-only in this phase
+
+## Phase 3.4 Summary
+
+Phase 3.4 moves charm rendering from anchored overlay to inline loop component rendering.
+
+Delivered:
+
+- selected charm is inserted into `BraceletComponentList` as a loop component
+- charm footprint is part of `ResolvedLayout` loop geometry
+- Step 3 placeholders and completion validation now use bracelet length after charm footprint
+- Step 3 SVG preview renders the charm inline on the bracelet circumference
+
+Current Phase 3.4 limits:
+
+- only one charm is supported
+- charm position is still a fixed sequence position at the top of the loop
+- pricing, CRM payload, and Step 4 summary behavior remain unchanged
+- hero/export surfaces remain stone-only in this phase

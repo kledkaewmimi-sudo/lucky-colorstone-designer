@@ -377,22 +377,29 @@ function renderStepper() {
   DOM.stepIndicatorLabel.innerText = stepLabels[State.currentStep - 1];
 }
 
-function getStep3ValidationState() {
-  const braceletLengthMm = (State.wristSize + TOLERANCE_CM) * 10;
+function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedLayout()) {
+  const braceletLengthMm = resolvedLayout.braceletConfig.braceletLengthMm;
   const totalDiameter = State.selectedStones.reduce((sum, bead) => sum + bead.size, 0);
-  const placingSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const remainingSpaceRaw = braceletLengthMm - totalDiameter;
-  const remainingSpace = Math.max(0, remainingSpaceRaw);
-  const numPlaceholders = Math.max(0, Math.floor(remainingSpaceRaw / placingSize));
-  const capacity = State.beadSize === 'mixed' ? null : Math.floor(braceletLengthMm / parseInt(State.beadSize));
-  const isFull = State.selectedStones.length > 0 && numPlaceholders === 0;
+  const charmComponent = resolvedLayout.braceletComponentList.find((component) => component.type === 'charm') || null;
+  const charmFootprintMm = charmComponent?.footprintMm || 0;
+  const usableBeadLengthMm = Math.max(0, braceletLengthMm - charmFootprintMm);
+  const spaceLeftRaw = resolvedLayout.summary.spaceLeft;
+  const remainingSpace = Math.max(0, spaceLeftRaw);
+  const numPlaceholders = resolvedLayout.summary.numPlaceholders;
+  const capacity = State.beadSize === 'mixed' ? null : Math.floor(usableBeadLengthMm / parseInt(State.beadSize));
+  const isOverflow = spaceLeftRaw < 0;
+  const isFull = State.selectedStones.length > 0 && numPlaceholders === 0 && !isOverflow;
 
   return {
     braceletLengthMm,
+    usableBeadLengthMm,
+    charmFootprintMm,
     totalDiameter,
+    spaceLeftRaw,
     remainingSpace,
     numPlaceholders,
     capacity,
+    isOverflow,
     isFull,
     warningText: isFull ? '' : 'กรุณาเลือกหินให้เต็มวงกำไลก่อนดำเนินการต่อ'
   };
@@ -659,7 +666,8 @@ function updateEstimationText() {
     return;
   }
 
-  const braceletLenMm = (State.wristSize + TOLERANCE_CM) * 10;
+  const braceletLenMm = getBraceletLengthMm();
+  const usableBeadLengthMm = getUsableBeadLengthMm();
   if (DOM.estimationWristSizeText) {
     DOM.estimationWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
   }
@@ -673,7 +681,7 @@ function updateEstimationText() {
     }
   } else {
     const size = parseInt(State.beadSize);
-    const capacity = Math.floor(braceletLenMm / size);
+    const capacity = Math.floor(usableBeadLengthMm / size);
     if (DOM.estimationCapacityText) {
       DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
     }
@@ -681,13 +689,21 @@ function updateEstimationText() {
 }
 
 function adjustBeadsToNewCapacity() {
-  const lenMm = (State.wristSize + TOLERANCE_CM) * 10;
-  const size = parseInt(State.beadSize);
-  if (isNaN(size)) return; // mixed size bypass
-  
-  const maxCap = Math.floor(lenMm / size);
-  if (State.selectedStones.length > maxCap) {
-    State.selectedStones = State.selectedStones.slice(0, maxCap);
+  const usableBeadLengthMm = getUsableBeadLengthMm();
+  let usedLengthMm = 0;
+  let keptCount = 0;
+
+  for (const bead of State.selectedStones) {
+    if ((usedLengthMm + bead.size) > usableBeadLengthMm + 1.0) {
+      break;
+    }
+    usedLengthMm += bead.size;
+    keptCount += 1;
+  }
+
+  if (keptCount < State.selectedStones.length) {
+    State.selectedStones = State.selectedStones.slice(0, keptCount);
+    State.activeSlotIndex = null;
     showToast(`Removed trailing beads to fit new size capacity.`);
   }
 }
@@ -711,11 +727,7 @@ function initCharmSelection() {
     if (!button || button.disabled) return;
 
     const nextCharmId = button.dataset.charmId || null;
-    if (State.selectedCharmId === nextCharmId) return;
-
-    State.selectedCharmId = nextCharmId;
-    saveState();
-    renderCharmOptions();
+    applySelectedCharm(nextCharmId);
   });
 }
 
@@ -855,6 +867,34 @@ function getSelectedCharmCatalogEntry() {
   return getVisibleCharmCatalog().find((charm) => charm.id === State.selectedCharmId) || null;
 }
 
+function getBraceletLengthMm() {
+  return (State.wristSize + TOLERANCE_CM) * 10;
+}
+
+function getCharmFootprintMm(charm) {
+  if (!charm || typeof charm.sizeCm !== 'number') return 0;
+  return charm.sizeCm * 10;
+}
+
+function getUsableBeadLengthMm() {
+  return Math.max(0, getBraceletLengthMm() - getCharmFootprintMm(getSelectedCharmCatalogEntry()));
+}
+
+function applySelectedCharm(charmId) {
+  if (State.selectedCharmId === charmId) return;
+
+  State.selectedCharmId = charmId;
+  adjustBeadsToNewCapacity();
+  saveState();
+  updateEstimationText();
+  renderCharmOptions();
+
+  if (State.currentStep === 3) {
+    renderStep3();
+    syncStep3NextValidationUI();
+  }
+}
+
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
@@ -879,9 +919,7 @@ function renderCharmOptions() {
   grid.className = 'stone-catalog-grid';
 
   const selectCharm = (charmId) => {
-    State.selectedCharmId = charmId;
-    saveState();
-    renderCharmOptions();
+    applySelectedCharm(charmId);
   };
 
   grid.appendChild(buildStoneCard({
@@ -1017,14 +1055,14 @@ function fillEntireBracelet(stoneId) {
   if (!stoneData) return;
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const braceletLengthMm = (State.wristSize + TOLERANCE_CM) * 10;
+  const usableBeadLengthMm = getUsableBeadLengthMm();
   
   // Fill the entire capacity with this stone
   State.selectedStones = [];
   State.newlyAddedIds = [];
   let currentTotalDiameter = 0;
   
-  while (currentTotalDiameter + placedSize <= braceletLengthMm + 1.0) {
+  while (currentTotalDiameter + placedSize <= usableBeadLengthMm + 1.0) {
     State.uniqueCounter++;
     State.selectedStones.push({
       stoneId: stoneId,
@@ -1047,13 +1085,13 @@ function addStoneToBracelet(stoneId) {
   if (!stoneData) return;
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const braceletLengthMm = (State.wristSize + TOLERANCE_CM) * 10;
+  const usableBeadLengthMm = getUsableBeadLengthMm();
   
   // Calculate total diameter of current beads
   const currentTotalDiameter = State.selectedStones.reduce((sum, s) => sum + s.size, 0);
   
   // Dynamic remainingMm Calculation to prevent over-filling
-  const remainingMm = braceletLengthMm - currentTotalDiameter;
+  const remainingMm = usableBeadLengthMm - currentTotalDiameter;
   
   // Check if there is enough space left for this bead
   if (remainingMm < placedSize) {
@@ -1102,7 +1140,7 @@ function createBraceletConfig() {
   return {
     wristSizeCm: State.wristSize,
     toleranceCm: TOLERANCE_CM,
-    braceletLengthMm: (State.wristSize + TOLERANCE_CM) * 10,
+    braceletLengthMm: getBraceletLengthMm(),
     beadSizeMode: State.beadSize,
     placingSizeMm: State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize),
     activeSlotIndex: State.activeSlotIndex,
@@ -1132,25 +1170,26 @@ function createBraceletComponentList() {
   }
 
   return [
-    ...stoneComponents,
     {
       id: `charm-${selectedCharm.id}`,
       type: 'charm',
-      layoutRole: 'anchored',
-      anchor: 'top-center',
+      layoutRole: 'loop',
+      placementMode: 'sequence',
+      track: 'main_loop',
       sourceId: selectedCharm.id,
       charmId: selectedCharm.id,
       image: selectedCharm.image,
       sizeCm: selectedCharm.sizeCm,
-      sizeMm: selectedCharm.sizeCm * 10,
+      footprintMm: getCharmFootprintMm(selectedCharm),
+      sizeMm: getCharmFootprintMm(selectedCharm),
       uniqueId: `charm-${selectedCharm.id}`
-    }
+    },
+    ...stoneComponents
   ];
 }
 
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
-  const loopComponents = braceletComponentList.filter((component) => component.layoutRole !== 'anchored');
-  const anchoredComponents = braceletComponentList.filter((component) => component.layoutRole === 'anchored');
+  const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
   const placedCount = loopComponents.length;
   const sumPlacedDiameter = loopComponents.reduce((sum, component) => sum + component.sizeMm, 0);
   const spaceLeft = braceletConfig.braceletLengthMm - sumPlacedDiameter;
@@ -1174,6 +1213,10 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const scaleMmToPx = (2 * Math.PI * braceletConfig.svg.radiusPx) / loopCircumferenceMm;
 
   let accumulatedAngle = -Math.PI / 2;
+  if (loopItems.length > 0 && loopItems[0].kind === 'component' && loopItems[0].component.type === 'charm') {
+    const firstItemAngleWidth = (loopItems[0].sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    accumulatedAngle -= firstItemAngleWidth / 2;
+  }
   const nodes = loopItems.map((item, index) => {
     const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
     const centerAngle = accumulatedAngle + itemAngleWidth / 2;
@@ -1195,35 +1238,14 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
 
     if (item.kind === 'component') {
       resolvedNode.component = item.component;
-      resolvedNode.sourceIndex = item.component.sourceIndex;
+      resolvedNode.sourceIndex = item.component.type === 'stone' ? item.component.sourceIndex : null;
       resolvedNode.uniqueClipId = `clip-${item.component.uniqueId}`;
       resolvedNode.isNewlyAdded = braceletConfig.newlyAddedIds.includes(item.component.uniqueId);
-      resolvedNode.isActiveSlot = index === braceletConfig.activeSlotIndex;
+      resolvedNode.isActiveSlot = item.component.type === 'stone' && item.component.sourceIndex === braceletConfig.activeSlotIndex;
     }
 
     accumulatedAngle += itemAngleWidth;
     return resolvedNode;
-  });
-
-  const accessoryNodes = anchoredComponents.map((component, index) => {
-    const centerAngle = -Math.PI / 2;
-    const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
-    const centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(centerAngle);
-    const renderDiameterPx = component.sizeMm * scaleMmToPx;
-
-    return {
-      index,
-      kind: 'accessory',
-      type: component.type,
-      anchor: component.anchor || 'top-center',
-      sizeMm: component.sizeMm,
-      centerAngle,
-      centerX,
-      centerY,
-      renderWidthPx: renderDiameterPx,
-      renderHeightPx: renderDiameterPx,
-      component
-    };
   });
 
   return {
@@ -1239,8 +1261,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       loopCircumferenceMm,
       scaleMmToPx
     },
-    nodes,
-    accessoryNodes
+    nodes
   };
 }
 
@@ -1250,12 +1271,16 @@ function createCurrentBraceletResolvedLayout() {
   return createResolvedBraceletLayout(braceletConfig, braceletComponentList);
 }
 
-function getPlacedResolvedLayoutNodes(resolvedLayout) {
-  return resolvedLayout.nodes.filter((node) => node.isPlaced);
+function getPlacedResolvedLayoutNodes(resolvedLayout, allowedComponentTypes = null) {
+  return resolvedLayout.nodes.filter((node) => {
+    if (!node.isPlaced) return false;
+    if (!allowedComponentTypes) return true;
+    return allowedComponentTypes.includes(node.component?.type);
+  });
 }
 
 function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
-  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout);
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, ['stone']);
   const baseRadiusPx = resolvedLayout.braceletConfig.svg.radiusPx;
   const radiusScale = baseRadiusPx > 0 ? surfaceConfig.radiusPx / baseRadiusPx : 1;
 
@@ -1269,8 +1294,8 @@ function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
 }
 
 function projectResolvedLayoutToLinearMap(resolvedLayout, surfaceConfig) {
-  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout);
-  const totalBeadSizeMm = resolvedLayout.summary.sumPlacedDiameter;
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, ['stone']);
+  const totalBeadSizeMm = placedNodes.reduce((sum, node) => sum + node.sizeMm, 0);
   const widthScale = totalBeadSizeMm > 0 ? (surfaceConfig.availableWidth / totalBeadSizeMm) : 5;
   const linearScale = Math.min(widthScale, surfaceConfig.maxRadiusPx * 2 / surfaceConfig.referenceSizeMm);
 
@@ -1307,7 +1332,6 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
   const {
     braceletConfig,
     nodes,
-    accessoryNodes = [],
     summary
   } = resolvedLayout;
   const { centerX: cx, centerY: cy, radiusPx: rCanvas } = braceletConfig.svg;
@@ -1336,86 +1360,92 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       const component = node.component;
       group.setAttribute("class", `bead-node placed ${node.isNewlyAdded ? 'newly-added' : ''}`);
 
-      const stoneId = component.stoneId;
-      const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
-      const uniqueClipId = node.uniqueClipId;
-      
-      // 1. Create clip path dynamically
-      const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-      clip.setAttribute("id", uniqueClipId);
-      const clipCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      clipCircle.setAttribute("cx", bx);
-      clipCircle.setAttribute("cy", by);
-      clipCircle.setAttribute("r", bRadiusPx);
-      clip.appendChild(clipCircle);
-      defs.appendChild(clip);
-      
-      // 2. Render flat color circle underneath (as fallback/base color)
-      const baseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      baseCircle.setAttribute("cx", bx);
-      baseCircle.setAttribute("cy", by);
-      baseCircle.setAttribute("r", bRadiusPx);
-      baseCircle.setAttribute("fill", stoneData.color || '#E2E8F0');
-      group.appendChild(baseCircle);
-      
-      // Wrapper group for absolute clipping
-      const imgGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
-      
-      // 3. Render stone image clipped with outward rotation
-      const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
-      img.setAttributeNS("http://www.w3.org/1999/xlink", "href", stoneData.image);
-      const scaleFactor = 1.3;
-      const imgSize = bRadiusPx * 2 * scaleFactor;
-      img.setAttribute("x", bx - imgSize / 2);
-      img.setAttribute("y", by - imgSize / 2);
-      img.setAttribute("width", imgSize);
-      img.setAttribute("height", imgSize);
-      img.setAttribute("class", "bead-image");
-      const angleDeg = (node.centerAngle * 180 / Math.PI) + 90;
-      img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
-      imgGroup.appendChild(img);
-      group.appendChild(imgGroup);
-      
-      // 4. Render 3D sheen overlay gradient
-      const sheenCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      sheenCircle.setAttribute("cx", bx);
-      sheenCircle.setAttribute("cy", by);
-      sheenCircle.setAttribute("r", bRadiusPx);
-      sheenCircle.setAttribute("fill", "url(#sphericalShading)");
-      sheenCircle.setAttribute("opacity", "0.75");
-      sheenCircle.setAttribute("pointer-events", "none");
-      group.appendChild(sheenCircle);
-      
-      // 5. Highlight ring / border glow
-      const border = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      border.setAttribute("cx", bx);
-      border.setAttribute("cy", by);
-      border.setAttribute("r", bRadiusPx - 0.5);
-      border.setAttribute("fill", "none");
-      border.setAttribute("stroke", stoneData.color);
-      border.setAttribute("stroke-width", "1");
-      border.setAttribute("opacity", "0.5");
-      group.appendChild(border);
-      
-      // If active highlighted slot, render the active glowing ring
-      if (node.isActiveSlot) {
-        const activeRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        activeRing.setAttribute("cx", bx);
-        activeRing.setAttribute("cy", by);
-        activeRing.setAttribute("r", bRadiusPx + 2.5);
-        activeRing.setAttribute("fill", "none");
-        activeRing.setAttribute("stroke", "var(--color-accent-velvet)");
-        activeRing.setAttribute("stroke-width", "2.5");
-        activeRing.setAttribute("stroke-dasharray", "3 2");
-        activeRing.setAttribute("class", "active-bead-glow");
-        activeRing.setAttribute("filter", "drop-shadow(0 0 4px var(--color-accent-velvet))");
-        group.appendChild(activeRing);
+      if (component.type === 'charm') {
+        const charmDiameterPx = component.sizeMm * summary.scaleMmToPx;
+        const charmImage = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", component.image);
+        charmImage.setAttribute("x", bx - charmDiameterPx / 2);
+        charmImage.setAttribute("y", by - charmDiameterPx / 2);
+        charmImage.setAttribute("width", charmDiameterPx);
+        charmImage.setAttribute("height", charmDiameterPx);
+        charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        const angleDeg = (node.centerAngle * 180 / Math.PI) + 90;
+        charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+        group.appendChild(charmImage);
+      } else {
+        const stoneId = component.stoneId;
+        const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
+        const uniqueClipId = node.uniqueClipId;
+        
+        const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+        clip.setAttribute("id", uniqueClipId);
+        const clipCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        clipCircle.setAttribute("cx", bx);
+        clipCircle.setAttribute("cy", by);
+        clipCircle.setAttribute("r", bRadiusPx);
+        clip.appendChild(clipCircle);
+        defs.appendChild(clip);
+        
+        const baseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        baseCircle.setAttribute("cx", bx);
+        baseCircle.setAttribute("cy", by);
+        baseCircle.setAttribute("r", bRadiusPx);
+        baseCircle.setAttribute("fill", stoneData.color || '#E2E8F0');
+        group.appendChild(baseCircle);
+        
+        const imgGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
+        
+        const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", stoneData.image);
+        const scaleFactor = 1.3;
+        const imgSize = bRadiusPx * 2 * scaleFactor;
+        img.setAttribute("x", bx - imgSize / 2);
+        img.setAttribute("y", by - imgSize / 2);
+        img.setAttribute("width", imgSize);
+        img.setAttribute("height", imgSize);
+        img.setAttribute("class", "bead-image");
+        const angleDeg = (node.centerAngle * 180 / Math.PI) + 90;
+        img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+        imgGroup.appendChild(img);
+        group.appendChild(imgGroup);
+        
+        const sheenCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        sheenCircle.setAttribute("cx", bx);
+        sheenCircle.setAttribute("cy", by);
+        sheenCircle.setAttribute("r", bRadiusPx);
+        sheenCircle.setAttribute("fill", "url(#sphericalShading)");
+        sheenCircle.setAttribute("opacity", "0.75");
+        sheenCircle.setAttribute("pointer-events", "none");
+        group.appendChild(sheenCircle);
+        
+        const border = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        border.setAttribute("cx", bx);
+        border.setAttribute("cy", by);
+        border.setAttribute("r", bRadiusPx - 0.5);
+        border.setAttribute("fill", "none");
+        border.setAttribute("stroke", stoneData.color);
+        border.setAttribute("stroke-width", "1");
+        border.setAttribute("opacity", "0.5");
+        group.appendChild(border);
+        
+        if (node.isActiveSlot) {
+          const activeRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          activeRing.setAttribute("cx", bx);
+          activeRing.setAttribute("cy", by);
+          activeRing.setAttribute("r", bRadiusPx + 2.5);
+          activeRing.setAttribute("fill", "none");
+          activeRing.setAttribute("stroke", "var(--color-accent-velvet)");
+          activeRing.setAttribute("stroke-width", "2.5");
+          activeRing.setAttribute("stroke-dasharray", "3 2");
+          activeRing.setAttribute("class", "active-bead-glow");
+          activeRing.setAttribute("filter", "drop-shadow(0 0 4px var(--color-accent-velvet))");
+          group.appendChild(activeRing);
+        }
+        
+        const currentIdx = node.sourceIndex;
+        group.addEventListener('click', () => removeStoneFromBracelet(currentIdx));
       }
-      
-      // Click bead to select/highlight it
-      const currentIdx = node.sourceIndex;
-      group.addEventListener('click', () => removeStoneFromBracelet(currentIdx));
       
     } else {
       group.setAttribute("class", "bead-node placeholder");
@@ -1473,23 +1503,6 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
     svg.appendChild(group);
   });
 
-  accessoryNodes.forEach((node) => {
-    if (node.type !== 'charm') return;
-
-    const charmGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    charmGroup.setAttribute("class", "bracelet-accessory charm-node");
-
-    const charmImage = document.createElementNS("http://www.w3.org/2000/svg", "image");
-    charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", node.component.image);
-    charmImage.setAttribute("x", node.centerX - node.renderWidthPx / 2);
-    charmImage.setAttribute("y", node.centerY - node.renderHeightPx / 2);
-    charmImage.setAttribute("width", node.renderWidthPx);
-    charmImage.setAttribute("height", node.renderHeightPx);
-    charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
-    charmGroup.appendChild(charmImage);
-
-    svg.appendChild(charmGroup);
-  });
 }
 
 // Setup SVG defs for sheen gradient
@@ -1559,7 +1572,7 @@ function createSvgDefs() {
 // Render step 3 workspace elements
 function renderStep3() {
   const resolvedLayout = createCurrentBraceletResolvedLayout();
-  const validationState = getStep3ValidationState();
+  const validationState = getStep3ValidationState(resolvedLayout);
   const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
     const sData = STONES.find(s => s.id === b.stoneId);
     return sum + getStonePriceForSize(sData, b.size);
@@ -1616,7 +1629,7 @@ function renderStep3() {
   
   // Center label inside circular design canvas
   DOM.canvasCenterValue.textContent = `${State.wristSize.toFixed(1)} cm`;
-  if (remainingSpace <= 1.0) {
+  if (validationState.isOverflow || remainingSpace <= 1.0) {
     DOM.canvasCenterSub.textContent = "Full Capacity";
     DOM.canvasCenterSub.className = "center-subvalue overflow";
   } else {
