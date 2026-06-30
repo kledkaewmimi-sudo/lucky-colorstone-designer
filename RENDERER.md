@@ -323,3 +323,21 @@ Current Phase 3.4 limits:
 - charm position is still a fixed sequence position at the top of the loop
 - pricing, CRM payload, and Step 4 summary behavior remain unchanged
 - hero/export surfaces remain stone-only in this phase
+
+## Phase 3.5 Summary
+
+Phase 3.5 extends the Step 4 hero/showcase surface to consume the same inline charm geometry as Step 3.
+
+Delivered:
+
+- Step 4 hero/showcase uses `ResolvedLayout` circle projection with both `stone` and `charm` nodes
+- selected charm image is preloaded through the same render-image cache path as stones
+- `No Charm` continues to render a bead-only Step 4 showcase
+- Step 4 showcase cache invalidation now includes `selectedCharmId`
+
+Current Phase 3.5 limits:
+
+- only one charm is supported
+- charm position is still the fixed top sequence position from Phase 3.4
+- pricing, CRM payload, and Step 4 text summary behavior remain unchanged
+- receipt/linear export rendering remains stone-only

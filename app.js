@@ -1280,7 +1280,7 @@ function getPlacedResolvedLayoutNodes(resolvedLayout, allowedComponentTypes = nu
 }
 
 function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
-  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, ['stone']);
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, surfaceConfig.componentTypes || ['stone']);
   const baseRadiusPx = resolvedLayout.braceletConfig.svg.radiusPx;
   const radiusScale = baseRadiusPx > 0 ? surfaceConfig.radiusPx / baseRadiusPx : 1;
 
@@ -1816,12 +1816,25 @@ function getBraceletShowcaseRenderKey() {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
+    selectedCharmId: State.selectedCharmId,
     selectedStones: State.selectedStones.map((bead) => `${bead.stoneId}:${bead.size}`)
   });
 }
 
-// Asynchronously pre-load bead texture images
-async function preloadBeadImages(urls) {
+function getComponentRenderImageUrl(component) {
+  if (!component) return '';
+  if (component.type === 'charm') {
+    return component.image || '';
+  }
+  if (component.type === 'stone') {
+    const stoneData = STONES.find((stone) => stone.id === component.stoneId) || STONES[0];
+    return stoneData?.image || '';
+  }
+  return '';
+}
+
+// Asynchronously pre-load render texture images
+async function preloadRenderImages(urls) {
   const cache = {};
   const promises = urls.map(url => {
     return new Promise((resolve) => {
@@ -1845,14 +1858,14 @@ async function preloadBeadImages(urls) {
 async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, previewKey = '') {
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const uniqueUrls = [];
-  State.selectedStones.forEach(b => {
-    const stoneData = STONES.find(s => s.id === b.stoneId);
-    if (stoneData && stoneData.image && !uniqueUrls.includes(stoneData.image)) {
-      uniqueUrls.push(stoneData.image);
+  getPlacedResolvedLayoutNodes(resolvedLayout, ['stone', 'charm']).forEach((node) => {
+    const imageUrl = getComponentRenderImageUrl(node.component);
+    if (imageUrl && !uniqueUrls.includes(imageUrl)) {
+      uniqueUrls.push(imageUrl);
     }
   });
 
-  const imageCache = await preloadBeadImages(uniqueUrls);
+  const imageCache = await preloadRenderImages(uniqueUrls);
 
   // 1. Hero Shot (1080x1080)
   const heroCanvas = document.createElement("canvas");
@@ -1870,23 +1883,28 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   const heroNodes = projectResolvedLayoutToCircle(resolvedLayout, {
     centerX: cx,
     centerY: cy,
-    radiusPx: rCanvas
+    radiusPx: rCanvas,
+    componentTypes: ['stone', 'charm']
   });
 
   heroNodes.forEach((node) => {
     const bx = node.renderCenterX;
     const by = node.renderCenterY;
+    const component = node.component;
     const bRadiusPx = node.renderRadiusPx;
-    const stoneData = STONES.find(s => s.id === node.component.stoneId) || STONES[0];
-    const imgUrl = stoneData ? stoneData.image : "";
+    const imgUrl = getComponentRenderImageUrl(component);
     const imgObj = imageCache[imgUrl];
 
     ctx.save();
     ctx.translate(bx, by);
     ctx.rotate(node.renderRotationRad); // Rotate to face outward
 
-    // Clip & Draw bead image
-    if (imgObj) {
+    if (component.type === 'charm') {
+      if (imgObj) {
+        const charmSizePx = bRadiusPx * 2;
+        ctx.drawImage(imgObj, -charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
+      }
+    } else if (imgObj) {
       ctx.save();
       ctx.beginPath();
       ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
