@@ -895,6 +895,57 @@ function applySelectedCharm(charmId) {
   }
 }
 
+function buildSelectedCharmOrderData() {
+  const selectedCharm = getSelectedCharmCatalogEntry();
+  if (!selectedCharm) {
+    return {
+      hasCharm: false,
+      charmId: null,
+      charmSku: null,
+      charmNameTh: null,
+      charmNameEn: null,
+      charmType: null,
+      charmSizeCm: null,
+      charmPrice: 0,
+      charmImage: null
+    };
+  }
+
+  const charmMeta = getCharmDisplayMeta(selectedCharm);
+  return {
+    hasCharm: true,
+    charmId: selectedCharm.id,
+    charmSku: selectedCharm.sku || null,
+    charmNameTh: charmMeta.nameTh,
+    charmNameEn: charmMeta.nameEn,
+    charmType: selectedCharm.type || null,
+    charmSizeCm: selectedCharm.sizeCm || null,
+    charmPrice: Number(selectedCharm.price || 0),
+    charmImage: selectedCharm.image || null
+  };
+}
+
+function calculateCurrentOrderPricing() {
+  const stonesSubtotal = State.selectedStones.reduce((sum, bead) => {
+    const stoneData = STONES.find((stone) => stone.id === bead.stoneId);
+    return sum + getStonePriceForSize(stoneData, bead.size);
+  }, 0);
+  const charmData = buildSelectedCharmOrderData();
+  const subtotal = stonesSubtotal + (charmData.hasCharm ? charmData.charmPrice : 0);
+  const discountPercent = 20;
+  const discount = Math.round(subtotal * 0.2);
+  const netPrice = subtotal - discount;
+
+  return {
+    stonesSubtotal,
+    subtotal,
+    discountPercent,
+    discount,
+    netPrice,
+    charmData
+  };
+}
+
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
@@ -2221,14 +2272,11 @@ async function submitOrderToCRM(showToastNotification = true) {
     return null;
   }
   
-  const discountPercent = 20;
-  
-  const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
-    const sData = STONES.find(s => s.id === b.stoneId);
-    return sum + getStonePriceForSize(sData, b.size);
-  }, 0);
-  const discount = Math.round(totalStonesPrice * 0.2);
-  const netPrice = totalStonesPrice - discount;
+  const pricing = calculateCurrentOrderPricing();
+  const discountPercent = pricing.discountPercent;
+  const discount = pricing.discount;
+  const netPrice = pricing.netPrice;
+  const charmData = pricing.charmData;
   
   // Design details encoded payload
   const designData = {
@@ -2256,11 +2304,12 @@ async function submitOrderToCRM(showToastNotification = true) {
         size: s.size
       };
     }),
-    subtotal: totalStonesPrice,
+    subtotal: pricing.subtotal,
     discountPercent: discountPercent,
     discountAmount: discount,
     netPrice: netPrice,
-    configurationCode: base64Code
+    configurationCode: base64Code,
+    ...charmData
   };
   
   const order = await addSharedOrder(orderPayload);
@@ -2298,7 +2347,9 @@ async function handleLineOrder() {
     beadSizeText = `${State.beadSize} mm`;
   }
   lines.push(`- Bead Selection: ${beadSizeText}`);
+  const charmData = buildSelectedCharmOrderData();
   lines.push(`- Total Beads: ${State.selectedStones.length} beads`);
+  lines.push(`- Charm: ${charmData.hasCharm ? `${charmData.charmNameEn} (${charmData.charmSizeCm.toFixed(1)} cm)` : 'No Charm'}`);
   lines.push(``);
   
   // Aggregate items
@@ -2312,15 +2363,16 @@ async function handleLineOrder() {
   Object.entries(counts).forEach(([item, count]) => {
     lines.push(`- ${item} x ${count} beads`);
   });
+  if (charmData.hasCharm) {
+    lines.push(`- ${charmData.charmNameEn} x 1 charm`);
+  }
   lines.push(``);
   
   // Pricing
-  const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
-    const sData = STONES.find(s => s.id === b.stoneId);
-    return sum + getStonePriceForSize(sData, b.size);
-  }, 0);
-  const discount = Math.round(totalStonesPrice * 0.2);
-  const netPrice = totalStonesPrice - discount;
+  const pricing = calculateCurrentOrderPricing();
+  const totalStonesPrice = pricing.subtotal;
+  const discount = pricing.discount;
+  const netPrice = pricing.netPrice;
   
   lines.push(`💳 *Pricing Summary:*`);
   lines.push(`Subtotal: ฿${totalStonesPrice.toLocaleString()}`);

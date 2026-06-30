@@ -132,6 +132,7 @@ const DOM = {
   invStatusBadge: document.getElementById('invStatusBadge'),
   invWrist: document.getElementById('invWrist'),
   invLength: document.getElementById('invLength'),
+  invCharm: document.getElementById('invCharm'),
   invBeadSvg: document.getElementById('invBeadSvg'),
   invItemsBody: document.getElementById('invItemsBody'),
   invSubtotal: document.getElementById('invSubtotal'),
@@ -665,7 +666,12 @@ function renderOrdersList(orders) {
     filtered = filtered.filter(o => {
       return o.id.toLowerCase().includes(query) || 
              o.customerName.toLowerCase().includes(query) ||
-             (o.beads || []).some(b => b.nameTh.toLowerCase().includes(query) || b.name.toLowerCase().includes(query));
+             (o.beads || []).some(b => b.nameTh.toLowerCase().includes(query) || b.name.toLowerCase().includes(query)) ||
+             (o.hasCharm && (
+               (o.charmNameTh || '').toLowerCase().includes(query) ||
+               (o.charmNameEn || '').toLowerCase().includes(query) ||
+               (o.charmSku || '').toLowerCase().includes(query)
+             ));
     });
   }
   
@@ -691,6 +697,7 @@ function renderOrdersList(orders) {
     const wristText = `${order.wristSize.toFixed(1)} cm`;
     const beadText = order.beadSize === 'mixed' ? 'Mixed' : `${order.beadSize}mm`;
     const beadCountText = `${order.totalBeads} beads`;
+    const charmText = order.hasCharm ? `${order.charmNameEn || order.charmNameTh || 'Charm'} (${Number(order.charmSizeCm || 0).toFixed(1)} cm)` : 'No Charm';
     
     // Render visual bead sequence inline
     const beadMapNodeHtmls = (order.beads || []).map((bead, bIndex) => {
@@ -744,6 +751,7 @@ function renderOrdersList(orders) {
       <td data-label="Specs">
         <div>Wrist: ${wristText}</div>
         <div style="font-size: 11px; color: var(--color-navy-muted);">Bead: ${beadText} &bull; ${beadCountText}</div>
+        <div style="font-size: 11px; color: var(--color-navy-muted);">Charm: ${charmText}</div>
       </td>
       <td data-label="Bead Map">${beadMapContainerHtml}</td>
       <td data-label="Pricing">${priceText}</td>
@@ -782,6 +790,21 @@ async function handleOrderStatusChange(orderId, newStatus) {
   }
 }
 
+function getOrderCharmDisplayText(order) {
+  if (!order?.hasCharm) return 'No Charm';
+  const charmName = order.charmNameTh && order.charmNameEn
+    ? `${order.charmNameTh} (${order.charmNameEn})`
+    : order.charmNameEn || order.charmNameTh || 'Charm';
+  const charmMeta = [];
+  if (order.charmSizeCm) {
+    charmMeta.push(`${Number(order.charmSizeCm).toFixed(1)} cm`);
+  }
+  if (order.charmSku) {
+    charmMeta.push(order.charmSku);
+  }
+  return charmMeta.length > 0 ? `${charmName} • ${charmMeta.join(' • ')}` : charmName;
+}
+
 // ==========================================
 // 10. Printable Invoice Exporting
 // ==========================================
@@ -815,6 +838,7 @@ async function openInvoiceModal(orderId) {
   
   DOM.invWrist.textContent = `${order.wristSize.toFixed(1)} cm`;
   DOM.invLength.textContent = `${(order.wristSize + 1.5).toFixed(1)} cm (Tolerance included)`;
+  DOM.invCharm.textContent = getOrderCharmDisplayText(order);
   
   DOM.invSubtotal.textContent = `฿${order.subtotal.toLocaleString()}`;
   DOM.invDiscountLabel.textContent = `LINE Special Discount (${order.discountPercent}%):`;
@@ -827,7 +851,7 @@ async function openInvoiceModal(orderId) {
   drawInvoiceSvgBeadMap(order.beads);
   
   // 2. Populate billing items table breakdown
-  drawInvoicePricingTable(order.beads);
+  drawInvoicePricingTable(order);
   
   DOM.invoiceExportModal.classList.add('show');
 }
@@ -900,9 +924,10 @@ function drawInvoiceSvgBeadMap(beads) {
   });
 }
 
-function drawInvoicePricingTable(beads) {
+function drawInvoicePricingTable(order) {
   // Aggregate details
   const aggregated = {};
+  const beads = order?.beads || [];
   
   beads.forEach(bead => {
     const key = `${bead.stoneId}_${bead.size}`;
@@ -943,6 +968,21 @@ function drawInvoicePricingTable(beads) {
     `;
     DOM.invItemsBody.appendChild(tr);
   });
+
+  if (order?.hasCharm) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <div style="font-weight:600; color:#1e293b;">${order.charmNameTh || 'Charm'}</div>
+        <div style="font-size:10px; color:#64748b;">${order.charmNameEn || order.charmSku || ''}</div>
+      </td>
+      <td>${order.charmSizeCm ? `${Number(order.charmSizeCm).toFixed(1)} cm` : '-'}</td>
+      <td>1 ชิ้น</td>
+      <td class="text-right">เธฟ${Number(order.charmPrice || 0).toLocaleString()}</td>
+      <td class="text-right" style="font-weight:600; color:#1e293b;">เธฟ${Number(order.charmPrice || 0).toLocaleString()}</td>
+    `;
+    DOM.invItemsBody.appendChild(tr);
+  }
 }
 
 // Invoice printing
@@ -963,6 +1003,7 @@ function copyLINEInvoiceSummary() {
   lines.push(`📏 Wrist Specs: ${order.wristSize.toFixed(1)} cm`);
   lines.push(`💎 Bead size: ${order.beadSize === 'mixed' ? 'Mixed Sizes' : order.beadSize + 'mm'}`);
   lines.push(`📿 Total Beads: ${order.totalBeads} beads`);
+  lines.push(`✨ Charm: ${getOrderCharmDisplayText(order)}`);
   lines.push(``);
   lines.push(`💳 Price Details:`);
   lines.push(`Subtotal: ฿${order.subtotal.toLocaleString()}`);
