@@ -130,6 +130,8 @@ const WRIST_SIZES = Array.from({ length: 13 }, (_, i) => 14.0 + i * 0.5); // 14.
 const TOLERANCE_CM = 1.5; // Adding 1.5 cm standard padding for bracelets
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
+const charmVisibleBoundsCache = new Map();
+const charmVisibleBoundsPromiseCache = new Map();
 
 // ==========================================
 // 4. Initialisation
@@ -1490,14 +1492,46 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 
       if (component.type === 'charm') {
         const charmDiameterPx = component.sizeMm * summary.scaleMmToPx;
+        const halfCharm = charmDiameterPx / 2;
+        const charmImageUrl = component.image || '';
+        const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
+        const clipId = `clip-${component.uniqueId}`;
+        const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+        clip.setAttribute("id", clipId);
+        const clipRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        clipRect.setAttribute("x", bx - halfCharm);
+        clipRect.setAttribute("y", by - halfCharm);
+        clipRect.setAttribute("width", charmDiameterPx);
+        clipRect.setAttribute("height", charmDiameterPx);
+        clip.appendChild(clipRect);
+        defs.appendChild(clip);
+
         const charmImage = document.createElementNS("http://www.w3.org/2000/svg", "image");
-        charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", component.image);
-        charmImage.setAttribute("x", bx - charmDiameterPx / 2);
-        charmImage.setAttribute("y", by - charmDiameterPx / 2);
-        charmImage.setAttribute("width", charmDiameterPx);
-        charmImage.setAttribute("height", charmDiameterPx);
-        charmImage.setAttribute("preserveAspectRatio", "xMidYMid slice");
+        charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", charmImageUrl);
+        charmImage.setAttribute("clip-path", `url(#${clipId})`);
+        charmImage.setAttribute("preserveAspectRatio", "none");
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
+        if (charmBounds) {
+          const placement = getImageCoverPlacement(
+            { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
+            charmDiameterPx,
+            charmDiameterPx,
+            charmBounds
+          );
+          charmImage.setAttribute("x", bx - halfCharm + placement.x);
+          charmImage.setAttribute("y", by - halfCharm + placement.y);
+          charmImage.setAttribute("width", placement.width);
+          charmImage.setAttribute("height", placement.height);
+        } else {
+          charmImage.setAttribute("x", bx - halfCharm);
+          charmImage.setAttribute("y", by - halfCharm);
+          charmImage.setAttribute("width", charmDiameterPx);
+          charmImage.setAttribute("height", charmDiameterPx);
+          charmImage.setAttribute("preserveAspectRatio", "xMidYMid slice");
+          if (charmImageUrl) {
+            scheduleCharmVisibleBoundsDetection(charmImageUrl);
+          }
+        }
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
         group.appendChild(charmImage);
         group.addEventListener('click', async () => {
@@ -1988,21 +2022,135 @@ function getComponentRenderImageUrl(component) {
   return '';
 }
 
-function getCoverImageSize(image, frameWidth, frameHeight) {
+function normalizeImageBounds(bounds, sourceWidth, sourceHeight) {
+  const safeWidth = Math.max(1, sourceWidth || 0);
+  const safeHeight = Math.max(1, sourceHeight || 0);
+  const minX = Math.min(Math.max(0, bounds?.minX ?? 0), safeWidth - 1);
+  const minY = Math.min(Math.max(0, bounds?.minY ?? 0), safeHeight - 1);
+  const maxX = Math.min(Math.max(minX, bounds?.maxX ?? (safeWidth - 1)), safeWidth - 1);
+  const maxY = Math.min(Math.max(minY, bounds?.maxY ?? (safeHeight - 1)), safeHeight - 1);
+  const width = Math.max(1, maxX - minX + 1);
+  const height = Math.max(1, maxY - minY + 1);
+  return { minX, minY, maxX, maxY, width, height, sourceWidth: safeWidth, sourceHeight: safeHeight };
+}
+
+function detectVisibleImageBounds(image) {
+  const sourceWidth = image?.naturalWidth || image?.width || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || 0;
+  if (!sourceWidth || !sourceHeight) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = sourceWidth;
+  canvas.height = sourceHeight;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+
+  try {
+    ctx.clearRect(0, 0, sourceWidth, sourceHeight);
+    ctx.drawImage(image, 0, 0, sourceWidth, sourceHeight);
+    const { data } = ctx.getImageData(0, 0, sourceWidth, sourceHeight);
+
+    let minX = sourceWidth;
+    let minY = sourceHeight;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < sourceHeight; y++) {
+      for (let x = 0; x < sourceWidth; x++) {
+        const alpha = data[(y * sourceWidth + x) * 4 + 3];
+        if (alpha > 8) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) {
+      return normalizeImageBounds(null, sourceWidth, sourceHeight);
+    }
+
+    return normalizeImageBounds({ minX, minY, maxX, maxY }, sourceWidth, sourceHeight);
+  } catch (error) {
+    console.warn('Failed to detect visible charm bounds.', error);
+    return null;
+  }
+}
+
+function getVisibleImageBounds(image, cacheKey = '') {
+  const sourceWidth = image?.naturalWidth || image?.width || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || 0;
+  const fallbackBounds = normalizeImageBounds(null, sourceWidth || 1, sourceHeight || 1);
+  if (!sourceWidth || !sourceHeight) {
+    return fallbackBounds;
+  }
+
+  if (cacheKey && charmVisibleBoundsCache.has(cacheKey)) {
+    return charmVisibleBoundsCache.get(cacheKey);
+  }
+
+  const detectedBounds = detectVisibleImageBounds(image) || fallbackBounds;
+  if (cacheKey) {
+    charmVisibleBoundsCache.set(cacheKey, detectedBounds);
+  }
+  return detectedBounds;
+}
+
+function scheduleCharmVisibleBoundsDetection(imageUrl) {
+  if (!imageUrl) return Promise.resolve(null);
+  if (charmVisibleBoundsCache.has(imageUrl)) {
+    return Promise.resolve(charmVisibleBoundsCache.get(imageUrl));
+  }
+  if (charmVisibleBoundsPromiseCache.has(imageUrl)) {
+    return charmVisibleBoundsPromiseCache.get(imageUrl);
+  }
+
+  const pending = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = async () => {
+      const bounds = getVisibleImageBounds(img, imageUrl);
+      resolve(bounds);
+      if (State.currentStep === 3 && State.selectedCharmId) {
+        renderStep3();
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = imageUrl;
+  }).finally(() => {
+    charmVisibleBoundsPromiseCache.delete(imageUrl);
+  });
+
+  charmVisibleBoundsPromiseCache.set(imageUrl, pending);
+  return pending;
+}
+
+function getImageCoverPlacement(image, frameWidth, frameHeight, bounds = null) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
 
   if (!sourceWidth || !sourceHeight) {
     return {
       width: frameWidth,
-      height: frameHeight
+      height: frameHeight,
+      x: -frameWidth / 2,
+      y: -frameHeight / 2
     };
   }
 
-  const scale = Math.max(frameWidth / sourceWidth, frameHeight / sourceHeight);
+  const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
+  const scale = Math.max(frameWidth / visibleBounds.width, frameHeight / visibleBounds.height);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  const visibleCenterX = (visibleBounds.minX + visibleBounds.width / 2) / sourceWidth;
+  const visibleCenterY = (visibleBounds.minY + visibleBounds.height / 2) / sourceHeight;
+
   return {
-    width: sourceWidth * scale,
-    height: sourceHeight * scale
+    width,
+    height,
+    x: frameWidth / 2 - (visibleCenterX * width),
+    y: frameHeight / 2 - (visibleCenterY * height)
   };
 }
 
@@ -2075,14 +2223,20 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     if (component.type === 'charm') {
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
-        const containedSize = getCoverImageSize(imgObj, charmSizePx, charmSizePx);
+        const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
+        const placement = getImageCoverPlacement(imgObj, charmSizePx, charmSizePx, charmBounds);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
+        ctx.clip();
         ctx.drawImage(
           imgObj,
-          -containedSize.width / 2,
-          -containedSize.height / 2,
-          containedSize.width,
-          containedSize.height
+          -charmSizePx / 2 + placement.x,
+          -charmSizePx / 2 + placement.y,
+          placement.width,
+          placement.height
         );
+        ctx.restore();
       }
     } else if (imgObj) {
       ctx.save();

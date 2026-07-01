@@ -363,3 +363,21 @@ Current Phase 3.5.1 limits:
 - only one charm is supported
 - charm position remains the fixed top sequence position
 - pricing, CRM payload, and receipt/linear export behavior remain unchanged in this renderer phase
+
+## Phase 3.5.2 Summary
+
+Phase 3.5.2 adds visual-only charm normalization for assets that contain transparent padding.
+
+Delivered:
+
+- charm footprint in `ResolvedLayout` remains the business size used by capacity math
+- renderer detects and caches visible alpha bounds for charm PNG assets when possible
+- Step 3 SVG preview scales and offsets charm images from visible bounds instead of raw full-image bounds
+- Step 4 hero/showcase applies the same visible-bounds normalization before drawing charm assets
+- fallback rendering still uses the uncropped asset box if bounds detection fails
+
+Current Phase 3.5.2 limits:
+
+- only one charm is supported
+- normalization is visual-only and does not modify source assets
+- pricing, CRM payload, and bracelet-capacity math remain unchanged
