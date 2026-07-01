@@ -381,3 +381,20 @@ Current Phase 3.5.2 limits:
 - only one charm is supported
 - normalization is visual-only and does not modify source assets
 - pricing, CRM payload, and bracelet-capacity math remain unchanged
+
+## Phase 3.5.3 Summary
+
+Phase 3.5.3 moves charm visual tuning to catalog data and switches normalization to safe contain-fit rendering.
+
+Delivered:
+
+- `CHARM_CATALOG` may now provide `visualScale`, `rotation`, and `anchor` for per-charm render tuning
+- charm rendering still uses detected visible alpha bounds when available, but final placement uses contain-fit sizing instead of cover-fit sizing
+- Step 3 SVG preview and Step 4 hero/showcase use the same visual-scale rule
+- charm business footprint remains separate from charm visual scale
+
+Current Phase 3.5.3 limits:
+
+- only one charm is supported
+- `anchor` is stored for future placement tuning and currently defaults to the existing top-sequence behavior
+- pricing, CRM payload, order payload, and bracelet-capacity math remain unchanged

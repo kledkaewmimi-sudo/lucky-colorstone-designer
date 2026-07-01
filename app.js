@@ -882,6 +882,28 @@ function getCharmFootprintMm(charm) {
   return charm.sizeCm * 10;
 }
 
+function getDefaultCharmVisualScale(charmType = '') {
+  if (charmType === 'pi_xiu') return 0.9;
+  if (charmType === 'takrud_ganesha' || charmType === 'takrud_lakshmi') return 0.85;
+  return 0.88;
+}
+
+function normalizeCharmVisualScale(value, charmType = '') {
+  const fallback = getDefaultCharmVisualScale(charmType);
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(1, Math.max(0.1, numericValue));
+}
+
+function normalizeCharmRotation(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function normalizeCharmAnchor(value) {
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : 'top';
+}
+
 function getUsableBeadLengthMm() {
   return Math.max(0, getBraceletLengthMm() - getCharmFootprintMm(getSelectedCharmCatalogEntry()));
 }
@@ -988,7 +1010,9 @@ function getResolvedNodeRotationRad(node) {
   if (node?.component?.type === 'charm') {
     // Charm assets are authored upright, so add an extra quarter-turn
     // relative to bead-facing rotation to keep them lying horizontally.
-    return node.centerAngle + Math.PI;
+    const baseRotation = node.centerAngle + Math.PI;
+    const rotationOffsetRad = (normalizeCharmRotation(node.component.rotation) * Math.PI) / 180;
+    return baseRotation + rotationOffsetRad;
   }
   return node.centerAngle + Math.PI / 2;
 }
@@ -1305,6 +1329,9 @@ function createBraceletComponentList() {
       sizeCm: selectedCharm.sizeCm,
       footprintMm: getCharmFootprintMm(selectedCharm),
       sizeMm: getCharmFootprintMm(selectedCharm),
+      visualScale: normalizeCharmVisualScale(selectedCharm.visualScale, selectedCharm.type),
+      rotation: normalizeCharmRotation(selectedCharm.rotation),
+      anchor: normalizeCharmAnchor(selectedCharm.anchor),
       uniqueId: `charm-${selectedCharm.id}`
     },
     ...stoneComponents
@@ -1495,6 +1522,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         const halfCharm = charmDiameterPx / 2;
         const charmImageUrl = component.image || '';
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
+        const charmVisualScale = normalizeCharmVisualScale(component.visualScale, component.type);
         const clipId = `clip-${component.uniqueId}`;
         const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
         clip.setAttribute("id", clipId);
@@ -1512,22 +1540,30 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("preserveAspectRatio", "none");
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
         if (charmBounds) {
-          const placement = getImageCoverPlacement(
+          const placement = getImageContainPlacement(
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
             charmDiameterPx,
             charmDiameterPx,
-            charmBounds
+            charmBounds,
+            charmVisualScale
           );
           charmImage.setAttribute("x", bx - halfCharm + placement.x);
           charmImage.setAttribute("y", by - halfCharm + placement.y);
           charmImage.setAttribute("width", placement.width);
           charmImage.setAttribute("height", placement.height);
         } else {
-          charmImage.setAttribute("x", bx - halfCharm);
-          charmImage.setAttribute("y", by - halfCharm);
-          charmImage.setAttribute("width", charmDiameterPx);
-          charmImage.setAttribute("height", charmDiameterPx);
-          charmImage.setAttribute("preserveAspectRatio", "xMidYMid slice");
+          const fallbackPlacement = getImageContainPlacement(
+            { naturalWidth: charmDiameterPx, naturalHeight: charmDiameterPx },
+            charmDiameterPx,
+            charmDiameterPx,
+            null,
+            charmVisualScale
+          );
+          charmImage.setAttribute("x", bx - halfCharm + fallbackPlacement.x);
+          charmImage.setAttribute("y", by - halfCharm + fallbackPlacement.y);
+          charmImage.setAttribute("width", fallbackPlacement.width);
+          charmImage.setAttribute("height", fallbackPlacement.height);
+          charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
           if (charmImageUrl) {
             scheduleCharmVisibleBoundsDetection(charmImageUrl);
           }
@@ -2126,21 +2162,24 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
   return pending;
 }
 
-function getImageCoverPlacement(image, frameWidth, frameHeight, bounds = null) {
+function getImageContainPlacement(image, frameWidth, frameHeight, bounds = null, visualScale = 1) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
+  const safeVisualScale = Math.min(1, Math.max(0.1, Number.isFinite(Number(visualScale)) ? Number(visualScale) : 1));
 
   if (!sourceWidth || !sourceHeight) {
+    const scaledWidth = frameWidth * safeVisualScale;
+    const scaledHeight = frameHeight * safeVisualScale;
     return {
-      width: frameWidth,
-      height: frameHeight,
-      x: -frameWidth / 2,
-      y: -frameHeight / 2
+      width: scaledWidth,
+      height: scaledHeight,
+      x: (frameWidth - scaledWidth) / 2,
+      y: (frameHeight - scaledHeight) / 2
     };
   }
 
   const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
-  const scale = Math.max(frameWidth / visibleBounds.width, frameHeight / visibleBounds.height);
+  const scale = Math.min(frameWidth / visibleBounds.width, frameHeight / visibleBounds.height) * safeVisualScale;
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
   const visibleCenterX = (visibleBounds.minX + visibleBounds.width / 2) / sourceWidth;
@@ -2224,7 +2263,8 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getImageCoverPlacement(imgObj, charmSizePx, charmSizePx, charmBounds);
+        const charmVisualScale = normalizeCharmVisualScale(component.visualScale, component.type);
+        const placement = getImageContainPlacement(imgObj, charmSizePx, charmSizePx, charmBounds, charmVisualScale);
         ctx.save();
         ctx.beginPath();
         ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
