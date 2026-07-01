@@ -132,6 +132,11 @@ Typical fields:
 `summary` contains:
 
 - `placedCount`
+- `braceletLengthMm`
+- `stoneLengthMm`
+- `charmFootprintMm`
+- `totalUsedLengthMm`
+- `usableBeadLengthMm`
 - `sumPlacedDiameter`
 - `spaceLeft`
 - `numPlaceholders`
@@ -314,7 +319,7 @@ Delivered:
 
 - selected charm is inserted into `BraceletComponentList` as a loop component
 - charm footprint is part of `ResolvedLayout` loop geometry
-- Step 3 placeholders and completion validation now use bracelet length after charm footprint
+- Step 2 capacity text, Step 3 placeholders, and Step 3 completion validation all use the same bracelet-length-minus-charm-footprint math
 - Step 3 SVG preview renders the charm inline on the bracelet circumference
 
 Current Phase 3.4 limits:

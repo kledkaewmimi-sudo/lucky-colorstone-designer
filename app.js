@@ -378,15 +378,18 @@ function renderStepper() {
 }
 
 function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedLayout()) {
-  const braceletLengthMm = resolvedLayout.braceletConfig.braceletLengthMm;
-  const totalDiameter = State.selectedStones.reduce((sum, bead) => sum + bead.size, 0);
-  const charmComponent = resolvedLayout.braceletComponentList.find((component) => component.type === 'charm') || null;
-  const charmFootprintMm = charmComponent?.footprintMm || 0;
-  const usableBeadLengthMm = Math.max(0, braceletLengthMm - charmFootprintMm);
+  const {
+    braceletLengthMm,
+    charmFootprintMm,
+    usableBeadLengthMm,
+    stoneLengthMm,
+    totalUsedLengthMm,
+    uniformCapacity
+  } = resolvedLayout.summary;
   const spaceLeftRaw = resolvedLayout.summary.spaceLeft;
   const remainingSpace = Math.max(0, spaceLeftRaw);
   const numPlaceholders = resolvedLayout.summary.numPlaceholders;
-  const capacity = State.beadSize === 'mixed' ? null : Math.floor(usableBeadLengthMm / parseInt(State.beadSize));
+  const capacity = State.beadSize === 'mixed' ? null : uniformCapacity;
   const isOverflow = spaceLeftRaw < 0;
   const isFull = State.selectedStones.length > 0 && numPlaceholders === 0 && !isOverflow;
 
@@ -394,7 +397,8 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
     braceletLengthMm,
     usableBeadLengthMm,
     charmFootprintMm,
-    totalDiameter,
+    totalDiameter: stoneLengthMm,
+    totalUsedLengthMm,
     spaceLeftRaw,
     remainingSpace,
     numPlaceholders,
@@ -666,8 +670,8 @@ function updateEstimationText() {
     return;
   }
 
-  const braceletLenMm = getBraceletLengthMm();
-  const usableBeadLengthMm = getUsableBeadLengthMm();
+  const capacityMetrics = getCurrentBraceletCapacityMetrics();
+  const braceletLenMm = capacityMetrics.braceletLengthMm;
   if (DOM.estimationWristSizeText) {
     DOM.estimationWristSizeText.textContent = `${State.wristSize.toFixed(1)} cm`;
   }
@@ -681,7 +685,7 @@ function updateEstimationText() {
     }
   } else {
     const size = parseInt(State.beadSize);
-    const capacity = Math.floor(usableBeadLengthMm / size);
+    const capacity = capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size);
     if (DOM.estimationCapacityText) {
       DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
     }
@@ -689,7 +693,7 @@ function updateEstimationText() {
 }
 
 function adjustBeadsToNewCapacity() {
-  const usableBeadLengthMm = getUsableBeadLengthMm();
+  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
   let usedLengthMm = 0;
   let keptCount = 0;
 
@@ -878,6 +882,38 @@ function getCharmFootprintMm(charm) {
 
 function getUsableBeadLengthMm() {
   return Math.max(0, getBraceletLengthMm() - getCharmFootprintMm(getSelectedCharmCatalogEntry()));
+}
+
+function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
+  const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
+  const charmFootprintMm = loopComponents
+    .filter((component) => component.type === 'charm')
+    .reduce((sum, component) => sum + (component.footprintMm || component.sizeMm || 0), 0);
+  const stoneLengthMm = loopComponents
+    .filter((component) => component.type === 'stone')
+    .reduce((sum, component) => sum + component.sizeMm, 0);
+  const totalUsedLengthMm = stoneLengthMm + charmFootprintMm;
+  const braceletLengthMm = braceletConfig.braceletLengthMm;
+  const usableBeadLengthMm = Math.max(0, braceletLengthMm - charmFootprintMm);
+  const remainingLengthMm = braceletLengthMm - totalUsedLengthMm;
+  const uniformCapacity = braceletConfig.beadSizeMode === 'mixed'
+    ? null
+    : Math.floor(usableBeadLengthMm / braceletConfig.placingSizeMm);
+
+  return {
+    braceletLengthMm,
+    charmFootprintMm,
+    stoneLengthMm,
+    totalUsedLengthMm,
+    usableBeadLengthMm,
+    remainingLengthMm,
+    uniformCapacity,
+    loopComponents
+  };
+}
+
+function getCurrentBraceletCapacityMetrics() {
+  return createBraceletCapacityMetrics(createBraceletConfig(), createBraceletComponentList());
 }
 
 function applySelectedCharm(charmId) {
@@ -1140,7 +1176,7 @@ function fillEntireBracelet(stoneId) {
   if (!stoneData) return;
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const usableBeadLengthMm = getUsableBeadLengthMm();
+  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
   
   // Fill the entire capacity with this stone
   State.selectedStones = [];
@@ -1170,7 +1206,7 @@ function addStoneToBracelet(stoneId) {
   if (!stoneData) return;
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const usableBeadLengthMm = getUsableBeadLengthMm();
+  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
   
   // Calculate total diameter of current beads
   const currentTotalDiameter = State.selectedStones.reduce((sum, s) => sum + s.size, 0);
@@ -1274,10 +1310,11 @@ function createBraceletComponentList() {
 }
 
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
-  const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
+  const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
+  const loopComponents = capacityMetrics.loopComponents;
   const placedCount = loopComponents.length;
-  const sumPlacedDiameter = loopComponents.reduce((sum, component) => sum + component.sizeMm, 0);
-  const spaceLeft = braceletConfig.braceletLengthMm - sumPlacedDiameter;
+  const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
+  const spaceLeft = capacityMetrics.remainingLengthMm;
   const numPlaceholders = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
 
   const loopItems = [
@@ -1338,6 +1375,12 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     braceletComponentList,
     summary: {
       placedCount,
+      braceletLengthMm: capacityMetrics.braceletLengthMm,
+      charmFootprintMm: capacityMetrics.charmFootprintMm,
+      stoneLengthMm: capacityMetrics.stoneLengthMm,
+      totalUsedLengthMm: capacityMetrics.totalUsedLengthMm,
+      usableBeadLengthMm: capacityMetrics.usableBeadLengthMm,
+      uniformCapacity: capacityMetrics.uniformCapacity,
       sumPlacedDiameter,
       spaceLeft,
       numPlaceholders,
@@ -1453,7 +1496,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("y", by - charmDiameterPx / 2);
         charmImage.setAttribute("width", charmDiameterPx);
         charmImage.setAttribute("height", charmDiameterPx);
-        charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        charmImage.setAttribute("preserveAspectRatio", "xMidYMid slice");
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
         group.appendChild(charmImage);
@@ -1945,18 +1988,18 @@ function getComponentRenderImageUrl(component) {
   return '';
 }
 
-function getContainedImageSize(image, maxWidth, maxHeight) {
+function getCoverImageSize(image, frameWidth, frameHeight) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
 
   if (!sourceWidth || !sourceHeight) {
     return {
-      width: maxWidth,
-      height: maxHeight
+      width: frameWidth,
+      height: frameHeight
     };
   }
 
-  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+  const scale = Math.max(frameWidth / sourceWidth, frameHeight / sourceHeight);
   return {
     width: sourceWidth * scale,
     height: sourceHeight * scale
@@ -2032,7 +2075,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     if (component.type === 'charm') {
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
-        const containedSize = getContainedImageSize(imgObj, charmSizePx, charmSizePx);
+        const containedSize = getCoverImageSize(imgObj, charmSizePx, charmSizePx);
         ctx.drawImage(
           imgObj,
           -containedSize.width / 2,
