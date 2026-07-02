@@ -16,8 +16,8 @@ const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const State = {
   currentStep: 1,
   wristSize: 16.0,          // Default wrist size in cm
-  beadSize: '6',            // '4', '6', '8', or 'mixed'
-  mixedPlacingSize: 6,      // Default size to place in mixed mode
+  beadSize: '6',            // '4', '6', or '10'
+  mixedPlacingSize: 6,      // Legacy persisted field, normalized to a supported size
   ownerName: '',            // Personalized bracelet owner name
   selectedCharmId: null,    // Reserved for charm selection state
   liffInitialized: false,   // Ready flag for LINE LIFF Login API
@@ -128,10 +128,29 @@ const DOM = {
 // ==========================================
 const WRIST_SIZES = Array.from({ length: 13 }, (_, i) => 14.0 + i * 0.5); // 14.0, 14.5, ..., 20.0
 const TOLERANCE_CM = 1.5; // Adding 1.5 cm standard padding for bracelets
+const ALLOWED_BEAD_SIZES = Object.freeze(['4', '6', '10']);
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
+
+function normalizeBeadSizeOption(value) {
+  const beadSize = String(value || '').trim();
+  if (ALLOWED_BEAD_SIZES.includes(beadSize)) return beadSize;
+  if (beadSize === '8') return '10';
+  return '6';
+}
+
+function getCurrentBeadSizeMm() {
+  return parseInt(normalizeBeadSizeOption(State.beadSize), 10);
+}
+
+function normalizeSelectedStoneSizes() {
+  const normalizedBeadSize = getCurrentBeadSizeMm();
+  State.selectedStones.forEach((bead) => {
+    bead.size = normalizedBeadSize;
+  });
+}
 
 // ==========================================
 // 4. Initialisation
@@ -270,8 +289,8 @@ function loadPersistedState() {
     try {
       const parsed = JSON.parse(savedState);
       State.wristSize = parsed.wristSize || 16.0;
-      State.beadSize = parsed.beadSize || '6';
-      State.mixedPlacingSize = parsed.mixedPlacingSize || 6;
+      State.beadSize = normalizeBeadSizeOption(parsed.beadSize || '6');
+      State.mixedPlacingSize = getCurrentBeadSizeMm();
       State.ownerName = parsed.ownerName || '';
       State.selectedCharmId = parsed.selectedCharmId ?? null;
       State.selectedStones = parsed.selectedStones || [];
@@ -285,6 +304,7 @@ function loadPersistedState() {
         seenIds.add(b.uniqueId);
       });
       State.uniqueCounter = State.selectedStones.length;
+      normalizeSelectedStoneSizes();
       
       State.currentStep = parsed.currentStep || 1;
       DOM.braceletOwnerName.value = State.ownerName;
@@ -628,13 +648,12 @@ function syncWristSizeDisplay() {
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
     card.addEventListener('click', () => {
-      const prevBeadSize = State.beadSize;
-      const targetBeadSize = card.getAttribute('data-bead-size');
+      const targetBeadSize = normalizeBeadSizeOption(card.getAttribute('data-bead-size'));
       
-      if (prevBeadSize === targetBeadSize) return;
+      if (State.beadSize === targetBeadSize) return;
 
-      // Update state immediately without confirm dialog
       State.beadSize = targetBeadSize;
+      State.mixedPlacingSize = getCurrentBeadSizeMm();
       
       DOM.beadSizeCards.forEach(c => {
         if (c.getAttribute('data-bead-size') === State.beadSize) {
@@ -647,19 +666,11 @@ function initBeadSizeOptions() {
       updateEstimationText();
       
       if (State.selectedStones.length > 0) {
-        if (State.beadSize === 'mixed') {
-          // Keep existing beads but allow mixed sizing
-          State.selectedStones.forEach(b => {
-            b.size = parseInt(prevBeadSize) || 6;
-          });
-        } else {
-          // Set all existing beads to the new size
-          const newSize = parseInt(State.beadSize);
-          State.selectedStones.forEach(b => {
-            b.size = newSize;
-          });
-          adjustBeadsToNewCapacity();
-        }
+        const newSize = getCurrentBeadSizeMm();
+        State.selectedStones.forEach(b => {
+          b.size = newSize;
+        });
+        adjustBeadsToNewCapacity();
       }
       
       saveState();
@@ -681,16 +692,10 @@ function updateEstimationText() {
     DOM.estimationLengthText.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm (${braceletLenMm}mm)`;
   }
   
-  if (State.beadSize === 'mixed') {
-    if (DOM.estimationCapacityText) {
-      DOM.estimationCapacityText.textContent = `Varies dynamically as you design using 4mm, 6mm, & 8mm stones.`;
-    }
-  } else {
-    const size = parseInt(State.beadSize);
-    const capacity = capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size);
-    if (DOM.estimationCapacityText) {
-      DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
-    }
+  const size = getCurrentBeadSizeMm();
+  const capacity = capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size);
+  if (DOM.estimationCapacityText) {
+    DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
   }
 }
 
@@ -1846,35 +1851,28 @@ function renderStep3() {
   const totalDiameter = validationState.totalDiameter;
   const remainingSpace = validationState.remainingSpace;
   
-  // Toggle mixed sizes bar if mixed selection
-  if (State.beadSize === 'mixed') {
-    DOM.mixedSizeSelectorBar.style.display = 'flex';
-    DOM.mixedToggleBtns.forEach(btn => {
-      if (parseInt(btn.getAttribute('data-size')) === State.mixedPlacingSize) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
-  } else {
+  if (DOM.mixedSizeSelectorBar) {
     DOM.mixedSizeSelectorBar.style.display = 'none';
   }
   
   // Render statistics text
   DOM.canvasPriceText.textContent = `฿${totalStonesPrice.toLocaleString()}`;
+  if (false) {
   
-  let capText = '';
-  if (State.beadSize === 'mixed') {
+  const capText = `${State.selectedStones.length} / ${validationState.capacity} เน€เธกเนเธ”`;
+  if (false) {
     capText = `${State.selectedStones.length} เม็ด`;
   } else {
     const size = parseInt(State.beadSize);
     const capacity = Math.floor(braceletLengthMm / size);
     capText = `${State.selectedStones.length} / ${capacity} เม็ด`;
   }
-  if (State.beadSize !== 'mixed') {
+  if (false) {
     capText = `${State.selectedStones.length} / ${validationState.capacity} เม็ด`;
   }
   DOM.canvasBeadCountText.textContent = capText;
+  }
+  DOM.canvasBeadCountText.textContent = `${State.selectedStones.length} / ${validationState.capacity} beads`;
   
   const remainingSpaceText = `เหลือ ${remainingSpace.toFixed(1)} mm`;
   DOM.canvasSpaceText.textContent = remainingSpaceText;
@@ -1944,13 +1942,7 @@ async function renderStep4() {
   DOM.specWristSize.textContent = `${State.wristSize.toFixed(1)} cm`;
   DOM.specLength.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`;
   
-  let beadSizeLabel = '';
-  if (State.beadSize === 'mixed') {
-    beadSizeLabel = 'Mixed';
-  } else {
-    beadSizeLabel = `${State.beadSize}mm`;
-  }
-  DOM.specBeadSize.textContent = beadSizeLabel;
+  DOM.specBeadSize.textContent = `${getCurrentBeadSizeMm()}mm`;
   DOM.specBeadsCount.textContent = `${State.selectedStones.length} เม็ด`;
   
   // Aggregate stones selected for receipt and meanings
@@ -2539,7 +2531,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   rCtx.font = "bold 18px Arial, sans-serif";
   rCtx.fillText(`${State.wristSize.toFixed(1)} cm`, 150, 315);
   rCtx.fillText(`${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`, 310, 315);
-  rCtx.fillText(State.beadSize === 'mixed' ? "Mixed" : `${State.beadSize}mm`, 470, 315);
+  rCtx.fillText(`${getCurrentBeadSizeMm()}mm`, 470, 315);
   rCtx.fillText(`${State.selectedStones.length} beads`, 630, 315);
 
   drawDashedDivider(370);
@@ -2772,12 +2764,7 @@ async function handleLineOrder() {
   lines.push(`- Wrist Size: ${State.wristSize.toFixed(1)} cm`);
   lines.push(`- Bracelet Length: ${lenCm.toFixed(1)} cm`);
   
-  let beadSizeText = '';
-  if (State.beadSize === 'mixed') {
-    beadSizeText = `Mixed Sizes (ผสมขนาด)`;
-  } else {
-    beadSizeText = `${State.beadSize} mm`;
-  }
+  const beadSizeText = `${getCurrentBeadSizeMm()} mm`;
   lines.push(`- Bead Selection: ${beadSizeText}`);
   const charmData = buildSelectedCharmOrderData();
   lines.push(`- Total Beads: ${State.selectedStones.length} beads`);
@@ -2907,6 +2894,7 @@ function openStoneInfoModal(stone) {
   currentModalStone = stone;
   currentModalAddHandler = () => addStoneToBracelet(stone.id);
   currentModalFillHandler = () => fillEntireBracelet(stone.id);
+  const activeSize = getCurrentBeadSizeMm();
   configureInfoModal({
     heading: stone.name,
     image: stone.image,
@@ -2919,6 +2907,7 @@ function openStoneInfoModal(stone) {
     addButtonLabel: 'Replace Selected (+ ใส่แทนที่)',
     fillButtonLabel: 'Fill Entire Bracelet (ใส่ทั้งวง)'
   });
+  DOM.modalStonePrice.textContent = `Selected size price: ฿${getStonePriceForSize(stone, activeSize).toLocaleString()} (${activeSize}mm)`;
   DOM.stoneInfoModal.classList.add('show');
 }
 

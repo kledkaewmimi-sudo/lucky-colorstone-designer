@@ -699,84 +699,194 @@ body {
 .bead-size-options {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .bead-size-card {
-  background-color: var(--color-white);
-  border: 2px solid var(--color-gray-border);
-  border-radius: 16px;
-  padding: 16px 20px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(246, 242, 255, 0.92)),
+    var(--color-white);
+  border: 1px solid rgba(181, 169, 219, 0.28);
+  border-radius: 22px;
+  padding: 18px 16px;
   cursor: pointer;
   transition: var(--transition-smooth);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 12px 28px rgba(181, 169, 219, 0.14);
 }
 
 .bead-size-card:hover {
-  border-color: var(--color-gold-light);
+  border-color: rgba(181, 169, 219, 0.5);
+  transform: translateY(-1px);
 }
 
 .bead-size-card.active {
-  border-color: var(--color-gold);
-  box-shadow: var(--shadow-gold);
-  background: linear-gradient(to right, var(--color-white), rgba(212, 175, 55, 0.03));
+  border-color: rgba(139, 0, 0, 0.18);
+  box-shadow: 0 18px 36px rgba(181, 169, 219, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(255, 234, 234, 0.95), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(246, 242, 255, 0.98));
 }
 
-.bead-size-info {
+.bead-size-content {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bead-size-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bead-size-choice {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .bead-size-preview {
   display: flex;
   align-items: center;
-  justify-content: center;
-  position: relative;
+  gap: 4px;
+  min-height: 36px;
 }
 
 .bead-preview-circle {
   background: radial-gradient(circle at 35% 35%, var(--color-gold-light) 0%, var(--color-gold) 60%, var(--color-gold-dark) 100%);
   border-radius: 50%;
-  box-shadow: inset -2px -2px 6px rgba(0, 0, 0, 0.3), 2px 4px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: inset -2px -2px 6px rgba(0, 0, 0, 0.24), 1px 4px 10px rgba(64, 48, 77, 0.16);
+  flex: 0 0 auto;
+}
+
+.bead-preview-circle-sm {
+  width: 15px;
+  height: 15px;
+}
+
+.bead-preview-circle-md {
+  width: 21px;
+  height: 21px;
+}
+
+.bead-preview-circle-lg {
+  width: 28px;
+  height: 28px;
+}
+
+.bead-size-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(181, 169, 219, 0.26);
+  color: var(--color-navy);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
 }
 
 .bead-size-details h4 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--color-navy-dark);
+  line-height: 1.2;
 }
 
 .bead-size-details p {
-  font-size: 12px;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--color-navy-muted);
 }
 
 .radio-check {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  border: 2px solid var(--color-gray-border);
+  border: 1.5px solid rgba(181, 169, 219, 0.55);
+  background: rgba(255, 255, 255, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: var(--transition-fast);
+  flex: 0 0 auto;
 }
 
 .bead-size-card.active .radio-check {
-  border-color: var(--color-gold);
+  border-color: var(--color-velvet-red);
+  box-shadow: 0 0 0 4px rgba(139, 0, 0, 0.08);
 }
 
 .bead-size-card.active .radio-check::after {
   content: '';
   width: 10px;
   height: 10px;
-  background-color: var(--color-gold);
+  background: linear-gradient(135deg, var(--color-velvet-red), #b23052);
   border-radius: 50%;
   display: block;
+}
+
+.bead-size-hand-wrap {
+  position: relative;
+  flex: 0 0 108px;
+  min-width: 108px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.bead-size-hand-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 10px 4px 4px;
+  border-radius: 20px;
+  background: radial-gradient(circle at center, rgba(230, 230, 250, 0.8), rgba(246, 242, 255, 0.1) 70%);
+}
+
+.bead-size-hand-image {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 110px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 14px rgba(64, 48, 77, 0.14));
+}
+
+.bead-size-card.active .bead-size-label {
+  background: rgba(255, 234, 234, 0.84);
+  border-color: rgba(139, 0, 0, 0.16);
+  color: var(--color-velvet-red);
+}
+
+@media (max-width: 360px) {
+  .bead-size-content {
+    gap: 12px;
+  }
+
+  .bead-size-hand-wrap {
+    flex-basis: 92px;
+    min-width: 92px;
+  }
+
+  .bead-size-details h4 {
+    font-size: 16px;
+  }
+
+  .bead-size-details p {
+    font-size: 12px;
+  }
 }
 
 /* Step 2: Bracelet Components */
