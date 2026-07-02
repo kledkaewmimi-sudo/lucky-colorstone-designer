@@ -137,14 +137,14 @@
         <div class="bead-size-options" id="beadSizeOptionsList">
           <div class="bead-size-card" data-bead-size="4">
             <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
               <div class="bead-size-copy">
-                <div class="bead-size-choice">
-                  <div class="radio-check" aria-hidden="true"></div>
-                  <div class="bead-size-preview bead-size-preview-4" aria-hidden="true">
-                    <div class="bead-preview-circle bead-preview-circle-sm"></div>
-                    <div class="bead-preview-circle bead-preview-circle-sm"></div>
-                    <div class="bead-preview-circle bead-preview-circle-sm"></div>
-                  </div>
+                <div class="bead-size-preview bead-size-preview-4" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-sm"></div>
+                  <div class="bead-preview-circle bead-preview-circle-sm"></div>
+                  <div class="bead-preview-circle bead-preview-circle-sm"></div>
                 </div>
                 <div class="bead-size-details">
                   <span class="bead-size-label">4 mm</span>
@@ -152,7 +152,7 @@
                   <p>Fine, graceful sparkle for an airy everyday stack.</p>
                 </div>
               </div>
-              <div class="bead-size-hand-wrap">
+              <div class="bead-size-hand-panel">
                 <img class="bead-size-hand-image" src="/assets/hand/hand_04.png" alt="4 mm bracelet on hand">
               </div>
             </div>
@@ -160,14 +160,14 @@
 
           <div class="bead-size-card" data-bead-size="6">
             <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
               <div class="bead-size-copy">
-                <div class="bead-size-choice">
-                  <div class="radio-check" aria-hidden="true"></div>
-                  <div class="bead-size-preview bead-size-preview-6" aria-hidden="true">
-                    <div class="bead-preview-circle bead-preview-circle-md"></div>
-                    <div class="bead-preview-circle bead-preview-circle-md"></div>
-                    <div class="bead-preview-circle bead-preview-circle-md"></div>
-                  </div>
+                <div class="bead-size-preview bead-size-preview-6" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-md"></div>
+                  <div class="bead-preview-circle bead-preview-circle-md"></div>
+                  <div class="bead-preview-circle bead-preview-circle-md"></div>
                 </div>
                 <div class="bead-size-details">
                   <span class="bead-size-label">6 mm</span>
@@ -175,7 +175,7 @@
                   <p>Our classic proportion with polished presence and soft elegance.</p>
                 </div>
               </div>
-              <div class="bead-size-hand-wrap">
+              <div class="bead-size-hand-panel">
                 <img class="bead-size-hand-image" src="/assets/hand/hand_06.png" alt="6 mm bracelet on hand">
               </div>
             </div>
@@ -184,14 +184,14 @@
           <!-- Card: 10 mm -->
           <div class="bead-size-card" data-bead-size="10">
             <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
               <div class="bead-size-copy">
-                <div class="bead-size-choice">
-                  <div class="radio-check" aria-hidden="true"></div>
-                  <div class="bead-size-preview bead-size-preview-10" aria-hidden="true">
-                    <div class="bead-preview-circle bead-preview-circle-lg"></div>
-                    <div class="bead-preview-circle bead-preview-circle-lg"></div>
-                    <div class="bead-preview-circle bead-preview-circle-lg"></div>
-                  </div>
+                <div class="bead-size-preview bead-size-preview-10" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-lg"></div>
+                  <div class="bead-preview-circle bead-preview-circle-lg"></div>
+                  <div class="bead-preview-circle bead-preview-circle-lg"></div>
                 </div>
                 <div class="bead-size-details">
                   <span class="bead-size-label">10 mm</span>
@@ -199,21 +199,35 @@
                   <p>Bold gemstone volume with a rich, collector-style finish.</p>
                 </div>
               </div>
-              <div class="bead-size-hand-wrap">
+              <div class="bead-size-hand-panel">
                 <img class="bead-size-hand-image" src="/assets/hand/hand_10.png" alt="10 mm bracelet on hand">
               </div>
             </div>
           </div>
 
-          
         </div>
-          <!-- legacy mixed-size option removed
+        <div class="bead-size-guide-card">
+          <div class="bead-size-guide-header">
+            <span class="bead-size-guide-kicker">Sizing Guide</span>
+            <h3>Choose the scale that suits your wrist.</h3>
+          </div>
+          <div class="bead-size-guide-grid">
+            <div class="bead-size-guide-item">
+              <span class="bead-size-guide-label">Wrist Size</span>
+              <span class="bead-size-guide-value" id="estimationWristSizeText">16.0 cm</span>
+            </div>
+            <div class="bead-size-guide-item">
+              <span class="bead-size-guide-label">Bracelet Length</span>
+              <span class="bead-size-guide-value" id="estimationLengthText">17.5 cm (175mm)</span>
+            </div>
+          </div>
+          <p class="bead-size-guide-note" id="estimationCapacityText">Fits approximately 29 beads (6mm).</p>
+        </div>
+        <!-- legacy mixed-size fragment removed
               <div class="bead-size-details">
                 <h4>Mixed Sizes (ผสมขนาด)</h4>
               </div>
-            </div>
-            <div class="radio-check"></div>
-          </div> -->
+            </div> -->
 
       </section>
 
