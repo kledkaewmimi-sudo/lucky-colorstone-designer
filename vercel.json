@@ -3,6 +3,26 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "customize.luckycolorstone.com"
+        }
+      ],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "crm.luckycolorstone.com"
+        }
+      ],
+      "destination": "/crm.html"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://lucky-colorstone-designer.onrender.com/api/$1"
     }
