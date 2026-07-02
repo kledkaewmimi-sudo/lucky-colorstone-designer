@@ -895,6 +895,18 @@ function normalizeCharmVisualScale(value, charmType = '') {
   return Math.min(1, Math.max(0.1, numericValue));
 }
 
+function normalizeCharmVisualOffset(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return 0;
+  return Math.max(-0.5, Math.min(0.5, numericValue));
+}
+
+function normalizeCharmMaxRatio(value, fallback = 1) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(1, Math.max(0.4, numericValue));
+}
+
 function normalizeCharmRotation(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
@@ -1330,6 +1342,10 @@ function createBraceletComponentList() {
       footprintMm: getCharmFootprintMm(selectedCharm),
       sizeMm: getCharmFootprintMm(selectedCharm),
       visualScale: normalizeCharmVisualScale(selectedCharm.visualScale, selectedCharm.type),
+      visualOffsetX: normalizeCharmVisualOffset(selectedCharm.visualOffsetX),
+      visualOffsetY: normalizeCharmVisualOffset(selectedCharm.visualOffsetY),
+      maxWidthRatio: normalizeCharmMaxRatio(selectedCharm.maxWidthRatio, 1),
+      maxHeightRatio: normalizeCharmMaxRatio(selectedCharm.maxHeightRatio, 1),
       rotation: normalizeCharmRotation(selectedCharm.rotation),
       anchor: normalizeCharmAnchor(selectedCharm.anchor),
       uniqueId: `charm-${selectedCharm.id}`
@@ -1545,7 +1561,13 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             charmDiameterPx,
             charmDiameterPx,
             charmBounds,
-            charmVisualScale
+            {
+              visualScale: charmVisualScale,
+              visualOffsetX: component.visualOffsetX,
+              visualOffsetY: component.visualOffsetY,
+              maxWidthRatio: component.maxWidthRatio,
+              maxHeightRatio: component.maxHeightRatio
+            }
           );
           charmImage.setAttribute("x", bx - halfCharm + placement.x);
           charmImage.setAttribute("y", by - halfCharm + placement.y);
@@ -1557,7 +1579,13 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             charmDiameterPx,
             charmDiameterPx,
             null,
-            charmVisualScale
+            {
+              visualScale: charmVisualScale,
+              visualOffsetX: component.visualOffsetX,
+              visualOffsetY: component.visualOffsetY,
+              maxWidthRatio: component.maxWidthRatio,
+              maxHeightRatio: component.maxHeightRatio
+            }
           );
           charmImage.setAttribute("x", bx - halfCharm + fallbackPlacement.x);
           charmImage.setAttribute("y", by - halfCharm + fallbackPlacement.y);
@@ -2162,34 +2190,42 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
   return pending;
 }
 
-function getInlineCharmPlacement(image, frameWidth, frameHeight, bounds = null, visualScale = 1) {
+function getInlineCharmPlacement(image, frameWidth, frameHeight, bounds = null, tuning = {}) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
-  const safeVisualScale = Math.min(1, Math.max(0.1, Number.isFinite(Number(visualScale)) ? Number(visualScale) : 1));
+  const safeVisualScale = normalizeCharmVisualScale(tuning.visualScale);
+  const safeMaxWidthRatio = normalizeCharmMaxRatio(tuning.maxWidthRatio, 1);
+  const safeMaxHeightRatio = normalizeCharmMaxRatio(tuning.maxHeightRatio, 1);
+  const safeOffsetX = normalizeCharmVisualOffset(tuning.visualOffsetX);
+  const safeOffsetY = normalizeCharmVisualOffset(tuning.visualOffsetY);
+  const maxFrameWidth = frameWidth * safeMaxWidthRatio;
+  const maxFrameHeight = frameHeight * safeMaxHeightRatio;
 
   if (!sourceWidth || !sourceHeight) {
-    const scaledWidth = frameWidth;
-    const scaledHeight = frameHeight * safeVisualScale;
+    const scaledWidth = maxFrameWidth * safeVisualScale;
+    const scaledHeight = maxFrameHeight * safeVisualScale;
     return {
       width: scaledWidth,
       height: scaledHeight,
-      x: 0,
-      y: (frameHeight - scaledHeight) / 2
+      x: (frameWidth - scaledWidth) / 2 + (frameWidth * safeOffsetX),
+      y: (frameHeight - scaledHeight) / 2 + (frameHeight * safeOffsetY)
     };
   }
 
   const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
-  // Inline charms should fill their slot horizontally; only vertical padding is allowed.
-  const scale = frameWidth / visibleBounds.width;
+  const widthFitScale = maxFrameWidth / visibleBounds.width;
+  const heightFitScale = maxFrameHeight / visibleBounds.height;
+  const scale = Math.min(widthFitScale, heightFitScale) * safeVisualScale;
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
+  const visibleCenterX = (visibleBounds.minX + visibleBounds.width / 2) / sourceWidth;
   const visibleCenterY = (visibleBounds.minY + visibleBounds.height / 2) / sourceHeight;
 
   return {
     width,
     height,
-    x: -visibleBounds.minX * scale,
-    y: frameHeight / 2 - (visibleCenterY * height)
+    x: frameWidth / 2 - (visibleCenterX * width) + (frameWidth * safeOffsetX),
+    y: frameHeight / 2 - (visibleCenterY * height) + (frameHeight * safeOffsetY)
   };
 }
 
@@ -2264,7 +2300,13 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
         const charmSizePx = bRadiusPx * 2;
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
         const charmVisualScale = normalizeCharmVisualScale(component.visualScale, component.type);
-        const placement = getInlineCharmPlacement(imgObj, charmSizePx, charmSizePx, charmBounds, charmVisualScale);
+        const placement = getInlineCharmPlacement(imgObj, charmSizePx, charmSizePx, charmBounds, {
+          visualScale: charmVisualScale,
+          visualOffsetX: component.visualOffsetX,
+          visualOffsetY: component.visualOffsetY,
+          maxWidthRatio: component.maxWidthRatio,
+          maxHeightRatio: component.maxHeightRatio
+        });
         ctx.save();
         ctx.beginPath();
         ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
