@@ -2,15 +2,14 @@
 
 ## Scope
 
-This document defines Phase 1 schema alignment for moving catalog source-of-truth responsibility into CRM without breaking the current customer frontend.
+This document defines the normalized catalog model used by CRM, the customer app, and the shared adapters.
 
-This phase is documentation only.
+The implementation goal is to keep the current frontend working while moving catalog master data into CRM-backed persistence.
 
-- No runtime code changes
 - No pricing changes
-- No charm behavior changes
 - No order payload changes
 - No renderer redesign
+- Render tuning stays separate from business data
 
 ## Current State
 
@@ -90,15 +89,18 @@ Frontend usage in `app.js`:
 
 ### Current CRM data/editing model
 
-CRM currently manages stones only.
+CRM now manages stones, charms, and shared categories through the shared persistence layer.
 
 Current CRM capabilities:
 
 - Reads stones from `getSharedCatalog()`
 - Writes stones through `saveSharedCatalog(...)`
 - Deletes stones through `deleteSharedCatalog(...)`
-- Renders inventory from the stone shape above
-- Edits stone fields through a stone-only CRUD modal
+- Reads charms from `getSharedCharmCatalog()`
+- Writes charms through `saveSharedCharmCatalogEntry(...)`
+- Deletes charms through `deleteSharedCharmCatalogEntry(...)`
+- Reads and writes shared categories through `getSharedCategoryCatalog(...)`, `saveSharedCategoryCatalogEntry(...)`, and `deleteSharedCategoryCatalogEntry(...)`
+- Renders inventory and catalog tables from normalized data while keeping render tuning read-only
 
 Current editable stone fields in CRM:
 
@@ -109,6 +111,7 @@ Current editable stone fields in CRM:
 - `p6`
 - `p8`
 - `category`
+- `categoryId`
 - `image`
 - `color`
 - `sizes`
@@ -116,24 +119,68 @@ Current editable stone fields in CRM:
 - `meaning`
 - `meaningTh`
 
+Current editable charm business fields in CRM:
+
+- `id`
+- `sku`
+- `nameTh`
+- `nameEn`
+- `type`
+- `collection`
+- `categoryId`
+- `image`
+- `sizeCm`
+- `price`
+- `meaningTh`
+- `meaningEn`
+- `inStock`
+- `isActive`
+- `displayOrder`
+
 Current CRM limitations:
 
-- No charm catalog CRUD
-- No category master data CRUD
-- No display-order management
-- No active/inactive state beyond stone `inStock`
-- No separation between business fields and render fields
-- No normalized catalog entity model
+- Render tuning remains read-only
+- Category IDs are intentionally stable to protect catalog references
+- Customer-facing render logic still relies on adapters for compatibility
+
+### Image handling
+
+Image fields are treated as URL or asset-path strings in both CRM forms:
+
+- Stone records keep a single `image` string
+- Charm records keep `image.primary`
+
+CRM should preview the current image, allow paste/replace of the URL or asset path, and fall back safely when the URL is broken or empty. Local repo asset paths remain valid for development and seeded data.
+
+Production-safe uploads should target external storage or hosted media URLs, then persist the returned URL in the catalog record. CRM must not attempt to write uploaded files into the Git repo assets folder from production/mobile sessions.
+
+The upload flow is now routed through `/api/uploads/image`, which expects these deployment variables when production upload is enabled:
+
+- `IMAGE_UPLOAD_ENDPOINT`
+- `IMAGE_UPLOAD_METHOD` `POST` by default
+- `IMAGE_UPLOAD_FILE_FIELD` `file` by default
+- `IMAGE_UPLOAD_RESPONSE_URL_FIELD` `secure_url` by default
+- `IMAGE_UPLOAD_EXTRA_FIELDS_JSON` for provider-specific extra form fields
+- `IMAGE_UPLOAD_AUTH_HEADER` and `IMAGE_UPLOAD_AUTH_VALUE` for authenticated providers
+
+### Upload contract summary
+
+- CRM sends a JSON payload containing `entityType`, `fileName`, `mimeType`, and `dataUrl`.
+- The proxy only accepts `image/*` content.
+- The external upload service must accept multipart form data.
+- The proxy reads the returned URL from the response path configured by `IMAGE_UPLOAD_RESPONSE_URL_FIELD`.
+- If the provider returns nested URL data, set `IMAGE_UPLOAD_RESPONSE_URL_FIELD` to a dotted path such as `data.url` or `result.secure_url`.
+- Manual URL entry remains a valid fallback for both stones and charms.
 
 ## Schema Gap
 
-The current split is uneven:
+The current split is now more balanced, but the schema still needs to stay normalized:
 
 - Stones are API-backed and CRM-managed.
-- Charms are static in frontend code and not CRM-managed.
-- Categories exist as hardcoded UI constants, not shared catalog data.
-- Ordering is implicit array order, not explicit `displayOrder`.
-- Activation semantics are inconsistent: stones use `inStock`, charms use `inStock`, but the requested future model needs `isActive`.
+- Charms are backend-backed and CRM-managed for business fields.
+- Categories are shared master data stored in CRM-backed settings.
+- Ordering is explicit through `displayOrder`.
+- Activation semantics are still mixed in the customer app, so the normalized schema keeps `isActive` separate from `inStock`.
 
 ### Migration risk
 
@@ -157,7 +204,7 @@ The safest Phase 1 target is a normalized catalog model with separate entity typ
 ```js
 {
   id: "wealth",
-  kind: "stone",
+  entityType: "stone",
   slug: "wealth",
   nameEn: "Wealth & Luck",
   nameTh: "โชคลาภ/การงาน",
@@ -169,9 +216,11 @@ The safest Phase 1 target is a normalized catalog model with separate entity typ
 Notes:
 
 - `id` should remain stable because frontend filters use stable keys.
-- `kind` allows future separation such as stone categories vs charm collections if needed.
+- `entityType` separates stone categories from charm categories while keeping one shared catalog store.
 - `displayOrder` should define tab/card order explicitly.
 - `isActive` should allow hiding a category without deleting it.
+- Category records are stored in shared settings and surfaced through CRM-managed adapters.
+- Frontend code should treat missing category references as recoverable and show an explicit fallback label instead of failing.
 
 ## Stone schema
 
@@ -324,15 +373,15 @@ Stones do not currently need renderer-tuning fields.
 
 Recommended model:
 
-- Store categories as first-class CRM-managed records.
-- Keep `id` values compatible with current frontend filters.
-- Keep a separate category list for stone categories first.
-- Charm categories can initially reuse `collection` values or get their own category set later.
+- Store categories as first-class CRM-managed records in shared settings.
+- Keep `id` values compatible with current frontend filters and item references.
+- Use one shared category catalog with an `entityType` scope of `stone` or `charm`.
+- Keep `displayOrder` and `isActive` on every category record.
 
-Phase 1 recommendation:
+Current implementation:
 
-- Introduce `categoryId` in schema.
-- Keep current frontend `CATEGORIES` constants as a temporary adapter until CRM category endpoints exist.
+- Keep the customer `CATEGORIES` map as a legacy adapter derived from active stone categories.
+- Keep charm `collection` aligned to the managed charm category id for compatibility.
 
 ### Display order handling
 

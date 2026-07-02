@@ -1,9 +1,12 @@
 import { 
-  CATEGORIES, 
+  getCategoryLabelById,
   getSharedCatalog, 
   getSharedCharmCatalog,
+  getSharedCategoryCatalog,
   saveSharedCharmCatalogEntry,
   deleteSharedCharmCatalogEntry,
+  saveSharedCategoryCatalogEntry,
+  deleteSharedCategoryCatalogEntry,
   saveSharedCatalog, 
   deleteSharedCatalog,
   getSharedSettings, 
@@ -11,6 +14,7 @@ import {
   getSharedOrders, 
   updateOrderStatus,
   refreshCatalog,
+  refreshCategoryCatalog,
   refreshCharmCatalog,
   STONES,
   ORDERS,
@@ -24,9 +28,20 @@ import {
 // ==========================================
 const CRMState = {
   sessionActive: false,
-  activeTab: 'overview', // 'overview', 'inventory', 'charms', 'orders', 'settings'
+  activeTab: 'overview', // 'overview', 'inventory', 'categories', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditCharmId: null,
+  activeEditCategoryId: null,
+  pendingStoneImage: null,
+  pendingCharmImage: null,
+  charmSort: 'displayOrder-asc',
+  charmActiveFilter: 'all',
+  charmStockFilter: 'all',
+  charmCollectionFilter: 'all',
+  categorySort: 'displayOrder-asc',
+  categoryScopeFilter: 'all',
+  categoryStatusFilter: 'all',
+  categorySearch: '',
   selectedInvoiceOrder: null // Order details populated in invoice modal
 };
 
@@ -53,6 +68,7 @@ const DOM = {
   navButtons: {
     overview: document.getElementById('btnTabOverview'),
     inventory: document.getElementById('btnTabInventory'),
+    categories: document.getElementById('btnTabCategories'),
     charms: document.getElementById('btnTabCharms'),
     orders: document.getElementById('btnTabOrders'),
     settings: document.getElementById('btnTabSettings')
@@ -60,6 +76,7 @@ const DOM = {
   mobileNavButtons: {
     overview: document.getElementById('btnMobTabOverview'),
     inventory: document.getElementById('btnMobTabInventory'),
+    categories: document.getElementById('btnMobTabCategories'),
     charms: document.getElementById('btnMobTabCharms'),
     orders: document.getElementById('btnMobTabOrders'),
     settings: document.getElementById('btnMobTabSettings')
@@ -69,6 +86,7 @@ const DOM = {
   tabViews: {
     overview: document.getElementById('tabOverview'),
     inventory: document.getElementById('tabInventory'),
+    categories: document.getElementById('tabCategories'),
     charms: document.getElementById('tabCharms'),
     orders: document.getElementById('tabOrders'),
     settings: document.getElementById('tabSettings')
@@ -91,8 +109,20 @@ const DOM = {
   btnOpenAddStoneModal: document.getElementById('btnOpenAddStoneModal'),
   inventoryTableBody: document.getElementById('inventoryTableBody'),
 
-  // Tab 3: Charm Catalog
+  // Tab 3: Category Master Data
+  categoriesSearch: document.getElementById('categoriesSearch'),
+  categoriesScopeFilter: document.getElementById('categoriesScopeFilter'),
+  categoriesStatusFilter: document.getElementById('categoriesStatusFilter'),
+  categoriesSort: document.getElementById('categoriesSort'),
+  categoriesTableBody: document.getElementById('categoriesTableBody'),
+  btnOpenAddCategoryModal: document.getElementById('btnOpenAddCategoryModal'),
+
+  // Tab 4: Charm Catalog
   charmsSearch: document.getElementById('charmsSearch'),
+  charmsSort: document.getElementById('charmsSort'),
+  charmsActiveFilter: document.getElementById('charmsActiveFilter'),
+  charmsStockFilter: document.getElementById('charmsStockFilter'),
+  charmsCollectionFilter: document.getElementById('charmsCollectionFilter'),
   charmsTableBody: document.getElementById('charmsTableBody'),
   btnOpenAddCharmModal: document.getElementById('btnOpenAddCharmModal'),
   
@@ -119,12 +149,32 @@ const DOM = {
   crudStonePriceP8: document.getElementById('crudStonePriceP8'),
   crudStoneCategory: document.getElementById('crudStoneCategory'),
   crudStoneImage: document.getElementById('crudStoneImage'),
+  crudStoneImageFile: document.getElementById('crudStoneImageFile'),
+  btnUploadStoneImage: document.getElementById('btnUploadStoneImage'),
+  crudStoneUploadStatus: document.getElementById('crudStoneUploadStatus'),
+  crudStoneImagePreview: document.getElementById('crudStoneImagePreview'),
+  crudStoneImagePreviewUrl: document.getElementById('crudStoneImagePreviewUrl'),
   crudStoneColor: document.getElementById('crudStoneColor'),
   crudStoneInStock: document.getElementById('crudStoneInStock'),
   crudStoneMeaningTh: document.getElementById('crudStoneMeaningTh'),
   crudStoneMeaningEn: document.getElementById('crudStoneMeaningEn'),
   btnStoneModalClose: document.getElementById('btnStoneModalClose'),
   btnCancelStoneForm: document.getElementById('btnCancelStoneForm'),
+
+  // Modal: Add/Edit Category
+  categoryCrudModal: document.getElementById('categoryCrudModal'),
+  categoryCrudForm: document.getElementById('categoryCrudForm'),
+  categoryModalTitle: document.getElementById('categoryModalTitle'),
+  crudCategoryRecordId: document.getElementById('crudCategoryRecordId'),
+  crudCategoryEntityType: document.getElementById('crudCategoryEntityType'),
+  crudCategoryId: document.getElementById('crudCategoryId'),
+  crudCategorySlug: document.getElementById('crudCategorySlug'),
+  crudCategoryNameEn: document.getElementById('crudCategoryNameEn'),
+  crudCategoryNameTh: document.getElementById('crudCategoryNameTh'),
+  crudCategoryDisplayOrder: document.getElementById('crudCategoryDisplayOrder'),
+  crudCategoryIsActive: document.getElementById('crudCategoryIsActive'),
+  btnCategoryModalClose: document.getElementById('btnCategoryModalClose'),
+  btnCancelCategoryForm: document.getElementById('btnCancelCategoryForm'),
 
   // Modal: Add/Edit Charm
   charmCrudModal: document.getElementById('charmCrudModal'),
@@ -138,6 +188,11 @@ const DOM = {
   crudCharmType: document.getElementById('crudCharmType'),
   crudCharmCollection: document.getElementById('crudCharmCollection'),
   crudCharmImage: document.getElementById('crudCharmImage'),
+  crudCharmImageFile: document.getElementById('crudCharmImageFile'),
+  btnUploadCharmImage: document.getElementById('btnUploadCharmImage'),
+  crudCharmUploadStatus: document.getElementById('crudCharmUploadStatus'),
+  crudCharmImagePreview: document.getElementById('crudCharmImagePreview'),
+  crudCharmImagePreviewUrl: document.getElementById('crudCharmImagePreviewUrl'),
   crudCharmSizeCm: document.getElementById('crudCharmSizeCm'),
   crudCharmPrice: document.getElementById('crudCharmPrice'),
   crudCharmDisplayOrder: document.getElementById('crudCharmDisplayOrder'),
@@ -187,6 +242,154 @@ const DOM = {
   invNetTotal: document.getElementById('invNetTotal'),
   invConfigCode: document.getElementById('invConfigCode')
 };
+
+const IMAGE_PREVIEW_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-label="Image preview placeholder">
+    <defs>
+      <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#f8fbff" />
+        <stop offset="100%" stop-color="#e7edf7" />
+      </linearGradient>
+    </defs>
+    <rect width="320" height="240" rx="20" fill="url(#g)" />
+    <rect x="14" y="14" width="292" height="212" rx="16" fill="none" stroke="#d6deea" stroke-width="2" />
+    <circle cx="118" cy="118" r="36" fill="#d8e2f0" />
+    <circle cx="118" cy="118" r="22" fill="#b7c5d8" />
+    <path d="M110 118c5-10 17-17 30-17" fill="none" stroke="#f8fbff" stroke-width="6" stroke-linecap="round" opacity="0.8" />
+    <text x="186" y="112" fill="#5b6b7f" font-family="Arial, sans-serif" font-size="18" font-weight="700">Image preview</text>
+    <text x="186" y="136" fill="#7e8ea3" font-family="Arial, sans-serif" font-size="12">Paste a URL or asset path</text>
+  </svg>
+`.trim())}`;
+
+const IMAGE_THUMB_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Image thumbnail placeholder">
+    <defs>
+      <radialGradient id="rg" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="100%" stop-color="#d7e0ec" />
+      </radialGradient>
+    </defs>
+    <rect width="96" height="96" rx="18" fill="#eef3f9" />
+    <circle cx="48" cy="48" r="29" fill="url(#rg)" />
+    <circle cx="48" cy="48" r="17" fill="#bcc9da" />
+    <path d="M40 47c3-6 9-10 17-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.75" />
+  </svg>
+`.trim())}`;
+
+function updateImagePreview(imageEl, labelEl, rawValue, fallbackText) {
+  if (!imageEl) return;
+
+  const value = String(rawValue || "").trim();
+  if (labelEl) {
+    labelEl.textContent = value || fallbackText;
+  }
+
+  imageEl.dataset.fallbackApplied = "0";
+  imageEl.onerror = () => {
+    if (imageEl.dataset.fallbackApplied === "1") return;
+    imageEl.dataset.fallbackApplied = "1";
+    imageEl.src = IMAGE_PREVIEW_PLACEHOLDER;
+  };
+  imageEl.src = value || IMAGE_PREVIEW_PLACEHOLDER;
+  imageEl.alt = value ? "Preview image" : "Image preview placeholder";
+}
+
+function updateImageThumbnail(imageEl, rawValue) {
+  if (!imageEl) return;
+
+  const value = String(rawValue || "").trim();
+  imageEl.dataset.fallbackApplied = "0";
+  imageEl.onerror = () => {
+    if (imageEl.dataset.fallbackApplied === "1") return;
+    imageEl.dataset.fallbackApplied = "1";
+    imageEl.src = IMAGE_THUMB_PLACEHOLDER;
+  };
+  imageEl.src = value || IMAGE_THUMB_PLACEHOLDER;
+}
+
+function setUploadStatus(statusEl, message, tone = "info") {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.dataset.tone = tone;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read image file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function prepareImageSelection(kind, file) {
+  if (!file) {
+    CRMState[`pending${kind}Image`] = null;
+    return null;
+  }
+
+  const dataUrl = await readFileAsDataUrl(file);
+  CRMState[`pending${kind}Image`] = {
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    dataUrl
+  };
+  return CRMState[`pending${kind}Image`];
+}
+
+async function uploadImageToMediaService(kind) {
+  const pending = CRMState[`pending${kind}Image`];
+  const imageInput = kind === "Stone" ? DOM.crudStoneImage : DOM.crudCharmImage;
+  const previewImage = kind === "Stone" ? DOM.crudStoneImagePreview : DOM.crudCharmImagePreview;
+  const previewLabel = kind === "Stone" ? DOM.crudStoneImagePreviewUrl : DOM.crudCharmImagePreviewUrl;
+  const statusEl = kind === "Stone" ? DOM.crudStoneUploadStatus : DOM.crudCharmUploadStatus;
+
+  if (!pending?.dataUrl) {
+    setUploadStatus(statusEl, "Select an image file first.", "warn");
+    return;
+  }
+
+  setUploadStatus(statusEl, "Uploading to external media service...", "info");
+
+  const response = await fetch("/api/uploads/image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      entityType: kind.toLowerCase(),
+      fileName: pending.fileName,
+      mimeType: pending.mimeType,
+      dataUrl: pending.dataUrl
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload.error || payload.message || "Image upload failed.";
+    throw new Error(message);
+  }
+
+  const uploadedUrl = payload.url || payload.imageUrl || "";
+  if (!uploadedUrl) {
+    throw new Error("Upload succeeded but no image URL was returned.");
+  }
+
+  imageInput.value = uploadedUrl;
+  updateImagePreview(previewImage, previewLabel, uploadedUrl, "No image URL set.");
+  CRMState[`pending${kind}Image`] = null;
+  const fileInput = kind === "Stone" ? DOM.crudStoneImageFile : DOM.crudCharmImageFile;
+  if (fileInput) fileInput.value = "";
+  setUploadStatus(statusEl, "Upload complete. Image URL updated.", "success");
+  showToast(`${kind} image uploaded.`);
+  return uploadedUrl;
+}
+
+function resetImageUploadState(kind) {
+  CRMState[`pending${kind}Image`] = null;
+  const fileInput = kind === "Stone" ? DOM.crudStoneImageFile : DOM.crudCharmImageFile;
+  const statusEl = kind === "Stone" ? DOM.crudStoneUploadStatus : DOM.crudCharmUploadStatus;
+  if (fileInput) fileInput.value = "";
+  setUploadStatus(statusEl, "No file selected.", "info");
+}
 
 // ==========================================
 // 3. Initialisation & Lifecycle
@@ -286,7 +489,8 @@ async function switchTab(tabName) {
   const titles = {
     overview: "CRM Overview",
     inventory: "Stone Inventory Manager (Module A)",
-    charms: "Shared Charm Catalog (Read Only)",
+    categories: "Catalog Category Manager",
+    charms: "Shared Charm Catalog Management",
     orders: "Order Management & OMS (Module B)",
     settings: "Global System Settings"
   };
@@ -389,6 +593,7 @@ async function triggerSyncUpdate(keyName) {
   
   await Promise.all([
     refreshCatalog(),
+    refreshCategoryCatalog(),
     refreshCharmCatalog()
   ]);
   
@@ -406,6 +611,7 @@ async function triggerSyncUpdate(keyName) {
 // ==========================================
 async function loadDashboardData() {
   const stones = await getSharedCatalog();
+  const categories = await getSharedCategoryCatalog();
   const charms = await getSharedCharmCatalog();
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
@@ -433,14 +639,17 @@ async function loadDashboardData() {
   }
   
   DOM.metricDiscountRate.textContent = `${globalDiscountRateVal}%`;
+  syncCategoryAssignmentSelects(categories);
   
   // Render views based on active tab
   if (CRMState.activeTab === 'overview') {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
     renderInventoryCatalog(stones);
+  } else if (CRMState.activeTab === 'categories') {
+    renderCategoryCatalog(categories, stones, charms);
   } else if (CRMState.activeTab === 'charms') {
-    renderCharmCatalog(charms);
+    renderCharmCatalog(charms, categories);
   } else if (CRMState.activeTab === 'orders') {
     renderOrdersList(orders);
   } else if (CRMState.activeTab === 'settings') {
@@ -513,7 +722,10 @@ function renderInventoryCatalog(stones) {
     const sizesBadges = (stone.sizes || []).map(sz => `<span class="badge" style="background-color: var(--color-navy); border: 1px solid var(--color-navy-border); color: #cbd5e1">${sz}mm</span>`).join(' ');
     
     // Category mapping
-    const catName = CATEGORIES[stone.category]?.th || stone.category;
+    const categoryKey = stone.categoryId || stone.category;
+    const categoryLabel = getCategoryLabelById(categoryKey, 'stone');
+    const catName = categoryLabel.th || stone.categoryTh || stone.category || categoryKey;
+    const categoryBadgeClass = categoryLabel.missing ? 'unknown' : (categoryKey || 'unknown');
     
     // Stock Status badge
     const isAvailable = stone.inStock !== false;
@@ -523,7 +735,7 @@ function renderInventoryCatalog(stones) {
     
     tr.innerHTML = `
       <td data-label="Bead">
-        <img class="table-bead-img" src="${stone.image}" alt="${stone.name}" style="background-color: ${stone.color || 'transparent'}">
+        <img class="table-bead-img" src="${stone.image}" alt="${stone.name}" style="background-color: ${stone.color || 'transparent'}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
       </td>
       <td data-label="Stone Name">
         <div class="stone-title-th">${stone.nameTh}</div>
@@ -537,7 +749,7 @@ function renderInventoryCatalog(stones) {
         </div>
       </td>
       <td data-label="Sizes">${sizesBadges}</td>
-      <td data-label="Category"><span class="badge badge-${stone.category}">${catName}</span></td>
+      <td data-label="Category"><span class="badge badge-${categoryBadgeClass}">${catName}</span></td>
       <td data-label="Status">${stockBadge}</td>
       <td data-label="Meanings" style="max-width: 250px; font-size: 11px;">
         <div style="color: var(--color-navy-dark); font-weight: 600;">${stone.meaningTh}</div>
@@ -571,10 +783,421 @@ function renderInventoryCatalog(stones) {
   });
 }
 
+function getCategoryScopeLabel(entityType) {
+  return entityType === 'charm' ? 'Charm' : 'Stone';
+}
+
+function buildCategoryDisplayLabel(category) {
+  const nameTh = category?.nameTh || category?.slug || category?.id || '';
+  const nameEn = category?.nameEn || '';
+  return nameEn && nameEn !== nameTh ? `${nameTh} / ${nameEn}` : nameTh;
+}
+
+function normalizeCategoryKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function ensureManagedCategorySelect(element, scope) {
+  if (!element) return null;
+
+  if (element.tagName === 'SELECT') {
+    return element;
+  }
+
+  const select = document.createElement('select');
+  select.id = element.id;
+  select.className = element.className;
+  select.required = element.required;
+  select.name = element.name;
+  select.disabled = element.disabled;
+  element.replaceWith(select);
+
+  if (scope === 'charm' || scope === 'stone') {
+    DOM[element.id] = select;
+  }
+
+  return select;
+}
+
+function populateManagedCategorySelect(element, categories = [], scope = 'stone', selectedValue = '') {
+  const select = ensureManagedCategorySelect(element, scope);
+  if (!select) return;
+
+  const nextSelectedValue = String(selectedValue || '').trim();
+  const list = categories
+    .filter((category) => category.entityType === scope)
+    .slice()
+    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0) || buildCategoryDisplayLabel(a).localeCompare(buildCategoryDisplayLabel(b)));
+
+  select.innerHTML = '';
+
+  if (nextSelectedValue && !list.some((category) => category.id === nextSelectedValue)) {
+    const missingOption = document.createElement('option');
+    missingOption.value = nextSelectedValue;
+    missingOption.textContent = `Missing category: ${nextSelectedValue}`;
+    select.appendChild(missingOption);
+  }
+
+  if (list.length === 0) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = `No ${scope} categories available`;
+    select.appendChild(option);
+    select.disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+  list.forEach((category) => {
+    const option = document.createElement('option');
+    option.value = category.id;
+    option.textContent = `${buildCategoryDisplayLabel(category)}${category.isActive === false ? ' (Inactive)' : ''}`;
+    select.appendChild(option);
+  });
+
+  const nextValue = nextSelectedValue || select.value || list[0]?.id || '';
+  select.value = nextValue || list[0]?.id || '';
+}
+
+function syncCategoryAssignmentSelects(categories = [], selectedStoneCategory = '', selectedCharmCategory = '') {
+  populateManagedCategorySelect(DOM.crudStoneCategory, categories, 'stone', selectedStoneCategory || DOM.crudStoneCategory?.value);
+  populateManagedCategorySelect(DOM.crudCharmCollection, categories, 'charm', selectedCharmCategory || DOM.crudCharmCollection?.value);
+}
+
+function getCategoryReferenceCounts(categoryId, stones = [], charms = []) {
+  return {
+    stoneCount: stones.filter((stone) => (stone.categoryId || stone.category) === categoryId).length,
+    charmCount: charms.filter((charm) => (charm.categoryId || charm.collection) === categoryId).length
+  };
+}
+
+function buildUpdatedCategoryRecord(category, patch = {}) {
+  return {
+    ...category,
+    ...patch
+  };
+}
+
+async function saveCategoryQuickField(categoryId, patch, logLabel) {
+  const categories = await getSharedCategoryCatalog('all');
+  const category = categories.find((entry) => entry.id === categoryId);
+  if (!category) return false;
+
+  const saved = await saveSharedCategoryCatalogEntry(buildUpdatedCategoryRecord(category, patch));
+  if (saved) {
+    addLog(`${logLabel} '${saved.id}' (${saved.nameTh || saved.nameEn || saved.id}).`);
+    await loadDashboardData();
+    return true;
+  }
+  return false;
+}
+
+function syncCategoryFilterControls(categories = []) {
+  if (DOM.categoriesScopeFilter) {
+    DOM.categoriesScopeFilter.value = CRMState.categoryScopeFilter || 'all';
+  }
+  if (DOM.categoriesStatusFilter) {
+    DOM.categoriesStatusFilter.value = CRMState.categoryStatusFilter || 'all';
+  }
+  if (DOM.categoriesSort) {
+    DOM.categoriesSort.value = CRMState.categorySort || 'displayOrder-asc';
+  }
+}
+
+function renderCategoryCatalog(categories, stones = [], charms = []) {
+  const query = DOM.categoriesSearch ? DOM.categoriesSearch.value.trim().toLowerCase() : '';
+  const scopeFilter = DOM.categoriesScopeFilter?.value || CRMState.categoryScopeFilter || 'all';
+  const statusFilter = DOM.categoriesStatusFilter?.value || CRMState.categoryStatusFilter || 'all';
+  const sortMode = DOM.categoriesSort?.value || CRMState.categorySort || 'displayOrder-asc';
+
+  CRMState.categorySearch = query;
+  CRMState.categoryScopeFilter = scopeFilter;
+  CRMState.categoryStatusFilter = statusFilter;
+  CRMState.categorySort = sortMode;
+
+  syncCategoryFilterControls(categories);
+
+  const filtered = categories
+    .slice()
+    .filter((category) => {
+      const haystack = [
+        category.id,
+        category.slug,
+        category.nameTh,
+        category.nameEn,
+        category.entityType
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(query)) return false;
+      if (scopeFilter !== 'all' && category.entityType !== scopeFilter) return false;
+      const isActive = category.isActive !== false;
+      if (statusFilter === 'active' && !isActive) return false;
+      if (statusFilter === 'inactive' && isActive) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortMode === 'displayOrder-desc') {
+        return (Number(b.displayOrder || 0) - Number(a.displayOrder || 0)) || buildCategoryDisplayLabel(a).localeCompare(buildCategoryDisplayLabel(b));
+      }
+      if (sortMode === 'name-asc') {
+        return buildCategoryDisplayLabel(a).localeCompare(buildCategoryDisplayLabel(b)) || (Number(a.displayOrder || 0) - Number(b.displayOrder || 0));
+      }
+      return (Number(a.displayOrder || 0) - Number(b.displayOrder || 0)) || buildCategoryDisplayLabel(a).localeCompare(buildCategoryDisplayLabel(b));
+    });
+
+  DOM.categoriesTableBody.innerHTML = '';
+
+  if (filtered.length === 0) {
+    DOM.categoriesTableBody.innerHTML = '<tr><td colspan="6" class="empty-state">No matching categories found.</td></tr>';
+    return;
+  }
+
+  filtered.forEach((category) => {
+    const tr = document.createElement('tr');
+    const usage = getCategoryReferenceCounts(category.id, stones, charms);
+    const isActive = category.isActive !== false;
+
+    tr.innerHTML = `
+      <td data-label="Category">
+        <div class="category-title-th">${buildCategoryDisplayLabel(category)}</div>
+        <div class="category-title-en">ID: ${category.id} • Slug: ${category.slug}</div>
+      </td>
+      <td data-label="Scope">
+        <span class="badge category-scope-badge badge-${category.entityType}">${getCategoryScopeLabel(category.entityType)}</span>
+      </td>
+      <td data-label="Display Order">
+        <input type="number" class="category-inline-input category-order-input" data-category-id="${category.id}" min="0" step="10" value="${Number(category.displayOrder || 0)}">
+      </td>
+      <td data-label="Status">
+        <label class="category-toggle-label">
+          <input type="checkbox" class="category-toggle-input" data-category-id="${category.id}" data-field="isActive" ${isActive ? 'checked' : ''}>
+          ${isActive ? 'Active' : 'Inactive'}
+        </label>
+      </td>
+      <td data-label="Usage">
+        <div class="category-usage-stack">
+          <span>Stones: ${usage.stoneCount}</span>
+          <span>Charms: ${usage.charmCount}</span>
+        </div>
+      </td>
+      <td data-label="Actions" class="text-right">
+        <div class="action-btns">
+          <button class="action-btn edit" data-id="${category.id}" title="Edit Category">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="action-btn delete" data-id="${category.id}" title="Delete Category">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    `;
+
+    tr.querySelector('.action-btn.edit').addEventListener('click', () => openEditCategoryForm(category.id));
+    tr.querySelector('.action-btn.delete').addEventListener('click', () => deleteCategoryType(category.id));
+    DOM.categoriesTableBody.appendChild(tr);
+  });
+}
+
+async function openAddCategoryForm() {
+  CRMState.activeEditCategoryId = null;
+  DOM.categoryModalTitle.textContent = 'Add New Category';
+  DOM.categoryCrudForm.reset();
+  DOM.crudCategoryRecordId.value = '';
+  DOM.crudCategoryId.disabled = false;
+  DOM.crudCategoryId.readOnly = false;
+  DOM.crudCategoryId.value = '';
+  DOM.crudCategorySlug.value = '';
+  DOM.crudCategoryEntityType.value = 'stone';
+  DOM.crudCategoryIsActive.checked = true;
+  const categories = await getSharedCategoryCatalog('all');
+  const nextOrder = categories.reduce((maxOrder, category) => Math.max(maxOrder, Number(category.displayOrder || 0)), 0) + 10;
+  DOM.crudCategoryDisplayOrder.value = String(nextOrder);
+  DOM.categoryCrudModal.classList.add('show');
+}
+
+async function openEditCategoryForm(categoryId) {
+  const categories = await getSharedCategoryCatalog('all');
+  const category = categories.find((entry) => entry.id === categoryId);
+  if (!category) return;
+
+  CRMState.activeEditCategoryId = categoryId;
+  DOM.categoryModalTitle.textContent = `Edit Category: ${buildCategoryDisplayLabel(category)}`;
+  DOM.crudCategoryRecordId.value = category.id;
+  DOM.crudCategoryEntityType.value = category.entityType || 'stone';
+  DOM.crudCategoryId.value = category.id;
+  DOM.crudCategoryId.readOnly = true;
+  DOM.crudCategorySlug.value = category.slug || category.id;
+  DOM.crudCategoryDisplayOrder.value = Number(category.displayOrder || 0);
+  DOM.crudCategoryNameEn.value = category.nameEn || '';
+  DOM.crudCategoryNameTh.value = category.nameTh || '';
+  DOM.crudCategoryIsActive.checked = category.isActive !== false;
+  DOM.categoryCrudModal.classList.add('show');
+}
+
+function closeCategoryForm() {
+  DOM.categoryCrudModal.classList.remove('show');
+}
+
+async function handleSaveCategoryType(e) {
+  e.preventDefault();
+
+  const currentCategories = await getSharedCategoryCatalog('all');
+  const existingCategory = CRMState.activeEditCategoryId
+    ? currentCategories.find((entry) => entry.id === CRMState.activeEditCategoryId)
+    : null;
+
+  const recordId = normalizeCategoryKey(DOM.crudCategoryId.value.trim() || DOM.crudCategoryRecordId.value.trim());
+  if (!recordId) {
+    alert('Please enter a valid category ID.');
+    return;
+  }
+
+  const slug = normalizeCategoryKey(DOM.crudCategorySlug.value.trim() || recordId);
+  const categoryRecord = {
+    id: recordId,
+    entityType: DOM.crudCategoryEntityType.value.trim() || 'stone',
+    slug,
+    nameEn: DOM.crudCategoryNameEn.value.trim(),
+    nameTh: DOM.crudCategoryNameTh.value.trim(),
+    displayOrder: Number(DOM.crudCategoryDisplayOrder.value || 0),
+    isActive: DOM.crudCategoryIsActive.checked
+  };
+
+  const saved = await saveSharedCategoryCatalogEntry(categoryRecord);
+  if (saved) {
+    if (existingCategory) {
+      addLog(`Edited category '${saved.id}' (${saved.nameTh || saved.nameEn || saved.id}).`);
+      showToast('Category updated!');
+    } else {
+      addLog(`Created category '${saved.id}' (${saved.nameTh || saved.nameEn || saved.id}).`);
+      showToast('New category added!');
+    }
+  }
+
+  closeCategoryForm();
+  await loadDashboardData();
+}
+
+async function deleteCategoryType(categoryId) {
+  const categories = await getSharedCategoryCatalog('all');
+  const category = categories.find((entry) => entry.id === categoryId);
+  if (!category) return;
+
+  const stones = await getSharedCatalog();
+  const charms = await getSharedCharmCatalog();
+  const usage = getCategoryReferenceCounts(categoryId, stones, charms);
+  if (usage.stoneCount > 0 || usage.charmCount > 0) {
+    alert(`Category '${categoryId}' is still used by catalog items. Reassign those items before deleting this category.`);
+    return;
+  }
+
+  const proceed = await showCustomConfirm(
+    `Are you sure you want to delete category '${buildCategoryDisplayLabel(category)}'?`,
+    'Delete Category'
+  );
+
+  if (proceed) {
+    const success = await deleteSharedCategoryCatalogEntry(categoryId);
+    if (success) {
+      addLog(`Deleted category '${categoryId}' (${category.nameTh || category.nameEn || category.id}).`, 'warn');
+      showToast('Category deleted.');
+      await loadDashboardData();
+    }
+  }
+}
+
 function formatCharmStatusBadge(label, isActiveState) {
   return isActiveState
     ? `<span class="badge badge-in-stock">${label}</span>`
     : `<span class="badge badge-out-of-stock">${label}</span>`;
+}
+
+function buildUpdatedCharmRecord(charm, patch = {}) {
+  return {
+    ...charm,
+    ...patch,
+    name: {
+      ...(charm.name || {}),
+      ...(patch.name || {})
+    },
+    image: {
+      ...(charm.image || {}),
+      ...(patch.image || {})
+    },
+    pricing: {
+      ...(charm.pricing || {}),
+      ...(patch.pricing || {})
+    },
+    business: {
+      ...(charm.business || {}),
+      ...(patch.business || {})
+    },
+    meaning: {
+      ...(charm.meaning || {}),
+      ...(patch.meaning || {})
+    },
+    availability: {
+      ...(charm.availability || {}),
+      ...(patch.availability || {})
+    },
+    renderTuning: charm.renderTuning || {},
+    displayOrder: patch.displayOrder !== undefined ? patch.displayOrder : (charm.displayOrder ?? 0)
+  };
+}
+
+function getCharmAdminCollections(charms = []) {
+  return [...new Set(
+    charms
+      .map((charm) => charm?.collection)
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
+}
+
+function syncCharmCollectionFilterOptions(categories = [], charms = []) {
+  if (!DOM.charmsCollectionFilter) return;
+
+  const currentValue = DOM.charmsCollectionFilter.value || CRMState.charmCollectionFilter || 'all';
+  const collections = categories
+    .filter((category) => category.entityType === 'charm')
+    .slice()
+    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0) || buildCategoryDisplayLabel(a).localeCompare(buildCategoryDisplayLabel(b)))
+    .map((category) => ({
+      value: category.id,
+      label: `${buildCategoryDisplayLabel(category)}${category.isActive === false ? ' (Inactive)' : ''}`
+    }));
+
+  DOM.charmsCollectionFilter.innerHTML = `
+    <option value="all">All Collections</option>
+    ${
+      collections.length > 0
+        ? collections.map((collection) => `<option value="${collection.value}">${collection.label}</option>`).join('')
+        : getCharmAdminCollections(charms).map((collection) => `<option value="${collection}">${collection}</option>`).join('')
+    }
+  `;
+
+  const hasCurrent = collections.some((collection) => collection.value === currentValue);
+  if (!hasCurrent && currentValue !== 'all' && currentValue) {
+    const missingOption = document.createElement('option');
+    missingOption.value = currentValue;
+    missingOption.textContent = `Missing collection: ${currentValue}`;
+    DOM.charmsCollectionFilter.appendChild(missingOption);
+  }
+
+  DOM.charmsCollectionFilter.value = hasCurrent || currentValue === 'all'
+    ? currentValue
+    : (currentValue || 'all');
+  CRMState.charmCollectionFilter = DOM.charmsCollectionFilter.value;
 }
 
 function setReadOnlyCharmTuning(tuning = {}) {
@@ -589,6 +1212,20 @@ function setReadOnlyCharmTuning(tuning = {}) {
   DOM.roCharmTargetWidthFillRatio.textContent = tuning.targetWidthFillRatio ?? '-';
   DOM.roCharmContactInsetLeft.textContent = tuning.contactInsetLeft ?? '-';
   DOM.roCharmContactInsetRight.textContent = tuning.contactInsetRight ?? '-';
+}
+
+async function saveCharmQuickField(charmId, patch, logLabel) {
+  const charms = await getSharedCharmCatalog();
+  const charm = charms.find((entry) => entry.id === charmId);
+  if (!charm) return false;
+
+  const saved = await saveSharedCharmCatalogEntry(buildUpdatedCharmRecord(charm, patch));
+  if (saved) {
+    addLog(`${logLabel} '${saved.id}' (${saved.name?.th || saved.name?.en || saved.id}).`);
+    await loadDashboardData();
+    return true;
+  }
+  return false;
 }
 
 function formatCharmTuningSummary(charm) {
@@ -614,11 +1251,22 @@ function formatCharmTuningSummary(charm) {
   return chips.map((chip) => `<span class="tuning-chip">${chip}</span>`).join('');
 }
 
-function renderCharmCatalog(charms) {
+function renderCharmCatalog(charms, categories = []) {
   const query = DOM.charmsSearch.value.trim().toLowerCase();
+  syncCharmCollectionFilterOptions(categories, charms);
+
+  const sortMode = DOM.charmsSort?.value || CRMState.charmSort || 'displayOrder-asc';
+  const activeFilter = DOM.charmsActiveFilter?.value || CRMState.charmActiveFilter || 'all';
+  const stockFilter = DOM.charmsStockFilter?.value || CRMState.charmStockFilter || 'all';
+  const collectionFilter = DOM.charmsCollectionFilter?.value || CRMState.charmCollectionFilter || 'all';
+
+  CRMState.charmSort = sortMode;
+  CRMState.charmActiveFilter = activeFilter;
+  CRMState.charmStockFilter = stockFilter;
+  CRMState.charmCollectionFilter = collectionFilter;
+
   const filtered = charms
     .slice()
-    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
     .filter((charm) => {
       const haystack = [
         charm.id,
@@ -626,17 +1274,39 @@ function renderCharmCatalog(charms) {
         charm.name?.th,
         charm.name?.en,
         charm.type,
-        charm.collection
+        charm.collection,
+        charm.displayOrder
       ]
-        .filter(Boolean)
+        .filter((value) => value !== undefined && value !== null)
         .join(' ')
         .toLowerCase();
-      return haystack.includes(query);
+      if (!haystack.includes(query)) return false;
+
+      const isActive = charm.availability?.isActive !== false;
+      const isInStock = charm.availability?.inStock !== false;
+      if (activeFilter === 'active' && !isActive) return false;
+      if (activeFilter === 'inactive' && isActive) return false;
+      if (stockFilter === 'in' && !isInStock) return false;
+      if (stockFilter === 'out' && isInStock) return false;
+      if (collectionFilter !== 'all' && (charm.collection || charm.categoryId || '') !== collectionFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortMode === 'name-asc') {
+        return (a.name?.th || a.name?.en || a.id || '').localeCompare(b.name?.th || b.name?.en || b.id || '');
+      }
+      if (sortMode === 'price-desc') {
+        return (Number(b.pricing?.base || 0) - Number(a.pricing?.base || 0)) || ((a.displayOrder || 0) - (b.displayOrder || 0));
+      }
+      if (sortMode === 'displayOrder-desc') {
+        return (b.displayOrder || 0) - (a.displayOrder || 0) || (a.id || '').localeCompare(b.id || '');
+      }
+      return (a.displayOrder || 0) - (b.displayOrder || 0) || (a.id || '').localeCompare(b.id || '');
     });
 
   DOM.charmsTableBody.innerHTML = '';
   if (filtered.length === 0) {
-    DOM.charmsTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No matching charms found.</td></tr>';
+    DOM.charmsTableBody.innerHTML = '<tr><td colspan="7" class="empty-state">No matching charms found.</td></tr>';
     return;
   }
 
@@ -646,11 +1316,12 @@ function renderCharmCatalog(charms) {
     const price = Number(charm.pricing?.base || 0);
     const isInStock = charm.availability?.inStock !== false;
     const isActive = charm.availability?.isActive !== false;
+    const categoryLabel = getCategoryLabelById(charm.collection || charm.categoryId, 'charm');
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="Image">
-        <img class="table-bead-img charm-admin-img" src="${imageSrc}" alt="${charm.name?.en || charm.id}" onerror="this.style.display='none'">
+        <img class="table-bead-img charm-admin-img" src="${imageSrc}" alt="${charm.name?.en || charm.id}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
       </td>
       <td data-label="Charm">
         <div class="stone-title-th">${charm.name?.th || '-'}</div>
@@ -659,24 +1330,49 @@ function renderCharmCatalog(charms) {
           <span>ID: <strong>${charm.id}</strong></span>
           <span>SKU: <strong>${charm.sku || '-'}</strong></span>
           <span>Type: <strong>${charm.type || '-'}</strong></span>
-          <span>Collection: <strong>${charm.collection || '-'}</strong></span>
+          <span>Collection: <strong>${categoryLabel.th || charm.collection || '-'}</strong></span>
         </div>
       </td>
       <td data-label="Business">
         <div class="charm-business-stack">
           <span>Size: <strong>${sizeCm ? `${sizeCm.toFixed(1)} cm` : '-'}</strong></span>
           <span>Price: <strong>฿${price.toLocaleString()}</strong></span>
-          <span>Order: <strong>${charm.displayOrder ?? '-'}</strong></span>
+          <label class="charm-inline-field">
+            <span>Order</span>
+            <input
+              type="number"
+              class="charm-inline-input charm-order-input"
+              data-charm-id="${charm.id}"
+              value="${charm.displayOrder ?? 0}"
+              min="0"
+              step="10"
+              aria-label="Display order for ${charm.id}"
+            >
+          </label>
         </div>
       </td>
-      <td data-label="Status">
+      <td data-label="Visibility">
         <div class="charm-status-stack">
-          ${formatCharmStatusBadge(isInStock ? 'In Stock' : 'Out of Stock', isInStock)}
-          ${formatCharmStatusBadge(isActive ? 'Active' : 'Inactive', isActive)}
+          <label class="charm-toggle-label">
+            <input type="checkbox" class="charm-toggle-input" data-charm-id="${charm.id}" data-field="isActive" ${isActive ? 'checked' : ''}>
+            Visible
+          </label>
+          ${formatCharmStatusBadge(isActive ? 'Visible' : 'Hidden', isActive)}
         </div>
       </td>
-      <td data-label="Render Tuning">
+      <td data-label="Stock">
+        <div class="charm-status-stack">
+          <label class="charm-toggle-label">
+            <input type="checkbox" class="charm-toggle-input" data-charm-id="${charm.id}" data-field="inStock" ${isInStock ? 'checked' : ''}>
+            In Stock
+          </label>
+          ${formatCharmStatusBadge(isInStock ? 'In Stock' : 'Out of Stock', isInStock)}
+        </div>
+      </td>
+      <td data-label="Render Tuning Summary">
         <div class="tuning-chip-row">${formatCharmTuningSummary(charm)}</div>
+      </td>
+      <td data-label="Actions">
         <div class="action-btns charm-action-btns">
           <button class="action-btn edit" data-id="${charm.id}" title="Edit Charm business fields">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -702,7 +1398,7 @@ function renderCharmCatalog(charms) {
   });
 }
 
-function openAddCharmForm() {
+async function openAddCharmForm() {
   CRMState.activeEditCharmId = null;
   DOM.charmModalTitle.textContent = "Add New Charm";
   DOM.charmCrudForm.reset();
@@ -710,8 +1406,15 @@ function openAddCharmForm() {
   DOM.crudCharmId.disabled = false;
   DOM.crudCharmInStock.checked = true;
   DOM.crudCharmIsActive.checked = true;
-  DOM.crudCharmDisplayOrder.value = "";
+  const charms = await getSharedCharmCatalog();
+  const nextOrder = charms.reduce((maxOrder, charm) => Math.max(maxOrder, Number(charm.displayOrder || 0)), 0) + 10;
+  DOM.crudCharmDisplayOrder.value = String(nextOrder);
+  const categories = await getSharedCategoryCatalog('all');
+  syncCategoryAssignmentSelects(categories);
+  DOM.crudCharmCollection.value = DOM.crudCharmCollection.value || 'pixiu';
   setReadOnlyCharmTuning({});
+  resetImageUploadState("Charm");
+  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
   DOM.charmCrudModal.classList.add('show');
 }
 
@@ -719,6 +1422,9 @@ async function openEditCharmForm(charmId) {
   const charms = await getSharedCharmCatalog();
   const charm = charms.find((entry) => entry.id === charmId);
   if (!charm) return;
+
+  const categories = await getSharedCategoryCatalog('all');
+  syncCategoryAssignmentSelects(categories, '', charm.collection || charm.categoryId);
 
   CRMState.activeEditCharmId = charmId;
   DOM.charmModalTitle.textContent = `Edit Charm: ${charm.name?.th || charm.id}`;
@@ -729,8 +1435,10 @@ async function openEditCharmForm(charmId) {
   DOM.crudCharmNameEn.value = charm.name?.en || "";
   DOM.crudCharmNameTh.value = charm.name?.th || "";
   DOM.crudCharmType.value = charm.type || "";
-  DOM.crudCharmCollection.value = charm.collection || "";
+  DOM.crudCharmCollection.value = charm.collection || charm.categoryId || "";
   DOM.crudCharmImage.value = charm.image?.primary || "";
+  resetImageUploadState("Charm");
+  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
   DOM.crudCharmSizeCm.value = Number(charm.business?.sizeCm || 0);
   DOM.crudCharmPrice.value = Number(charm.pricing?.base || 0);
   DOM.crudCharmDisplayOrder.value = charm.displayOrder ?? "";
@@ -744,6 +1452,7 @@ async function openEditCharmForm(charmId) {
 
 function closeCharmForm() {
   DOM.charmCrudModal.classList.remove('show');
+  resetImageUploadState("Charm");
 }
 
 async function handleSaveCharmType(e) {
@@ -826,7 +1535,7 @@ async function deleteCharmType(charmId) {
 }
 
 // Form Opening & Resetting
-function openAddStoneForm() {
+async function openAddStoneForm() {
   CRMState.activeEditStoneId = null;
   DOM.stoneModalTitle.textContent = "Add New Stone Type";
   DOM.crudStoneId.value = "";
@@ -839,6 +1548,12 @@ function openAddStoneForm() {
   
   // Set all size checkboxes checked
   document.querySelectorAll('.crud-size-chk').forEach(c => c.checked = true);
+  const categories = await getSharedCategoryCatalog('all');
+  syncCategoryAssignmentSelects(categories);
+  DOM.crudStoneCategory.value = DOM.crudStoneCategory.value || 'wealth';
+  DOM.crudStoneImage.value = DOM.crudStoneImage.value || 'assets/golden_rutile.png';
+  resetImageUploadState("Stone");
+  updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
   
   DOM.stoneCrudModal.classList.add('show');
 }
@@ -847,6 +1562,9 @@ async function openEditStoneForm(stoneId) {
   const stones = await getSharedCatalog();
   const stone = stones.find(s => s.id === stoneId);
   if (!stone) return;
+
+  const categories = await getSharedCategoryCatalog('all');
+  syncCategoryAssignmentSelects(categories, stone.categoryId || stone.category);
   
   CRMState.activeEditStoneId = stoneId;
   DOM.stoneModalTitle.textContent = `Edit Details: ${stone.nameTh}`;
@@ -857,8 +1575,10 @@ async function openEditStoneForm(stoneId) {
   DOM.crudStonePriceP4.value = stone.p4 !== undefined ? stone.p4 : stone.price || 0;
   DOM.crudStonePriceP6.value = stone.p6 !== undefined ? stone.p6 : stone.price || 0;
   DOM.crudStonePriceP8.value = stone.p8 !== undefined ? stone.p8 : stone.price || 0;
-  DOM.crudStoneCategory.value = stone.category;
+  DOM.crudStoneCategory.value = stone.categoryId || stone.category;
   DOM.crudStoneImage.value = stone.image;
+  resetImageUploadState("Stone");
+  updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
   DOM.crudStoneColor.value = stone.color || "#FFFFFF";
   DOM.crudStoneInStock.checked = stone.inStock !== false;
   DOM.crudStoneMeaningTh.value = stone.meaningTh;
@@ -875,6 +1595,7 @@ async function openEditStoneForm(stoneId) {
 
 function closeStoneForm() {
   DOM.stoneCrudModal.classList.remove('show');
+  resetImageUploadState("Stone");
 }
 
 async function handleSaveStoneType(e) {
@@ -887,7 +1608,7 @@ async function handleSaveStoneType(e) {
   const p6 = parseInt(DOM.crudStonePriceP6.value);
   const p8 = parseInt(DOM.crudStonePriceP8.value);
   const category = DOM.crudStoneCategory.value;
-  const image = DOM.crudStoneImage.value;
+  const image = DOM.crudStoneImage.value.trim();
   const color = DOM.crudStoneColor.value;
   const inStock = DOM.crudStoneInStock.checked;
   const meaningTh = DOM.crudStoneMeaningTh.value.trim();
@@ -912,6 +1633,7 @@ async function handleSaveStoneType(e) {
     p6: p6,
     p8: p8,
     category: category,
+    categoryId: category,
     image: image,
     color: color,
     sizes: sizes,
@@ -1342,16 +2064,178 @@ function setupFunctionalEvents() {
   DOM.btnStoneModalClose.addEventListener('click', closeStoneForm);
   DOM.btnCancelStoneForm.addEventListener('click', closeStoneForm);
   DOM.stoneCrudForm.addEventListener('submit', handleSaveStoneType);
+  if (DOM.crudStoneImageFile) {
+    DOM.crudStoneImageFile.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0] || null;
+      try {
+        if (!file) {
+          resetImageUploadState("Stone");
+          updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
+          return;
+        }
+        const pending = await prepareImageSelection("Stone", file);
+        updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, pending?.dataUrl || "", file.name);
+        setUploadStatus(DOM.crudStoneUploadStatus, `Ready to upload: ${file.name}`, "info");
+      } catch (err) {
+        console.error(err);
+        setUploadStatus(DOM.crudStoneUploadStatus, err.message || "Unable to read image file.", "warn");
+      }
+    });
+  }
+  if (DOM.btnUploadStoneImage) {
+    DOM.btnUploadStoneImage.addEventListener('click', async () => {
+      try {
+        await uploadImageToMediaService("Stone");
+      } catch (err) {
+        console.error(err);
+        setUploadStatus(DOM.crudStoneUploadStatus, err.message || "Image upload failed.", "warn");
+        showToast(err.message || "Image upload failed.");
+      }
+    });
+  }
+  if (DOM.crudStoneImage) {
+    DOM.crudStoneImage.addEventListener('input', () => {
+      CRMState.pendingStoneImage = null;
+      if (DOM.crudStoneImageFile) DOM.crudStoneImageFile.value = "";
+      setUploadStatus(DOM.crudStoneUploadStatus, "Manual URL updated. File selection cleared.", "info");
+      updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
+    });
+  }
   DOM.inventorySearch.addEventListener('input', () => {
     const query = DOM.inventorySearch.value.trim();
     loadDashboardData();
   });
+  if (DOM.btnOpenAddCategoryModal) {
+    DOM.btnOpenAddCategoryModal.addEventListener('click', openAddCategoryForm);
+  }
+  if (DOM.btnCategoryModalClose) {
+    DOM.btnCategoryModalClose.addEventListener('click', closeCategoryForm);
+  }
+  if (DOM.btnCancelCategoryForm) {
+    DOM.btnCancelCategoryForm.addEventListener('click', closeCategoryForm);
+  }
+  if (DOM.categoryCrudForm) {
+    DOM.categoryCrudForm.addEventListener('submit', handleSaveCategoryType);
+  }
+  if (DOM.crudCategoryId) {
+    DOM.crudCategoryId.addEventListener('input', () => {
+      if (!DOM.crudCategoryId.readOnly) {
+        DOM.crudCategorySlug.value = normalizeCategoryKey(DOM.crudCategoryId.value);
+      }
+    });
+  }
+  if (DOM.categoriesSearch) {
+    DOM.categoriesSearch.addEventListener('input', () => loadDashboardData());
+  }
+  if (DOM.categoriesScopeFilter) {
+    DOM.categoriesScopeFilter.addEventListener('change', () => loadDashboardData());
+  }
+  if (DOM.categoriesStatusFilter) {
+    DOM.categoriesStatusFilter.addEventListener('change', () => loadDashboardData());
+  }
+  if (DOM.categoriesSort) {
+    DOM.categoriesSort.addEventListener('change', () => loadDashboardData());
+  }
   DOM.btnOpenAddCharmModal.addEventListener('click', openAddCharmForm);
   DOM.btnCharmModalClose.addEventListener('click', closeCharmForm);
   DOM.btnCancelCharmForm.addEventListener('click', closeCharmForm);
   DOM.charmCrudForm.addEventListener('submit', handleSaveCharmType);
+  if (DOM.crudCharmImageFile) {
+    DOM.crudCharmImageFile.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0] || null;
+      try {
+        if (!file) {
+          resetImageUploadState("Charm");
+          updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
+          return;
+        }
+        const pending = await prepareImageSelection("Charm", file);
+        updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, pending?.dataUrl || "", file.name);
+        setUploadStatus(DOM.crudCharmUploadStatus, `Ready to upload: ${file.name}`, "info");
+      } catch (err) {
+        console.error(err);
+        setUploadStatus(DOM.crudCharmUploadStatus, err.message || "Unable to read image file.", "warn");
+      }
+    });
+  }
+  if (DOM.btnUploadCharmImage) {
+    DOM.btnUploadCharmImage.addEventListener('click', async () => {
+      try {
+        await uploadImageToMediaService("Charm");
+      } catch (err) {
+        console.error(err);
+        setUploadStatus(DOM.crudCharmUploadStatus, err.message || "Image upload failed.", "warn");
+        showToast(err.message || "Image upload failed.");
+      }
+    });
+  }
+  if (DOM.crudCharmImage) {
+    DOM.crudCharmImage.addEventListener('input', () => {
+      CRMState.pendingCharmImage = null;
+      if (DOM.crudCharmImageFile) DOM.crudCharmImageFile.value = "";
+      setUploadStatus(DOM.crudCharmUploadStatus, "Manual URL updated. File selection cleared.", "info");
+      updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
+    });
+  }
   if (DOM.charmsSearch) {
     DOM.charmsSearch.addEventListener('input', () => loadDashboardData());
+  }
+  if (DOM.charmsSort) {
+    DOM.charmsSort.addEventListener('change', () => loadDashboardData());
+  }
+  if (DOM.charmsActiveFilter) {
+    DOM.charmsActiveFilter.addEventListener('change', () => loadDashboardData());
+  }
+  if (DOM.charmsStockFilter) {
+    DOM.charmsStockFilter.addEventListener('change', () => loadDashboardData());
+  }
+  if (DOM.charmsCollectionFilter) {
+    DOM.charmsCollectionFilter.addEventListener('change', () => loadDashboardData());
+  }
+  if (DOM.categoriesTableBody) {
+    DOM.categoriesTableBody.addEventListener('change', async (event) => {
+      const target = event.target;
+      const categoryId = target?.dataset?.categoryId;
+      if (!categoryId) return;
+
+      if (target.classList.contains('category-order-input')) {
+        const nextOrder = Number(target.value);
+        if (!Number.isFinite(nextOrder)) {
+          await loadDashboardData();
+          return;
+        }
+        await saveCategoryQuickField(categoryId, { displayOrder: nextOrder }, 'Updated category order');
+      }
+
+      if (target.classList.contains('category-toggle-input')) {
+        await saveCategoryQuickField(categoryId, { isActive: target.checked }, target.checked ? 'Activated category' : 'Deactivated category');
+      }
+    });
+  }
+  if (DOM.charmsTableBody) {
+    DOM.charmsTableBody.addEventListener('change', async (event) => {
+      const target = event.target;
+      const charmId = target?.dataset?.charmId;
+      if (!charmId) return;
+
+      if (target.classList.contains('charm-order-input')) {
+        const nextOrder = Number(target.value);
+        if (!Number.isFinite(nextOrder)) {
+          await loadDashboardData();
+          return;
+        }
+        await saveCharmQuickField(charmId, { displayOrder: nextOrder }, 'Updated charm order');
+      }
+
+      if (target.classList.contains('charm-toggle-input')) {
+        const field = target.dataset.field;
+        if (field === 'isActive') {
+          await saveCharmQuickField(charmId, { availability: { isActive: target.checked } }, target.checked ? 'Marked charm visible' : 'Marked charm hidden');
+        } else if (field === 'inStock') {
+          await saveCharmQuickField(charmId, { availability: { inStock: target.checked } }, target.checked ? 'Marked charm in stock' : 'Marked charm out of stock');
+        }
+      }
+    });
   }
   
   // Orders filters

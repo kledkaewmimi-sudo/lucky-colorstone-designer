@@ -58,7 +58,33 @@ This layer first attempts `/api/*` and falls back to bundled JSON for stones.
 - Serves static files from the repo root.
 - Seeds `data/*.json` if files are missing or reset.
 - Implements `/api/stones`, `/api/orders`, `/api/settings`, and `/api/reset`.
+- Implements `/api/uploads/image` as a proxy to configured external media storage for CRM image uploads.
 - Writes updates directly to JSON files.
+
+## CRM Image Upload Flow
+
+The CRM does not write uploaded files into the Git repo.
+
+Current upload flow:
+
+1. Admin selects a local file in CRM.
+2. The browser reads the file as a data URL.
+3. CRM sends `POST /api/uploads/image` with JSON containing `entityType`, `fileName`, `mimeType`, and `dataUrl`.
+4. `server.ps1` validates the payload, converts the data URL into multipart form data, and forwards it to the configured external upload endpoint.
+5. The server reads the hosted URL from the configured response field and returns it to CRM.
+6. CRM writes the returned URL into the stone or charm catalog record and updates the preview.
+
+Expected provider-neutral contract:
+
+- Request body to the proxy is JSON.
+- The proxy only accepts `image/*` uploads.
+- The external provider must accept multipart form uploads.
+- The external provider must return a JSON response containing the hosted URL in the configured response field.
+
+Recommended external storage options:
+
+- Any object storage or media service that returns a public CDN URL or signed permanent URL.
+- The exact provider is intentionally abstracted behind environment variables so deployments can choose their own service without code changes.
 
 ## Deployment Shape
 

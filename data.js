@@ -10,6 +10,209 @@ export const CATEGORIES = {
   protection: { en: "Protection", th: "ปกป้อง/คุ้มครอง" }
 };
 
+export let CATEGORY_RECORDS = [];
+
+const DEFAULT_CATEGORY_CATALOG = [
+  {
+    id: "wealth",
+    entityType: "stone",
+    slug: "wealth",
+    nameEn: "Wealth & Luck",
+    nameTh: "เนเธเธเธฅเธฒเธ /เธเธฒเธฃเธเธฒเธ",
+    displayOrder: 10,
+    isActive: true
+  },
+  {
+    id: "love",
+    entityType: "stone",
+    slug: "love",
+    nameEn: "Love & Healing",
+    nameTh: "เธเธงเธฒเธกเธฃเธฑเธ/เน€เธกเธ•เธ•เธฒ",
+    displayOrder: 20,
+    isActive: true
+  },
+  {
+    id: "calm",
+    entityType: "stone",
+    slug: "calm",
+    nameEn: "Calm & Wisdom",
+    nameTh: "เธชเธเธ/เธชเธ•เธดเธเธฑเธเธเธฒ",
+    displayOrder: 30,
+    isActive: true
+  },
+  {
+    id: "protection",
+    entityType: "stone",
+    slug: "protection",
+    nameEn: "Protection",
+    nameTh: "เธเธเธเนเธญเธ/เธเธธเนเธกเธเธฃเธญเธ",
+    displayOrder: 40,
+    isActive: true
+  },
+  {
+    id: "pixiu",
+    entityType: "charm",
+    slug: "pixiu",
+    nameEn: "Pi Xiu",
+    nameTh: "เธเธตเนเน€เธเธตเธขเธฐ",
+    displayOrder: 10,
+    isActive: true
+  },
+  {
+    id: "takrud",
+    entityType: "charm",
+    slug: "takrud",
+    nameEn: "Takrud",
+    nameTh: "เธ•เธฐเธเธฃเธธเธ”",
+    displayOrder: 20,
+    isActive: true
+  }
+];
+
+function cloneDefaultCategoryCatalog() {
+  return DEFAULT_CATEGORY_CATALOG.map((category) => ({ ...category }));
+}
+
+function normalizeCategoryRecord(record, index = 0) {
+  if (!record || typeof record !== "object") return null;
+
+  const rawEntityType = typeof record.entityType === "string"
+    ? record.entityType
+    : typeof record.scope === "string"
+      ? record.scope
+      : typeof record.kind === "string"
+        ? record.kind
+        : "stone";
+  const entityType = rawEntityType.trim().toLowerCase();
+  const id = (record.id || record.slug || "").trim();
+  if (!id) return null;
+
+  return {
+    id,
+    entityType,
+    slug: (record.slug || id).trim(),
+    nameEn: record.nameEn || record.name?.en || "",
+    nameTh: record.nameTh || record.name?.th || "",
+    displayOrder: Number.isFinite(Number(record.displayOrder)) ? Number(record.displayOrder) : (index + 1) * 10,
+    isActive: record.isActive !== false
+  };
+}
+
+function sortCategoryRecords(a, b) {
+  const entityCompare = (a.entityType || "").localeCompare(b.entityType || "");
+  if (entityCompare !== 0) return entityCompare;
+  const orderCompare = (a.displayOrder || 0) - (b.displayOrder || 0);
+  if (orderCompare !== 0) return orderCompare;
+  return (a.nameEn || a.nameTh || a.id || "").localeCompare(b.nameEn || b.nameTh || b.id || "");
+}
+
+function syncLegacyCategoryMap(records = []) {
+  const nextMap = {
+    all: { en: "All", th: "เธ—เธฑเนเธเธซเธกเธ”" }
+  };
+
+  records
+    .filter((record) => record.entityType === "stone" && record.isActive !== false)
+    .slice()
+    .sort(sortCategoryRecords)
+    .forEach((record) => {
+      nextMap[record.id] = {
+        en: record.nameEn || record.slug || record.id,
+        th: record.nameTh || record.slug || record.id
+      };
+    });
+
+  Object.keys(CATEGORIES).forEach((key) => {
+    if (key !== "all") delete CATEGORIES[key];
+  });
+  Object.assign(CATEGORIES, nextMap);
+}
+
+function getDefaultCategoryRecords() {
+  return cloneDefaultCategoryCatalog()
+    .map((record, index) => normalizeCategoryRecord(record, index))
+    .filter(Boolean)
+    .sort(sortCategoryRecords);
+}
+
+function normalizeCategoryCatalog(records = []) {
+  return records
+    .map((record, index) => normalizeCategoryRecord(record, index))
+    .filter(Boolean)
+    .sort(sortCategoryRecords);
+}
+
+function normalizeStoneRecord(record, index = 0) {
+  if (!record || typeof record !== "object") return null;
+
+  const id = String(record.id || "").trim();
+  if (!id) return null;
+
+  const categoryId = String(record.categoryId || record.category || "").trim();
+  const normalizedCategory = categoryId || "uncategorized";
+
+  return {
+    ...record,
+    id,
+    name: record.name || record.nameEn || "",
+    nameTh: record.nameTh || "",
+    p4: Number(record.p4 || record.price || 0),
+    p6: Number(record.p6 || record.price || 0),
+    p8: Number(record.p8 || record.price || 0),
+    category: normalizedCategory,
+    categoryId: normalizedCategory,
+    categoryTh: record.categoryTh || "",
+    meaning: record.meaning || "",
+    meaningTh: record.meaningTh || "",
+    image: record.image || "",
+    color: record.color || "#E2C974",
+    sizes: Array.isArray(record.sizes) ? record.sizes : [4, 6, 8],
+    inStock: record.inStock !== false
+  };
+}
+
+export function getCategoryRecordById(categoryId, entityType = "all") {
+  const normalizedId = String(categoryId || "").trim();
+  if (!normalizedId) return null;
+
+  const pool = Array.isArray(CATEGORY_RECORDS) && CATEGORY_RECORDS.length > 0
+    ? CATEGORY_RECORDS
+    : getDefaultCategoryRecords();
+
+  return pool.find((record) => (
+    record.id === normalizedId &&
+    (entityType === "all" || record.entityType === entityType)
+  )) || null;
+}
+
+export function getCategoryLabelById(categoryId, entityType = "all") {
+  const record = getCategoryRecordById(categoryId, entityType);
+  if (record) {
+    return {
+      id: record.id,
+      en: record.nameEn || record.slug || record.id,
+      th: record.nameTh || record.slug || record.id,
+      isActive: record.isActive !== false,
+      entityType: record.entityType,
+      missing: false
+    };
+  }
+
+  const fallbackId = String(categoryId || "").trim();
+  if (!fallbackId) {
+    return { id: "", en: "Unassigned", th: "ยังไม่กำหนด", isActive: false, entityType };
+  }
+
+  return {
+    id: fallbackId,
+    en: `Missing category (${fallbackId})`,
+    th: `หมวดหมู่หายไป (${fallbackId})`,
+    isActive: false,
+    entityType,
+    missing: true
+  };
+}
+
 export const CHARM_PLACEHOLDER_IMAGE = "/assets/charms/_placeholder.png";
 
 export const CHARM_CATALOG = [
@@ -480,13 +683,18 @@ export function getStonePriceForSize(stone, size) {
 // --- Asynchronous API Helpers ---
 
 export async function refreshCatalog() {
+  await refreshCategoryCatalog();
+
   // Try fetching from the API first (when backend is available)
   try {
     const res = await fetch("/api/stones");
     if (res.ok) {
       const loaded = await res.json();
+      const normalized = Array.isArray(loaded)
+        ? loaded.map((record, index) => normalizeStoneRecord(record, index)).filter(Boolean)
+        : [];
       STONES.length = 0;
-      STONES.push(...loaded);
+      STONES.push(...normalized);
       return STONES;
     }
   } catch (e) {
@@ -498,8 +706,11 @@ export async function refreshCatalog() {
     const localRes = await fetch("/data/stones.json");
     if (localRes.ok) {
       const localData = await localRes.json();
+      const normalized = Array.isArray(localData)
+        ? localData.map((record, index) => normalizeStoneRecord(record, index)).filter(Boolean)
+        : [];
       STONES.length = 0;
-      STONES.push(...localData);
+      STONES.push(...normalized);
       return STONES;
     }
   } catch (e) {
@@ -508,6 +719,89 @@ export async function refreshCatalog() {
 
   console.warn("Unable to load stones data from any source");
   return STONES;
+}
+
+export async function refreshCategoryCatalog() {
+  try {
+    const settings = await getSharedSettings();
+    const loaded = Array.isArray(settings.catalogCategories) && settings.catalogCategories.length > 0
+      ? settings.catalogCategories
+      : getDefaultCategoryRecords();
+    const normalized = normalizeCategoryCatalog(loaded);
+    CATEGORY_RECORDS.length = 0;
+    CATEGORY_RECORDS.push(...normalized);
+    syncLegacyCategoryMap(CATEGORY_RECORDS);
+    return CATEGORY_RECORDS;
+  } catch (e) {
+    console.warn("Failed to load category catalog, using defaults", e);
+  }
+
+  const fallback = getDefaultCategoryRecords();
+  CATEGORY_RECORDS.length = 0;
+  CATEGORY_RECORDS.push(...fallback);
+  syncLegacyCategoryMap(CATEGORY_RECORDS);
+  return CATEGORY_RECORDS;
+}
+
+export async function getSharedCategoryCatalog(entityType = "all") {
+  if (CATEGORY_RECORDS.length === 0) {
+    await refreshCategoryCatalog();
+  }
+
+  if (entityType === "all") {
+    return CATEGORY_RECORDS;
+  }
+
+  return CATEGORY_RECORDS.filter((record) => record.entityType === entityType);
+}
+
+export async function saveSharedCategoryCatalogEntry(record) {
+  const normalizedRecord = normalizeCategoryRecord(record);
+  if (!normalizedRecord || !normalizedRecord.id) return null;
+
+  const currentCatalog = await getSharedCategoryCatalog("all");
+  const nextCatalog = currentCatalog.slice();
+  const existingIndex = nextCatalog.findIndex((entry) => entry.id === normalizedRecord.id);
+  if (existingIndex >= 0) {
+    nextCatalog[existingIndex] = normalizedRecord;
+  } else {
+    nextCatalog.push(normalizedRecord);
+  }
+  nextCatalog.sort(sortCategoryRecords);
+
+  const settings = await getSharedSettings();
+  const savedSettings = await saveSharedSettings({
+    ...settings,
+    catalogCategories: nextCatalog
+  });
+
+  if (JSON.stringify(savedSettings?.catalogCategories || []) !== JSON.stringify(nextCatalog)) {
+    return null;
+  }
+
+  await refreshCategoryCatalog();
+  return CATEGORY_RECORDS.find((entry) => entry.id === normalizedRecord.id) || normalizedRecord;
+}
+
+export async function deleteSharedCategoryCatalogEntry(categoryId) {
+  if (!categoryId) return false;
+
+  const currentCatalog = await getSharedCategoryCatalog("all");
+  const nextCatalog = currentCatalog.filter((entry) => entry.id !== categoryId);
+  if (nextCatalog.length === currentCatalog.length) return false;
+
+  const settings = await getSharedSettings();
+  const savedSettings = await saveSharedSettings({
+    ...settings,
+    catalogCategories: nextCatalog
+  });
+
+  if (JSON.stringify(savedSettings?.catalogCategories || []) !== JSON.stringify(nextCatalog)) {
+    return false;
+  }
+
+  await refreshCategoryCatalog();
+  return true;
 }
 
 export async function refreshCharmCatalog() {
@@ -615,10 +909,11 @@ export async function deleteSharedCharmCatalogEntry(charmId) {
 
 export async function saveSharedCatalog(stone) {
   try {
+    const normalizedStone = normalizeStoneRecord(stone);
     const res = await fetch("/api/stones/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(stone)
+      body: JSON.stringify(normalizedStone || stone)
     });
     if (res.ok) {
       await refreshCatalog();

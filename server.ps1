@@ -90,6 +90,173 @@ function Convert-To-Json-Array ($array) {
     return $json
 }
 
+function Get-EnvValue {
+    param([string]$Name, [string]$Default = "")
+    $value = [System.Environment]::GetEnvironmentVariable($Name)
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $Default
+    }
+    return $value
+}
+
+function Get-NestedJsonValue {
+    param(
+        $Object,
+        [string]$Path
+    )
+    if ($null -eq $Object -or [string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    $current = $Object
+    foreach ($segment in $Path.Split('.')) {
+        if ($null -eq $current) { return $null }
+        $prop = $current.PSObject.Properties[$segment]
+        if ($null -eq $prop) { return $null }
+        $current = $prop.Value
+    }
+    return $current
+}
+
+function Convert-DataUrlToUploadPayload {
+    param([string]$DataUrl)
+
+    if ([string]::IsNullOrWhiteSpace($DataUrl)) {
+        throw "Missing image data."
+    }
+
+    if ($DataUrl -match '^data:(?<mime>[^;]+);base64,(?<payload>.+)$') {
+        return @{
+            mimeType = $Matches.mime
+            bytes = [System.Convert]::FromBase64String($Matches.payload)
+        }
+    }
+
+    throw "Image payload must be provided as a data URL."
+}
+
+function Get-ImageUploadConfig {
+    $endpoint = Get-EnvValue "IMAGE_UPLOAD_ENDPOINT"
+    if ([string]::IsNullOrWhiteSpace($endpoint)) {
+        return $null
+    }
+
+    $extraFields = @{}
+    $extraFieldsJson = Get-EnvValue "IMAGE_UPLOAD_EXTRA_FIELDS_JSON"
+    if (-not [string]::IsNullOrWhiteSpace($extraFieldsJson)) {
+        try {
+            $decoded = $extraFieldsJson | ConvertFrom-Json
+            if ($null -ne $decoded) {
+                foreach ($prop in $decoded.PSObject.Properties) {
+                    $extraFields[$prop.Name] = [string]$prop.Value
+                }
+            }
+        } catch {
+            throw "Invalid IMAGE_UPLOAD_EXTRA_FIELDS_JSON value."
+        }
+    }
+
+    return @{
+        providerName = Get-EnvValue "IMAGE_UPLOAD_PROVIDER_NAME" "external-storage"
+        endpoint = $endpoint
+        method = Get-EnvValue "IMAGE_UPLOAD_METHOD" "POST"
+        fileField = Get-EnvValue "IMAGE_UPLOAD_FILE_FIELD" "file"
+        responseUrlField = Get-EnvValue "IMAGE_UPLOAD_RESPONSE_URL_FIELD" "secure_url"
+        authHeader = Get-EnvValue "IMAGE_UPLOAD_AUTH_HEADER"
+        authValue = Get-EnvValue "IMAGE_UPLOAD_AUTH_VALUE"
+        maxBytes = [int](Get-EnvValue "IMAGE_UPLOAD_MAX_BYTES" "6291456")
+        extraFields = $extraFields
+    }
+}
+
+function Upload-ImageToExternalService {
+    param(
+        [string]$FileName,
+        [string]$MimeType,
+        [string]$DataUrl
+    )
+
+    $config = Get-ImageUploadConfig
+    if ($null -eq $config) {
+        return @{
+            configured = $false
+            error = "Image upload is not configured."
+            requiredConfig = @(
+                "IMAGE_UPLOAD_ENDPOINT",
+                "IMAGE_UPLOAD_METHOD (optional, default POST)",
+                "IMAGE_UPLOAD_FILE_FIELD (optional, default file)",
+                "IMAGE_UPLOAD_RESPONSE_URL_FIELD (optional, default secure_url)",
+                "IMAGE_UPLOAD_EXTRA_FIELDS_JSON (optional)",
+                "IMAGE_UPLOAD_AUTH_HEADER / IMAGE_UPLOAD_AUTH_VALUE (optional)"
+            )
+        }
+    }
+
+    $payload = Convert-DataUrlToUploadPayload -DataUrl $DataUrl
+    $bytes = $payload.bytes
+    $effectiveMimeType = if ([string]::IsNullOrWhiteSpace($MimeType)) { $payload.mimeType } else { $MimeType }
+
+    if ([string]::IsNullOrWhiteSpace($effectiveMimeType) -or -not $effectiveMimeType.StartsWith("image/")) {
+        throw "Only image/* uploads are supported."
+    }
+
+    if ($config.maxBytes -gt 0 -and $bytes.Length -gt $config.maxBytes) {
+        throw "Image is too large. Maximum allowed size is $($config.maxBytes) bytes."
+    }
+
+    Add-Type -AssemblyName System.Net.Http | Out-Null
+
+    $httpClient = New-Object System.Net.Http.HttpClient
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($config.authHeader) -and -not [string]::IsNullOrWhiteSpace($config.authValue)) {
+            $httpClient.DefaultRequestHeaders.Remove($config.authHeader) | Out-Null
+            $httpClient.DefaultRequestHeaders.Add($config.authHeader, $config.authValue)
+        }
+
+        $requestMethod = [System.Net.Http.HttpMethod]::Post
+        if ($config.method -eq "PUT") {
+            $requestMethod = [System.Net.Http.HttpMethod]::Put
+        }
+
+        $request = New-Object System.Net.Http.HttpRequestMessage($requestMethod, $config.endpoint)
+        $multipart = New-Object System.Net.Http.MultipartFormDataContent
+
+        $fileContent = New-Object System.Net.Http.ByteArrayContent($bytes)
+        $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($effectiveMimeType)
+        $safeFileName = if ([string]::IsNullOrWhiteSpace($FileName)) { "upload-image" } else { [System.IO.Path]::GetFileName($FileName) }
+        $multipart.Add($fileContent, $config.fileField, $safeFileName)
+
+        foreach ($field in $config.extraFields.GetEnumerator()) {
+            $multipart.Add((New-Object System.Net.Http.StringContent([string]$field.Value)), [string]$field.Key)
+        }
+
+        $request.Content = $multipart
+        $uploadResponse = $httpClient.SendAsync($request).GetAwaiter().GetResult()
+        $responseText = $uploadResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+
+        if (-not $uploadResponse.IsSuccessStatusCode) {
+            throw "Upload service returned $([int]$uploadResponse.StatusCode): $responseText"
+        }
+
+        $decodedResponse = $responseText | ConvertFrom-Json
+        $uploadedUrl = Get-NestedJsonValue -Object $decodedResponse -Path $config.responseUrlField
+        if ([string]::IsNullOrWhiteSpace([string]$uploadedUrl)) {
+            throw "Upload service response did not include '$($config.responseUrlField)'."
+        }
+
+        return @{
+            configured = $true
+            success = $true
+            provider = $config.providerName
+            url = [string]$uploadedUrl
+            fileName = $safeFileName
+            mimeType = $effectiveMimeType
+        }
+    } finally {
+        $httpClient.Dispose()
+    }
+}
+
 Seed-Database
 
 $listener = New-Object System.Net.HttpListener
@@ -160,6 +327,33 @@ try {
                     if ($body) {
                         $bodyObj = ConvertFrom-Json $body
                     }
+                }
+
+                # Endpoint: POST /api/uploads/image
+                if ($path -eq "/api/uploads/image" -and $request.HttpMethod -eq "POST") {
+                    if ($null -eq $bodyObj) {
+                        Send-JsonResponse $response @{ error = "Empty body" } 400
+                        continue
+                    }
+
+                    try {
+                        $uploadResult = Upload-ImageToExternalService `
+                            -FileName $bodyObj.fileName `
+                            -MimeType $bodyObj.mimeType `
+                            -DataUrl $bodyObj.dataUrl
+
+                        if (-not $uploadResult.configured) {
+                            Send-JsonResponse $response $uploadResult 503
+                        } else {
+                            Send-JsonResponse $response $uploadResult 201
+                        }
+                    } catch {
+                        Send-JsonResponse $response @{
+                            error = $_.Exception.Message
+                            configured = $false
+                        } 500
+                    }
+                    continue
                 }
 
                 # Endpoint: GET /api/stones

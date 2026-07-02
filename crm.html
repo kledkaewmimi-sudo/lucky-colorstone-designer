@@ -91,6 +91,19 @@
             </button>
           </li>
           <li>
+            <button class="nav-item" data-tab="categories" id="btnTabCategories">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h16" />
+                <path d="M4 12h16" />
+                <path d="M4 17h16" />
+                <circle cx="7" cy="7" r="1.5" />
+                <circle cx="17" cy="12" r="1.5" />
+                <circle cx="10" cy="17" r="1.5" />
+              </svg>
+              Category Manager
+            </button>
+          </li>
+          <li>
             <button class="nav-item" data-tab="charms" id="btnTabCharms">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 2v6" />
@@ -164,6 +177,17 @@
           <path d="M12 22.08V12" />
         </svg>
         <span>Inventory</span>
+      </button>
+      <button class="mobile-nav-item" data-tab="categories" id="btnMobTabCategories">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
+          <circle cx="7" cy="7" r="1.5" />
+          <circle cx="17" cy="12" r="1.5" />
+          <circle cx="10" cy="17" r="1.5" />
+        </svg>
+        <span>Categories</span>
       </button>
       <button class="mobile-nav-item" data-tab="charms" id="btnMobTabCharms">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -359,16 +383,111 @@
         </section>
 
         <!-- ==========================================
-             TAB 3: CHARM CATALOG (READ ONLY)
+             TAB 3: CATALOG CATEGORIES
+             ========================================== -->
+        <section class="tab-view" id="tabCategories">
+          <div class="read-only-banner">
+            <strong>Shared master data.</strong> Stone and charm categories are managed here and reused by the catalog forms.
+          </div>
+
+          <div class="table-actions-header category-actions-header">
+            <div class="category-toolbar-left">
+              <div class="search-box">
+                <input type="text" id="categoriesSearch" placeholder="Search categories by ID, slug, or name...">
+              </div>
+              <div class="filter-group category-filter-group">
+                <label for="categoriesScopeFilter">Scope</label>
+                <select id="categoriesScopeFilter" class="form-control-select">
+                  <option value="all">All Scopes</option>
+                  <option value="stone">Stone Only</option>
+                  <option value="charm">Charm Only</option>
+                </select>
+              </div>
+              <div class="filter-group category-filter-group">
+                <label for="categoriesStatusFilter">Status</label>
+                <select id="categoriesStatusFilter" class="form-control-select">
+                  <option value="all">All</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+              </div>
+              <div class="filter-group category-filter-group">
+                <label for="categoriesSort">Sort</label>
+                <select id="categoriesSort" class="form-control-select">
+                  <option value="displayOrder-asc">Display Order (Low to High)</option>
+                  <option value="displayOrder-desc">Display Order (High to Low)</option>
+                  <option value="name-asc">Name (A to Z)</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btnOpenAddCategoryModal">
+              <span class="icon-plus">+</span> Add New Category
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="crm-table" id="categoriesTable">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Scope</th>
+                  <th>Display Order</th>
+                  <th>Status</th>
+                  <th>Usage</th>
+                  <th width="150" class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="categoriesTableBody">
+                <!-- Populated Dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 4: CHARM CATALOG (BUSINESS FIELDS + READ ONLY TUNING)
              ========================================== -->
         <section class="tab-view" id="tabCharms">
           <div class="read-only-banner">
-            <strong>Business fields only.</strong> Charm business fields can be managed here. Render-tuning values remain visible but read-only in this phase.
+            <strong>Business fields only.</strong> Charm business fields, display order, visibility, and stock state can be managed here. Render-tuning values remain visible but read-only in this phase.
           </div>
 
-          <div class="table-actions-header">
-            <div class="search-box">
-              <input type="text" id="charmsSearch" placeholder="Search charms by ID, SKU, name, or type...">
+          <div class="table-actions-header charm-actions-header">
+            <div class="charm-toolbar-left">
+              <div class="search-box">
+                <input type="text" id="charmsSearch" placeholder="Search charms by ID, SKU, name, or type...">
+              </div>
+              <div class="filter-group charm-filter-group">
+                <label for="charmsSort">Sort</label>
+                <select id="charmsSort" class="form-control-select">
+                  <option value="displayOrder-asc">Display Order (Low to High)</option>
+                  <option value="displayOrder-desc">Display Order (High to Low)</option>
+                  <option value="name-asc">Name (A to Z)</option>
+                  <option value="price-desc">Price (High to Low)</option>
+                </select>
+              </div>
+              <div class="filter-group charm-filter-group">
+                <label for="charmsActiveFilter">Visibility</label>
+                <select id="charmsActiveFilter" class="form-control-select">
+                  <option value="all">All</option>
+                  <option value="active">Visible Only</option>
+                  <option value="inactive">Hidden Only</option>
+                </select>
+              </div>
+              <div class="filter-group charm-filter-group">
+                <label for="charmsStockFilter">Stock</label>
+                <select id="charmsStockFilter" class="form-control-select">
+                  <option value="all">All</option>
+                  <option value="in">In Stock Only</option>
+                  <option value="out">Out of Stock Only</option>
+                </select>
+              </div>
+              <div class="filter-group charm-filter-group">
+                <label for="charmsCollectionFilter">Collection</label>
+                <select id="charmsCollectionFilter" class="form-control-select">
+                  <option value="all">All Collections</option>
+                </select>
+              </div>
             </div>
             <button class="btn btn-primary" id="btnOpenAddCharmModal">
               <span class="icon-plus">+</span> Add New Charm
@@ -382,8 +501,10 @@
                   <th width="90">Image</th>
                   <th>Charm</th>
                   <th>Business</th>
-                  <th>Status</th>
-                  <th width="360">Render Tuning Summary</th>
+                  <th>Visibility</th>
+                  <th>Stock</th>
+                  <th width="320">Render Tuning Summary</th>
+                  <th width="150" class="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody id="charmsTableBody">
@@ -435,7 +556,7 @@
         </section>
 
         <!-- ==========================================
-             TAB 4: SETTINGS
+             TAB 5: SETTINGS
              ========================================== -->
         <section class="tab-view" id="tabSettings">
           <div class="settings-card-container">
@@ -532,8 +653,9 @@
 
         <div class="form-grid">
           <div class="form-group">
-            <label for="crudStoneImage">Bead Texture/Color Image</label>
-            <select id="crudStoneImage" required>
+            <label for="crudStoneImage">Image URL / Asset Path</label>
+            <input type="text" id="crudStoneImage" required list="stoneImagePresets" placeholder="assets/golden_rutile.png or https://example.com/image.png" spellcheck="false">
+            <datalist id="stoneImagePresets">
               <option value="assets/golden_rutile.png">Golden Rutile (ไหมทอง)</option>
               <option value="assets/amethyst.png">Amethyst (อเมทิสต์)</option>
               <option value="assets/rose_quartz.png">Rose Quartz (โรสควอตซ์)</option>
@@ -541,11 +663,30 @@
               <option value="assets/tigers_eye.png">Tiger's Eye (ไทเกอร์อาย)</option>
               <option value="assets/black_obsidian.png">Black Obsidian (ออบซิเดียน)</option>
               <option value="assets/green_aventurine.png">Green Aventurine (กรีน อเวนเจอรีน)</option>
-            </select>
+            </datalist>
+            <p class="form-tip">Local asset paths still work. For production, paste a hosted URL from external storage.</p>
+            <div class="image-upload-actions">
+              <label class="image-upload-file">
+                <span>Choose local image</span>
+                <input type="file" id="crudStoneImageFile" accept="image/*" capture="environment">
+              </label>
+              <button type="button" class="btn btn-outline image-upload-btn" id="btnUploadStoneImage">Upload to media service</button>
+            </div>
+            <p class="form-tip" id="crudStoneUploadStatus">No file selected.</p>
           </div>
           <div class="form-group">
             <label for="crudStoneColor">Aesthetic Solid Color (Hex code representation)</label>
             <input type="color" id="crudStoneColor" value="#E2C974">
+          </div>
+        </div>
+
+        <div class="image-preview-card" aria-live="polite">
+          <div class="image-preview-frame">
+            <img id="crudStoneImagePreview" alt="Stone image preview">
+          </div>
+          <div class="image-preview-meta">
+            <span class="image-preview-label">Current preview</span>
+            <code id="crudStoneImagePreviewUrl">No image URL set.</code>
           </div>
         </div>
 
@@ -625,8 +766,8 @@
             <input type="text" id="crudCharmType" required placeholder="e.g. pi_xiu">
           </div>
           <div class="form-group">
-            <label for="crudCharmCollection">Collection</label>
-            <input type="text" id="crudCharmCollection" required placeholder="e.g. pixiu">
+            <label for="crudCharmCollection">Category / Collection</label>
+            <select id="crudCharmCollection" required></select>
           </div>
         </div>
 
@@ -646,8 +787,27 @@
         </div>
 
         <div class="form-group">
-          <label for="crudCharmImage">Charm Image Path</label>
-          <input type="text" id="crudCharmImage" required placeholder="/assets/charms/pixiu/px10.png">
+          <label for="crudCharmImage">Image URL / Asset Path</label>
+          <input type="text" id="crudCharmImage" required placeholder="/assets/charms/pixiu/px10.png or https://example.com/image.png" spellcheck="false">
+          <p class="form-tip">Local asset paths and hosted URLs are supported. Production CRM should save hosted URLs from external storage.</p>
+          <div class="image-upload-actions">
+            <label class="image-upload-file">
+              <span>Choose local image</span>
+              <input type="file" id="crudCharmImageFile" accept="image/*" capture="environment">
+            </label>
+            <button type="button" class="btn btn-outline image-upload-btn" id="btnUploadCharmImage">Upload to media service</button>
+          </div>
+          <p class="form-tip" id="crudCharmUploadStatus">No file selected.</p>
+        </div>
+
+        <div class="image-preview-card" aria-live="polite">
+          <div class="image-preview-frame">
+            <img id="crudCharmImagePreview" alt="Charm image preview">
+          </div>
+          <div class="image-preview-meta">
+            <span class="image-preview-label">Current preview</span>
+            <code id="crudCharmImagePreviewUrl">No image URL set.</code>
+          </div>
         </div>
 
         <div class="form-group">
@@ -694,6 +854,69 @@
         <div class="modal-actions-footer">
           <button type="button" class="btn btn-outline" id="btnCancelCharmForm">Cancel</button>
           <button type="submit" class="btn btn-primary" id="btnSaveCharmForm">Save Charm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: ADD/EDIT CATEGORY (MASTER DATA)
+       ========================================== -->
+  <div class="modal-backdrop" id="categoryCrudModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="categoryModalTitle">Add New Category</h3>
+        <button class="modal-close-btn" id="btnCategoryModalClose">&times;</button>
+      </div>
+      <form id="categoryCrudForm" class="modal-form">
+        <input type="hidden" id="crudCategoryRecordId">
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCategoryEntityType">Scope</label>
+            <select id="crudCategoryEntityType" required>
+              <option value="stone">Stone</option>
+              <option value="charm">Charm</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="crudCategoryId">Category ID</label>
+            <input type="text" id="crudCategoryId" required placeholder="e.g. wealth">
+            <p class="form-tip">This stable ID is used by the catalog and is locked on edit to protect item references.</p>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCategorySlug">Slug</label>
+            <input type="text" id="crudCategorySlug" readonly>
+          </div>
+          <div class="form-group">
+            <label for="crudCategoryDisplayOrder">Display Order</label>
+            <input type="number" id="crudCategoryDisplayOrder" min="0" step="10" required placeholder="e.g. 10">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCategoryNameEn">Name (English)</label>
+            <input type="text" id="crudCategoryNameEn" required placeholder="e.g. Wealth & Luck">
+          </div>
+          <div class="form-group">
+            <label for="crudCategoryNameTh">Name (Thai)</label>
+            <input type="text" id="crudCategoryNameTh" required placeholder="e.g. โชคลาภ">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-lbl font-semibold">
+            <input type="checkbox" id="crudCategoryIsActive" checked> Active in Catalog
+          </label>
+        </div>
+
+        <div class="modal-actions-footer">
+          <button type="button" class="btn btn-outline" id="btnCancelCategoryForm">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Category</button>
         </div>
       </form>
     </div>
