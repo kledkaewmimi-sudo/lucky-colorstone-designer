@@ -1566,7 +1566,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", charmImageUrl);
         charmImage.setAttribute("clip-path", `url(#${clipId})`);
         charmImage.setAttribute("preserveAspectRatio", "none");
-        const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
+        const rotationRad = getResolvedNodeRotationRad(node);
+        const angleDeg = rotationRad * 180 / Math.PI;
         if (charmBounds) {
           const placement = getCharmRenderPlacement(
             component,
@@ -1574,6 +1575,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             charmDiameterPx,
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
             charmBounds,
+            rotationRad,
           );
           charmImage.setAttribute("x", bx - halfCharm + placement.x);
           charmImage.setAttribute("y", by - halfCharm + placement.y);
@@ -1585,7 +1587,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             charmDiameterPx,
             charmDiameterPx,
             null,
-            null
+            null,
+            rotationRad
           );
           charmImage.setAttribute("x", bx - halfCharm + fallbackPlacement.x);
           charmImage.setAttribute("y", by - halfCharm + fallbackPlacement.y);
@@ -2190,7 +2193,34 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
   return pending;
 }
 
-function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING) {
+function getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad = 0) {
+  const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
+  const corners = [
+    { x: visibleBounds.minX, y: visibleBounds.minY },
+    { x: visibleBounds.maxX + 1, y: visibleBounds.minY },
+    { x: visibleBounds.maxX + 1, y: visibleBounds.maxY + 1 },
+    { x: visibleBounds.minX, y: visibleBounds.maxY + 1 }
+  ];
+  const cos = Math.cos(rotationRad);
+  const sin = Math.sin(rotationRad);
+  const rotatedCorners = corners.map((point) => ({
+    x: point.x * cos - point.y * sin,
+    y: point.x * sin + point.y * cos
+  }));
+  const minX = Math.min(...rotatedCorners.map((point) => point.x));
+  const maxX = Math.max(...rotatedCorners.map((point) => point.x));
+  const minY = Math.min(...rotatedCorners.map((point) => point.y));
+  const maxY = Math.max(...rotatedCorners.map((point) => point.y));
+
+  return {
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2
+  };
+}
+
+function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING, rotationRad = 0) {
   const safeTuning = resolveCharmRenderTuning(tuning);
   const safeVisualScale = safeTuning.visualScale;
   const safeMaxWidthRatio = safeTuning.maxWidthRatio;
@@ -2211,24 +2241,32 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
     };
   }
 
-  const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
-  const widthFitScale = maxFrameWidth / visibleBounds.width;
-  const heightFitScale = maxFrameHeight / visibleBounds.height;
+  const rotatedBoundsMetrics = getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad);
+  const widthFitScale = maxFrameWidth / rotatedBoundsMetrics.width;
+  const heightFitScale = maxFrameHeight / rotatedBoundsMetrics.height;
   const scale = Math.min(widthFitScale, heightFitScale) * safeVisualScale;
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
-  const visibleCenterX = (visibleBounds.minX + visibleBounds.width / 2) / sourceWidth;
-  const visibleCenterY = (visibleBounds.minY + visibleBounds.height / 2) / sourceHeight;
+  const desiredCenterX = frameWidth / 2 + (frameWidth * safeOffsetX);
+  const desiredCenterY = frameHeight / 2 + (frameHeight * safeOffsetY);
+  const scaledRotatedCenterX = rotatedBoundsMetrics.centerX * scale;
+  const scaledRotatedCenterY = rotatedBoundsMetrics.centerY * scale;
+  const cos = Math.cos(-rotationRad);
+  const sin = Math.sin(-rotationRad);
+  const translatedCenterX = desiredCenterX - (frameWidth / 2) - scaledRotatedCenterX;
+  const translatedCenterY = desiredCenterY - (frameHeight / 2) - scaledRotatedCenterY;
+  const x = frameWidth / 2 + (translatedCenterX * cos - translatedCenterY * sin);
+  const y = frameHeight / 2 + (translatedCenterX * sin + translatedCenterY * cos);
 
   return {
     width,
     height,
-    x: frameWidth / 2 - (visibleCenterX * width) + (frameWidth * safeOffsetX),
-    y: frameHeight / 2 - (visibleCenterY * height) + (frameHeight * safeOffsetY)
+    x,
+    y
   };
 }
 
-function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null) {
+function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null, rotationRad = 0) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
   return getInlineCharmPlacement(
@@ -2237,7 +2275,8 @@ function getCharmRenderPlacement(component, frameWidth, frameHeight, image = nul
     sourceWidth,
     sourceHeight,
     bounds,
-    component
+    component,
+    rotationRad
   );
 }
 
@@ -2311,7 +2350,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getCharmRenderPlacement(component, charmSizePx, charmSizePx, imgObj, charmBounds);
+        const placement = getCharmRenderPlacement(component, charmSizePx, charmSizePx, imgObj, charmBounds, node.renderRotationRad);
         ctx.save();
         ctx.beginPath();
         ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
