@@ -790,11 +790,11 @@ body {
 .bead-size-label {
   display: block;
   color: var(--color-navy-dark);
-  font-family: 'Playfair Display', serif;
+  font-family: inherit;
   font-size: 28px;
   font-weight: 700;
   line-height: 0.92;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   margin-bottom: 5px;
 }
 
