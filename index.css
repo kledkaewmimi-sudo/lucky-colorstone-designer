@@ -706,14 +706,14 @@ body {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(252, 251, 255, 0.94)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(252, 251, 255, 0.96)),
     var(--color-white);
-  border: 1px solid rgba(181, 169, 219, 0.24);
+  border: 1px solid rgba(181, 169, 219, 0.22);
   border-radius: 24px;
-  padding: 14px;
+  padding: 16px 14px;
   cursor: pointer;
   transition: var(--transition-smooth);
-  box-shadow: 0 10px 26px rgba(181, 169, 219, 0.12);
+  box-shadow: 0 8px 22px rgba(181, 169, 219, 0.1);
 }
 
 .bead-size-card:hover {
@@ -722,18 +722,18 @@ body {
 }
 
 .bead-size-card.active {
-  border-color: rgba(139, 0, 0, 0.22);
-  box-shadow: 0 16px 34px rgba(181, 169, 219, 0.2);
+  border-color: rgba(139, 0, 0, 0.18);
+  box-shadow: 0 14px 30px rgba(181, 169, 219, 0.18);
   background:
-    radial-gradient(circle at top right, rgba(255, 234, 234, 0.88), transparent 34%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(248, 244, 255, 0.98));
+    radial-gradient(circle at top right, rgba(255, 234, 234, 0.72), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(248, 244, 255, 0.98));
 }
 
 .bead-size-content {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 112px;
+  grid-template-columns: 24px minmax(0, 1fr) 120px;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .bead-size-radio-col {
@@ -747,7 +747,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -755,8 +755,7 @@ body {
 .bead-size-preview {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 38px;
+  min-height: 34px;
 }
 
 .bead-preview-circle {
@@ -767,38 +766,32 @@ body {
 }
 
 .bead-preview-circle-sm {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .bead-preview-circle-md {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 .bead-preview-circle-lg {
-  width: 24px;
-  height: 24px;
-}
-
-.bead-size-preview-4 .bead-preview-circle:nth-child(2),
-.bead-size-preview-6 .bead-preview-circle:nth-child(2),
-.bead-size-preview-10 .bead-preview-circle:nth-child(2) {
-  transform: translateY(5px);
+  width: 28px;
+  height: 28px;
 }
 
 .bead-size-label {
   display: block;
   color: var(--color-navy-dark);
   font-family: 'Playfair Display', serif;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 600;
   line-height: 1;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .bead-size-details h4 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-navy-dark);
   line-height: 1.3;
@@ -827,7 +820,7 @@ body {
 
 .bead-size-card.active .radio-check {
   border-color: var(--color-velvet-red);
-  box-shadow: 0 0 0 3px rgba(139, 0, 0, 0.08);
+  box-shadow: 0 0 0 2px rgba(139, 0, 0, 0.08);
 }
 
 .bead-size-card.active .radio-check::after {
@@ -843,9 +836,9 @@ body {
   position: relative;
   overflow: hidden;
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(248, 244, 255, 1), rgba(239, 233, 250, 0.95));
+  background: linear-gradient(180deg, rgba(248, 244, 255, 1), rgba(242, 236, 251, 0.98));
   border: 1px solid rgba(181, 169, 219, 0.18);
-  height: 118px;
+  height: 126px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -861,12 +854,11 @@ body {
 .bead-size-hand-image {
   position: relative;
   z-index: 1;
-  width: 126px;
-  max-width: none;
+  width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center;
-  filter: saturate(1.02) drop-shadow(0 8px 12px rgba(64, 48, 77, 0.12));
+  object-fit: contain;
+  object-position: center center;
+  filter: saturate(1.02);
 }
 
 .bead-size-card.active .bead-size-label,
@@ -938,7 +930,7 @@ body {
 
 @media (max-width: 360px) {
   .bead-size-content {
-    grid-template-columns: 24px minmax(0, 1fr) 96px;
+    grid-template-columns: 22px minmax(0, 1fr) 98px;
     gap: 10px;
   }
 
@@ -955,7 +947,7 @@ body {
   }
 
   .bead-size-hand-panel {
-    height: 108px;
+    height: 112px;
   }
 
   .bead-size-guide-grid {
