@@ -890,6 +890,8 @@ const DEFAULT_CHARM_RENDER_TUNING = Object.freeze({
   maxHeightRatio: 0.92,
   edgeFitMode: 'contain',
   targetWidthFillRatio: 1,
+  contactInsetLeft: 0,
+  contactInsetRight: 0,
   rotation: 0,
   anchor: 'top'
 });
@@ -923,6 +925,12 @@ function normalizeCharmTargetWidthFillRatio(value) {
   return Math.min(1.1, Math.max(0.5, numericValue));
 }
 
+function normalizeCharmContactInset(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return 0;
+  return Math.min(0.4, Math.max(0, numericValue));
+}
+
 function normalizeCharmRotation(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
@@ -942,6 +950,8 @@ function resolveCharmRenderTuning(source = null) {
     maxHeightRatio: normalizeCharmMaxRatio(tuningSource.maxHeightRatio, DEFAULT_CHARM_RENDER_TUNING.maxHeightRatio),
     edgeFitMode: normalizeCharmEdgeFitMode(tuningSource.edgeFitMode),
     targetWidthFillRatio: normalizeCharmTargetWidthFillRatio(tuningSource.targetWidthFillRatio),
+    contactInsetLeft: normalizeCharmContactInset(tuningSource.contactInsetLeft),
+    contactInsetRight: normalizeCharmContactInset(tuningSource.contactInsetRight),
     rotation: normalizeCharmRotation(tuningSource.rotation),
     anchor: normalizeCharmAnchor(tuningSource.anchor)
   };
@@ -2235,10 +2245,36 @@ function getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad 
   const maxY = Math.max(...rotatedCorners.map((point) => point.y));
 
   return {
+    minX,
+    maxX,
+    minY,
+    maxY,
     width: Math.max(1, maxX - minX),
     height: Math.max(1, maxY - minY),
     centerX: (minX + maxX) / 2,
     centerY: (minY + maxY) / 2
+  };
+}
+
+function getContactEdgeMetrics(rotatedBoundsMetrics, tuning = DEFAULT_CHARM_RENDER_TUNING) {
+  const contactInsetLeftRatio = normalizeCharmContactInset(tuning.contactInsetLeft);
+  const contactInsetRightRatio = normalizeCharmContactInset(tuning.contactInsetRight);
+  const contactInsetLeftPx = rotatedBoundsMetrics.width * contactInsetLeftRatio;
+  const contactInsetRightPx = rotatedBoundsMetrics.width * contactInsetRightRatio;
+  const contactMinX = Math.min(
+    rotatedBoundsMetrics.maxX,
+    rotatedBoundsMetrics.minX + contactInsetLeftPx
+  );
+  const contactMaxX = Math.max(
+    contactMinX + 1,
+    rotatedBoundsMetrics.maxX - contactInsetRightPx
+  );
+
+  return {
+    minX: contactMinX,
+    maxX: contactMaxX,
+    width: Math.max(1, contactMaxX - contactMinX),
+    centerX: (contactMinX + contactMaxX) / 2
   };
 }
 
@@ -2266,9 +2302,10 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
   }
 
   const rotatedBoundsMetrics = getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad);
+  const contactEdgeMetrics = getContactEdgeMetrics(rotatedBoundsMetrics, safeTuning);
   const widthFitScale = maxFrameWidth / rotatedBoundsMetrics.width;
   const heightFitScale = maxFrameHeight / rotatedBoundsMetrics.height;
-  const tangentialFillScale = (maxFrameWidth * safeTargetWidthFillRatio) / rotatedBoundsMetrics.width;
+  const tangentialFillScale = (maxFrameWidth * safeTargetWidthFillRatio) / contactEdgeMetrics.width;
   const baseScale = safeEdgeFitMode === 'horizontal_fill'
     ? tangentialFillScale
     : Math.min(widthFitScale, heightFitScale);
@@ -2280,7 +2317,7 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
     : 0;
   const desiredCenterX = frameWidth / 2 + (frameWidth * safeOffsetX) + (Math.cos(centerAngle) * radialOverflowPx / 2);
   const desiredCenterY = frameHeight / 2 + (frameHeight * safeOffsetY) + (Math.sin(centerAngle) * radialOverflowPx / 2);
-  const scaledRotatedCenterX = rotatedBoundsMetrics.centerX * scale;
+  const scaledRotatedCenterX = (safeEdgeFitMode === 'horizontal_fill' ? contactEdgeMetrics.centerX : rotatedBoundsMetrics.centerX) * scale;
   const scaledRotatedCenterY = rotatedBoundsMetrics.centerY * scale;
   const cos = Math.cos(-rotationRad);
   const sin = Math.sin(-rotationRad);
