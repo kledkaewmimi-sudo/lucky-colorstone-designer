@@ -1565,20 +1565,26 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         const halfCharm = charmDiameterPx / 2;
         const charmImageUrl = component.image || '';
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
-        const clipId = `clip-${component.uniqueId}`;
-        const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-        clip.setAttribute("id", clipId);
-        const clipRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        clipRect.setAttribute("x", bx - halfCharm);
-        clipRect.setAttribute("y", by - halfCharm);
-        clipRect.setAttribute("width", charmDiameterPx);
-        clipRect.setAttribute("height", charmDiameterPx);
-        clip.appendChild(clipRect);
-        defs.appendChild(clip);
+        const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
+        let clipId = '';
+        if (useCharmClip) {
+          clipId = `clip-${component.uniqueId}`;
+          const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+          clip.setAttribute("id", clipId);
+          const clipRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          clipRect.setAttribute("x", bx - halfCharm);
+          clipRect.setAttribute("y", by - halfCharm);
+          clipRect.setAttribute("width", charmDiameterPx);
+          clipRect.setAttribute("height", charmDiameterPx);
+          clip.appendChild(clipRect);
+          defs.appendChild(clip);
+        }
 
         const charmImage = document.createElementNS("http://www.w3.org/2000/svg", "image");
         charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", charmImageUrl);
-        charmImage.setAttribute("clip-path", `url(#${clipId})`);
+        if (useCharmClip) {
+          charmImage.setAttribute("clip-path", `url(#${clipId})`);
+        }
         charmImage.setAttribute("preserveAspectRatio", "none");
         const rotationRad = getResolvedNodeRotationRad(node);
         const angleDeg = rotationRad * 180 / Math.PI;
@@ -1590,6 +1596,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
             charmBounds,
             rotationRad,
+            node.centerAngle,
           );
           charmImage.setAttribute("x", bx - halfCharm + placement.x);
           charmImage.setAttribute("y", by - halfCharm + placement.y);
@@ -1602,7 +1609,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             charmDiameterPx,
             null,
             null,
-            rotationRad
+            rotationRad,
+            node.centerAngle
           );
           charmImage.setAttribute("x", bx - halfCharm + fallbackPlacement.x);
           charmImage.setAttribute("y", by - halfCharm + fallbackPlacement.y);
@@ -2234,7 +2242,7 @@ function getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad 
   };
 }
 
-function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING, rotationRad = 0) {
+function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING, rotationRad = 0, centerAngle = 0) {
   const safeTuning = resolveCharmRenderTuning(tuning);
   const safeVisualScale = safeTuning.visualScale;
   const safeMaxWidthRatio = safeTuning.maxWidthRatio;
@@ -2260,15 +2268,18 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
   const rotatedBoundsMetrics = getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad);
   const widthFitScale = maxFrameWidth / rotatedBoundsMetrics.width;
   const heightFitScale = maxFrameHeight / rotatedBoundsMetrics.height;
-  const horizontalFillScale = (maxFrameWidth * safeTargetWidthFillRatio) / rotatedBoundsMetrics.width;
+  const tangentialFillScale = (maxFrameWidth * safeTargetWidthFillRatio) / rotatedBoundsMetrics.width;
   const baseScale = safeEdgeFitMode === 'horizontal_fill'
-    ? Math.min(horizontalFillScale, heightFitScale)
+    ? tangentialFillScale
     : Math.min(widthFitScale, heightFitScale);
   const scale = baseScale * safeVisualScale;
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
-  const desiredCenterX = frameWidth / 2 + (frameWidth * safeOffsetX);
-  const desiredCenterY = frameHeight / 2 + (frameHeight * safeOffsetY);
+  const radialOverflowPx = safeEdgeFitMode === 'horizontal_fill'
+    ? Math.max(0, rotatedBoundsMetrics.height * scale - maxFrameHeight)
+    : 0;
+  const desiredCenterX = frameWidth / 2 + (frameWidth * safeOffsetX) + (Math.cos(centerAngle) * radialOverflowPx / 2);
+  const desiredCenterY = frameHeight / 2 + (frameHeight * safeOffsetY) + (Math.sin(centerAngle) * radialOverflowPx / 2);
   const scaledRotatedCenterX = rotatedBoundsMetrics.centerX * scale;
   const scaledRotatedCenterY = rotatedBoundsMetrics.centerY * scale;
   const cos = Math.cos(-rotationRad);
@@ -2286,7 +2297,7 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
   };
 }
 
-function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null, rotationRad = 0) {
+function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null, rotationRad = 0, centerAngle = 0) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
   return getInlineCharmPlacement(
@@ -2296,7 +2307,8 @@ function getCharmRenderPlacement(component, frameWidth, frameHeight, image = nul
     sourceHeight,
     bounds,
     component,
-    rotationRad
+    rotationRad,
+    centerAngle
   );
 }
 
@@ -2370,11 +2382,14 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getCharmRenderPlacement(component, charmSizePx, charmSizePx, imgObj, charmBounds, node.renderRotationRad);
+        const placement = getCharmRenderPlacement(component, charmSizePx, charmSizePx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
+        const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
-        ctx.clip();
+        if (useCharmClip) {
+          ctx.beginPath();
+          ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
+          ctx.clip();
+        }
         ctx.drawImage(
           imgObj,
           -charmSizePx / 2 + placement.x,
