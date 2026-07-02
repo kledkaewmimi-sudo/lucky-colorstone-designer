@@ -389,7 +389,7 @@ Phase 3.5.3 moves charm visual tuning to catalog data and switches normalization
 Delivered:
 
 - `CHARM_CATALOG` may now provide `visualScale`, `rotation`, and `anchor` for per-charm render tuning
-- charm rendering still uses detected visible alpha bounds when available, but final placement uses contain-fit sizing instead of cover-fit sizing
+- charm rendering still uses detected visible alpha bounds when available, but final placement fits visible width to the inline slot while preserving aspect ratio and avoiding horizontal side gaps
 - Step 3 SVG preview and Step 4 hero/showcase use the same visual-scale rule
 - charm business footprint remains separate from charm visual scale
 

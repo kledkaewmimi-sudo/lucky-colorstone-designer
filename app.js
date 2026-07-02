@@ -1540,7 +1540,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("preserveAspectRatio", "none");
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
         if (charmBounds) {
-          const placement = getImageContainPlacement(
+          const placement = getInlineCharmPlacement(
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
             charmDiameterPx,
             charmDiameterPx,
@@ -1552,7 +1552,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           charmImage.setAttribute("width", placement.width);
           charmImage.setAttribute("height", placement.height);
         } else {
-          const fallbackPlacement = getImageContainPlacement(
+          const fallbackPlacement = getInlineCharmPlacement(
             { naturalWidth: charmDiameterPx, naturalHeight: charmDiameterPx },
             charmDiameterPx,
             charmDiameterPx,
@@ -2162,33 +2162,33 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
   return pending;
 }
 
-function getImageContainPlacement(image, frameWidth, frameHeight, bounds = null, visualScale = 1) {
+function getInlineCharmPlacement(image, frameWidth, frameHeight, bounds = null, visualScale = 1) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
   const safeVisualScale = Math.min(1, Math.max(0.1, Number.isFinite(Number(visualScale)) ? Number(visualScale) : 1));
 
   if (!sourceWidth || !sourceHeight) {
-    const scaledWidth = frameWidth * safeVisualScale;
+    const scaledWidth = frameWidth;
     const scaledHeight = frameHeight * safeVisualScale;
     return {
       width: scaledWidth,
       height: scaledHeight,
-      x: (frameWidth - scaledWidth) / 2,
+      x: 0,
       y: (frameHeight - scaledHeight) / 2
     };
   }
 
   const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
-  const scale = Math.min(frameWidth / visibleBounds.width, frameHeight / visibleBounds.height) * safeVisualScale;
+  // Inline charms should fill their slot horizontally; only vertical padding is allowed.
+  const scale = frameWidth / visibleBounds.width;
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
-  const visibleCenterX = (visibleBounds.minX + visibleBounds.width / 2) / sourceWidth;
   const visibleCenterY = (visibleBounds.minY + visibleBounds.height / 2) / sourceHeight;
 
   return {
     width,
     height,
-    x: frameWidth / 2 - (visibleCenterX * width),
+    x: -visibleBounds.minX * scale,
     y: frameHeight / 2 - (visibleCenterY * height)
   };
 }
@@ -2264,7 +2264,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
         const charmSizePx = bRadiusPx * 2;
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
         const charmVisualScale = normalizeCharmVisualScale(component.visualScale, component.type);
-        const placement = getImageContainPlacement(imgObj, charmSizePx, charmSizePx, charmBounds, charmVisualScale);
+        const placement = getInlineCharmPlacement(imgObj, charmSizePx, charmSizePx, charmBounds, charmVisualScale);
         ctx.save();
         ctx.beginPath();
         ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
