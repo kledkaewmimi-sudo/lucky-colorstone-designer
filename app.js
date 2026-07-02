@@ -882,14 +882,18 @@ function getCharmFootprintMm(charm) {
   return charm.sizeCm * 10;
 }
 
-function getDefaultCharmVisualScale(charmType = '') {
-  if (charmType === 'pi_xiu') return 0.9;
-  if (charmType === 'takrud_ganesha' || charmType === 'takrud_lakshmi') return 0.85;
-  return 0.88;
-}
+const DEFAULT_CHARM_RENDER_TUNING = Object.freeze({
+  visualScale: 0.9,
+  visualOffsetX: 0,
+  visualOffsetY: 0,
+  maxWidthRatio: 1,
+  maxHeightRatio: 0.92,
+  rotation: 0,
+  anchor: 'top'
+});
 
-function normalizeCharmVisualScale(value, charmType = '') {
-  const fallback = getDefaultCharmVisualScale(charmType);
+function normalizeCharmVisualScale(value) {
+  const fallback = DEFAULT_CHARM_RENDER_TUNING.visualScale;
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return fallback;
   return Math.min(1, Math.max(0.1, numericValue));
@@ -913,7 +917,20 @@ function normalizeCharmRotation(value) {
 }
 
 function normalizeCharmAnchor(value) {
-  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : 'top';
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : DEFAULT_CHARM_RENDER_TUNING.anchor;
+}
+
+function resolveCharmRenderTuning(source = null) {
+  const tuningSource = source || {};
+  return {
+    visualScale: normalizeCharmVisualScale(tuningSource.visualScale),
+    visualOffsetX: normalizeCharmVisualOffset(tuningSource.visualOffsetX),
+    visualOffsetY: normalizeCharmVisualOffset(tuningSource.visualOffsetY),
+    maxWidthRatio: normalizeCharmMaxRatio(tuningSource.maxWidthRatio, DEFAULT_CHARM_RENDER_TUNING.maxWidthRatio),
+    maxHeightRatio: normalizeCharmMaxRatio(tuningSource.maxHeightRatio, DEFAULT_CHARM_RENDER_TUNING.maxHeightRatio),
+    rotation: normalizeCharmRotation(tuningSource.rotation),
+    anchor: normalizeCharmAnchor(tuningSource.anchor)
+  };
 }
 
 function getUsableBeadLengthMm() {
@@ -1328,6 +1345,8 @@ function createBraceletComponentList() {
     return stoneComponents;
   }
 
+  const renderTuning = resolveCharmRenderTuning(selectedCharm);
+
   return [
     {
       id: `charm-${selectedCharm.id}`,
@@ -1341,13 +1360,7 @@ function createBraceletComponentList() {
       sizeCm: selectedCharm.sizeCm,
       footprintMm: getCharmFootprintMm(selectedCharm),
       sizeMm: getCharmFootprintMm(selectedCharm),
-      visualScale: normalizeCharmVisualScale(selectedCharm.visualScale, selectedCharm.type),
-      visualOffsetX: normalizeCharmVisualOffset(selectedCharm.visualOffsetX),
-      visualOffsetY: normalizeCharmVisualOffset(selectedCharm.visualOffsetY),
-      maxWidthRatio: normalizeCharmMaxRatio(selectedCharm.maxWidthRatio, 1),
-      maxHeightRatio: normalizeCharmMaxRatio(selectedCharm.maxHeightRatio, 1),
-      rotation: normalizeCharmRotation(selectedCharm.rotation),
-      anchor: normalizeCharmAnchor(selectedCharm.anchor),
+      ...renderTuning,
       uniqueId: `charm-${selectedCharm.id}`
     },
     ...stoneComponents
@@ -1538,7 +1551,6 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         const halfCharm = charmDiameterPx / 2;
         const charmImageUrl = component.image || '';
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
-        const charmVisualScale = normalizeCharmVisualScale(component.visualScale, component.type);
         const clipId = `clip-${component.uniqueId}`;
         const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
         clip.setAttribute("id", clipId);
@@ -1556,36 +1568,24 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("preserveAspectRatio", "none");
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
         if (charmBounds) {
-          const placement = getInlineCharmPlacement(
+          const placement = getCharmRenderPlacement(
+            component,
+            charmDiameterPx,
+            charmDiameterPx,
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
-            charmDiameterPx,
-            charmDiameterPx,
             charmBounds,
-            {
-              visualScale: charmVisualScale,
-              visualOffsetX: component.visualOffsetX,
-              visualOffsetY: component.visualOffsetY,
-              maxWidthRatio: component.maxWidthRatio,
-              maxHeightRatio: component.maxHeightRatio
-            }
           );
           charmImage.setAttribute("x", bx - halfCharm + placement.x);
           charmImage.setAttribute("y", by - halfCharm + placement.y);
           charmImage.setAttribute("width", placement.width);
           charmImage.setAttribute("height", placement.height);
         } else {
-          const fallbackPlacement = getInlineCharmPlacement(
-            { naturalWidth: charmDiameterPx, naturalHeight: charmDiameterPx },
+          const fallbackPlacement = getCharmRenderPlacement(
+            component,
             charmDiameterPx,
             charmDiameterPx,
             null,
-            {
-              visualScale: charmVisualScale,
-              visualOffsetX: component.visualOffsetX,
-              visualOffsetY: component.visualOffsetY,
-              maxWidthRatio: component.maxWidthRatio,
-              maxHeightRatio: component.maxHeightRatio
-            }
+            null
           );
           charmImage.setAttribute("x", bx - halfCharm + fallbackPlacement.x);
           charmImage.setAttribute("y", by - halfCharm + fallbackPlacement.y);
@@ -2190,14 +2190,13 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
   return pending;
 }
 
-function getInlineCharmPlacement(image, frameWidth, frameHeight, bounds = null, tuning = {}) {
-  const sourceWidth = image?.naturalWidth || image?.width || 0;
-  const sourceHeight = image?.naturalHeight || image?.height || 0;
-  const safeVisualScale = normalizeCharmVisualScale(tuning.visualScale);
-  const safeMaxWidthRatio = normalizeCharmMaxRatio(tuning.maxWidthRatio, 1);
-  const safeMaxHeightRatio = normalizeCharmMaxRatio(tuning.maxHeightRatio, 1);
-  const safeOffsetX = normalizeCharmVisualOffset(tuning.visualOffsetX);
-  const safeOffsetY = normalizeCharmVisualOffset(tuning.visualOffsetY);
+function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING) {
+  const safeTuning = resolveCharmRenderTuning(tuning);
+  const safeVisualScale = safeTuning.visualScale;
+  const safeMaxWidthRatio = safeTuning.maxWidthRatio;
+  const safeMaxHeightRatio = safeTuning.maxHeightRatio;
+  const safeOffsetX = safeTuning.visualOffsetX;
+  const safeOffsetY = safeTuning.visualOffsetY;
   const maxFrameWidth = frameWidth * safeMaxWidthRatio;
   const maxFrameHeight = frameHeight * safeMaxHeightRatio;
 
@@ -2227,6 +2226,19 @@ function getInlineCharmPlacement(image, frameWidth, frameHeight, bounds = null, 
     x: frameWidth / 2 - (visibleCenterX * width) + (frameWidth * safeOffsetX),
     y: frameHeight / 2 - (visibleCenterY * height) + (frameHeight * safeOffsetY)
   };
+}
+
+function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null) {
+  const sourceWidth = image?.naturalWidth || image?.width || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || 0;
+  return getInlineCharmPlacement(
+    frameWidth,
+    frameHeight,
+    sourceWidth,
+    sourceHeight,
+    bounds,
+    component
+  );
 }
 
 // Asynchronously pre-load render texture images
@@ -2299,14 +2311,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
       if (imgObj) {
         const charmSizePx = bRadiusPx * 2;
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const charmVisualScale = normalizeCharmVisualScale(component.visualScale, component.type);
-        const placement = getInlineCharmPlacement(imgObj, charmSizePx, charmSizePx, charmBounds, {
-          visualScale: charmVisualScale,
-          visualOffsetX: component.visualOffsetX,
-          visualOffsetY: component.visualOffsetY,
-          maxWidthRatio: component.maxWidthRatio,
-          maxHeightRatio: component.maxHeightRatio
-        });
+        const placement = getCharmRenderPlacement(component, charmSizePx, charmSizePx, imgObj, charmBounds);
         ctx.save();
         ctx.beginPath();
         ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
