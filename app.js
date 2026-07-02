@@ -888,6 +888,8 @@ const DEFAULT_CHARM_RENDER_TUNING = Object.freeze({
   visualOffsetY: 0,
   maxWidthRatio: 1,
   maxHeightRatio: 0.92,
+  edgeFitMode: 'contain',
+  targetWidthFillRatio: 1,
   rotation: 0,
   anchor: 'top'
 });
@@ -911,6 +913,16 @@ function normalizeCharmMaxRatio(value, fallback = 1) {
   return Math.min(1, Math.max(0.4, numericValue));
 }
 
+function normalizeCharmEdgeFitMode(value) {
+  return value === 'horizontal_fill' ? 'horizontal_fill' : DEFAULT_CHARM_RENDER_TUNING.edgeFitMode;
+}
+
+function normalizeCharmTargetWidthFillRatio(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return DEFAULT_CHARM_RENDER_TUNING.targetWidthFillRatio;
+  return Math.min(1.1, Math.max(0.5, numericValue));
+}
+
 function normalizeCharmRotation(value) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
@@ -928,6 +940,8 @@ function resolveCharmRenderTuning(source = null) {
     visualOffsetY: normalizeCharmVisualOffset(tuningSource.visualOffsetY),
     maxWidthRatio: normalizeCharmMaxRatio(tuningSource.maxWidthRatio, DEFAULT_CHARM_RENDER_TUNING.maxWidthRatio),
     maxHeightRatio: normalizeCharmMaxRatio(tuningSource.maxHeightRatio, DEFAULT_CHARM_RENDER_TUNING.maxHeightRatio),
+    edgeFitMode: normalizeCharmEdgeFitMode(tuningSource.edgeFitMode),
+    targetWidthFillRatio: normalizeCharmTargetWidthFillRatio(tuningSource.targetWidthFillRatio),
     rotation: normalizeCharmRotation(tuningSource.rotation),
     anchor: normalizeCharmAnchor(tuningSource.anchor)
   };
@@ -2225,6 +2239,8 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
   const safeVisualScale = safeTuning.visualScale;
   const safeMaxWidthRatio = safeTuning.maxWidthRatio;
   const safeMaxHeightRatio = safeTuning.maxHeightRatio;
+  const safeEdgeFitMode = safeTuning.edgeFitMode;
+  const safeTargetWidthFillRatio = safeTuning.targetWidthFillRatio;
   const safeOffsetX = safeTuning.visualOffsetX;
   const safeOffsetY = safeTuning.visualOffsetY;
   const maxFrameWidth = frameWidth * safeMaxWidthRatio;
@@ -2244,7 +2260,11 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
   const rotatedBoundsMetrics = getRotatedBoundsMetrics(bounds, sourceWidth, sourceHeight, rotationRad);
   const widthFitScale = maxFrameWidth / rotatedBoundsMetrics.width;
   const heightFitScale = maxFrameHeight / rotatedBoundsMetrics.height;
-  const scale = Math.min(widthFitScale, heightFitScale) * safeVisualScale;
+  const horizontalFillScale = (maxFrameWidth * safeTargetWidthFillRatio) / rotatedBoundsMetrics.width;
+  const baseScale = safeEdgeFitMode === 'horizontal_fill'
+    ? Math.min(horizontalFillScale, heightFitScale)
+    : Math.min(widthFitScale, heightFitScale);
+  const scale = baseScale * safeVisualScale;
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
   const desiredCenterX = frameWidth / 2 + (frameWidth * safeOffsetX);
