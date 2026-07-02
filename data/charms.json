@@ -1,0 +1,514 @@
+[
+  {
+    "id": "px01",
+    "entityType": "charm",
+    "sku": "PX01",
+    "slug": "px01",
+    "name": {
+      "en": "Pi Xiu PX01",
+      "th": "ปี่เซียะ PX01"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px01.png"
+    },
+    "pricing": {
+      "base": 490
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1.02,
+      "contactInsetLeft": 0.14,
+      "contactInsetRight": 0.14,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 10
+  },
+  {
+    "id": "px02",
+    "entityType": "charm",
+    "sku": "PX02",
+    "slug": "px02",
+    "name": {
+      "en": "Pi Xiu PX02",
+      "th": "ปี่เซียะ PX02"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px02.png"
+    },
+    "pricing": {
+      "base": 490
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 20
+  },
+  {
+    "id": "px03",
+    "entityType": "charm",
+    "sku": "PX03",
+    "slug": "px03",
+    "name": {
+      "en": "Pi Xiu PX03",
+      "th": "ปี่เซียะ PX03"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px03.png"
+    },
+    "pricing": {
+      "base": 590
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1.01,
+      "contactInsetLeft": 0.1,
+      "contactInsetRight": 0.1,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 30
+  },
+  {
+    "id": "px04",
+    "entityType": "charm",
+    "sku": "PX04",
+    "slug": "px04",
+    "name": {
+      "en": "Pi Xiu PX04",
+      "th": "ปี่เซียะ PX04"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px04.png"
+    },
+    "pricing": {
+      "base": 590
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.98,
+      "visualOffsetX": 0.01,
+      "visualOffsetY": 0.01,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.98,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 40
+  },
+  {
+    "id": "px05",
+    "entityType": "charm",
+    "sku": "PX05",
+    "slug": "px05",
+    "name": {
+      "en": "Pi Xiu PX05",
+      "th": "ปี่เซียะ PX05"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px05.png"
+    },
+    "pricing": {
+      "base": 690
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1.01,
+      "contactInsetLeft": 0.13,
+      "contactInsetRight": 0.13,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 50
+  },
+  {
+    "id": "px06",
+    "entityType": "charm",
+    "sku": "PX06",
+    "slug": "px06",
+    "name": {
+      "en": "Pi Xiu PX06",
+      "th": "ปี่เซียะ PX06"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px06.png"
+    },
+    "pricing": {
+      "base": 690
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1.01,
+      "contactInsetLeft": 0.12,
+      "contactInsetRight": 0.12,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 60
+  },
+  {
+    "id": "px07",
+    "entityType": "charm",
+    "sku": "PX07",
+    "slug": "px07",
+    "name": {
+      "en": "Pi Xiu PX07",
+      "th": "ปี่เซียะ PX07"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px07.png"
+    },
+    "pricing": {
+      "base": 790
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1.01,
+      "contactInsetLeft": 0.1,
+      "contactInsetRight": 0.1,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 70
+  },
+  {
+    "id": "px08",
+    "entityType": "charm",
+    "sku": "PX08",
+    "slug": "px08",
+    "name": {
+      "en": "Pi Xiu PX08",
+      "th": "ปี่เซียะ PX08"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/pixiu/px08.png"
+    },
+    "pricing": {
+      "base": 790
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 0.95,
+      "visualOffsetX": -0.01,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.95,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 80
+  },
+  {
+    "id": "tg01",
+    "entityType": "charm",
+    "sku": "TG01",
+    "slug": "tg01",
+    "name": {
+      "en": "Takrud Ganesha Silver TG01",
+      "th": "ตะกรุดพระพิฆเนศ เงิน TG01"
+    },
+    "categoryId": "takrud",
+    "type": "takrud_ganesha",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/takrud/tg01.png"
+    },
+    "pricing": {
+      "base": 990
+    },
+    "business": {
+      "sizeCm": 3,
+      "footprintMm": 30
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 0.98,
+      "maxHeightRatio": 1,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 90
+  },
+  {
+    "id": "px09",
+    "entityType": "charm",
+    "sku": "PX09",
+    "slug": "px09",
+    "name": {
+      "en": "Pi Xiu PX09",
+      "th": "ปี่เซียะ PX09"
+    },
+    "categoryId": "pixiu",
+    "type": "pi_xiu",
+    "collection": "pixiu",
+    "image": {
+      "primary": "/assets/charms/_placeholder.png"
+    },
+    "pricing": {
+      "base": 890
+    },
+    "business": {
+      "sizeCm": 2.4,
+      "footprintMm": 24
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": false,
+      "isActive": false
+    },
+    "renderTuning": {
+      "visualScale": 0.88,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 0.92,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 100
+  },
+  {
+    "id": "tg02",
+    "entityType": "charm",
+    "sku": "TG02",
+    "slug": "tg02",
+    "name": {
+      "en": "Takrud Ganesha Gold",
+      "th": "ตะกรุดพระลักษมี ทอง"
+    },
+    "categoryId": "takrud",
+    "type": "takrud_ganesha",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/takrud/tg02.png"
+    },
+    "pricing": {
+      "base": 1290
+    },
+    "business": {
+      "sizeCm": 3,
+      "footprintMm": 30
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 0.98,
+      "maxHeightRatio": 1,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 110
+  },
+  {
+    "id": "tl01",
+    "entityType": "charm",
+    "sku": "TL01",
+    "slug": "tl01",
+    "name": {
+      "en": "Takrud Lakshmi Gold",
+      "th": "ตะกรุดพระพิฆเนศ ทอง"
+    },
+    "categoryId": "takrud",
+    "type": "takrud_lakshmi",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/_placeholder.png"
+    },
+    "pricing": {
+      "base": 1190
+    },
+    "business": {
+      "sizeCm": 3,
+      "footprintMm": 30
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": false,
+      "isActive": false
+    },
+    "renderTuning": {
+      "visualScale": 0.9,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 0.98,
+      "maxHeightRatio": 0.88,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 120
+  }
+]

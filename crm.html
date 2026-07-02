@@ -91,6 +91,22 @@
             </button>
           </li>
           <li>
+            <button class="nav-item" data-tab="charms" id="btnTabCharms">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v6" />
+                <path d="M12 16v6" />
+                <path d="m4.93 4.93 4.24 4.24" />
+                <path d="m14.83 14.83 4.24 4.24" />
+                <path d="M2 12h6" />
+                <path d="M16 12h6" />
+                <path d="m4.93 19.07 4.24-4.24" />
+                <path d="m14.83 9.17 4.24-4.24" />
+                <circle cx="12" cy="12" r="3.5" />
+              </svg>
+              Charm Catalog
+            </button>
+          </li>
+          <li>
             <button class="nav-item" data-tab="orders" id="btnTabOrders">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="9" cy="21" r="1" />
@@ -148,6 +164,20 @@
           <path d="M12 22.08V12" />
         </svg>
         <span>Inventory</span>
+      </button>
+      <button class="mobile-nav-item" data-tab="charms" id="btnMobTabCharms">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v6" />
+          <path d="M12 16v6" />
+          <path d="m4.93 4.93 4.24 4.24" />
+          <path d="m14.83 14.83 4.24 4.24" />
+          <path d="M2 12h6" />
+          <path d="M16 12h6" />
+          <path d="m4.93 19.07 4.24-4.24" />
+          <path d="m14.83 9.17 4.24-4.24" />
+          <circle cx="12" cy="12" r="3.5" />
+        </svg>
+        <span>Charms</span>
       </button>
       <button class="mobile-nav-item" data-tab="orders" id="btnMobTabOrders">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -322,6 +352,41 @@
                 </tr>
               </thead>
               <tbody id="inventoryTableBody">
+                <!-- Populated Dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 3: CHARM CATALOG (READ ONLY)
+             ========================================== -->
+        <section class="tab-view" id="tabCharms">
+          <div class="read-only-banner">
+            <strong>Business fields only.</strong> Charm business fields can be managed here. Render-tuning values remain visible but read-only in this phase.
+          </div>
+
+          <div class="table-actions-header">
+            <div class="search-box">
+              <input type="text" id="charmsSearch" placeholder="Search charms by ID, SKU, name, or type...">
+            </div>
+            <button class="btn btn-primary" id="btnOpenAddCharmModal">
+              <span class="icon-plus">+</span> Add New Charm
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="crm-table" id="charmsTable">
+              <thead>
+                <tr>
+                  <th width="90">Image</th>
+                  <th>Charm</th>
+                  <th>Business</th>
+                  <th>Status</th>
+                  <th width="360">Render Tuning Summary</th>
+                </tr>
+              </thead>
+              <tbody id="charmsTableBody">
                 <!-- Populated Dynamically -->
               </tbody>
             </table>
@@ -515,6 +580,120 @@
         <div class="modal-actions-footer">
           <button type="button" class="btn btn-outline" id="btnCancelStoneForm">Cancel</button>
           <button type="submit" class="btn btn-primary" id="btnSaveStoneForm">Save Stone Type</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: ADD/EDIT CHARM (BUSINESS FIELDS ONLY)
+       ========================================== -->
+  <div class="modal-backdrop" id="charmCrudModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="charmModalTitle">Add New Charm</h3>
+        <button class="modal-close-btn" id="btnCharmModalClose">&times;</button>
+      </div>
+      <form id="charmCrudForm" class="modal-form">
+        <input type="hidden" id="crudCharmRecordId">
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCharmId">Charm ID</label>
+            <input type="text" id="crudCharmId" required placeholder="e.g. px10">
+          </div>
+          <div class="form-group">
+            <label for="crudCharmSku">SKU</label>
+            <input type="text" id="crudCharmSku" required placeholder="e.g. PX10">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCharmNameEn">Name (English)</label>
+            <input type="text" id="crudCharmNameEn" required placeholder="e.g. Pi Xiu PX10">
+          </div>
+          <div class="form-group">
+            <label for="crudCharmNameTh">Name (Thai)</label>
+            <input type="text" id="crudCharmNameTh" required placeholder="e.g. ปี่เซียะ PX10">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCharmType">Type</label>
+            <input type="text" id="crudCharmType" required placeholder="e.g. pi_xiu">
+          </div>
+          <div class="form-group">
+            <label for="crudCharmCollection">Collection</label>
+            <input type="text" id="crudCharmCollection" required placeholder="e.g. pixiu">
+          </div>
+        </div>
+
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label for="crudCharmSizeCm">Size (cm)</label>
+            <input type="number" id="crudCharmSizeCm" min="0" step="0.1" required placeholder="e.g. 2.4">
+          </div>
+          <div class="form-group">
+            <label for="crudCharmPrice">Price (฿ THB)</label>
+            <input type="number" id="crudCharmPrice" min="0" required placeholder="e.g. 490">
+          </div>
+          <div class="form-group">
+            <label for="crudCharmDisplayOrder">Display Order</label>
+            <input type="number" id="crudCharmDisplayOrder" min="0" step="10" placeholder="e.g. 130">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="crudCharmImage">Charm Image Path</label>
+          <input type="text" id="crudCharmImage" required placeholder="/assets/charms/pixiu/px10.png">
+        </div>
+
+        <div class="form-group">
+          <label for="crudCharmMeaningTh">Meaning (Thai)</label>
+          <textarea id="crudCharmMeaningTh" rows="2" placeholder="Optional Thai meaning"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="crudCharmMeaningEn">Meaning (English)</label>
+          <textarea id="crudCharmMeaningEn" rows="2" placeholder="Optional English meaning"></textarea>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="checkbox-lbl font-semibold">
+              <input type="checkbox" id="crudCharmInStock" checked> In Stock
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-lbl font-semibold">
+              <input type="checkbox" id="crudCharmIsActive" checked> Active in Catalog
+            </label>
+          </div>
+        </div>
+
+        <div class="read-only-block">
+          <h4>Render Tuning (Read Only)</h4>
+          <p class="form-tip">These fields remain protected in this phase and are not editable from CRM yet.</p>
+          <div class="read-only-grid">
+            <div><strong>visualScale:</strong> <span id="roCharmVisualScale">-</span></div>
+            <div><strong>visualOffsetX:</strong> <span id="roCharmVisualOffsetX">-</span></div>
+            <div><strong>visualOffsetY:</strong> <span id="roCharmVisualOffsetY">-</span></div>
+            <div><strong>maxWidthRatio:</strong> <span id="roCharmMaxWidthRatio">-</span></div>
+            <div><strong>maxHeightRatio:</strong> <span id="roCharmMaxHeightRatio">-</span></div>
+            <div><strong>rotation:</strong> <span id="roCharmRotation">-</span></div>
+            <div><strong>anchor:</strong> <span id="roCharmAnchor">-</span></div>
+            <div><strong>edgeFitMode:</strong> <span id="roCharmEdgeFitMode">-</span></div>
+            <div><strong>targetWidthFillRatio:</strong> <span id="roCharmTargetWidthFillRatio">-</span></div>
+            <div><strong>contactInsetLeft:</strong> <span id="roCharmContactInsetLeft">-</span></div>
+            <div><strong>contactInsetRight:</strong> <span id="roCharmContactInsetRight">-</span></div>
+          </div>
+        </div>
+
+        <div class="modal-actions-footer">
+          <button type="button" class="btn btn-outline" id="btnCancelCharmForm">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveCharmForm">Save Charm</button>
         </div>
       </form>
     </div>

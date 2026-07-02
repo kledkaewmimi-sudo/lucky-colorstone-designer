@@ -287,10 +287,186 @@ export const CHARM_CATALOG = [
   }
 ];
 
+function cloneLegacyCharmCatalog() {
+  return CHARM_CATALOG.map((charm) => ({
+    ...charm
+  }));
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function buildNormalizedCharmFallback(charm, index = 0) {
+  const safeSizeCm = toFiniteNumber(charm.sizeCm, 0);
+  const displayOrder = toFiniteNumber(charm.displayOrder, (index + 1) * 10);
+
+  return {
+    id: charm.id,
+    entityType: "charm",
+    sku: charm.sku || charm.id?.toUpperCase() || `CHARM-${index + 1}`,
+    slug: charm.slug || charm.id || `charm-${index + 1}`,
+    name: {
+      en: charm.nameEn || "",
+      th: charm.nameTh || ""
+    },
+    categoryId: charm.categoryId || charm.collection || charm.type || "charms",
+    type: charm.type || null,
+    collection: charm.collection || charm.categoryId || null,
+    image: {
+      primary: charm.image || ""
+    },
+    pricing: {
+      base: Number(charm.price || 0)
+    },
+    business: {
+      sizeCm: safeSizeCm,
+      footprintMm: toFiniteNumber(charm.footprintMm, safeSizeCm * 10)
+    },
+    meaning: {
+      en: charm.meaningEn || "",
+      th: charm.meaningTh || ""
+    },
+    availability: {
+      inStock: charm.inStock !== false,
+      isActive: charm.isActive !== false
+    },
+    renderTuning: {
+      visualScale: charm.visualScale,
+      visualOffsetX: charm.visualOffsetX,
+      visualOffsetY: charm.visualOffsetY,
+      maxWidthRatio: charm.maxWidthRatio,
+      maxHeightRatio: charm.maxHeightRatio,
+      edgeFitMode: charm.edgeFitMode,
+      targetWidthFillRatio: charm.targetWidthFillRatio,
+      contactInsetLeft: charm.contactInsetLeft,
+      contactInsetRight: charm.contactInsetRight,
+      rotation: charm.rotation,
+      anchor: charm.anchor
+    },
+    displayOrder
+  };
+}
+
+function isNormalizedCharmRecord(record) {
+  return !!record && (
+    record.entityType === "charm" ||
+    typeof record.business === "object" ||
+    typeof record.renderTuning === "object"
+  );
+}
+
+function normalizeCharmRecord(record, index = 0) {
+  if (!record) return null;
+  if (!isNormalizedCharmRecord(record)) {
+    return buildNormalizedCharmFallback(record, index);
+  }
+
+  const safeRecord = {
+    ...record,
+    entityType: "charm",
+    sku: record.sku || record.id?.toUpperCase() || `CHARM-${index + 1}`,
+    slug: record.slug || record.id || `charm-${index + 1}`,
+    name: {
+      en: record.name?.en || record.nameEn || "",
+      th: record.name?.th || record.nameTh || ""
+    },
+    categoryId: record.categoryId || record.collection || record.type || "charms",
+    collection: record.collection || record.categoryId || null,
+    image: {
+      primary: record.image?.primary || record.image || ""
+    },
+    pricing: {
+      base: toFiniteNumber(record.pricing?.base ?? record.price ?? 0, 0)
+    },
+  };
+
+  const safeSizeCm = toFiniteNumber(record.business?.sizeCm ?? record.sizeCm ?? 0, 0);
+  const safeFootprintMm = toFiniteNumber(
+    record.business?.footprintMm ?? record.footprintMm,
+    safeSizeCm * 10
+  );
+
+  return {
+    ...safeRecord,
+    business: {
+      sizeCm: safeSizeCm,
+      footprintMm: safeFootprintMm
+    },
+    meaning: {
+      en: record.meaning?.en || record.meaningEn || "",
+      th: record.meaning?.th || record.meaningTh || ""
+    },
+    availability: {
+      inStock: record.availability?.inStock !== false && record.inStock !== false,
+      isActive: record.availability?.isActive !== false && record.isActive !== false
+    },
+    renderTuning: {
+      visualScale: record.renderTuning?.visualScale ?? record.visualScale,
+      visualOffsetX: record.renderTuning?.visualOffsetX ?? record.visualOffsetX,
+      visualOffsetY: record.renderTuning?.visualOffsetY ?? record.visualOffsetY,
+      maxWidthRatio: record.renderTuning?.maxWidthRatio ?? record.maxWidthRatio,
+      maxHeightRatio: record.renderTuning?.maxHeightRatio ?? record.maxHeightRatio,
+      edgeFitMode: record.renderTuning?.edgeFitMode ?? record.edgeFitMode,
+      targetWidthFillRatio: record.renderTuning?.targetWidthFillRatio ?? record.targetWidthFillRatio,
+      contactInsetLeft: record.renderTuning?.contactInsetLeft ?? record.contactInsetLeft,
+      contactInsetRight: record.renderTuning?.contactInsetRight ?? record.contactInsetRight,
+      rotation: record.renderTuning?.rotation ?? record.rotation,
+      anchor: record.renderTuning?.anchor ?? record.anchor
+    },
+    displayOrder: toFiniteNumber(record.displayOrder, (index + 1) * 10)
+  };
+}
+
+export function adaptNormalizedCharmToLegacy(record) {
+  if (!record) return null;
+
+  const normalized = normalizeCharmRecord(record);
+  if (!normalized) return null;
+
+  return {
+    id: normalized.id,
+    sku: normalized.sku,
+    nameTh: normalized.name.th,
+    nameEn: normalized.name.en,
+    type: normalized.type,
+    collection: normalized.collection,
+    image: normalized.image.primary,
+    sizeCm: normalized.business.sizeCm,
+    footprintMm: normalized.business.footprintMm,
+    price: normalized.pricing.base,
+    meaningTh: normalized.meaning.th,
+    meaningEn: normalized.meaning.en,
+    inStock: normalized.availability.inStock,
+    isActive: normalized.availability.isActive,
+    displayOrder: normalized.displayOrder,
+    visualScale: normalized.renderTuning.visualScale,
+    visualOffsetX: normalized.renderTuning.visualOffsetX,
+    visualOffsetY: normalized.renderTuning.visualOffsetY,
+    maxWidthRatio: normalized.renderTuning.maxWidthRatio,
+    maxHeightRatio: normalized.renderTuning.maxHeightRatio,
+    edgeFitMode: normalized.renderTuning.edgeFitMode,
+    targetWidthFillRatio: normalized.renderTuning.targetWidthFillRatio,
+    contactInsetLeft: normalized.renderTuning.contactInsetLeft,
+    contactInsetRight: normalized.renderTuning.contactInsetRight,
+    rotation: normalized.renderTuning.rotation,
+    anchor: normalized.renderTuning.anchor
+  };
+}
+
+export function adaptNormalizedCharmCatalogToLegacy(records = []) {
+  return records
+    .map((record) => adaptNormalizedCharmToLegacy(record))
+    .filter(Boolean)
+    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+}
+
 // --- In-memory cache ---
 export let STONES = [];
 export let SETTINGS = { globalDiscountPercent: 20 };
 export let ORDERS = [];
+export let CHARM_RECORDS = [];
 
 // --- Price calculation helper based on bead size ---
 export function getStonePriceForSize(stone, size) {
@@ -334,9 +510,107 @@ export async function refreshCatalog() {
   return STONES;
 }
 
+export async function refreshCharmCatalog() {
+  try {
+    const res = await fetch("/api/charms");
+    if (res.ok) {
+      const loaded = await res.json();
+      const normalized = Array.isArray(loaded)
+        ? loaded.map((record, index) => normalizeCharmRecord(record, index)).filter(Boolean)
+        : [];
+      CHARM_RECORDS.length = 0;
+      CHARM_RECORDS.push(...normalized);
+      return CHARM_RECORDS;
+    }
+  } catch (e) {
+    console.warn("Failed to load charm catalog from API, falling back to bundled source", e);
+  }
+
+  try {
+    const res = await fetch("/data/charms.json");
+    if (res.ok) {
+      const loaded = await res.json();
+      const normalized = Array.isArray(loaded)
+        ? loaded.map((record, index) => normalizeCharmRecord(record, index)).filter(Boolean)
+        : [];
+      CHARM_RECORDS.length = 0;
+      CHARM_RECORDS.push(...normalized);
+      return CHARM_RECORDS;
+    }
+  } catch (e) {
+    console.warn("Failed to load bundled charm catalog, falling back to bundled legacy charms", e);
+  }
+
+  const fallbackRecords = cloneLegacyCharmCatalog()
+    .map((record, index) => buildNormalizedCharmFallback(record, index))
+    .filter(Boolean);
+  CHARM_RECORDS.length = 0;
+  CHARM_RECORDS.push(...fallbackRecords);
+  return CHARM_RECORDS;
+}
+
 export async function getSharedCatalog() {
   await refreshCatalog();
   return STONES;
+}
+
+export async function getSharedCharmCatalog() {
+  if (CHARM_RECORDS.length === 0) {
+    await refreshCharmCatalog();
+  }
+  return CHARM_RECORDS;
+}
+
+export async function getLegacyCharmCatalog() {
+  const sharedCharms = await getSharedCharmCatalog();
+  return adaptNormalizedCharmCatalogToLegacy(sharedCharms);
+}
+
+export async function saveSharedCharmCatalogEntry(record) {
+  const normalizedRecord = normalizeCharmRecord(record);
+  if (!normalizedRecord || !normalizedRecord.id) return null;
+
+  const existingRecords = await getSharedCharmCatalog();
+  const hasExisting = existingRecords.some((entry) => entry.id === normalizedRecord.id);
+  const endpoint = hasExisting
+    ? `/api/charms/${encodeURIComponent(normalizedRecord.id)}`
+    : "/api/charms";
+  const method = hasExisting ? "PUT" : "POST";
+
+  try {
+    const res = await fetch(endpoint, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(normalizedRecord)
+    });
+    if (res.ok) {
+      const savedRecord = normalizeCharmRecord(await res.json());
+      await refreshCharmCatalog();
+      window.dispatchEvent(new Event("storage_sync"));
+      return savedRecord;
+    }
+  } catch (e) {
+    console.error("Failed to save charm to API", e);
+  }
+  return null;
+}
+
+export async function deleteSharedCharmCatalogEntry(charmId) {
+  if (!charmId) return false;
+
+  try {
+    const res = await fetch(`/api/charms/${encodeURIComponent(charmId)}`, {
+      method: "DELETE"
+    });
+    if (res.ok) {
+      await refreshCharmCatalog();
+      window.dispatchEvent(new Event("storage_sync"));
+      return true;
+    }
+  } catch (e) {
+    console.error("Failed to delete charm from API", e);
+  }
+  return false;
 }
 
 export async function saveSharedCatalog(stone) {

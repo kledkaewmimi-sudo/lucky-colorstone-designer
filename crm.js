@@ -1,6 +1,9 @@
 import { 
   CATEGORIES, 
   getSharedCatalog, 
+  getSharedCharmCatalog,
+  saveSharedCharmCatalogEntry,
+  deleteSharedCharmCatalogEntry,
   saveSharedCatalog, 
   deleteSharedCatalog,
   getSharedSettings, 
@@ -8,6 +11,7 @@ import {
   getSharedOrders, 
   updateOrderStatus,
   refreshCatalog,
+  refreshCharmCatalog,
   STONES,
   ORDERS,
   SETTINGS,
@@ -20,8 +24,9 @@ import {
 // ==========================================
 const CRMState = {
   sessionActive: false,
-  activeTab: 'overview', // 'overview', 'inventory', 'orders', 'settings'
+  activeTab: 'overview', // 'overview', 'inventory', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
+  activeEditCharmId: null,
   selectedInvoiceOrder: null // Order details populated in invoice modal
 };
 
@@ -48,12 +53,14 @@ const DOM = {
   navButtons: {
     overview: document.getElementById('btnTabOverview'),
     inventory: document.getElementById('btnTabInventory'),
+    charms: document.getElementById('btnTabCharms'),
     orders: document.getElementById('btnTabOrders'),
     settings: document.getElementById('btnTabSettings')
   },
   mobileNavButtons: {
     overview: document.getElementById('btnMobTabOverview'),
     inventory: document.getElementById('btnMobTabInventory'),
+    charms: document.getElementById('btnMobTabCharms'),
     orders: document.getElementById('btnMobTabOrders'),
     settings: document.getElementById('btnMobTabSettings')
   },
@@ -62,6 +69,7 @@ const DOM = {
   tabViews: {
     overview: document.getElementById('tabOverview'),
     inventory: document.getElementById('tabInventory'),
+    charms: document.getElementById('tabCharms'),
     orders: document.getElementById('tabOrders'),
     settings: document.getElementById('tabSettings')
   },
@@ -82,13 +90,18 @@ const DOM = {
   inventorySearch: document.getElementById('inventorySearch'),
   btnOpenAddStoneModal: document.getElementById('btnOpenAddStoneModal'),
   inventoryTableBody: document.getElementById('inventoryTableBody'),
+
+  // Tab 3: Charm Catalog
+  charmsSearch: document.getElementById('charmsSearch'),
+  charmsTableBody: document.getElementById('charmsTableBody'),
+  btnOpenAddCharmModal: document.getElementById('btnOpenAddCharmModal'),
   
-  // Tab 3: Order Management
+  // Tab 4: Order Management
   orderStatusFilter: document.getElementById('orderStatusFilter'),
   ordersSearch: document.getElementById('ordersSearch'),
   ordersTableBody: document.getElementById('ordersTableBody'),
   
-  // Tab 4: Settings Controls
+  // Tab 5: Settings Controls
   globalSettingsForm: document.getElementById('globalSettingsForm'),
   globalDiscountPercent: document.getElementById('globalDiscountPercent'),
   btnResetDatabase: document.getElementById('btnResetDatabase'),
@@ -112,6 +125,39 @@ const DOM = {
   crudStoneMeaningEn: document.getElementById('crudStoneMeaningEn'),
   btnStoneModalClose: document.getElementById('btnStoneModalClose'),
   btnCancelStoneForm: document.getElementById('btnCancelStoneForm'),
+
+  // Modal: Add/Edit Charm
+  charmCrudModal: document.getElementById('charmCrudModal'),
+  charmCrudForm: document.getElementById('charmCrudForm'),
+  charmModalTitle: document.getElementById('charmModalTitle'),
+  crudCharmRecordId: document.getElementById('crudCharmRecordId'),
+  crudCharmId: document.getElementById('crudCharmId'),
+  crudCharmSku: document.getElementById('crudCharmSku'),
+  crudCharmNameEn: document.getElementById('crudCharmNameEn'),
+  crudCharmNameTh: document.getElementById('crudCharmNameTh'),
+  crudCharmType: document.getElementById('crudCharmType'),
+  crudCharmCollection: document.getElementById('crudCharmCollection'),
+  crudCharmImage: document.getElementById('crudCharmImage'),
+  crudCharmSizeCm: document.getElementById('crudCharmSizeCm'),
+  crudCharmPrice: document.getElementById('crudCharmPrice'),
+  crudCharmDisplayOrder: document.getElementById('crudCharmDisplayOrder'),
+  crudCharmMeaningTh: document.getElementById('crudCharmMeaningTh'),
+  crudCharmMeaningEn: document.getElementById('crudCharmMeaningEn'),
+  crudCharmInStock: document.getElementById('crudCharmInStock'),
+  crudCharmIsActive: document.getElementById('crudCharmIsActive'),
+  btnCharmModalClose: document.getElementById('btnCharmModalClose'),
+  btnCancelCharmForm: document.getElementById('btnCancelCharmForm'),
+  roCharmVisualScale: document.getElementById('roCharmVisualScale'),
+  roCharmVisualOffsetX: document.getElementById('roCharmVisualOffsetX'),
+  roCharmVisualOffsetY: document.getElementById('roCharmVisualOffsetY'),
+  roCharmMaxWidthRatio: document.getElementById('roCharmMaxWidthRatio'),
+  roCharmMaxHeightRatio: document.getElementById('roCharmMaxHeightRatio'),
+  roCharmRotation: document.getElementById('roCharmRotation'),
+  roCharmAnchor: document.getElementById('roCharmAnchor'),
+  roCharmEdgeFitMode: document.getElementById('roCharmEdgeFitMode'),
+  roCharmTargetWidthFillRatio: document.getElementById('roCharmTargetWidthFillRatio'),
+  roCharmContactInsetLeft: document.getElementById('roCharmContactInsetLeft'),
+  roCharmContactInsetRight: document.getElementById('roCharmContactInsetRight'),
   
   // Modal: Invoice Export
   invoiceExportModal: document.getElementById('invoiceExportModal'),
@@ -240,6 +286,7 @@ async function switchTab(tabName) {
   const titles = {
     overview: "CRM Overview",
     inventory: "Stone Inventory Manager (Module A)",
+    charms: "Shared Charm Catalog (Read Only)",
     orders: "Order Management & OMS (Module B)",
     settings: "Global System Settings"
   };
@@ -340,7 +387,10 @@ async function triggerSyncUpdate(keyName) {
   DOM.syncIndicator.className = 'sync-status text-gold';
   DOM.syncIndicator.innerHTML = '<span class="pulse-dot" style="background-color: var(--color-gold)"></span> Syncing updates...';
   
-  await refreshCatalog();
+  await Promise.all([
+    refreshCatalog(),
+    refreshCharmCatalog()
+  ]);
   
   setTimeout(async () => {
     DOM.syncIndicator.className = 'sync-status text-green';
@@ -356,6 +406,7 @@ async function triggerSyncUpdate(keyName) {
 // ==========================================
 async function loadDashboardData() {
   const stones = await getSharedCatalog();
+  const charms = await getSharedCharmCatalog();
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
   
@@ -388,6 +439,8 @@ async function loadDashboardData() {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
     renderInventoryCatalog(stones);
+  } else if (CRMState.activeTab === 'charms') {
+    renderCharmCatalog(charms);
   } else if (CRMState.activeTab === 'orders') {
     renderOrdersList(orders);
   } else if (CRMState.activeTab === 'settings') {
@@ -516,6 +569,260 @@ function renderInventoryCatalog(stones) {
     
     DOM.inventoryTableBody.appendChild(tr);
   });
+}
+
+function formatCharmStatusBadge(label, isActiveState) {
+  return isActiveState
+    ? `<span class="badge badge-in-stock">${label}</span>`
+    : `<span class="badge badge-out-of-stock">${label}</span>`;
+}
+
+function setReadOnlyCharmTuning(tuning = {}) {
+  DOM.roCharmVisualScale.textContent = tuning.visualScale ?? '-';
+  DOM.roCharmVisualOffsetX.textContent = tuning.visualOffsetX ?? '-';
+  DOM.roCharmVisualOffsetY.textContent = tuning.visualOffsetY ?? '-';
+  DOM.roCharmMaxWidthRatio.textContent = tuning.maxWidthRatio ?? '-';
+  DOM.roCharmMaxHeightRatio.textContent = tuning.maxHeightRatio ?? '-';
+  DOM.roCharmRotation.textContent = tuning.rotation ?? '-';
+  DOM.roCharmAnchor.textContent = tuning.anchor ?? '-';
+  DOM.roCharmEdgeFitMode.textContent = tuning.edgeFitMode ?? '-';
+  DOM.roCharmTargetWidthFillRatio.textContent = tuning.targetWidthFillRatio ?? '-';
+  DOM.roCharmContactInsetLeft.textContent = tuning.contactInsetLeft ?? '-';
+  DOM.roCharmContactInsetRight.textContent = tuning.contactInsetRight ?? '-';
+}
+
+function formatCharmTuningSummary(charm) {
+  const tuning = charm.renderTuning || {};
+  const chips = [
+    `Scale ${tuning.visualScale ?? '-'}`,
+    `Offset ${tuning.visualOffsetX ?? 0}, ${tuning.visualOffsetY ?? 0}`,
+    `Max ${tuning.maxWidthRatio ?? '-'} / ${tuning.maxHeightRatio ?? '-'}`,
+    `Rotate ${tuning.rotation ?? 0}°`,
+    `Anchor ${tuning.anchor || '-'}`
+  ];
+
+  if (tuning.edgeFitMode) {
+    chips.push(`Fit ${tuning.edgeFitMode}`);
+  }
+  if (tuning.targetWidthFillRatio !== undefined) {
+    chips.push(`Fill ${tuning.targetWidthFillRatio}`);
+  }
+  if (tuning.contactInsetLeft !== undefined || tuning.contactInsetRight !== undefined) {
+    chips.push(`Contact ${tuning.contactInsetLeft ?? 0} / ${tuning.contactInsetRight ?? 0}`);
+  }
+
+  return chips.map((chip) => `<span class="tuning-chip">${chip}</span>`).join('');
+}
+
+function renderCharmCatalog(charms) {
+  const query = DOM.charmsSearch.value.trim().toLowerCase();
+  const filtered = charms
+    .slice()
+    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+    .filter((charm) => {
+      const haystack = [
+        charm.id,
+        charm.sku,
+        charm.name?.th,
+        charm.name?.en,
+        charm.type,
+        charm.collection
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+
+  DOM.charmsTableBody.innerHTML = '';
+  if (filtered.length === 0) {
+    DOM.charmsTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No matching charms found.</td></tr>';
+    return;
+  }
+
+  filtered.forEach((charm) => {
+    const imageSrc = charm.image?.primary || '';
+    const sizeCm = Number(charm.business?.sizeCm || 0);
+    const price = Number(charm.pricing?.base || 0);
+    const isInStock = charm.availability?.inStock !== false;
+    const isActive = charm.availability?.isActive !== false;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="Image">
+        <img class="table-bead-img charm-admin-img" src="${imageSrc}" alt="${charm.name?.en || charm.id}" onerror="this.style.display='none'">
+      </td>
+      <td data-label="Charm">
+        <div class="stone-title-th">${charm.name?.th || '-'}</div>
+        <div class="stone-title-en">${charm.name?.en || '-'}</div>
+        <div class="charm-meta-stack">
+          <span>ID: <strong>${charm.id}</strong></span>
+          <span>SKU: <strong>${charm.sku || '-'}</strong></span>
+          <span>Type: <strong>${charm.type || '-'}</strong></span>
+          <span>Collection: <strong>${charm.collection || '-'}</strong></span>
+        </div>
+      </td>
+      <td data-label="Business">
+        <div class="charm-business-stack">
+          <span>Size: <strong>${sizeCm ? `${sizeCm.toFixed(1)} cm` : '-'}</strong></span>
+          <span>Price: <strong>฿${price.toLocaleString()}</strong></span>
+          <span>Order: <strong>${charm.displayOrder ?? '-'}</strong></span>
+        </div>
+      </td>
+      <td data-label="Status">
+        <div class="charm-status-stack">
+          ${formatCharmStatusBadge(isInStock ? 'In Stock' : 'Out of Stock', isInStock)}
+          ${formatCharmStatusBadge(isActive ? 'Active' : 'Inactive', isActive)}
+        </div>
+      </td>
+      <td data-label="Render Tuning">
+        <div class="tuning-chip-row">${formatCharmTuningSummary(charm)}</div>
+        <div class="action-btns charm-action-btns">
+          <button class="action-btn edit" data-id="${charm.id}" title="Edit Charm business fields">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="action-btn delete" data-id="${charm.id}" title="Delete Charm">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    `;
+
+    tr.querySelector('.action-btn.edit').addEventListener('click', () => openEditCharmForm(charm.id));
+    tr.querySelector('.action-btn.delete').addEventListener('click', () => deleteCharmType(charm.id));
+    DOM.charmsTableBody.appendChild(tr);
+  });
+}
+
+function openAddCharmForm() {
+  CRMState.activeEditCharmId = null;
+  DOM.charmModalTitle.textContent = "Add New Charm";
+  DOM.charmCrudForm.reset();
+  DOM.crudCharmRecordId.value = "";
+  DOM.crudCharmId.disabled = false;
+  DOM.crudCharmInStock.checked = true;
+  DOM.crudCharmIsActive.checked = true;
+  DOM.crudCharmDisplayOrder.value = "";
+  setReadOnlyCharmTuning({});
+  DOM.charmCrudModal.classList.add('show');
+}
+
+async function openEditCharmForm(charmId) {
+  const charms = await getSharedCharmCatalog();
+  const charm = charms.find((entry) => entry.id === charmId);
+  if (!charm) return;
+
+  CRMState.activeEditCharmId = charmId;
+  DOM.charmModalTitle.textContent = `Edit Charm: ${charm.name?.th || charm.id}`;
+  DOM.crudCharmRecordId.value = charm.id;
+  DOM.crudCharmId.value = charm.id;
+  DOM.crudCharmId.disabled = true;
+  DOM.crudCharmSku.value = charm.sku || "";
+  DOM.crudCharmNameEn.value = charm.name?.en || "";
+  DOM.crudCharmNameTh.value = charm.name?.th || "";
+  DOM.crudCharmType.value = charm.type || "";
+  DOM.crudCharmCollection.value = charm.collection || "";
+  DOM.crudCharmImage.value = charm.image?.primary || "";
+  DOM.crudCharmSizeCm.value = Number(charm.business?.sizeCm || 0);
+  DOM.crudCharmPrice.value = Number(charm.pricing?.base || 0);
+  DOM.crudCharmDisplayOrder.value = charm.displayOrder ?? "";
+  DOM.crudCharmMeaningTh.value = charm.meaning?.th || "";
+  DOM.crudCharmMeaningEn.value = charm.meaning?.en || "";
+  DOM.crudCharmInStock.checked = charm.availability?.inStock !== false;
+  DOM.crudCharmIsActive.checked = charm.availability?.isActive !== false;
+  setReadOnlyCharmTuning(charm.renderTuning || {});
+  DOM.charmCrudModal.classList.add('show');
+}
+
+function closeCharmForm() {
+  DOM.charmCrudModal.classList.remove('show');
+}
+
+async function handleSaveCharmType(e) {
+  e.preventDefault();
+
+  const currentCharms = await getSharedCharmCatalog();
+  const existingCharm = CRMState.activeEditCharmId
+    ? currentCharms.find((entry) => entry.id === CRMState.activeEditCharmId)
+    : null;
+
+  const sizeCm = Number(DOM.crudCharmSizeCm.value);
+  const recordId = DOM.crudCharmRecordId.value.trim() || DOM.crudCharmId.value.trim();
+  const normalizedRecord = {
+    id: DOM.crudCharmId.value.trim(),
+    entityType: "charm",
+    sku: DOM.crudCharmSku.value.trim(),
+    slug: recordId.toLowerCase(),
+    name: {
+      en: DOM.crudCharmNameEn.value.trim(),
+      th: DOM.crudCharmNameTh.value.trim()
+    },
+    categoryId: DOM.crudCharmCollection.value.trim() || DOM.crudCharmType.value.trim() || "charms",
+    type: DOM.crudCharmType.value.trim(),
+    collection: DOM.crudCharmCollection.value.trim(),
+    image: {
+      primary: DOM.crudCharmImage.value.trim()
+    },
+    pricing: {
+      base: Number(DOM.crudCharmPrice.value || 0)
+    },
+    business: {
+      sizeCm,
+      footprintMm: existingCharm?.business?.footprintMm ?? Math.round(sizeCm * 10)
+    },
+    meaning: {
+      th: DOM.crudCharmMeaningTh.value.trim(),
+      en: DOM.crudCharmMeaningEn.value.trim()
+    },
+    availability: {
+      inStock: DOM.crudCharmInStock.checked,
+      isActive: DOM.crudCharmIsActive.checked
+    },
+    renderTuning: existingCharm?.renderTuning || {},
+    displayOrder: Number(DOM.crudCharmDisplayOrder.value || 0)
+  };
+
+  const saved = await saveSharedCharmCatalogEntry(normalizedRecord);
+  if (saved) {
+    if (CRMState.activeEditCharmId) {
+      addLog(`Edited charm ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
+      showToast("Charm details updated!");
+    } else {
+      addLog(`Created new charm ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
+      showToast("New charm added to catalog!");
+    }
+  }
+
+  closeCharmForm();
+  await loadDashboardData();
+}
+
+async function deleteCharmType(charmId) {
+  const charms = await getSharedCharmCatalog();
+  const charm = charms.find((entry) => entry.id === charmId);
+  if (!charm) return;
+
+  const proceed = await showCustomConfirm(
+    `Are you sure you want to delete '${charm.name?.th || charm.id} (${charm.sku || charm.id})' from the charm catalog?`,
+    "Delete Charm"
+  );
+
+  if (proceed) {
+    const success = await deleteSharedCharmCatalogEntry(charmId);
+    if (success) {
+      addLog(`Deleted charm ID '${charmId}' (${charm.name?.th || charm.name?.en}).`, 'warn');
+      showToast("Charm deleted.");
+      await loadDashboardData();
+    }
+  }
 }
 
 // Form Opening & Resetting
@@ -1039,6 +1346,13 @@ function setupFunctionalEvents() {
     const query = DOM.inventorySearch.value.trim();
     loadDashboardData();
   });
+  DOM.btnOpenAddCharmModal.addEventListener('click', openAddCharmForm);
+  DOM.btnCharmModalClose.addEventListener('click', closeCharmForm);
+  DOM.btnCancelCharmForm.addEventListener('click', closeCharmForm);
+  DOM.charmCrudForm.addEventListener('submit', handleSaveCharmType);
+  if (DOM.charmsSearch) {
+    DOM.charmsSearch.addEventListener('input', () => loadDashboardData());
+  }
   
   // Orders filters
   DOM.orderStatusFilter.addEventListener('change', () => loadDashboardData());
