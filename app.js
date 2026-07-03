@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getStonePriceForSize } from './data.js';
+import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -97,6 +97,7 @@ const DOM = {
   priceDiscount: document.getElementById('priceDiscount'),
   priceTotal: document.getElementById('priceTotal'),
   meaningsList: document.getElementById('meaningsList'),
+  btnPayWithStripe: document.getElementById('btnPayWithStripe'),
   
   // Modals & Popups
   stoneInfoModal: document.getElementById('stoneInfoModal'),
@@ -157,6 +158,12 @@ function normalizeSelectedStoneSizes() {
 // 4. Initialisation
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+  const returnParams = new URLSearchParams(window.location.search);
+  if (returnParams.get('step') === '4' || returnParams.has('stripe')) {
+    State.currentStep = 4;
+    State.landingDismissed = true;
+  }
+
   // Show loading overlay during LIFF boot
   const loader = document.getElementById('liffLoadingOverlay');
   if (loader) loader.style.display = 'flex';
@@ -184,6 +191,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshCatalog(),
     refreshCharmCatalog()
   ]);
+
+  await handleStripeReturnIfNeeded();
   
   // Initialise step UI components
   initWristSizeGrid();
@@ -589,6 +598,12 @@ function setupNavigationEvents() {
   if (btnSubmitCRM) {
     btnSubmitCRM.addEventListener('click', () => {
       submitOrderToCRM();
+    });
+  }
+
+  if (DOM.btnPayWithStripe) {
+    DOM.btnPayWithStripe.addEventListener('click', async () => {
+      await handleStripeCheckout();
     });
   }
 }
@@ -2133,6 +2148,170 @@ async function renderStep4() {
   }, 100);
 }
 
+function buildDesignConfigurationCode() {
+  const designData = {
+    w: State.wristSize,
+    b: State.beadSize,
+    n: State.ownerName,
+    s: State.selectedStones.map((stone) => ({ i: stone.stoneId, z: stone.size }))
+  };
+
+  return btoa(unescape(encodeURIComponent(JSON.stringify(designData))));
+}
+
+function buildCurrentOrderPayload(overrides = {}) {
+  const pricing = calculateCurrentOrderPricing();
+
+  return {
+    customerName: State.ownerName || "Khun Guest",
+    wristSize: State.wristSize,
+    beadSize: State.beadSize,
+    totalBeads: State.selectedStones.length,
+    beads: State.selectedStones.map((stone) => {
+      const stoneData = STONES.find((entry) => entry.id === stone.stoneId);
+      return {
+        stoneId: stone.stoneId,
+        name: stoneData ? stoneData.name : 'Unknown Stone',
+        nameTh: stoneData ? stoneData.nameTh : 'เธซเธดเธเธเธฃเธฃเธกเธเธฒเธ•เธด',
+        color: stoneData ? stoneData.color : '#E2E8F0',
+        image: stoneData ? stoneData.image : '',
+        size: stone.size
+      };
+    }),
+    subtotal: pricing.subtotal,
+    discountPercent: pricing.discountPercent,
+    discountAmount: pricing.discount,
+    netPrice: pricing.netPrice,
+    configurationCode: buildDesignConfigurationCode(),
+    ...pricing.charmData,
+    ...overrides
+  };
+}
+
+function cleanupStripeReturnParams() {
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete('stripe');
+  nextUrl.searchParams.delete('session_id');
+  if (nextUrl.searchParams.get('step') === '4') {
+    nextUrl.searchParams.delete('step');
+  }
+
+  window.history.replaceState({}, document.title, `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+}
+
+async function handleStripeReturnIfNeeded() {
+  const params = new URLSearchParams(window.location.search);
+  const stripeState = params.get('stripe');
+  if (!stripeState) return;
+
+  State.currentStep = 4;
+  State.landingDismissed = true;
+
+  if (stripeState === 'cancel') {
+    cleanupStripeReturnParams();
+    showToast("Stripe payment cancelled. You can continue from Step 4.");
+    return;
+  }
+
+  if (stripeState !== 'success') return;
+
+  const sessionId = params.get('session_id');
+  if (!sessionId) {
+    showToast("Stripe return is missing the checkout session.");
+    return;
+  }
+
+  const processedKey = `stripe_checkout_processed_${sessionId}`;
+  if (localStorage.getItem(processedKey) === 'true') {
+    cleanupStripeReturnParams();
+    showToast("Stripe payment already confirmed.");
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/stripe/checkout-session?session_id=${encodeURIComponent(sessionId)}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to verify Stripe payment.");
+    }
+
+    if (payload.paymentStatus !== 'paid') {
+      throw new Error("Stripe payment is not marked as paid yet.");
+    }
+
+    const existingOrders = await getSharedOrders();
+    const existingOrder = Array.isArray(existingOrders)
+      ? existingOrders.find((order) => order?.stripeCheckoutSessionId === sessionId)
+      : null;
+
+    if (!existingOrder) {
+      const savedOrder = await submitOrderToCRM(false, {
+        status: 'Payment Received',
+        paymentMethod: 'stripe_checkout',
+        stripeCheckoutSessionId: sessionId,
+        stripeCheckoutStatus: payload.status || '',
+        stripePaymentStatus: payload.paymentStatus || ''
+      });
+
+      if (!savedOrder) {
+        throw new Error("Payment succeeded, but the order could not be saved from the current design state.");
+      }
+    }
+
+    localStorage.setItem(processedKey, 'true');
+    cleanupStripeReturnParams();
+    showToast("Stripe payment received. Your order was saved to CRM.");
+  } catch (error) {
+    console.error("Stripe return verification failed", error);
+    showToast(error.message || "Stripe payment verification failed.");
+  }
+}
+
+async function handleStripeCheckout() {
+  if (State.selectedStones.length === 0) {
+    showToast("Bracelet is empty!");
+    return;
+  }
+
+  if (!DOM.btnPayWithStripe) return;
+
+  const originalLabel = DOM.btnPayWithStripe.textContent;
+  DOM.btnPayWithStripe.disabled = true;
+  DOM.btnPayWithStripe.textContent = 'Redirecting to Stripe...';
+  State.landingDismissed = true;
+  saveState();
+
+  try {
+    const response = await fetch('/api/stripe/checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        origin: window.location.origin,
+        order: buildCurrentOrderPayload({
+          paymentMethod: 'stripe_checkout',
+          stripePaymentStatus: 'pending'
+        })
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to create Stripe Checkout session.");
+    }
+
+    if (!payload.url) {
+      throw new Error("Stripe Checkout session did not include a redirect URL.");
+    }
+
+    window.location.assign(payload.url);
+  } catch (error) {
+    console.error("Stripe checkout creation failed", error);
+    DOM.btnPayWithStripe.disabled = false;
+    DOM.btnPayWithStripe.textContent = originalLabel;
+    showToast(error.message || "Stripe Checkout could not be started.");
+  }
+}
+
 function renderBraceletShowcaseCard() {
   const step4 = document.getElementById('stepView4');
   if (!step4) return;
@@ -2749,7 +2928,7 @@ function triggerDownload(dataUrl, filename) {
 }
 
 // Submit Order to CRM backend database
-async function submitOrderToCRM(showToastNotification = true) {
+async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
   if (State.selectedStones.length === 0) {
     if (showToastNotification) showToast("Bracelet is empty!");
     return null;
@@ -2762,14 +2941,7 @@ async function submitOrderToCRM(showToastNotification = true) {
   const charmData = pricing.charmData;
   
   // Design details encoded payload
-  const designData = {
-    w: State.wristSize,
-    b: State.beadSize,
-    n: State.ownerName,
-    s: State.selectedStones.map(s => ({ i: s.stoneId, z: s.size }))
-  };
-  const jsonString = JSON.stringify(designData);
-  const base64Code = btoa(unescape(encodeURIComponent(jsonString)));
+  const base64Code = buildDesignConfigurationCode();
   
   const orderPayload = {
     customerName: State.ownerName || "Khun Guest",
@@ -2794,6 +2966,18 @@ async function submitOrderToCRM(showToastNotification = true) {
     configurationCode: base64Code,
     ...charmData
   };
+
+  Object.assign(orderPayload, overrides);
+
+  if (orderPayload.stripeCheckoutSessionId) {
+    const existingOrders = await getSharedOrders();
+    const existingOrder = Array.isArray(existingOrders)
+      ? existingOrders.find((order) => order?.stripeCheckoutSessionId === orderPayload.stripeCheckoutSessionId)
+      : null;
+    if (existingOrder) {
+      return existingOrder;
+    }
+  }
   
   const order = await addSharedOrder(orderPayload);
   if (showToastNotification && order) {

@@ -168,6 +168,126 @@ function getNestedJsonValue(target, pathValue) {
     }, target);
 }
 
+function getStripeSecretKey() {
+  return getEnvValue("STRIPE_SECRET_KEY");
+}
+
+function getSafeOrigin(origin) {
+  const fallbackOrigin = "https://customize.luckycolorstone.com";
+  if (!origin) return fallbackOrigin;
+
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.origin;
+    }
+  } catch {
+    return fallbackOrigin;
+  }
+
+  return fallbackOrigin;
+}
+
+function normalizeCurrencyAmount(amount) {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error("Order total must be greater than zero.");
+  }
+
+  return Math.round(numericAmount * 100);
+}
+
+function parseStripeApiResponse(text) {
+  const parsed = JSON.parse(normalizeJsonText(text, "{}"));
+  if (parsed?.error?.message) {
+    throw new Error(parsed.error.message);
+  }
+  return parsed;
+}
+
+async function createStripeCheckoutSession({ order, origin }) {
+  const stripeSecretKey = getStripeSecretKey();
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY is not configured.");
+  }
+
+  if (!order || typeof order !== "object") {
+    throw new Error("Missing order payload.");
+  }
+
+  const safeOrigin = getSafeOrigin(origin);
+  const amountTotal = normalizeCurrencyAmount(order.netPrice);
+  const customerName = String(order.customerName || "Khun Guest").trim() || "Khun Guest";
+  const beadSize = String(order.beadSize || "").trim() || "6";
+  const totalBeads = Number.parseInt(order.totalBeads || 0, 10) || 0;
+  const configurationCode = String(order.configurationCode || "").trim();
+
+  const form = new URLSearchParams();
+  form.append("mode", "payment");
+  form.append("success_url", `${safeOrigin}/?step=4&stripe=success&session_id={CHECKOUT_SESSION_ID}`);
+  form.append("cancel_url", `${safeOrigin}/?step=4&stripe=cancel`);
+  form.append("locale", "auto");
+  form.append("payment_method_types[0]", "card");
+  form.append("line_items[0][quantity]", "1");
+  form.append("line_items[0][price_data][currency]", "thb");
+  form.append("line_items[0][price_data][unit_amount]", String(amountTotal));
+  form.append("line_items[0][price_data][product_data][name]", "Lucky Colorstone Custom Bracelet");
+  form.append("line_items[0][price_data][product_data][description]", `${customerName} • ${beadSize}mm • ${totalBeads} beads`);
+
+  if (configurationCode) {
+    form.append("client_reference_id", configurationCode.slice(0, 200));
+    form.append("metadata[configurationCode]", configurationCode.slice(0, 500));
+  }
+  form.append("metadata[customerName]", customerName.slice(0, 500));
+  form.append("metadata[wristSize]", String(order.wristSize ?? ""));
+  form.append("metadata[beadSize]", beadSize.slice(0, 500));
+  form.append("metadata[totalBeads]", String(totalBeads));
+  form.append("metadata[netPrice]", String(order.netPrice ?? ""));
+
+  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: form
+  });
+
+  const responseText = await response.text();
+  const payload = parseStripeApiResponse(responseText);
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `Stripe Checkout returned HTTP ${response.status}.`);
+  }
+
+  return payload;
+}
+
+async function getStripeCheckoutSession(sessionId) {
+  const stripeSecretKey = getStripeSecretKey();
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY is not configured.");
+  }
+
+  if (!sessionId) {
+    throw new Error("Missing checkout session ID.");
+  }
+
+  const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`
+    }
+  });
+
+  const responseText = await response.text();
+  const payload = parseStripeApiResponse(responseText);
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `Stripe session lookup returned HTTP ${response.status}.`);
+  }
+
+  return payload;
+}
+
 function getImageUploadConfig() {
   const endpoint = getEnvValue("IMAGE_UPLOAD_ENDPOINT");
   if (!endpoint) {
@@ -328,6 +448,42 @@ async function handleApiRequest(req, res, urlObj) {
         configured: false
       });
     }
+    return true;
+  }
+
+  if (pathname === "/api/stripe/checkout-session" && method === "POST") {
+    if (!bodyObj) {
+      sendJson(res, 400, { error: "Empty body" });
+      return true;
+    }
+
+    const session = await createStripeCheckoutSession({
+      order: bodyObj.order,
+      origin: bodyObj.origin
+    });
+
+    sendJson(res, 200, {
+      id: session.id,
+      url: session.url,
+      amountTotal: session.amount_total,
+      currency: session.currency
+    });
+    return true;
+  }
+
+  if (pathname === "/api/stripe/checkout-session" && method === "GET") {
+    const sessionId = urlObj.searchParams.get("session_id");
+    const session = await getStripeCheckoutSession(sessionId);
+
+    sendJson(res, 200, {
+      id: session.id,
+      status: session.status,
+      paymentStatus: session.payment_status,
+      customerEmail: session.customer_details?.email || "",
+      amountTotal: session.amount_total,
+      currency: session.currency,
+      metadata: session.metadata || {}
+    });
     return true;
   }
 

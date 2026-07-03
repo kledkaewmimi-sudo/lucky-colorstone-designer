@@ -2242,6 +2242,22 @@ button.stone-card {
   color: var(--color-navy-dark);
 }
 
+.payment-checkout-card {
+  margin-top: 12px;
+}
+
+.stripe-checkout-btn {
+  background: linear-gradient(135deg, #635bff 0%, #4b43d1 100%);
+  color: #ffffff;
+  border-color: #635bff;
+  box-shadow: 0 10px 22px rgba(99, 91, 255, 0.18);
+}
+
+.stripe-checkout-btn:hover {
+  background: linear-gradient(135deg, #564fe0 0%, #433cbd 100%);
+  color: #ffffff;
+}
+
 /* Micro-interactions & Spring Transitions */
 .stone-card {
   transition: var(--transition-smooth);
