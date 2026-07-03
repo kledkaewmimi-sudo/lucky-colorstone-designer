@@ -995,17 +995,33 @@ export async function saveSharedCatalog(stone) {
   return null;
 }
 
+async function parseApiJsonResponse(response) {
+  const rawText = await response.text();
+  const trimmedText = rawText.trim();
+  if (!trimmedText) {
+    return { payload: null, rawText: "" };
+  }
+
+  try {
+    return {
+      payload: JSON.parse(trimmedText),
+      rawText
+    };
+  } catch {
+    return {
+      payload: null,
+      rawText,
+      parseError: true
+    };
+  }
+}
+
 export async function deleteSharedCatalog(stoneId) {
   if (!stoneId) {
     return { success: false, error: "Missing stone ID." };
   }
 
   const requests = [
-    {
-      label: "DELETE /api/stones/:id",
-      url: `/api/stones/${encodeURIComponent(stoneId)}`,
-      options: { method: "DELETE" }
-    },
     {
       label: "POST /api/stones/delete",
       url: "/api/stones/delete",
@@ -1014,6 +1030,11 @@ export async function deleteSharedCatalog(stoneId) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: stoneId })
       }
+    },
+    {
+      label: "DELETE /api/stones/:id",
+      url: `/api/stones/${encodeURIComponent(stoneId)}`,
+      options: { method: "DELETE" }
     }
   ];
 
@@ -1022,13 +1043,22 @@ export async function deleteSharedCatalog(stoneId) {
   for (const request of requests) {
     try {
       const res = await fetch(request.url, request.options);
-      const payload = await res.json().catch(() => ({}));
+      const { payload, parseError, rawText } = await parseApiJsonResponse(res);
       if (res.ok && payload?.success === true) {
         await refreshCatalog();
         window.dispatchEvent(new Event("storage_sync"));
         return { success: true, id: stoneId };
       }
-      lastError = payload?.error || `${request.label} failed.`;
+
+      if (parseError) {
+        const statusLabel = res.status ? `HTTP ${res.status}` : "unknown status";
+        const snippet = rawText ? rawText.slice(0, 120).replace(/\s+/g, " ") : "";
+        lastError = snippet
+          ? `${request.label} returned non-JSON (${statusLabel}): ${snippet}`
+          : `${request.label} returned non-JSON (${statusLabel}).`;
+      } else {
+        lastError = payload?.error || `${request.label} failed.`;
+      }
     } catch (e) {
       lastError = e?.message || `${request.label} failed.`;
       console.error(`Failed to delete stone via ${request.label}`, e);

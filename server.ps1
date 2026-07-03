@@ -90,6 +90,29 @@ function Convert-To-Json-Array ($array) {
     return $json
 }
 
+function Get-JsonFileText {
+    param(
+        [string]$Path,
+        [string]$Fallback = "[]"
+    )
+
+    $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return $Fallback
+    }
+
+    return $raw.TrimStart([char]0xFEFF)
+}
+
+function Read-JsonFile {
+    param(
+        [string]$Path,
+        [string]$Fallback = "[]"
+    )
+
+    return (Get-JsonFileText -Path $Path -Fallback $Fallback) | ConvertFrom-Json
+}
+
 function Get-EnvValue {
     param([string]$Name, [string]$Default = "")
     $value = [System.Environment]::GetEnvironmentVariable($Name)
@@ -313,10 +336,10 @@ try {
         if ($path.StartsWith("/api/")) {
             try {
                 # Load existing data
-                $stones = [System.IO.File]::ReadAllText($stonesFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-                $charms = [System.IO.File]::ReadAllText($charmsFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-                $orders = [System.IO.File]::ReadAllText($ordersFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-                $settings = [System.IO.File]::ReadAllText($settingsFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                $stones = Read-JsonFile -Path $stonesFile -Fallback "[]"
+                $charms = Read-JsonFile -Path $charmsFile -Fallback "[]"
+                $orders = Read-JsonFile -Path $ordersFile -Fallback "[]"
+                $settings = Read-JsonFile -Path $settingsFile -Fallback "{}"
 
                 # Read body if request has entity body
                 $bodyObj = $null
@@ -358,7 +381,7 @@ try {
 
                 # Endpoint: GET /api/stones
                 if ($path -eq "/api/stones" -and $request.HttpMethod -eq "GET") {
-                    $rawJson = [System.IO.File]::ReadAllText($stonesFile, [System.Text.Encoding]::UTF8)
+                    $rawJson = Get-JsonFileText -Path $stonesFile -Fallback "[]"
                     Send-JsonStringResponse $response $rawJson
                     continue
                 }
@@ -444,7 +467,7 @@ try {
 
                 # Endpoint: GET /api/charms
                 if ($path -eq "/api/charms" -and $request.HttpMethod -eq "GET") {
-                    $rawJson = [System.IO.File]::ReadAllText($charmsFile, [System.Text.Encoding]::UTF8)
+                    $rawJson = Get-JsonFileText -Path $charmsFile -Fallback "[]"
                     Send-JsonStringResponse $response $rawJson
                     continue
                 }
@@ -557,7 +580,7 @@ try {
 
                 # Endpoint: GET /api/orders
                 if ($path -eq "/api/orders" -and $request.HttpMethod -eq "GET") {
-                    $rawJson = [System.IO.File]::ReadAllText($ordersFile, [System.Text.Encoding]::UTF8)
+                    $rawJson = Get-JsonFileText -Path $ordersFile -Fallback "[]"
                     Send-JsonStringResponse $response $rawJson
                     continue
                 }
@@ -607,7 +630,7 @@ try {
 
                 # Endpoint: GET /api/settings
                 if ($path -eq "/api/settings" -and $request.HttpMethod -eq "GET") {
-                    $rawJson = [System.IO.File]::ReadAllText($settingsFile, [System.Text.Encoding]::UTF8)
+                    $rawJson = Get-JsonFileText -Path $settingsFile -Fallback "{}"
                     Send-JsonStringResponse $response $rawJson
                     continue
                 }
