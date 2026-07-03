@@ -1378,14 +1378,14 @@ body {
 /* Stone Catalog Cards Grid */
 .stone-catalog-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
 .stone-card {
   background-color: var(--color-white);
-  border-radius: 12px;
-  padding: 8px;
+  border-radius: 14px;
+  padding: 7px 7px 8px;
   border: 1px solid var(--color-gray-border);
   box-shadow: var(--shadow-sm);
   display: flex;
@@ -1417,10 +1417,10 @@ button.stone-card {
 .stone-img-container {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
   background-color: var(--color-bg-light);
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1428,8 +1428,8 @@ button.stone-card {
 }
 
 .stone-img {
-  width: 85%;
-  height: 85%;
+  width: 88%;
+  height: 88%;
   object-fit: contain;
   transition: var(--transition-smooth);
   clip-path: circle(41% at center);
@@ -1492,30 +1492,33 @@ button.stone-card {
 .stone-details {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
 }
 
 .stone-name-th {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--color-navy-dark);
-}
-
-.stone-name-en {
-  font-size: 9px;
-  color: var(--color-navy-muted);
   line-height: 1.2;
 }
 
+.stone-name-en {
+  font-size: 8px;
+  color: var(--color-navy-muted);
+  line-height: 1.25;
+}
+
 .stone-price-row {
-  margin-top: 6px;
+  margin-top: 5px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 6px;
 }
 
 .stone-price-tag {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--color-gold-dark);
 }
@@ -1524,16 +1527,17 @@ button.stone-card {
   background-color: var(--color-bg-light);
   border: 1px solid var(--color-navy);
   color: var(--color-navy);
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .stone-add-btn.selected {
@@ -1545,6 +1549,12 @@ button.stone-card {
 .stone-add-btn:hover {
   background-color: var(--color-navy);
   color: var(--color-white);
+}
+
+@media (max-width: 360px) {
+  .stone-catalog-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* Mixed Bead Size Selector - appears only when Mixed Sizes is active in step 3 */
