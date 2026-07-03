@@ -96,12 +96,26 @@ function Get-JsonFileText {
         [string]$Fallback = "[]"
     )
 
-    $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($null -eq $bytes -or $bytes.Length -eq 0) {
+        return $Fallback
+    }
+
+    if (
+        $bytes.Length -ge 3 -and
+        $bytes[0] -eq 0xEF -and
+        $bytes[1] -eq 0xBB -and
+        $bytes[2] -eq 0xBF
+    ) {
+        $bytes = $bytes[3..($bytes.Length - 1)]
+    }
+
+    $raw = [System.Text.Encoding]::UTF8.GetString($bytes)
     if ([string]::IsNullOrWhiteSpace($raw)) {
         return $Fallback
     }
 
-    return $raw.TrimStart([char]0xFEFF)
+    return ($raw -replace "^[\uFEFF]+", "").Trim()
 }
 
 function Read-JsonFile {
@@ -426,14 +440,14 @@ try {
                         }
 
                         if (-not $deleted) {
-                            Send-JsonResponse $response @{ error = "Stone not found" } 404
+                            Send-JsonResponse $response @{ success = $false; error = "Stone not found"; id = $bodyObj.id } 404
                         } else {
                             $stonesJson = Convert-To-Json-Array $newStones
                             [System.IO.File]::WriteAllText($stonesFile, $stonesJson, [System.Text.Encoding]::UTF8)
                             Send-JsonResponse $response @{ success = $true; id = $bodyObj.id }
                         }
                     } else {
-                        Send-JsonResponse $response @{ error = "Missing ID" } 400
+                        Send-JsonResponse $response @{ success = $false; error = "Missing ID" } 400
                     }
                     continue
                 }
@@ -657,7 +671,11 @@ try {
                 # Route not matched
                 Send-JsonResponse $response @{ error = "API Route Not Found" } 404
             } catch {
-                Send-JsonResponse $response @{ error = $_.Exception.Message } 500
+                if ($path -eq "/api/stones/delete" -and $request.HttpMethod -eq "POST") {
+                    Send-JsonResponse $response @{ success = $false; error = $_.Exception.Message } 500
+                } else {
+                    Send-JsonResponse $response @{ error = $_.Exception.Message } 500
+                }
             }
             continue
         }
