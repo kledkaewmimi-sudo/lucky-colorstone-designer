@@ -415,6 +415,33 @@ try {
                     continue
                 }
 
+                if ($path.StartsWith("/api/stones/") -and $request.HttpMethod -eq "DELETE") {
+                    $stoneId = [System.Uri]::UnescapeDataString($path.Substring("/api/stones/".Length))
+                    if ([string]::IsNullOrWhiteSpace($stoneId)) {
+                        Send-JsonResponse $response @{ error = "Missing stone ID" } 400
+                        continue
+                    }
+
+                    $newStones = @()
+                    $deleted = $false
+                    foreach ($s in $stones) {
+                        if ($s.id -eq $stoneId) {
+                            $deleted = $true
+                        } else {
+                            $newStones += $s
+                        }
+                    }
+
+                    if (-not $deleted) {
+                        Send-JsonResponse $response @{ error = "Stone not found" } 404
+                    } else {
+                        $stonesJson = Convert-To-Json-Array $newStones
+                        [System.IO.File]::WriteAllText($stonesFile, $stonesJson, [System.Text.Encoding]::UTF8)
+                        Send-JsonResponse $response @{ success = $true; id = $stoneId }
+                    }
+                    continue
+                }
+
                 # Endpoint: GET /api/charms
                 if ($path -eq "/api/charms" -and $request.HttpMethod -eq "GET") {
                     $rawJson = [System.IO.File]::ReadAllText($charmsFile, [System.Text.Encoding]::UTF8)

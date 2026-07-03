@@ -1661,11 +1661,15 @@ async function deleteStoneType(stoneId) {
     "Delete Stone Type"
   );
   if (proceed) {
-    const success = await deleteSharedCatalog(stoneId);
-    if (success) {
+    const result = await deleteSharedCatalog(stoneId);
+    if (result?.success) {
       addLog(`Deleted stone ID '${stoneId}' (${stone.nameTh}) from inventory.`, 'warn');
       showToast("Stone type deleted.");
       await loadDashboardData();
+    } else {
+      const errorMessage = result?.error || `Failed to delete stone ID '${stoneId}'.`;
+      addLog(`Failed to delete stone ID '${stoneId}' (${stone.nameTh}): ${errorMessage}`, 'error');
+      showToast(`Delete failed: ${errorMessage}`);
     }
   }
 }

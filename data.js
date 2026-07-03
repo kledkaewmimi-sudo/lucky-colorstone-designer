@@ -996,25 +996,46 @@ export async function saveSharedCatalog(stone) {
 }
 
 export async function deleteSharedCatalog(stoneId) {
-  try {
-    const res = await fetch("/api/stones/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: stoneId })
-    });
-    if (res.ok) {
-      const payload = await res.json().catch(() => ({}));
-      if (payload?.success !== true) {
-        return false;
-      }
-      await refreshCatalog();
-      window.dispatchEvent(new Event("storage_sync"));
-      return true;
-    }
-  } catch (e) {
-    console.error("Failed to delete stone from API", e);
+  if (!stoneId) {
+    return { success: false, error: "Missing stone ID." };
   }
-  return false;
+
+  const requests = [
+    {
+      label: "DELETE /api/stones/:id",
+      url: `/api/stones/${encodeURIComponent(stoneId)}`,
+      options: { method: "DELETE" }
+    },
+    {
+      label: "POST /api/stones/delete",
+      url: "/api/stones/delete",
+      options: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: stoneId })
+      }
+    }
+  ];
+
+  let lastError = "Stone delete failed.";
+
+  for (const request of requests) {
+    try {
+      const res = await fetch(request.url, request.options);
+      const payload = await res.json().catch(() => ({}));
+      if (res.ok && payload?.success === true) {
+        await refreshCatalog();
+        window.dispatchEvent(new Event("storage_sync"));
+        return { success: true, id: stoneId };
+      }
+      lastError = payload?.error || `${request.label} failed.`;
+    } catch (e) {
+      lastError = e?.message || `${request.label} failed.`;
+      console.error(`Failed to delete stone via ${request.label}`, e);
+    }
+  }
+
+  return { success: false, error: lastError };
 }
 
 export async function getSharedSettings() {
