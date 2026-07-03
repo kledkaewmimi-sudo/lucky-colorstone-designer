@@ -1,0 +1,12 @@
+{
+  "name": "lucky-colorstone-designer-backend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Node backend for Lucky Colorstone Designer JSON API",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
