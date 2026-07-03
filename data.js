@@ -1021,48 +1021,39 @@ export async function deleteSharedCatalog(stoneId) {
     return { success: false, error: "Missing stone ID." };
   }
 
-  const requests = [
-    {
-      label: "POST /api/stones/delete",
-      url: "/api/stones/delete",
-      options: {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: stoneId })
-      }
-    },
-    {
-      label: "DELETE /api/stones/:id",
-      url: `/api/stones/${encodeURIComponent(stoneId)}`,
-      options: { method: "DELETE" }
+  const request = {
+    label: "POST /api/stones/delete",
+    url: "/api/stones/delete",
+    options: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: stoneId })
     }
-  ];
+  };
 
   let lastError = "Stone delete failed.";
 
-  for (const request of requests) {
-    try {
-      const res = await fetch(request.url, request.options);
-      const { payload, parseError, rawText } = await parseApiJsonResponse(res);
-      if (res.ok && payload?.success === true) {
-        await refreshCatalog();
-        window.dispatchEvent(new Event("storage_sync"));
-        return { success: true, id: stoneId };
-      }
-
-      if (parseError) {
-        const statusLabel = res.status ? `HTTP ${res.status}` : "unknown status";
-        const snippet = rawText ? rawText.slice(0, 120).replace(/\s+/g, " ") : "";
-        lastError = snippet
-          ? `${request.label} returned non-JSON (${statusLabel}): ${snippet}`
-          : `${request.label} returned non-JSON (${statusLabel}).`;
-      } else {
-        lastError = payload?.error || `${request.label} failed.`;
-      }
-    } catch (e) {
-      lastError = e?.message || `${request.label} failed.`;
-      console.error(`Failed to delete stone via ${request.label}`, e);
+  try {
+    const res = await fetch(request.url, request.options);
+    const { payload, parseError, rawText } = await parseApiJsonResponse(res);
+    if (res.ok && payload?.success === true) {
+      await refreshCatalog();
+      window.dispatchEvent(new Event("storage_sync"));
+      return { success: true, id: stoneId };
     }
+
+    if (parseError) {
+      const statusLabel = res.status ? `HTTP ${res.status}` : "unknown status";
+      const snippet = rawText ? rawText.slice(0, 120).replace(/\s+/g, " ") : "";
+      lastError = snippet
+        ? `${request.label} returned non-JSON (${statusLabel}): ${snippet}`
+        : `${request.label} returned non-JSON (${statusLabel}).`;
+    } else {
+      lastError = payload?.error || `${request.label} failed.`;
+    }
+  } catch (e) {
+    lastError = e?.message || `${request.label} failed.`;
+    console.error(`Failed to delete stone via ${request.label}`, e);
   }
 
   return { success: false, error: lastError };
