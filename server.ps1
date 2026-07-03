@@ -439,6 +439,32 @@ try {
                     continue
                 }
 
+                # Endpoint: POST /api/charms/delete
+                if ($path -eq "/api/charms/delete" -and $request.HttpMethod -eq "POST") {
+                    if ($null -ne $bodyObj -and $null -ne $bodyObj.id) {
+                        $newCharms = @()
+                        $deleted = $false
+                        foreach ($c in $charms) {
+                            if ($c.id -eq $bodyObj.id) {
+                                $deleted = $true
+                            } else {
+                                $newCharms += $c
+                            }
+                        }
+
+                        if (-not $deleted) {
+                            Send-JsonResponse $response @{ error = "Charm not found" } 404
+                        } else {
+                            $charmsJson = Convert-To-Json-Array $newCharms
+                            [System.IO.File]::WriteAllText($charmsFile, $charmsJson, [System.Text.Encoding]::UTF8)
+                            Send-JsonResponse $response @{ success = $true; id = $bodyObj.id }
+                        }
+                    } else {
+                        Send-JsonResponse $response @{ error = "Missing charm ID" } 400
+                    }
+                    continue
+                }
+
                 if ($path.StartsWith("/api/charms/")) {
                     $charmId = [System.Uri]::UnescapeDataString($path.Substring("/api/charms/".Length))
                     if ([string]::IsNullOrWhiteSpace($charmId)) {

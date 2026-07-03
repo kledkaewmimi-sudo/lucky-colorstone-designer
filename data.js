@@ -283,10 +283,6 @@ export const CHARM_CATALOG = [
     visualOffsetY: 0,
     maxWidthRatio: 1,
     maxHeightRatio: 0.95,
-    edgeFitMode: "horizontal_fill",
-    targetWidthFillRatio: 1.02,
-    contactInsetLeft: 0.14,
-    contactInsetRight: 0.14,
     rotation: 0,
     anchor: "top",
     price: 490,
@@ -329,10 +325,6 @@ export const CHARM_CATALOG = [
     visualOffsetY: 0,
     maxWidthRatio: 1,
     maxHeightRatio: 0.95,
-    edgeFitMode: "horizontal_fill",
-    targetWidthFillRatio: 1.01,
-    contactInsetLeft: 0.1,
-    contactInsetRight: 0.1,
     rotation: 0,
     anchor: "top",
     price: 590,
@@ -375,10 +367,6 @@ export const CHARM_CATALOG = [
     visualOffsetY: 0,
     maxWidthRatio: 1,
     maxHeightRatio: 0.95,
-    edgeFitMode: "horizontal_fill",
-    targetWidthFillRatio: 1.01,
-    contactInsetLeft: 0.13,
-    contactInsetRight: 0.13,
     rotation: 0,
     anchor: "top",
     price: 690,
@@ -400,10 +388,6 @@ export const CHARM_CATALOG = [
     visualOffsetY: 0,
     maxWidthRatio: 1,
     maxHeightRatio: 0.95,
-    edgeFitMode: "horizontal_fill",
-    targetWidthFillRatio: 1.01,
-    contactInsetLeft: 0.12,
-    contactInsetRight: 0.12,
     rotation: 0,
     anchor: "top",
     price: 690,
@@ -425,10 +409,6 @@ export const CHARM_CATALOG = [
     visualOffsetY: 0,
     maxWidthRatio: 1,
     maxHeightRatio: 0.95,
-    edgeFitMode: "horizontal_fill",
-    targetWidthFillRatio: 1.01,
-    contactInsetLeft: 0.1,
-    contactInsetRight: 0.1,
     rotation: 0,
     anchor: "top",
     price: 790,
@@ -957,6 +937,22 @@ export async function deleteSharedCharmCatalogEntry(charmId) {
   } catch (e) {
     console.error("Failed to delete charm from API", e);
   }
+
+  try {
+    const fallbackRes = await fetch("/api/charms/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: charmId })
+    });
+    if (fallbackRes.ok) {
+      await refreshCharmCatalog();
+      window.dispatchEvent(new Event("storage_sync"));
+      return true;
+    }
+  } catch (e) {
+    console.error("Failed to delete charm from POST fallback API", e);
+  }
+
   return false;
 }
 
