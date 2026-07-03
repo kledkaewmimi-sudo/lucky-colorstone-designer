@@ -393,14 +393,22 @@ try {
                 if ($path -eq "/api/stones/delete" -and $request.HttpMethod -eq "POST") {
                     if ($null -ne $bodyObj -and $null -ne $bodyObj.id) {
                         $newStones = @()
+                        $deleted = $false
                         foreach ($s in $stones) {
-                            if ($s.id -ne $bodyObj.id) {
+                            if ($s.id -eq $bodyObj.id) {
+                                $deleted = $true
+                            } else {
                                 $newStones += $s
                             }
                         }
-                        $stonesJson = Convert-To-Json-Array $newStones
-                        [System.IO.File]::WriteAllText($stonesFile, $stonesJson, [System.Text.Encoding]::UTF8)
-                        Send-JsonResponse $response @{ success = $true; id = $bodyObj.id }
+
+                        if (-not $deleted) {
+                            Send-JsonResponse $response @{ error = "Stone not found" } 404
+                        } else {
+                            $stonesJson = Convert-To-Json-Array $newStones
+                            [System.IO.File]::WriteAllText($stonesFile, $stonesJson, [System.Text.Encoding]::UTF8)
+                            Send-JsonResponse $response @{ success = $true; id = $bodyObj.id }
+                        }
                     } else {
                         Send-JsonResponse $response @{ error = "Missing ID" } 400
                     }

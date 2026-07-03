@@ -1003,6 +1003,10 @@ export async function deleteSharedCatalog(stoneId) {
       body: JSON.stringify({ id: stoneId })
     });
     if (res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      if (payload?.success !== true) {
+        return false;
+      }
       await refreshCatalog();
       window.dispatchEvent(new Event("storage_sync"));
       return true;
