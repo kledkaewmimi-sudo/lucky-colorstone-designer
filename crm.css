@@ -983,11 +983,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .charm-admin-img {
-  width: 64px;
-  height: 64px;
+  width: 84px;
+  height: 84px;
   border-radius: 12px;
   background-color: var(--color-navy-darker);
-  padding: 4px;
+  padding: 6px;
 }
 
 .stone-title-th {
@@ -2064,8 +2064,8 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .charm-admin-img {
-    width: 56px;
-    height: 56px;
+    width: 72px;
+    height: 72px;
   }
 
   .charm-toolbar-left {

@@ -762,6 +762,7 @@ function buildStoneCard({
   image,
   imageAlt,
   imageClassName = 'stone-img',
+  imageStyle = null,
   mediaLabel = '',
   nameTh,
   nameEn,
@@ -806,6 +807,11 @@ function buildStoneCard({
     img.src = image;
     img.alt = imageAlt;
     img.className = imageClassName;
+    if (imageStyle && typeof imageStyle === 'object') {
+      Object.entries(imageStyle).forEach(([property, value]) => {
+        img.style.setProperty(property, value);
+      });
+    }
     imgCont.appendChild(img);
   } else if (mediaLabel) {
     const label = document.createElement('span');
@@ -868,6 +874,39 @@ function getVisibleCharmCatalog() {
     charm.image &&
     charm.image !== CHARM_PLACEHOLDER_IMAGE
   ));
+}
+
+function getCharmCatalogThumbnailTargetRatio(charms = []) {
+  const visibleRatios = charms
+    .map((charm) => {
+      const imageUrl = charm?.image || '';
+      const bounds = imageUrl ? charmVisibleBoundsCache.get(imageUrl) : null;
+      if (!bounds?.sourceWidth || !bounds?.sourceHeight) return null;
+      return Math.max(bounds.width / bounds.sourceWidth, bounds.height / bounds.sourceHeight);
+    })
+    .filter((ratio) => Number.isFinite(ratio) && ratio > 0)
+    .sort((a, b) => a - b);
+
+  if (visibleRatios.length === 0) return 0.8;
+  const middleIndex = Math.floor(visibleRatios.length / 2);
+  if (visibleRatios.length % 2 === 1) {
+    return visibleRatios[middleIndex];
+  }
+  return (visibleRatios[middleIndex - 1] + visibleRatios[middleIndex]) / 2;
+}
+
+function getCharmCardThumbnailStyle(charm, targetVisibleRatio = 0.8) {
+  const imageUrl = charm?.image || '';
+  const bounds = imageUrl ? charmVisibleBoundsCache.get(imageUrl) : null;
+  if (!bounds?.sourceWidth || !bounds?.sourceHeight) return null;
+
+  const dominantRatio = Math.max(bounds.width / bounds.sourceWidth, bounds.height / bounds.sourceHeight);
+  if (!Number.isFinite(dominantRatio) || dominantRatio <= 0) return null;
+
+  const scale = Math.max(0.92, Math.min(1.18, targetVisibleRatio / dominantRatio));
+  return {
+    '--charm-thumb-scale': scale.toFixed(3)
+  };
 }
 
 function getCharmDisplayMeta(charm) {
@@ -1116,6 +1155,7 @@ function renderCharmOptions() {
 
   const visibleCharms = getVisibleCharmCatalog();
   const selectedCharmId = visibleCharms.some((charm) => charm.id === State.selectedCharmId) ? State.selectedCharmId : null;
+  const thumbnailTargetRatio = getCharmCatalogThumbnailTargetRatio(visibleCharms);
   DOM.charmSectionMount.innerHTML = '';
 
   const section = document.createElement('section');
@@ -1156,6 +1196,9 @@ function renderCharmOptions() {
   visibleCharms.forEach((charm) => {
     const isSelected = selectedCharmId === charm.id;
     const charmMeta = getCharmDisplayMeta(charm);
+    if (charm.image) {
+      scheduleCharmVisibleBoundsDetection(charm.image);
+    }
     grid.appendChild(buildStoneCard({
       rootTag: 'div',
       dataAttributeName: 'charm-id',
@@ -1163,6 +1206,7 @@ function renderCharmOptions() {
       image: charm.image,
       imageAlt: charmMeta.nameEn,
       imageClassName: 'stone-img charm-card-img',
+      imageStyle: getCharmCardThumbnailStyle(charm, thumbnailTargetRatio),
       nameTh: charmMeta.nameTh,
       nameEn: charmMeta.nameEn,
       priceText: formatDisplayPrice(charm.price),
@@ -2218,7 +2262,7 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
     img.onload = async () => {
       const bounds = getVisibleImageBounds(img, imageUrl);
       resolve(bounds);
-      if (State.currentStep === 3 && State.selectedCharmId) {
+      if (State.currentStep === 3) {
         renderStep3();
       }
     };

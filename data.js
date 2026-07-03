@@ -46,7 +46,7 @@ const KNOWN_BAD_CATEGORY_THAI = {
 function sanitizeCategoryThaiLabel(categoryId, value) {
   const normalizedId = String(categoryId || "").trim();
   const trimmedValue = String(value || "").trim();
-  const canonical = CANONICAL_CATEGORY_LABELS[normalizedId]?.th || "";
+  const canonical = FIXED_CATEGORY_LABELS[normalizedId]?.th || CANONICAL_CATEGORY_LABELS[normalizedId]?.th || "";
 
   if (!trimmedValue) return canonical;
   if (KNOWN_BAD_CATEGORY_THAI[normalizedId]?.has(trimmedValue)) {
@@ -55,6 +55,16 @@ function sanitizeCategoryThaiLabel(categoryId, value) {
   return trimmedValue;
 }
 
+const FIXED_CATEGORY_LABELS = {
+  all: { en: "All", th: "\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14" },
+  wealth: { en: "Wealth & Luck", th: "\u0E42\u0E0A\u0E04\u0E25\u0E32\u0E20/\u0E01\u0E32\u0E23\u0E07\u0E32\u0E19" },
+  love: { en: "Love & Healing", th: "\u0E04\u0E27\u0E32\u0E21\u0E23\u0E31\u0E01/\u0E40\u0E21\u0E15\u0E15\u0E32" },
+  calm: { en: "Calm & Wisdom", th: "\u0E2A\u0E07\u0E1A/\u0E2A\u0E15\u0E34\u0E1B\u0E31\u0E0D\u0E0D\u0E32" },
+  protection: { en: "Protection", th: "\u0E1B\u0E01\u0E1B\u0E49\u0E2D\u0E07/\u0E04\u0E38\u0E49\u0E21\u0E04\u0E23\u0E2D\u0E07" },
+  pixiu: { en: "Pi Xiu", th: "\u0E1B\u0E35\u0E48\u0E40\u0E0B\u0E35\u0E22\u0E30" },
+  takrud: { en: "Takrud", th: "\u0E15\u0E30\u0E01\u0E23\u0E38\u0E14" }
+};
+
 export const CATEGORIES = {
   all: { en: "All", th: "ทั้งหมด" },
   wealth: { en: "Wealth & Luck", th: "โชคลาภ/การงาน" },
@@ -62,6 +72,14 @@ export const CATEGORIES = {
   calm: { en: "Calm & Wisdom", th: "สงบ/สติปัญญา" },
   protection: { en: "Protection", th: "ปกป้อง/คุ้มครอง" }
 };
+
+Object.assign(CATEGORIES, {
+  all: { ...FIXED_CATEGORY_LABELS.all },
+  wealth: { ...FIXED_CATEGORY_LABELS.wealth },
+  love: { ...FIXED_CATEGORY_LABELS.love },
+  calm: { ...FIXED_CATEGORY_LABELS.calm },
+  protection: { ...FIXED_CATEGORY_LABELS.protection }
+});
 
 export let CATEGORY_RECORDS = [];
 
@@ -163,6 +181,8 @@ function syncLegacyCategoryMap(records = []) {
   const nextMap = {
     all: { en: "All", th: "เธ—เธฑเนเธเธซเธกเธ”" }
   };
+
+  nextMap.all = { ...FIXED_CATEGORY_LABELS.all };
 
   records
     .filter((record) => record.entityType === "stone" && record.isActive !== false)
