@@ -923,20 +923,25 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .table-bead-img {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  box-shadow: var(--shadow-sm);
-  object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.inventory-stone-img {
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .charm-admin-img {
-  width: 46px;
-  height: 46px;
+  width: 64px;
+  height: 64px;
   border-radius: 12px;
   background-color: var(--color-navy-darker);
-  object-fit: contain;
   padding: 4px;
 }
 
@@ -1326,33 +1331,6 @@ h1, h2, h3, h4, h5, h6 {
   object-fit: contain;
   border-radius: 12px;
   display: block;
-}
-
-.image-preview-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px 14px;
-}
-
-.image-preview-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color: var(--color-navy-muted);
-  font-weight: 700;
-}
-
-.image-preview-meta code {
-  display: block;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background-color: var(--color-navy-darker);
-  border: 1px solid var(--color-navy-border);
-  color: var(--color-navy-dark);
-  font-size: 11px;
-  line-height: 1.5;
-  word-break: break-all;
 }
 
 .image-upload-actions {
@@ -2026,6 +2004,16 @@ h1, h2, h3, h4, h5, h6 {
   .crm-table .action-btns {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .inventory-stone-img {
+    width: 52px;
+    height: 52px;
+  }
+
+  .charm-admin-img {
+    width: 56px;
+    height: 56px;
   }
 
   .charm-toolbar-left {

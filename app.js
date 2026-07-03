@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, CHARM_CATALOG, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, getSharedSettings, addSharedOrder, getStonePriceForSize } from './data.js';
+import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getStonePriceForSize } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -133,6 +133,7 @@ let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
+let legacyCharmCatalogCache = [];
 
 function normalizeBeadSizeOption(value) {
   const beadSize = String(value || '').trim();
@@ -178,8 +179,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initLIFF();
   clearOAuthQueryParams();
   
-  // Fetch initial catalog from API
-  await refreshCatalog();
+  // Fetch initial catalog from shared persistence
+  await Promise.all([
+    refreshCatalog(),
+    refreshCharmCatalog()
+  ]);
   
   // Initialise step UI components
   initWristSizeGrid();
@@ -195,8 +199,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Polling for updates every 3 seconds to reflect CRM changes instantly
   setInterval(async () => {
-    const updated = await refreshCatalog();
-    if (updated) {
+    const [updatedStones, updatedCharms] = await Promise.all([
+      refreshCatalog(),
+      refreshCharmCatalog()
+    ]);
+    if (updatedStones || updatedCharms) {
       await renderApp();
     }
   }, 3000);
@@ -472,6 +479,8 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 }
 
 async function renderStepViews() {
+  legacyCharmCatalogCache = await getLegacyCharmCatalog();
+
   DOM.stepViews.forEach((view, idx) => {
     const stepNum = idx + 1;
     if (stepNum === State.currentStep) {
@@ -852,7 +861,13 @@ function buildStoneCard({
 }
 
 function getVisibleCharmCatalog() {
-  return CHARM_CATALOG.filter((charm) => charm && charm.inStock !== false && charm.image && charm.image !== CHARM_PLACEHOLDER_IMAGE);
+  return legacyCharmCatalogCache.filter((charm) => (
+    charm &&
+    charm.isActive !== false &&
+    charm.inStock !== false &&
+    charm.image &&
+    charm.image !== CHARM_PLACEHOLDER_IMAGE
+  ));
 }
 
 function getCharmDisplayMeta(charm) {
@@ -1232,7 +1247,7 @@ function renderCatalogGrid() {
   
   const filtered = State.activeCategory === 'all' 
     ? availableStones 
-    : availableStones.filter(s => s.category === State.activeCategory);
+    : availableStones.filter(s => (s.categoryId || s.category) === State.activeCategory);
     
   filtered.forEach(stone => {
     const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);

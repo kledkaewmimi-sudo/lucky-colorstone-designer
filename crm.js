@@ -30,6 +30,7 @@ const CRMState = {
   sessionActive: false,
   activeTab: 'overview', // 'overview', 'inventory', 'categories', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
+  activeEditStoneColor: '#E2C974',
   activeEditCharmId: null,
   activeEditCategoryId: null,
   pendingStoneImage: null,
@@ -153,8 +154,6 @@ const DOM = {
   btnUploadStoneImage: document.getElementById('btnUploadStoneImage'),
   crudStoneUploadStatus: document.getElementById('crudStoneUploadStatus'),
   crudStoneImagePreview: document.getElementById('crudStoneImagePreview'),
-  crudStoneImagePreviewUrl: document.getElementById('crudStoneImagePreviewUrl'),
-  crudStoneColor: document.getElementById('crudStoneColor'),
   crudStoneInStock: document.getElementById('crudStoneInStock'),
   crudStoneMeaningTh: document.getElementById('crudStoneMeaningTh'),
   crudStoneMeaningEn: document.getElementById('crudStoneMeaningEn'),
@@ -192,7 +191,6 @@ const DOM = {
   btnUploadCharmImage: document.getElementById('btnUploadCharmImage'),
   crudCharmUploadStatus: document.getElementById('crudCharmUploadStatus'),
   crudCharmImagePreview: document.getElementById('crudCharmImagePreview'),
-  crudCharmImagePreviewUrl: document.getElementById('crudCharmImagePreviewUrl'),
   crudCharmSizeCm: document.getElementById('crudCharmSizeCm'),
   crudCharmPrice: document.getElementById('crudCharmPrice'),
   crudCharmDisplayOrder: document.getElementById('crudCharmDisplayOrder'),
@@ -276,14 +274,10 @@ const IMAGE_THUMB_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURICom
   </svg>
 `.trim())}`;
 
-function updateImagePreview(imageEl, labelEl, rawValue, fallbackText) {
+function updateImagePreview(imageEl, rawValue) {
   if (!imageEl) return;
 
   const value = String(rawValue || "").trim();
-  if (labelEl) {
-    labelEl.textContent = value || fallbackText;
-  }
-
   imageEl.dataset.fallbackApplied = "0";
   imageEl.onerror = () => {
     if (imageEl.dataset.fallbackApplied === "1") return;
@@ -341,7 +335,6 @@ async function uploadImageToMediaService(kind) {
   const pending = CRMState[`pending${kind}Image`];
   const imageInput = kind === "Stone" ? DOM.crudStoneImage : DOM.crudCharmImage;
   const previewImage = kind === "Stone" ? DOM.crudStoneImagePreview : DOM.crudCharmImagePreview;
-  const previewLabel = kind === "Stone" ? DOM.crudStoneImagePreviewUrl : DOM.crudCharmImagePreviewUrl;
   const statusEl = kind === "Stone" ? DOM.crudStoneUploadStatus : DOM.crudCharmUploadStatus;
 
   if (!pending?.dataUrl) {
@@ -374,7 +367,7 @@ async function uploadImageToMediaService(kind) {
   }
 
   imageInput.value = uploadedUrl;
-  updateImagePreview(previewImage, previewLabel, uploadedUrl, "No image URL set.");
+  updateImagePreview(previewImage, uploadedUrl);
   CRMState[`pending${kind}Image`] = null;
   const fileInput = kind === "Stone" ? DOM.crudStoneImageFile : DOM.crudCharmImageFile;
   if (fileInput) fileInput.value = "";
@@ -735,7 +728,7 @@ function renderInventoryCatalog(stones) {
     
     tr.innerHTML = `
       <td data-label="Bead">
-        <img class="table-bead-img" src="${stone.image}" alt="${stone.name}" style="background-color: ${stone.color || 'transparent'}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+        <img class="table-bead-img inventory-stone-img" src="${stone.image}" alt="${stone.name}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
       </td>
       <td data-label="Stone Name">
         <div class="stone-title-th">${stone.nameTh}</div>
@@ -1414,7 +1407,7 @@ async function openAddCharmForm() {
   DOM.crudCharmCollection.value = DOM.crudCharmCollection.value || 'pixiu';
   setReadOnlyCharmTuning({});
   resetImageUploadState("Charm");
-  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
+  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImage.value);
   DOM.charmCrudModal.classList.add('show');
 }
 
@@ -1438,7 +1431,7 @@ async function openEditCharmForm(charmId) {
   DOM.crudCharmCollection.value = charm.collection || charm.categoryId || "";
   DOM.crudCharmImage.value = charm.image?.primary || "";
   resetImageUploadState("Charm");
-  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
+  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImage.value);
   DOM.crudCharmSizeCm.value = Number(charm.business?.sizeCm || 0);
   DOM.crudCharmPrice.value = Number(charm.pricing?.base || 0);
   DOM.crudCharmDisplayOrder.value = charm.displayOrder ?? "";
@@ -1537,11 +1530,11 @@ async function deleteCharmType(charmId) {
 // Form Opening & Resetting
 async function openAddStoneForm() {
   CRMState.activeEditStoneId = null;
+  CRMState.activeEditStoneColor = '#E2C974';
   DOM.stoneModalTitle.textContent = "Add New Stone Type";
   DOM.crudStoneId.value = "";
   DOM.stoneCrudForm.reset();
   DOM.crudStoneInStock.checked = true;
-  DOM.crudStoneColor.value = "#E2C974";
   DOM.crudStonePriceP4.value = "";
   DOM.crudStonePriceP6.value = "";
   DOM.crudStonePriceP8.value = "";
@@ -1553,7 +1546,7 @@ async function openAddStoneForm() {
   DOM.crudStoneCategory.value = DOM.crudStoneCategory.value || 'wealth';
   DOM.crudStoneImage.value = DOM.crudStoneImage.value || 'assets/golden_rutile.png';
   resetImageUploadState("Stone");
-  updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
+  updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImage.value);
   
   DOM.stoneCrudModal.classList.add('show');
 }
@@ -1567,6 +1560,7 @@ async function openEditStoneForm(stoneId) {
   syncCategoryAssignmentSelects(categories, stone.categoryId || stone.category);
   
   CRMState.activeEditStoneId = stoneId;
+  CRMState.activeEditStoneColor = stone.color || '#E2C974';
   DOM.stoneModalTitle.textContent = `Edit Details: ${stone.nameTh}`;
   DOM.crudStoneId.value = stone.id;
   
@@ -1578,8 +1572,7 @@ async function openEditStoneForm(stoneId) {
   DOM.crudStoneCategory.value = stone.categoryId || stone.category;
   DOM.crudStoneImage.value = stone.image;
   resetImageUploadState("Stone");
-  updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
-  DOM.crudStoneColor.value = stone.color || "#FFFFFF";
+  updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImage.value);
   DOM.crudStoneInStock.checked = stone.inStock !== false;
   DOM.crudStoneMeaningTh.value = stone.meaningTh;
   DOM.crudStoneMeaningEn.value = stone.meaning;
@@ -1595,6 +1588,7 @@ async function openEditStoneForm(stoneId) {
 
 function closeStoneForm() {
   DOM.stoneCrudModal.classList.remove('show');
+  CRMState.activeEditStoneColor = '#E2C974';
   resetImageUploadState("Stone");
 }
 
@@ -1609,7 +1603,7 @@ async function handleSaveStoneType(e) {
   const p8 = parseInt(DOM.crudStonePriceP8.value);
   const category = DOM.crudStoneCategory.value;
   const image = DOM.crudStoneImage.value.trim();
-  const color = DOM.crudStoneColor.value;
+  const color = CRMState.activeEditStoneColor || '#E2C974';
   const inStock = DOM.crudStoneInStock.checked;
   const meaningTh = DOM.crudStoneMeaningTh.value.trim();
   const meaningEn = DOM.crudStoneMeaningEn.value.trim();
@@ -2070,11 +2064,11 @@ function setupFunctionalEvents() {
       try {
         if (!file) {
           resetImageUploadState("Stone");
-          updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
+          updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImage.value);
           return;
         }
         const pending = await prepareImageSelection("Stone", file);
-        updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, pending?.dataUrl || "", file.name);
+        updateImagePreview(DOM.crudStoneImagePreview, pending?.dataUrl || "");
         setUploadStatus(DOM.crudStoneUploadStatus, `Ready to upload: ${file.name}`, "info");
       } catch (err) {
         console.error(err);
@@ -2098,7 +2092,7 @@ function setupFunctionalEvents() {
       CRMState.pendingStoneImage = null;
       if (DOM.crudStoneImageFile) DOM.crudStoneImageFile.value = "";
       setUploadStatus(DOM.crudStoneUploadStatus, "Manual URL updated. File selection cleared.", "info");
-      updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImagePreviewUrl, DOM.crudStoneImage.value, "No image URL set.");
+      updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImage.value);
     });
   }
   DOM.inventorySearch.addEventListener('input', () => {
@@ -2146,11 +2140,11 @@ function setupFunctionalEvents() {
       try {
         if (!file) {
           resetImageUploadState("Charm");
-          updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
+          updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImage.value);
           return;
         }
         const pending = await prepareImageSelection("Charm", file);
-        updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, pending?.dataUrl || "", file.name);
+        updateImagePreview(DOM.crudCharmImagePreview, pending?.dataUrl || "");
         setUploadStatus(DOM.crudCharmUploadStatus, `Ready to upload: ${file.name}`, "info");
       } catch (err) {
         console.error(err);
@@ -2174,7 +2168,7 @@ function setupFunctionalEvents() {
       CRMState.pendingCharmImage = null;
       if (DOM.crudCharmImageFile) DOM.crudCharmImageFile.value = "";
       setUploadStatus(DOM.crudCharmUploadStatus, "Manual URL updated. File selection cleared.", "info");
-      updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImagePreviewUrl, DOM.crudCharmImage.value, "No image URL set.");
+      updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImage.value);
     });
   }
   if (DOM.charmsSearch) {

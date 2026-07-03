@@ -2,6 +2,59 @@
 // LUCKY.COLORSTONE - Shared Database & Sync Layer (REST API)
 // ==========================================
 
+const CANONICAL_CATEGORY_LABELS = {
+  all: { en: "All", th: "ทั้งหมด" },
+  wealth: { en: "Wealth & Luck", th: "โชคลาภ/การงาน" },
+  love: { en: "Love & Healing", th: "ความรัก/เมตตา" },
+  calm: { en: "Calm & Wisdom", th: "สงบ/สติปัญญา" },
+  protection: { en: "Protection", th: "ปกป้อง/คุ้มครอง" },
+  pixiu: { en: "Pi Xiu", th: "ปี่เซียะ" },
+  takrud: { en: "Takrud", th: "ตะกรุด" }
+};
+
+const KNOWN_BAD_CATEGORY_THAI = {
+  all: new Set([
+    "เธ—เธฑเนเธเธซเธกเธ”",
+    "เน€เธโ€”เน€เธเธ‘เน€เธยเน€เธยเน€เธเธเน€เธเธเน€เธโ€"
+  ]),
+  wealth: new Set([
+    "เนเธเธเธฅเธฒเธ /เธเธฒเธฃเธเธฒเธ",
+    "เน€เธยเน€เธยเน€เธยเน€เธเธ…เน€เธเธ’เน€เธย /เน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธ’เน€เธย"
+  ]),
+  love: new Set([
+    "เธเธงเธฒเธกเธฃเธฑเธ/เน€เธกเธ•เธ•เธฒ",
+    "เน€เธยเน€เธเธเน€เธเธ’เน€เธเธเน€เธเธเน€เธเธ‘เน€เธย/เน€เธโฌเน€เธเธเน€เธโ€ขเน€เธโ€ขเน€เธเธ’"
+  ]),
+  calm: new Set([
+    "เธชเธเธ/เธชเธ•เธดเธเธฑเธเธเธฒ",
+    "เน€เธเธเน€เธยเน€เธย/เน€เธเธเน€เธโ€ขเน€เธเธ”เน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธ’"
+  ]),
+  protection: new Set([
+    "เธเธเธเนเธญเธ/เธเธธเนเธกเธเธฃเธญเธ",
+    "เน€เธยเน€เธยเน€เธยเน€เธยเน€เธเธเน€เธย/เน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธเธเน€เธย"
+  ]),
+  pixiu: new Set([
+    "เธเธตเนเน€เธเธตเธขเธฐ",
+    "เน€เธยเน€เธเธ•เน€เธยเน€เธโฌเน€เธยเน€เธเธ•เน€เธเธเน€เธเธ"
+  ]),
+  takrud: new Set([
+    "เธ•เธฐเธเธฃเธธเธ”",
+    "เน€เธโ€ขเน€เธเธเน€เธยเน€เธเธเน€เธเธเน€เธโ€"
+  ])
+};
+
+function sanitizeCategoryThaiLabel(categoryId, value) {
+  const normalizedId = String(categoryId || "").trim();
+  const trimmedValue = String(value || "").trim();
+  const canonical = CANONICAL_CATEGORY_LABELS[normalizedId]?.th || "";
+
+  if (!trimmedValue) return canonical;
+  if (KNOWN_BAD_CATEGORY_THAI[normalizedId]?.has(trimmedValue)) {
+    return canonical;
+  }
+  return trimmedValue;
+}
+
 export const CATEGORIES = {
   all: { en: "All", th: "ทั้งหมด" },
   wealth: { en: "Wealth & Luck", th: "โชคลาภ/การงาน" },
@@ -92,7 +145,7 @@ function normalizeCategoryRecord(record, index = 0) {
     entityType,
     slug: (record.slug || id).trim(),
     nameEn: record.nameEn || record.name?.en || "",
-    nameTh: record.nameTh || record.name?.th || "",
+    nameTh: sanitizeCategoryThaiLabel(id, record.nameTh || record.name?.th || ""),
     displayOrder: Number.isFinite(Number(record.displayOrder)) ? Number(record.displayOrder) : (index + 1) * 10,
     isActive: record.isActive !== false
   };
