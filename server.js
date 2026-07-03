@@ -228,6 +228,7 @@ async function createStripeCheckoutSession({ order, origin }) {
   form.append("cancel_url", `${safeOrigin}/?step=4&stripe=cancel`);
   form.append("locale", "auto");
   form.append("payment_method_types[0]", "card");
+  form.append("payment_method_types[1]", "promptpay");
   form.append("line_items[0][quantity]", "1");
   form.append("line_items[0][price_data][currency]", "thb");
   form.append("line_items[0][price_data][unit_amount]", String(amountTotal));
