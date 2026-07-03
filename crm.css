@@ -791,12 +791,17 @@ h1, h2, h3, h4, h5, h6 {
 
 .charm-actions-header {
   align-items: flex-end;
+  padding: 14px 16px;
+  border: 1px solid var(--color-navy-border);
+  border-radius: 16px;
+  background-color: var(--color-card-bg);
+  box-shadow: var(--shadow-sm);
 }
 
 .charm-toolbar-left {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 12px;
+  gap: 8px 10px;
   align-items: flex-end;
   flex: 1;
 }
@@ -804,26 +809,31 @@ h1, h2, h3, h4, h5, h6 {
 .charm-filter-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 150px;
+  gap: 4px;
+  min-width: 132px;
 }
 
 .charm-filter-group label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--color-navy-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
 
 .category-actions-header {
   align-items: flex-end;
+  padding: 14px 16px;
+  border: 1px solid var(--color-navy-border);
+  border-radius: 16px;
+  background-color: var(--color-card-bg);
+  box-shadow: var(--shadow-sm);
 }
 
 .category-toolbar-left {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 12px;
+  gap: 8px 10px;
   align-items: flex-end;
   flex: 1;
 }
@@ -831,16 +841,22 @@ h1, h2, h3, h4, h5, h6 {
 .category-filter-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 150px;
+  gap: 4px;
+  min-width: 132px;
 }
 
 .category-filter-group label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--color-navy-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+}
+
+.category-actions-header .search-box,
+.charm-actions-header .search-box {
+  flex: 1 1 240px;
+  min-width: min(100%, 240px);
 }
 
 .search-box input {
@@ -879,6 +895,30 @@ h1, h2, h3, h4, h5, h6 {
 
 .form-control-select:focus {
   border-color: var(--color-gold);
+}
+
+.category-actions-header .search-box input,
+.charm-actions-header .search-box input {
+  padding: 9px 14px;
+}
+
+.category-actions-header .filter-group,
+.charm-actions-header .filter-group {
+  gap: 8px;
+}
+
+.category-actions-header .form-control-select,
+.charm-actions-header .form-control-select {
+  padding: 9px 12px;
+  font-size: 12px;
+  min-height: 38px;
+}
+
+.category-actions-header .btn,
+.charm-actions-header .btn {
+  min-height: 40px;
+  padding: 9px 14px;
+  align-self: flex-end;
 }
 
 .table-container {
@@ -1896,6 +1936,13 @@ h1, h2, h3, h4, h5, h6 {
     align-items: stretch;
     gap: 12px;
   }
+
+  .category-actions-header,
+  .charm-actions-header {
+    padding: 12px;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
   
   .search-box input {
     width: 100%;
@@ -2018,18 +2065,20 @@ h1, h2, h3, h4, h5, h6 {
 
   .charm-toolbar-left {
     width: 100%;
+    gap: 8px;
   }
 
   .charm-filter-group {
-    min-width: min(100%, 170px);
+    min-width: min(100%, 150px);
   }
 
   .category-toolbar-left {
     width: 100%;
+    gap: 8px;
   }
 
   .category-filter-group {
-    min-width: min(100%, 170px);
+    min-width: min(100%, 150px);
   }
 
   .category-inline-input {
