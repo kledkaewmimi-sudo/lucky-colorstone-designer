@@ -159,10 +159,10 @@
     "category": "calm",
     "meaning": "Clarity, emotional cooling, calm focus.",
     "meaningTh": "ช่วยเรื่องความชัดเจนทางความคิด ลดความร้อนใจ และเสริมความสงบ",
-    "image": "assets/ice_quartz.png",
+    "image": "assets/Ice Quartz.png",
     "color": "#EAF1F7",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "beryl",
@@ -174,10 +174,10 @@
     "category": "calm",
     "meaning": "Mental freshness, balance, and clear communication.",
     "meaningTh": "เสริมความสดชื่นทางความคิด ความสมดุล และการสื่อสารที่ชัดเจน",
-    "image": "assets/beryl.png",
+    "image": "assets/Beryl.png",
     "color": "#A9D0C1",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "howlite",
@@ -189,10 +189,10 @@
     "category": "calm",
     "meaning": "Calmness, patience, and emotional grounding.",
     "meaningTh": "ช่วยให้ใจสงบ มีความอดทน และลดความฟุ้งซ่าน",
-    "image": "assets/howlite.png",
+    "image": "assets/Howlite.png",
     "color": "#F1F1EE",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "sodalite",
@@ -204,10 +204,10 @@
     "category": "calm",
     "meaning": "Logic, wisdom, confidence in communication.",
     "meaningTh": "เสริมตรรกะ ปัญญา และความมั่นใจในการสื่อสาร",
-    "image": "assets/sodalite.png",
+    "image": "assets/Sodalite.png",
     "color": "#2A4B7C",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "clear_quartz",
@@ -219,10 +219,10 @@
     "category": "calm",
     "meaning": "Amplification, clarity, cleansing energy.",
     "meaningTh": "ช่วยขยายพลังงาน เสริมความชัดเจน และความบริสุทธิ์",
-    "image": "assets/clear_quartz.png",
+    "image": "assets/Clear Quartz.png",
     "color": "#F3F4F6",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "white_jade",
@@ -234,10 +234,10 @@
     "category": "love",
     "meaning": "Peace, gentle protection, harmony.",
     "meaningTh": "ช่วยเสริมความสงบ ความอ่อนโยน และความกลมกลืน",
-    "image": "assets/white_jade.png",
+    "image": "assets/White Jade.png",
     "color": "#F2F0EA",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "red_tiger_eye",
@@ -249,10 +249,10 @@
     "category": "protection",
     "meaning": "Motivation, courage, grounded action.",
     "meaningTh": "เสริมแรงผลักดัน ความกล้า และพลังในการลงมือทำ",
-    "image": "assets/red_tiger_eye.png",
+    "image": "assets/Red Tiger Eye.png",
     "color": "#7B1E17",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "lavender_quartz",
@@ -264,10 +264,10 @@
     "category": "love",
     "meaning": "Gentle love, emotional softness, inner peace.",
     "meaningTh": "ช่วยเรื่องความรักแบบอ่อนโยน เยียวยาใจ และเสริมความสงบ",
-    "image": "assets/lavender_quartz.png",
+    "image": "assets/Lavender Quartz.png",
     "color": "#C9A8D8",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "black_tourmaline",
@@ -279,10 +279,10 @@
     "category": "protection",
     "meaning": "Protection, grounding, negative-energy shielding.",
     "meaningTh": "เสริมการปกป้อง คุ้มครอง และช่วยกราวด์พลังงาน",
-    "image": "assets/black_tourmaline.png",
+    "image": "assets/Black Tourmaline.png",
     "color": "#1E1E1E",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "labradorite",
@@ -294,10 +294,10 @@
     "category": "calm",
     "meaning": "Intuition, transformation, inner strength.",
     "meaningTh": "เสริมสัญชาตญาณ การเปลี่ยนแปลง และพลังภายใน",
-    "image": "assets/labradorite.png",
+    "image": "assets/Labradorite.png",
     "color": "#4B6470",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "carnelian",
@@ -309,10 +309,10 @@
     "category": "wealth",
     "meaning": "Vitality, confidence, action, creativity.",
     "meaningTh": "เสริมพลังชีวิต ความมั่นใจ ความกล้า และความคิดสร้างสรรค์",
-    "image": "assets/carnelian.png",
+    "image": "assets/Carnelian.png",
     "color": "#E85A1C",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "moss_agate",
@@ -324,10 +324,10 @@
     "category": "wealth",
     "meaning": "Growth, abundance, stability, nature energy.",
     "meaningTh": "ช่วยเรื่องการเติบโต ความมั่นคง และความอุดมสมบูรณ์",
-    "image": "assets/moss_agate.png",
+    "image": "assets/Moss Agate.png",
     "color": "#6E9A82",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "rhodonite",
@@ -339,10 +339,10 @@
     "category": "love",
     "meaning": "Emotional healing, compassion, heart balance.",
     "meaningTh": "เยียวยาอารมณ์ เสริมเมตตา และความสมดุลทางใจ",
-    "image": "assets/rhodonite.png",
+    "image": "assets/Rhodonite.png",
     "color": "#D67A8C",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "sunstone",
@@ -354,10 +354,10 @@
     "category": "wealth",
     "meaning": "Joy, success, confidence, positive energy.",
     "meaningTh": "เสริมความสดใส ความสำเร็จ ความมั่นใจ และพลังบวก",
-    "image": "assets/sunstone.png",
+    "image": "assets/Sunstone.png",
     "color": "#F4A258",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "pearls",
@@ -369,10 +369,10 @@
     "category": "love",
     "meaning": "Elegance, gentleness, emotional grace.",
     "meaningTh": "เสริมเสน่ห์ ความอ่อนโยน และความสง่างาม",
-    "image": "assets/pearls.png",
+    "image": "assets/Pearls.png",
     "color": "#EDE6DE",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "aquamarine",
@@ -384,10 +384,10 @@
     "category": "calm",
     "meaning": "Peace, clarity, soothing communication.",
     "meaningTh": "ช่วยให้ใจสงบ คิดชัด และสื่อสารอย่างนุ่มนวล",
-    "image": "assets/aquamarine.png",
+    "image": "assets/Aquamarine.png",
     "color": "#9FD8E6",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "moonstone",
@@ -399,10 +399,10 @@
     "category": "love",
     "meaning": "Intuition, femininity, emotional flow.",
     "meaningTh": "เสริมเสน่ห์ พลังอ่อนโยน สัญชาตญาณ และสมดุลอารมณ์",
-    "image": "assets/moonstone.png",
+    "image": "assets/Moonstone.png",
     "color": "#D9E5F2",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "pyrite",
@@ -414,10 +414,10 @@
     "category": "wealth",
     "meaning": "Prosperity, protection, strong will.",
     "meaningTh": "ช่วยเรื่องโชคลาภ ความมั่งคั่ง การปกป้อง และความเด็ดเดี่ยว",
-    "image": "assets/pyrite.png",
+    "image": "assets/Pyrite.png",
     "color": "#A58A54",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "honey_jade",
@@ -429,10 +429,10 @@
     "category": "wealth",
     "meaning": "Warm abundance, optimism, steady success.",
     "meaningTh": "เสริมความมั่งคั่งแบบอบอุ่น มองโลกในแง่ดี และความสำเร็จที่มั่นคง",
-    "image": "assets/honey_jade.png",
+    "image": "assets/Honey Jade.png",
     "color": "#D9A323",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   },
   {
     "id": "cherry_quartz",
@@ -444,9 +444,9 @@
     "category": "love",
     "meaning": "Fresh love energy, charm, emotional brightness.",
     "meaningTh": "เสริมพลังรัก เสน่ห์ ความสดใส และอารมณ์ที่เบิกบาน",
-    "image": "assets/cherry_quartz.png",
+    "image": "assets/Cherry Quartz.png",
     "color": "#E98396",
     "sizes": [4, 6, 8],
-    "inStock": false
+    "inStock": true
   }
 ]
