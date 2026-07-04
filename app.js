@@ -2249,6 +2249,11 @@ async function handleStripeReturnIfNeeded() {
     const existingOrder = Array.isArray(existingOrders)
       ? existingOrders.find((order) => order?.stripeCheckoutSessionId === sessionId)
       : null;
+    const shippingDetails = payload.shippingDetails && typeof payload.shippingDetails === 'object'
+      ? payload.shippingDetails
+      : null;
+    const shippingAddress = shippingDetails?.address || null;
+    const phoneNumber = typeof payload.phoneNumber === 'string' ? payload.phoneNumber.trim() : '';
 
     if (!existingOrder) {
       const savedOrder = await submitOrderToCRM(false, {
@@ -2256,7 +2261,10 @@ async function handleStripeReturnIfNeeded() {
         paymentMethod: 'stripe_checkout',
         stripeCheckoutSessionId: sessionId,
         stripeCheckoutStatus: payload.status || '',
-        stripePaymentStatus: payload.paymentStatus || ''
+        stripePaymentStatus: payload.paymentStatus || '',
+        shippingDetails,
+        shippingAddress,
+        phoneNumber
       });
 
       if (!savedOrder) {
