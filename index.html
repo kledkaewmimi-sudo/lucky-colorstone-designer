@@ -406,6 +406,33 @@
             </div>
           </div>
 
+          <div class="shipping-card">
+            <h4 class="shipping-title">ข้อมูลสำหรับจัดส่ง</h4>
+            <div class="shipping-fields">
+              <div class="shipping-field shipping-field-full">
+                <label class="shipping-label" for="shippingRecipientName">ชื่อผู้รับ</label>
+                <input type="text" class="shipping-input" id="shippingRecipientName" autocomplete="shipping name">
+              </div>
+              <div class="shipping-field">
+                <label class="shipping-label" for="shippingPhoneNumber">เบอร์โทรศัพท์</label>
+                <input type="tel" class="shipping-input" id="shippingPhoneNumber" inputmode="tel" autocomplete="tel">
+              </div>
+              <div class="shipping-field shipping-field-full">
+                <label class="shipping-label" for="shippingAddressLine">ที่อยู่จัดส่ง</label>
+                <textarea class="shipping-input shipping-textarea" id="shippingAddressLine" rows="3" autocomplete="street-address"></textarea>
+              </div>
+              <div class="shipping-field">
+                <label class="shipping-label" for="shippingProvince">จังหวัด</label>
+                <input type="text" class="shipping-input" id="shippingProvince" autocomplete="address-level1">
+              </div>
+              <div class="shipping-field">
+                <label class="shipping-label" for="shippingPostalCode">รหัสไปรษณีย์</label>
+                <input type="text" class="shipping-input" id="shippingPostalCode" inputmode="numeric" autocomplete="postal-code">
+              </div>
+            </div>
+            <p class="shipping-validation-message" id="shippingValidationMessage" hidden></p>
+          </div>
+
           <!-- Aggregated Stone Meanings -->
           <div class="meanings-card">
             <h4 class="meanings-title">Stone Meanings (ความหมายของหินในกำไล)</h4>

@@ -19,6 +19,13 @@ const State = {
   beadSize: '6',            // '4', '6', or '10'
   mixedPlacingSize: 6,      // Legacy persisted field, normalized to a supported size
   ownerName: '',            // Personalized bracelet owner name
+  shippingInfo: {
+    recipientName: '',
+    phoneNumber: '',
+    addressLine: '',
+    province: '',
+    postalCode: ''
+  },
   selectedCharmId: null,    // Reserved for charm selection state
   liffInitialized: false,   // Ready flag for LINE LIFF Login API
   landingDismissed: false,  // Keep landing visible until CTA is clicked
@@ -97,6 +104,12 @@ const DOM = {
   priceDiscount: document.getElementById('priceDiscount'),
   priceTotal: document.getElementById('priceTotal'),
   meaningsList: document.getElementById('meaningsList'),
+  shippingRecipientName: document.getElementById('shippingRecipientName'),
+  shippingPhoneNumber: document.getElementById('shippingPhoneNumber'),
+  shippingAddressLine: document.getElementById('shippingAddressLine'),
+  shippingProvince: document.getElementById('shippingProvince'),
+  shippingPostalCode: document.getElementById('shippingPostalCode'),
+  shippingValidationMessage: document.getElementById('shippingValidationMessage'),
   btnPayWithStripe: document.getElementById('btnPayWithStripe'),
   
   // Modals & Popups
@@ -130,6 +143,13 @@ const DOM = {
 const WRIST_SIZES = Array.from({ length: 13 }, (_, i) => 14.0 + i * 0.5); // 14.0, 14.5, ..., 20.0
 const TOLERANCE_CM = 1.5; // Adding 1.5 cm standard padding for bracelets
 const ALLOWED_BEAD_SIZES = Object.freeze(['4', '6', '10']);
+const SHIPPING_FIELD_CONFIG = Object.freeze([
+  { key: 'recipientName', label: 'ชื่อผู้รับ', domKey: 'shippingRecipientName' },
+  { key: 'phoneNumber', label: 'เบอร์โทรศัพท์', domKey: 'shippingPhoneNumber' },
+  { key: 'addressLine', label: 'ที่อยู่จัดส่ง', domKey: 'shippingAddressLine' },
+  { key: 'province', label: 'จังหวัด', domKey: 'shippingProvince' },
+  { key: 'postalCode', label: 'รหัสไปรษณีย์', domKey: 'shippingPostalCode' }
+]);
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
 const charmVisibleBoundsCache = new Map();
@@ -151,6 +171,83 @@ function normalizeSelectedStoneSizes() {
   const normalizedBeadSize = getCurrentBeadSizeMm();
   State.selectedStones.forEach((bead) => {
     bead.size = normalizedBeadSize;
+  });
+}
+
+function createEmptyShippingInfo() {
+  return {
+    recipientName: '',
+    phoneNumber: '',
+    addressLine: '',
+    province: '',
+    postalCode: ''
+  };
+}
+
+function normalizeShippingInfo(source = {}) {
+  const shippingInfo = createEmptyShippingInfo();
+
+  SHIPPING_FIELD_CONFIG.forEach(({ key }) => {
+    shippingInfo[key] = typeof source?.[key] === 'string' ? source[key] : '';
+  });
+
+  return shippingInfo;
+}
+
+function getShippingInfoSnapshot({ trimValues = false } = {}) {
+  const snapshot = normalizeShippingInfo(State.shippingInfo);
+  if (!trimValues) return snapshot;
+
+  const trimmed = {};
+  SHIPPING_FIELD_CONFIG.forEach(({ key }) => {
+    trimmed[key] = snapshot[key].trim();
+  });
+  return trimmed;
+}
+
+function getShippingAddressFromInfo(info) {
+  if (!info.addressLine && !info.province && !info.postalCode) {
+    return null;
+  }
+
+  return {
+    line1: info.addressLine,
+    line2: '',
+    city: '',
+    state: info.province,
+    postalCode: info.postalCode,
+    country: 'TH'
+  };
+}
+
+function getShippingDetailsFromInfo(info) {
+  const address = getShippingAddressFromInfo(info);
+  if (!info.recipientName && !address) {
+    return null;
+  }
+
+  return {
+    name: info.recipientName,
+    address
+  };
+}
+
+function resolveShippingInfoFromCheckoutPayload(payload = {}) {
+  const metadata = payload.metadata && typeof payload.metadata === 'object'
+    ? payload.metadata
+    : {};
+  const stripeShippingDetails = payload.shippingDetails && typeof payload.shippingDetails === 'object'
+    ? payload.shippingDetails
+    : null;
+  const stripeAddress = stripeShippingDetails?.address || payload.shippingAddress || null;
+  const localShippingInfo = getShippingInfoSnapshot({ trimValues: true });
+
+  return normalizeShippingInfo({
+    recipientName: localShippingInfo.recipientName || metadata.recipientName || stripeShippingDetails?.name || '',
+    phoneNumber: localShippingInfo.phoneNumber || payload.phoneNumber || metadata.phoneNumber || '',
+    addressLine: localShippingInfo.addressLine || metadata.addressLine || [stripeAddress?.line1, stripeAddress?.line2].filter(Boolean).join(' '),
+    province: localShippingInfo.province || metadata.province || stripeAddress?.state || stripeAddress?.city || '',
+    postalCode: localShippingInfo.postalCode || metadata.postalCode || stripeAddress?.postalCode || ''
   });
 }
 
@@ -205,6 +302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupDesignerEvents();
   setupModalEvents();
   setupLandingEvents();
+  setupShippingFormEvents();
   
   // Polling for updates every 3 seconds to reflect CRM changes instantly
   setInterval(async () => {
@@ -308,6 +406,7 @@ function loadPersistedState() {
       State.beadSize = normalizeBeadSizeOption(parsed.beadSize || '6');
       State.mixedPlacingSize = getCurrentBeadSizeMm();
       State.ownerName = parsed.ownerName || '';
+      State.shippingInfo = normalizeShippingInfo(parsed.shippingInfo);
       State.selectedCharmId = parsed.selectedCharmId ?? null;
       State.selectedStones = parsed.selectedStones || [];
       
@@ -339,6 +438,7 @@ function saveState() {
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
     ownerName: State.ownerName,
+    shippingInfo: normalizeShippingInfo(State.shippingInfo),
     selectedCharmId: State.selectedCharmId,
     selectedStones: State.selectedStones,
     currentStep: State.currentStep
@@ -612,6 +712,95 @@ function setupNavigationEvents() {
       await handleStripeCheckout();
     });
   }
+}
+
+function clearShippingValidation() {
+  if (DOM.shippingValidationMessage) {
+    DOM.shippingValidationMessage.textContent = '';
+    DOM.shippingValidationMessage.hidden = true;
+  }
+
+  SHIPPING_FIELD_CONFIG.forEach(({ domKey }) => {
+    const input = DOM[domKey];
+    if (input) {
+      input.classList.remove('is-invalid');
+    }
+  });
+}
+
+function updateShippingField(key, value) {
+  State.shippingInfo = {
+    ...normalizeShippingInfo(State.shippingInfo),
+    [key]: value
+  };
+  saveState();
+}
+
+function renderShippingForm() {
+  const shippingInfo = getShippingInfoSnapshot();
+
+  SHIPPING_FIELD_CONFIG.forEach(({ key, domKey }) => {
+    const input = DOM[domKey];
+    if (input && input.value !== shippingInfo[key]) {
+      input.value = shippingInfo[key];
+    }
+  });
+
+  clearShippingValidation();
+}
+
+function validateShippingInfo() {
+  const shippingInfo = getShippingInfoSnapshot({ trimValues: true });
+  const missingFields = SHIPPING_FIELD_CONFIG.filter(({ key }) => !shippingInfo[key]);
+
+  clearShippingValidation();
+
+  if (missingFields.length === 0) {
+    State.shippingInfo = shippingInfo;
+    saveState();
+    return shippingInfo;
+  }
+
+  const message = `กรุณากรอกข้อมูลสำหรับจัดส่งให้ครบ: ${missingFields.map(({ label }) => label).join(', ')}`;
+  if (DOM.shippingValidationMessage) {
+    DOM.shippingValidationMessage.textContent = message;
+    DOM.shippingValidationMessage.hidden = false;
+  }
+
+  missingFields.forEach(({ domKey }) => {
+    const input = DOM[domKey];
+    if (input) {
+      input.classList.add('is-invalid');
+    }
+  });
+
+  const firstMissingInput = DOM[missingFields[0].domKey];
+  if (firstMissingInput) {
+    firstMissingInput.focus();
+    firstMissingInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  showToast(message);
+  return null;
+}
+
+function setupShippingFormEvents() {
+  SHIPPING_FIELD_CONFIG.forEach(({ key, domKey }) => {
+    const input = DOM[domKey];
+    if (!input) return;
+
+    input.addEventListener('input', () => {
+      updateShippingField(key, input.value);
+      if (DOM.shippingValidationMessage && !DOM.shippingValidationMessage.hidden) {
+        clearShippingValidation();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      updateShippingField(key, input.value.trim());
+      renderShippingForm();
+    });
+  });
 }
 
 // ==========================================
@@ -2024,6 +2213,7 @@ async function renderStep4() {
   
   DOM.specBeadSize.textContent = `${getCurrentBeadSizeMm()}mm`;
   DOM.specBeadsCount.textContent = `${State.selectedStones.length} เม็ด`;
+  renderShippingForm();
   
   // Aggregate stones selected for receipt and meanings
   const aggregatedStones = {}; // key: stoneId_size, val: { stoneId, size, count, totalPrice }
@@ -2167,6 +2357,7 @@ function buildDesignConfigurationCode() {
 
 function buildCurrentOrderPayload(overrides = {}) {
   const pricing = calculateCurrentOrderPricing();
+  const shippingInfo = getShippingInfoSnapshot({ trimValues: true });
 
   return {
     customerName: State.ownerName || "Khun Guest",
@@ -2189,6 +2380,12 @@ function buildCurrentOrderPayload(overrides = {}) {
     discountAmount: pricing.discount,
     netPrice: pricing.netPrice,
     configurationCode: buildDesignConfigurationCode(),
+    shippingInfo,
+    recipientName: shippingInfo.recipientName,
+    phoneNumber: shippingInfo.phoneNumber,
+    addressLine: shippingInfo.addressLine,
+    province: shippingInfo.province,
+    postalCode: shippingInfo.postalCode,
     ...pricing.charmData,
     ...overrides
   };
@@ -2249,11 +2446,20 @@ async function handleStripeReturnIfNeeded() {
     const existingOrder = Array.isArray(existingOrders)
       ? existingOrders.find((order) => order?.stripeCheckoutSessionId === sessionId)
       : null;
+    const shippingInfo = resolveShippingInfoFromCheckoutPayload(payload);
+    const phoneNumber = typeof payload.phoneNumber === 'string' && payload.phoneNumber.trim()
+      ? payload.phoneNumber.trim()
+      : shippingInfo.phoneNumber;
+    const persistedShippingInfo = {
+      ...shippingInfo,
+      phoneNumber
+    };
+    State.shippingInfo = persistedShippingInfo;
+    saveState();
     const shippingDetails = payload.shippingDetails && typeof payload.shippingDetails === 'object'
       ? payload.shippingDetails
-      : null;
-    const shippingAddress = shippingDetails?.address || null;
-    const phoneNumber = typeof payload.phoneNumber === 'string' ? payload.phoneNumber.trim() : '';
+      : getShippingDetailsFromInfo(persistedShippingInfo);
+    const shippingAddress = shippingDetails?.address || getShippingAddressFromInfo(persistedShippingInfo);
 
     if (!existingOrder) {
       const savedOrder = await submitOrderToCRM(false, {
@@ -2262,9 +2468,14 @@ async function handleStripeReturnIfNeeded() {
         stripeCheckoutSessionId: sessionId,
         stripeCheckoutStatus: payload.status || '',
         stripePaymentStatus: payload.paymentStatus || '',
+        shippingInfo: persistedShippingInfo,
+        recipientName: persistedShippingInfo.recipientName,
         shippingDetails,
         shippingAddress,
-        phoneNumber
+        phoneNumber,
+        addressLine: persistedShippingInfo.addressLine,
+        province: persistedShippingInfo.province,
+        postalCode: persistedShippingInfo.postalCode
       });
 
       if (!savedOrder) {
@@ -2287,6 +2498,11 @@ async function handleStripeCheckout() {
     return;
   }
 
+  const shippingInfo = validateShippingInfo();
+  if (!shippingInfo) {
+    return;
+  }
+
   const checkoutButton = State.currentStep === 4 ? DOM.btnNext : DOM.btnPayWithStripe;
   if (!checkoutButton) return;
 
@@ -2303,6 +2519,12 @@ async function handleStripeCheckout() {
       body: JSON.stringify({
         origin: window.location.origin,
         order: buildCurrentOrderPayload({
+          shippingInfo,
+          recipientName: shippingInfo.recipientName,
+          phoneNumber: shippingInfo.phoneNumber,
+          addressLine: shippingInfo.addressLine,
+          province: shippingInfo.province,
+          postalCode: shippingInfo.postalCode,
           paymentMethod: 'stripe_checkout',
           stripePaymentStatus: 'pending'
         })

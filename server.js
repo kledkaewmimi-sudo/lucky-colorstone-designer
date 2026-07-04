@@ -253,6 +253,12 @@ async function createStripeCheckoutSession({ order, origin }) {
   const beadSize = String(order.beadSize || "").trim() || "6";
   const totalBeads = Number.parseInt(order.totalBeads || 0, 10) || 0;
   const configurationCode = String(order.configurationCode || "").trim();
+  const shippingSource = order.shippingInfo && typeof order.shippingInfo === "object" ? order.shippingInfo : order;
+  const recipientName = String(shippingSource.recipientName || "").trim();
+  const phoneNumber = String(shippingSource.phoneNumber || "").trim();
+  const addressLine = String(shippingSource.addressLine || "").trim();
+  const province = String(shippingSource.province || "").trim();
+  const postalCode = String(shippingSource.postalCode || "").trim();
 
   const form = new URLSearchParams();
   form.append("mode", "payment");
@@ -278,6 +284,21 @@ async function createStripeCheckoutSession({ order, origin }) {
   form.append("metadata[beadSize]", beadSize.slice(0, 500));
   form.append("metadata[totalBeads]", String(totalBeads));
   form.append("metadata[netPrice]", String(order.netPrice ?? ""));
+  if (recipientName) {
+    form.append("metadata[recipientName]", recipientName.slice(0, 500));
+  }
+  if (phoneNumber) {
+    form.append("metadata[phoneNumber]", phoneNumber.slice(0, 500));
+  }
+  if (addressLine) {
+    form.append("metadata[addressLine]", addressLine.slice(0, 500));
+  }
+  if (province) {
+    form.append("metadata[province]", province.slice(0, 500));
+  }
+  if (postalCode) {
+    form.append("metadata[postalCode]", postalCode.slice(0, 500));
+  }
 
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",

@@ -1802,6 +1802,93 @@ button.stone-card {
   color: #2f6f48;
 }
 
+.shipping-card {
+  background-color: var(--color-white);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-gray-border);
+}
+
+.shipping-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-navy-dark);
+  border-bottom: 1px solid var(--color-gray-bg);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.shipping-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shipping-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shipping-field-full {
+  grid-column: 1 / -1;
+}
+
+.shipping-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-navy-dark);
+}
+
+.shipping-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-gray-border);
+  border-radius: 12px;
+  background: var(--color-bg-light);
+  color: var(--color-navy-dark);
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.4;
+  transition: var(--transition-fast);
+}
+
+.shipping-input:focus {
+  outline: none;
+  border-color: var(--color-lavender-dark);
+  background: var(--color-white);
+  box-shadow: 0 0 0 3px rgba(181, 169, 219, 0.16);
+}
+
+.shipping-input.is-invalid {
+  border-color: var(--color-velvet-red);
+  background: #fff7f7;
+}
+
+.shipping-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.shipping-validation-message {
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-velvet-red);
+}
+
+@media (max-width: 420px) {
+  .shipping-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .shipping-field-full {
+    grid-column: auto;
+  }
+}
+
 /* Stone Meanings Section */
 .meanings-card {
   background-color: var(--color-white);
