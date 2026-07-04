@@ -19,6 +19,7 @@ const State = {
   beadSize: '6',            // '4', '6', or '10'
   mixedPlacingSize: 6,      // Legacy persisted field, normalized to a supported size
   ownerName: '',            // Personalized bracelet owner name
+  lineUserId: '',           // LIFF profile user identifier
   shippingInfo: {
     recipientName: '',
     phoneNumber: '',
@@ -329,6 +330,7 @@ async function initLIFF() {
       State.liffInitialized = true;
       if (liff.isLoggedIn()) {
         const profile = await liff.getProfile();
+        State.lineUserId = String(profile.userId || '').trim();
         if (profile.displayName) {
           State.ownerName = profile.displayName;
           DOM.braceletOwnerName.value = profile.displayName;
@@ -406,6 +408,7 @@ function loadPersistedState() {
       State.beadSize = normalizeBeadSizeOption(parsed.beadSize || '6');
       State.mixedPlacingSize = getCurrentBeadSizeMm();
       State.ownerName = parsed.ownerName || '';
+      State.lineUserId = typeof parsed.lineUserId === 'string' ? parsed.lineUserId : '';
       State.shippingInfo = normalizeShippingInfo(parsed.shippingInfo);
       State.selectedCharmId = parsed.selectedCharmId ?? null;
       State.selectedStones = parsed.selectedStones || [];
@@ -438,6 +441,7 @@ function saveState() {
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
     ownerName: State.ownerName,
+    lineUserId: State.lineUserId,
     shippingInfo: normalizeShippingInfo(State.shippingInfo),
     selectedCharmId: State.selectedCharmId,
     selectedStones: State.selectedStones,
@@ -2361,6 +2365,7 @@ function buildCurrentOrderPayload(overrides = {}) {
 
   return {
     customerName: State.ownerName || "Khun Guest",
+    lineUserId: State.lineUserId || '',
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     totalBeads: State.selectedStones.length,
@@ -3190,6 +3195,7 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
   
   const orderPayload = {
     customerName: State.ownerName || "Khun Guest",
+    lineUserId: State.lineUserId || '',
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     totalBeads: State.selectedStones.length,
