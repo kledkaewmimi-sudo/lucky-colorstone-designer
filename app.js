@@ -547,6 +547,12 @@ async function renderStepViews() {
         </svg>`;
       DOM.btnNext.className = 'footer-btn btn-order';
       DOM.btnNext.disabled = false;
+      DOM.btnNext.innerHTML = `ชำระเงิน &nbsp;
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 7h20"/>
+          <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+          <path d="M16 15h2"/>
+        </svg>`;
     }
   }
 
@@ -573,7 +579,7 @@ function setupNavigationEvents() {
   
   DOM.btnNext.addEventListener('click', async () => {
     if (State.currentStep === 4) {
-      await handleLineOrder();
+      await handleStripeCheckout();
     } else {
       if (State.currentStep === 3) {
         const validationState = syncStep3NextValidationUI();
@@ -2273,11 +2279,12 @@ async function handleStripeCheckout() {
     return;
   }
 
-  if (!DOM.btnPayWithStripe) return;
+  const checkoutButton = State.currentStep === 4 ? DOM.btnNext : DOM.btnPayWithStripe;
+  if (!checkoutButton) return;
 
-  const originalLabel = DOM.btnPayWithStripe.textContent;
-  DOM.btnPayWithStripe.disabled = true;
-  DOM.btnPayWithStripe.textContent = 'Redirecting to Stripe...';
+  const originalMarkup = checkoutButton.innerHTML;
+  checkoutButton.disabled = true;
+  checkoutButton.textContent = 'กำลังพาไปชำระเงิน...';
   State.landingDismissed = true;
   saveState();
 
@@ -2306,8 +2313,8 @@ async function handleStripeCheckout() {
     window.location.assign(payload.url);
   } catch (error) {
     console.error("Stripe checkout creation failed", error);
-    DOM.btnPayWithStripe.disabled = false;
-    DOM.btnPayWithStripe.textContent = originalLabel;
+    checkoutButton.disabled = false;
+    checkoutButton.innerHTML = originalMarkup;
     showToast(error.message || "Stripe Checkout could not be started.");
   }
 }

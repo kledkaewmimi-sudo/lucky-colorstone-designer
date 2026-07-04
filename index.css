@@ -1977,16 +1977,16 @@ button.stone-card {
 
 /* Checkout Button (high contrast green) */
 .footer-btn.btn-order {
-  background-color: var(--color-green);
-  border: 1px solid var(--color-green);
+  background-color: #06c755;
+  border: 1px solid #06c755;
   color: var(--color-white);
   flex: 2;
-  box-shadow: 0 4px 12px rgba(46, 196, 182, 0.2);
+  box-shadow: 0 8px 18px rgba(6, 199, 85, 0.24);
 }
 
 .footer-btn.btn-order:hover {
-  background-color: var(--color-green-dark);
-  border-color: var(--color-green-dark);
+  background-color: #05af4a;
+  border-color: #05af4a;
 }
 
 /* Modals & Backdrop */
