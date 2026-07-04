@@ -1917,11 +1917,12 @@ button.stone-card {
   background-color: var(--color-white);
   border: 1px solid var(--color-gray-border);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   box-shadow: 0 4px 12px var(--color-lavender-shadow);
   transition: var(--transition-smooth);
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
   position: relative;
   overflow: hidden;
 }
@@ -1948,6 +1949,7 @@ button.stone-card {
   font-weight: 700;
   color: var(--color-navy-dark);
   margin-bottom: 4px;
+  line-height: 1.35;
 }
 
 .meaning-item-desc {
@@ -1955,6 +1957,47 @@ button.stone-card {
   color: var(--color-navy-muted);
   line-height: 1.4;
   margin-top: 2px;
+}
+
+.meaning-item-thumbnail {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 12px;
+  border: 1px solid var(--color-gray-border);
+  background: linear-gradient(135deg, #F9F6FF 0%, #FFFDF6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.meaning-item-thumbnail-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+
+.meaning-item-thumbnail.has-image .meaning-item-thumbnail-img {
+  display: block;
+}
+
+.meaning-item-thumbnail.has-image .meaning-item-thumbnail-placeholder {
+  display: none;
+}
+
+.meaning-item-thumbnail-placeholder {
+  font-family: var(--font-ui-thai);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-lavender-dark);
+}
+
+.meaning-item-content {
+  min-width: 0;
+  flex: 1;
 }
 
 /* Trust Section */

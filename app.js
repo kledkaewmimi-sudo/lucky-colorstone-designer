@@ -1364,6 +1364,98 @@ async function removeSelectedCharm(showToastNotification = true) {
   }
 }
 
+function getMeaningThumbnailLabel({ nameTh = '', nameEn = '' } = {}) {
+  const source = String(nameTh || '').trim() || String(nameEn || '').trim();
+  return source ? source.charAt(0).toUpperCase() : 'LC';
+}
+
+function buildStep4MeaningEntries(uniqueStoneIds = new Set()) {
+  const entries = [];
+  const selectedCharm = getSelectedCharmCatalogEntry();
+
+  if (selectedCharm) {
+    const charmMeta = getCharmDisplayMeta(selectedCharm);
+    const charmMeaningParts = [selectedCharm.meaningTh, selectedCharm.meaningEn]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    entries.push({
+      key: `charm_${selectedCharm.id}`,
+      image: selectedCharm.image || '',
+      nameTh: charmMeta.nameTh,
+      nameEn: charmMeta.nameEn,
+      meaning: charmMeaningParts.join(' - ') || 'ไม่มีคำอธิบายเพิ่มเติม',
+      thumbnailLabel: getMeaningThumbnailLabel(charmMeta)
+    });
+  }
+
+  uniqueStoneIds.forEach((id) => {
+    const stone = STONES.find((entry) => entry.id === id);
+    if (!stone) return;
+
+    entries.push({
+      key: `stone_${stone.id}`,
+      image: stone.image || '',
+      nameTh: stone.nameTh || '',
+      nameEn: stone.name || '',
+      meaning: [stone.meaningTh, stone.meaning]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .join(' - ') || 'ไม่มีคำอธิบายเพิ่มเติม',
+      thumbnailLabel: getMeaningThumbnailLabel({
+        nameTh: stone.nameTh,
+        nameEn: stone.name
+      })
+    });
+  });
+
+  return entries;
+}
+
+function createMeaningItemElement(entry) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'meaning-item';
+
+  const thumbnail = document.createElement('div');
+  thumbnail.className = 'meaning-item-thumbnail';
+
+  const image = document.createElement('img');
+  image.className = 'meaning-item-thumbnail-img';
+  image.alt = `${entry.nameEn || entry.nameTh} thumbnail`;
+
+  const placeholder = document.createElement('div');
+  placeholder.className = 'meaning-item-thumbnail-placeholder';
+  placeholder.textContent = entry.thumbnailLabel;
+
+  if (entry.image) {
+    image.src = entry.image;
+    image.addEventListener('load', () => {
+      thumbnail.classList.add('has-image');
+    });
+    image.addEventListener('error', () => {
+      thumbnail.classList.remove('has-image');
+    });
+  }
+
+  thumbnail.append(image, placeholder);
+
+  const content = document.createElement('div');
+  content.className = 'meaning-item-content';
+
+  const title = document.createElement('div');
+  title.className = 'meaning-item-title';
+  title.textContent = `${entry.nameTh} (${entry.nameEn})`;
+
+  const desc = document.createElement('div');
+  desc.className = 'meaning-item-desc';
+  desc.textContent = entry.meaning;
+
+  content.append(title, desc);
+  wrapper.append(thumbnail, content);
+
+  return wrapper;
+}
+
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
@@ -2313,19 +2405,10 @@ async function renderStep4() {
   
   DOM.priceTotal.textContent = `฿${finalPrice.toLocaleString()}`;
   
-  // Populate stone meanings
+  // Populate charm + stone meanings
   DOM.meaningsList.innerHTML = '';
-  uniqueStoneIds.forEach(id => {
-    const stone = STONES.find(s => s.id === id);
-    if (stone) {
-      const div = document.createElement('div');
-      div.className = 'meaning-item';
-      div.innerHTML = `
-        <div class="meaning-item-title">${stone.nameTh} (${stone.name})</div>
-        <div class="meaning-item-desc">${stone.meaningTh} - ${stone.meaning}</div>
-      `;
-      DOM.meaningsList.appendChild(div);
-    }
+  buildStep4MeaningEntries(uniqueStoneIds).forEach((entry) => {
+    DOM.meaningsList.appendChild(createMeaningItemElement(entry));
   });
 
   // Trigger HTML5 Canvas image compilation in the background asynchronously

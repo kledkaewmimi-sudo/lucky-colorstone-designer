@@ -1233,6 +1233,74 @@ h1, h2, h3, h4, h5, h6 {
 .status-dropdown.shipped { border-color: #6ee7b7; color: #6ee7b7; }
 .status-dropdown.completed { border-color: var(--color-green); color: var(--color-green); }
 
+.order-workflow-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.order-shipping-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--color-navy-border);
+  border-radius: 12px;
+}
+
+.order-inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.order-inline-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-navy-muted);
+  letter-spacing: 0.3px;
+}
+
+.order-inline-input,
+.order-carrier-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-navy-border);
+  background-color: var(--color-navy-darker);
+  color: var(--color-navy);
+  font-size: 12px;
+  outline: none;
+}
+
+.order-inline-input:focus,
+.order-carrier-select:focus {
+  border-color: var(--color-gold);
+}
+
+.order-shipping-summary,
+.order-notification-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.order-shipping-summary {
+  color: var(--color-navy-muted);
+}
+
+.order-notification-stack {
+  margin-top: 2px;
+}
+
+.order-notification-item {
+  color: var(--color-gold-dark);
+}
+
 /* Actions column styling */
 .action-btns {
   display: flex;
@@ -2052,6 +2120,10 @@ h1, h2, h3, h4, h5, h6 {
   .crm-table td[data-label="Actions"]::before,
   .crm-table td[data-label="Invoice"]::before {
     margin-bottom: 6px;
+  }
+
+  .order-workflow-stack {
+    min-width: 0;
   }
   
   .crm-table td[data-label="Bead Map"] .bead-map-canvas {

@@ -1124,12 +1124,12 @@ export async function addSharedOrder(orderData) {
   return null;
 }
 
-export async function updateOrderStatus(orderId, newStatus) {
+export async function updateOrderStatus(orderId, newStatus, updates = {}) {
   try {
     const res = await fetch("/api/orders/update-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: orderId, status: newStatus })
+      body: JSON.stringify({ id: orderId, status: newStatus, ...updates })
     });
     if (res.ok) {
       await getSharedOrders();

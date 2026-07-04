@@ -1677,6 +1677,147 @@ async function deleteStoneType(stoneId) {
 // ==========================================
 // 9. Tab 3: Order Management System (OMS)
 // ==========================================
+const ORDER_SHIPPING_CARRIERS = Object.freeze([
+  { value: "", label: "-" },
+  { value: "Flash", label: "Flash" },
+  { value: "Kerry", label: "Kerry" },
+  { value: "Shopee Express", label: "Shopee Express" },
+  { value: "ไปรษณีย์ไทย", label: "ไปรษณีย์ไทย" },
+  { value: "Other", label: "อื่นๆ" }
+]);
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeOrderShippingFields(order = {}) {
+  const trackingNumber = String(order?.trackingNumber || order?.trackingNo || order?.shippingTrackingNumber || order?.shipmentTrackingNumber || '').trim();
+  const rawCarrier = String(order?.shippingCarrier || '').trim();
+  const knownCarrier = ORDER_SHIPPING_CARRIERS.some((option) => option.value && option.value === rawCarrier);
+  const isOther = rawCarrier === 'Other' || rawCarrier === 'อื่นๆ';
+  const shippingCarrierCustom = String(order?.shippingCarrierCustom || '').trim();
+
+  if (knownCarrier) {
+    return {
+      trackingNumber,
+      shippingCarrier: rawCarrier,
+      shippingCarrierCustom: rawCarrier === 'Other' ? shippingCarrierCustom : ''
+    };
+  }
+
+  if (isOther) {
+    return {
+      trackingNumber,
+      shippingCarrier: 'Other',
+      shippingCarrierCustom
+    };
+  }
+
+  if (rawCarrier) {
+    return {
+      trackingNumber,
+      shippingCarrier: 'Other',
+      shippingCarrierCustom: shippingCarrierCustom || rawCarrier
+    };
+  }
+
+  return {
+    trackingNumber,
+    shippingCarrier: '',
+    shippingCarrierCustom: shippingCarrierCustom || ''
+  };
+}
+
+function getOrderShippingCarrierDisplay(order = {}) {
+  const shippingFields = normalizeOrderShippingFields(order);
+  if (shippingFields.shippingCarrier === 'Other') {
+    return shippingFields.shippingCarrierCustom;
+  }
+  return shippingFields.shippingCarrier;
+}
+
+function buildOrderCarrierOptionsHtml(selectedValue = '') {
+  return ORDER_SHIPPING_CARRIERS.map((option) => `
+    <option value="${escapeHtml(option.value)}" ${selectedValue === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+  `).join('');
+}
+
+function formatNotificationTimestamp(timestamp) {
+  if (!timestamp) return '';
+
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  return parsed.toLocaleString('th-TH', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function buildOrderNotificationStateHtml(order = {}) {
+  const paymentSentAt = formatNotificationTimestamp(order?.notifications?.paymentReceivedSentAt);
+  const shippedSentAt = formatNotificationTimestamp(order?.notifications?.shippedSentAt);
+
+  if (!paymentSentAt && !shippedSentAt) {
+    return '';
+  }
+
+  return `
+    <div class="order-notification-stack">
+      ${paymentSentAt ? `<div class="order-notification-item">แจ้งชำระเงิน: ${escapeHtml(paymentSentAt)}</div>` : ''}
+      ${shippedSentAt ? `<div class="order-notification-item">แจ้งจัดส่ง: ${escapeHtml(shippedSentAt)}</div>` : ''}
+    </div>
+  `;
+}
+
+function readOrderWorkflowInputs(rowElement) {
+  const trackingInput = rowElement?.querySelector('.order-tracking-input');
+  const carrierSelect = rowElement?.querySelector('.order-carrier-select');
+  const carrierCustomInput = rowElement?.querySelector('.order-carrier-custom-input');
+  const shippingCarrier = String(carrierSelect?.value || '').trim();
+
+  return {
+    trackingNumber: String(trackingInput?.value || '').trim(),
+    shippingCarrier,
+    shippingCarrierCustom: shippingCarrier === 'Other'
+      ? String(carrierCustomInput?.value || '').trim()
+      : ''
+  };
+}
+
+function toggleCarrierCustomField(rowElement) {
+  const carrierSelect = rowElement?.querySelector('.order-carrier-select');
+  const customField = rowElement?.querySelector('.order-carrier-custom-field');
+  const customInput = rowElement?.querySelector('.order-carrier-custom-input');
+  const isOther = String(carrierSelect?.value || '').trim() === 'Other';
+
+  if (customField) {
+    customField.hidden = !isOther;
+  }
+
+  if (!isOther && customInput) {
+    customInput.value = '';
+  }
+}
+
+async function persistOrderWorkflowDetails(orderId, rowElement, currentStatus) {
+  const success = await updateOrderStatus(orderId, currentStatus, readOrderWorkflowInputs(rowElement));
+  if (!success) {
+    showToast('Unable to save shipping details.');
+  }
+  return success;
+}
+
 function renderOrdersList(orders) {
   const statusFilter = DOM.orderStatusFilter.value;
   const query = DOM.ordersSearch.value.trim().toLowerCase();
@@ -1751,6 +1892,8 @@ function renderOrdersList(orders) {
     
     // Workflow status dropdown selector
     const currentStatus = order.status || 'New Order';
+    const shippingFields = normalizeOrderShippingFields(order);
+    const shippingCarrierDisplay = getOrderShippingCarrierDisplay(order);
     
     // Map status to css selector tag
     let dropdownColorClass = 'new-order';
@@ -1768,6 +1911,35 @@ function renderOrdersList(orders) {
         <option value="Completed" ${currentStatus === 'Completed' ? 'selected' : ''}>Completed</option>
       </select>
     `;
+
+    const workflowMetaHtml = `
+      <div class="order-workflow-stack">
+        ${statusSelectHtml}
+        <div class="order-shipping-stack">
+          <label class="order-inline-field">
+            <span class="order-inline-label">ผู้ให้บริการ</span>
+            <select class="form-control-select order-carrier-select">
+              ${buildOrderCarrierOptionsHtml(shippingFields.shippingCarrier)}
+            </select>
+          </label>
+          <label class="order-inline-field order-carrier-custom-field" ${shippingFields.shippingCarrier === 'Other' ? '' : 'hidden'}>
+            <span class="order-inline-label">ระบุเพิ่มเติม</span>
+            <input type="text" class="order-inline-input order-carrier-custom-input" value="${escapeHtml(shippingFields.shippingCarrierCustom)}" placeholder="ชื่อบริษัทขนส่ง">
+          </label>
+          <label class="order-inline-field">
+            <span class="order-inline-label">เลขพัสดุ</span>
+            <input type="text" class="order-inline-input order-tracking-input" value="${escapeHtml(shippingFields.trackingNumber)}" placeholder="เช่น TH1234567890">
+          </label>
+          ${shippingCarrierDisplay || shippingFields.trackingNumber ? `
+            <div class="order-shipping-summary">
+              ${shippingCarrierDisplay ? `<div>ผู้ให้บริการ: ${escapeHtml(shippingCarrierDisplay)}</div>` : ''}
+              ${shippingFields.trackingNumber ? `<div>เลขพัสดุ: ${escapeHtml(shippingFields.trackingNumber)}</div>` : ''}
+            </div>
+          ` : ''}
+          ${buildOrderNotificationStateHtml(order)}
+        </div>
+      </div>
+    `;
     
     tr.innerHTML = `
       <td data-label="Order ID">
@@ -1782,7 +1954,7 @@ function renderOrdersList(orders) {
       </td>
       <td data-label="Bead Map">${beadMapContainerHtml}</td>
       <td data-label="Pricing">${priceText}</td>
-      <td data-label="Status">${statusSelectHtml}</td>
+      <td data-label="Status">${workflowMetaHtml}</td>
       <td data-label="Invoice" class="text-right">
         <button class="btn btn-outline btn-invoice-export" data-id="${order.id}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1799,7 +1971,21 @@ function renderOrdersList(orders) {
     
     // Event bindings inside rows
     const dropdown = tr.querySelector('.status-dropdown');
-    dropdown.addEventListener('change', (e) => handleOrderStatusChange(order.id, e.target.value));
+    const carrierSelect = tr.querySelector('.order-carrier-select');
+    const carrierCustomInput = tr.querySelector('.order-carrier-custom-input');
+    const trackingInput = tr.querySelector('.order-tracking-input');
+
+    dropdown.addEventListener('change', (e) => handleOrderStatusChange(order.id, e.target.value, tr));
+    carrierSelect?.addEventListener('change', async () => {
+      toggleCarrierCustomField(tr);
+      await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
+    });
+    carrierCustomInput?.addEventListener('change', async () => {
+      await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
+    });
+    trackingInput?.addEventListener('change', async () => {
+      await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
+    });
     
     const exportBtn = tr.querySelector('.btn-invoice-export');
     exportBtn.addEventListener('click', () => openInvoiceModal(order.id));
@@ -1808,8 +1994,9 @@ function renderOrdersList(orders) {
   });
 }
 
-async function handleOrderStatusChange(orderId, newStatus) {
-  const success = await updateOrderStatus(orderId, newStatus);
+async function handleOrderStatusChange(orderId, newStatus, rowElement = null) {
+  const workflowUpdates = rowElement ? readOrderWorkflowInputs(rowElement) : {};
+  const success = await updateOrderStatus(orderId, newStatus, workflowUpdates);
   if (success) {
     addLog(`Changed order ${orderId} status to '${newStatus}'.`);
     showToast(`Order status updated to: ${newStatus}`);

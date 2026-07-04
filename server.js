@@ -326,6 +326,17 @@ function getOrderTrackingNumber(order) {
   return "";
 }
 
+function getOrderShippingCarrierDisplay(order) {
+  const shippingCarrier = String(order?.shippingCarrier || "").trim();
+  const shippingCarrierCustom = String(order?.shippingCarrierCustom || "").trim();
+
+  if (shippingCarrier === "Other" || shippingCarrier === "อื่นๆ") {
+    return shippingCarrierCustom || "";
+  }
+
+  return shippingCarrier;
+}
+
 function getOrderNotifications(order) {
   if (!order?.notifications || typeof order.notifications !== "object") {
     return {};
@@ -398,6 +409,63 @@ function markOrderNotificationSent(order, notificationKey) {
   };
 }
 
+function buildCarrierAwareShippedOrderLineMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  const shippingCarrier = getOrderShippingCarrierDisplay(order);
+  const trackingNumber = getOrderTrackingNumber(order);
+  const lines = [
+    "กำไลของคุณจัดส่งแล้ว",
+    `เลขออเดอร์: ${orderId}`
+  ];
+
+  if (shippingCarrier) {
+    lines.push(`ผู้ให้บริการ: ${shippingCarrier}`);
+  }
+
+  if (trackingNumber) {
+    lines.push(`เลขพัสดุ: ${trackingNumber}`);
+  }
+
+  return lines.join("\n");
+}
+
+function applyOrderWorkflowUpdates(baseOrder, updates) {
+  const nextOrder = { ...baseOrder };
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(updates, key);
+
+  if (hasOwn("status")) {
+    nextOrder.status = updates.status;
+  }
+
+  if (hasOwn("trackingNumber")) {
+    nextOrder.trackingNumber = String(updates.trackingNumber || "").trim();
+  }
+
+  if (hasOwn("shippingCarrier")) {
+    const rawCarrier = String(updates.shippingCarrier || "").trim();
+    nextOrder.shippingCarrier = rawCarrier === "อื่นๆ" ? "Other" : rawCarrier;
+    if (nextOrder.shippingCarrier !== "Other") {
+      nextOrder.shippingCarrierCustom = "";
+    }
+  }
+
+  if (hasOwn("shippingCarrierCustom")) {
+    nextOrder.shippingCarrierCustom = String(updates.shippingCarrierCustom || "").trim();
+  }
+
+  if (String(nextOrder.shippingCarrier || "").trim() !== "Other") {
+    nextOrder.shippingCarrierCustom = "";
+  }
+
+  if (!nextOrder.trackingNumber) {
+    delete nextOrder.trackingNo;
+    delete nextOrder.shippingTrackingNumber;
+    delete nextOrder.shipmentTrackingNumber;
+  }
+
+  return nextOrder;
+}
+
 async function trySendPaidOrderLineNotification(order) {
   if (!isPaidOrderLineNotificationEligible(order)) {
     return { sent: false, order };
@@ -421,7 +489,7 @@ async function trySendShippedLineNotification(previousOrder, nextOrder) {
 
   await sendLinePushTextMessage({
     userId: getOrderLineUserId(nextOrder),
-    text: buildShippedOrderLineMessage(nextOrder)
+    text: buildCarrierAwareShippedOrderLineMessage(nextOrder)
   });
 
   return {
@@ -972,7 +1040,7 @@ async function handleApiRequest(req, res, urlObj) {
     const orderIndex = orders.findIndex((entry) => entry && entry.id === bodyObj.id);
     if (orderIndex >= 0) {
       const previousOrder = orders[orderIndex];
-      let nextOrder = { ...previousOrder, status: bodyObj.status };
+      let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
       orders[orderIndex] = nextOrder;
       writeJsonFile(dataFiles.orders, orders);
 
