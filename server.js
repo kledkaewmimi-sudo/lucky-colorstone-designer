@@ -304,6 +304,132 @@ async function sendLinePushTextMessage({ userId, text }) {
   throw new Error(`LINE push API returned HTTP ${response.status}: ${responseText}`);
 }
 
+function getOrderLineUserId(order) {
+  return String(order?.lineUserId || "").trim();
+}
+
+function getOrderTrackingNumber(order) {
+  const candidateFields = [
+    "trackingNumber",
+    "trackingNo",
+    "shippingTrackingNumber",
+    "shipmentTrackingNumber"
+  ];
+
+  for (const fieldName of candidateFields) {
+    const value = String(order?.[fieldName] || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function getOrderNotifications(order) {
+  if (!order?.notifications || typeof order.notifications !== "object") {
+    return {};
+  }
+  return order.notifications;
+}
+
+function buildPaidOrderLineMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  return [
+    "ขอบคุณสำหรับคำสั่งซื้อค่ะ",
+    "ออเดอร์ของคุณชำระเงินเรียบร้อยแล้ว",
+    "ตอนนี้กำลังอยู่ในขั้นตอนการจัดทำกำไล",
+    `เลขออเดอร์: ${orderId}`
+  ].join("\n");
+}
+
+function buildShippedOrderLineMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  const trackingNumber = getOrderTrackingNumber(order);
+  const lines = [
+    "กำไลของคุณจัดส่งแล้ว",
+    `เลขออเดอร์: ${orderId}`
+  ];
+
+  if (trackingNumber) {
+    lines.push(`เลขพัสดุ: ${trackingNumber}`);
+  }
+
+  return lines.join("\n");
+}
+
+function isPaidOrderLineNotificationEligible(order) {
+  if (!getOrderLineUserId(order)) {
+    return false;
+  }
+
+  const notifications = getOrderNotifications(order);
+  if (notifications.paymentReceivedSentAt) {
+    return false;
+  }
+
+  const status = String(order?.status || "").trim();
+  const stripePaymentStatus = String(order?.stripePaymentStatus || "").trim().toLowerCase();
+  return status === "Payment Received" && stripePaymentStatus === "paid";
+}
+
+function shouldSendShippedLineNotification(previousOrder, nextOrder) {
+  if (!getOrderLineUserId(nextOrder)) {
+    return false;
+  }
+
+  const notifications = getOrderNotifications(nextOrder);
+  if (notifications.shippedSentAt) {
+    return false;
+  }
+
+  const previousStatus = String(previousOrder?.status || "").trim();
+  const nextStatus = String(nextOrder?.status || "").trim();
+  return previousStatus !== "Shipped" && nextStatus === "Shipped";
+}
+
+function markOrderNotificationSent(order, notificationKey) {
+  return {
+    ...order,
+    notifications: {
+      ...getOrderNotifications(order),
+      [notificationKey]: new Date().toISOString()
+    }
+  };
+}
+
+async function trySendPaidOrderLineNotification(order) {
+  if (!isPaidOrderLineNotificationEligible(order)) {
+    return { sent: false, order };
+  }
+
+  await sendLinePushTextMessage({
+    userId: getOrderLineUserId(order),
+    text: buildPaidOrderLineMessage(order)
+  });
+
+  return {
+    sent: true,
+    order: markOrderNotificationSent(order, "paymentReceivedSentAt")
+  };
+}
+
+async function trySendShippedLineNotification(previousOrder, nextOrder) {
+  if (!shouldSendShippedLineNotification(previousOrder, nextOrder)) {
+    return { sent: false, order: nextOrder };
+  }
+
+  await sendLinePushTextMessage({
+    userId: getOrderLineUserId(nextOrder),
+    text: buildShippedOrderLineMessage(nextOrder)
+  });
+
+  return {
+    sent: true,
+    order: markOrderNotificationSent(nextOrder, "shippedSentAt")
+  };
+}
+
 function normalizeStripeAddress(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -822,7 +948,18 @@ async function handleApiRequest(req, res, urlObj) {
     }
 
     writeJsonFile(dataFiles.orders, [nextOrder, ...orders]);
-    sendJson(res, 200, nextOrder);
+    let responseOrder = nextOrder;
+    try {
+      const notificationResult = await trySendPaidOrderLineNotification(nextOrder);
+      if (notificationResult.sent) {
+        responseOrder = notificationResult.order;
+        writeJsonFile(dataFiles.orders, [responseOrder, ...orders]);
+      }
+    } catch (error) {
+      console.error(`Failed to send paid-order LINE notification for ${nextOrder.id}:`, error);
+    }
+
+    sendJson(res, 200, responseOrder);
     return true;
   }
 
@@ -834,10 +971,26 @@ async function handleApiRequest(req, res, urlObj) {
 
     const orderIndex = orders.findIndex((entry) => entry && entry.id === bodyObj.id);
     if (orderIndex >= 0) {
-      orders[orderIndex] = { ...orders[orderIndex], status: bodyObj.status };
+      const previousOrder = orders[orderIndex];
+      let nextOrder = { ...previousOrder, status: bodyObj.status };
+      orders[orderIndex] = nextOrder;
+      writeJsonFile(dataFiles.orders, orders);
+
+      try {
+        const notificationResult = await trySendShippedLineNotification(previousOrder, nextOrder);
+        if (notificationResult.sent) {
+          nextOrder = notificationResult.order;
+          orders[orderIndex] = nextOrder;
+          writeJsonFile(dataFiles.orders, orders);
+        }
+      } catch (error) {
+        console.error(`Failed to send shipped LINE notification for ${bodyObj.id}:`, error);
+      }
+
+      sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
+      return true;
     }
 
-    writeJsonFile(dataFiles.orders, orders);
     sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
     return true;
   }
