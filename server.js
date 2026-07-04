@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
@@ -142,6 +143,19 @@ async function readRequestBody(req) {
   });
 }
 
+async function readRequestBodyBuffer(req) {
+  return await new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      resolve(Buffer.concat(chunks));
+    });
+    req.on("error", reject);
+  });
+}
+
 async function parseJsonBody(req) {
   const rawBody = await readRequestBody(req);
   const trimmedBody = normalizeJsonText(rawBody, "");
@@ -170,6 +184,14 @@ function getNestedJsonValue(target, pathValue) {
 
 function getStripeSecretKey() {
   return getEnvValue("STRIPE_SECRET_KEY");
+}
+
+function getLineChannelAccessToken() {
+  return getEnvValue("LINE_CHANNEL_ACCESS_TOKEN");
+}
+
+function getLineChannelSecret() {
+  return getEnvValue("LINE_CHANNEL_SECRET");
 }
 
 function getSafeOrigin(origin) {
@@ -203,6 +225,83 @@ function parseStripeApiResponse(text) {
     throw new Error(parsed.error.message);
   }
   return parsed;
+}
+
+function parseJsonText(text) {
+  const trimmedText = normalizeJsonText(text, "");
+  if (!trimmedText) return null;
+  return JSON.parse(trimmedText);
+}
+
+function createLineSignature(rawBodyBuffer) {
+  const lineChannelSecret = getLineChannelSecret();
+  if (!lineChannelSecret) {
+    throw new Error("LINE_CHANNEL_SECRET is not configured.");
+  }
+
+  return crypto
+    .createHmac("sha256", lineChannelSecret)
+    .update(rawBodyBuffer)
+    .digest("base64");
+}
+
+function verifyLineSignature(rawBodyBuffer, signatureHeader) {
+  const providedSignature = String(signatureHeader || "").trim();
+  if (!providedSignature) {
+    return false;
+  }
+
+  const expectedSignature = createLineSignature(rawBodyBuffer);
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+  const providedBuffer = Buffer.from(providedSignature, "utf8");
+  if (expectedBuffer.length !== providedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+async function sendLinePushTextMessage({ userId, text }) {
+  const lineChannelAccessToken = getLineChannelAccessToken();
+  if (!lineChannelAccessToken) {
+    throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
+  }
+
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) {
+    throw new Error("LINE push message requires a userId.");
+  }
+
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText) {
+    throw new Error("LINE push message requires text.");
+  }
+
+  const response = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lineChannelAccessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      to: normalizedUserId,
+      messages: [
+        {
+          type: "text",
+          text: normalizedText
+        }
+      ]
+    })
+  });
+
+  if (response.ok) {
+    return {
+      success: true
+    };
+  }
+
+  const responseText = await response.text();
+  throw new Error(`LINE push API returned HTTP ${response.status}: ${responseText}`);
 }
 
 function normalizeStripeAddress(address) {
@@ -474,6 +573,30 @@ function deleteById(records, targetId) {
 async function handleApiRequest(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = req.method;
+
+  if (pathname === "/api/line/webhook" && method === "POST") {
+    const rawBodyBuffer = await readRequestBodyBuffer(req);
+    const lineChannelSecret = getLineChannelSecret();
+    if (!lineChannelSecret) {
+      sendJson(res, 503, { error: "LINE webhook is not configured." });
+      return true;
+    }
+
+    if (!verifyLineSignature(rawBodyBuffer, req.headers["x-line-signature"])) {
+      sendJson(res, 401, { error: "Invalid LINE signature." });
+      return true;
+    }
+
+    const payload = parseJsonText(rawBodyBuffer.toString("utf8")) || {};
+    const eventsReceived = Array.isArray(payload.events) ? payload.events.length : 0;
+
+    sendJson(res, 200, {
+      ok: true,
+      eventsReceived
+    });
+    return true;
+  }
+
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
