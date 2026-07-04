@@ -3,7 +3,7 @@
    ========================================== */
 
 /* Fonts Import */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&display=swap');
 
 :root {
   /* Gen Z & Millennial 60-30-10 Color Scheme */
@@ -61,6 +61,8 @@
 
   /* Active Slot Highlight Color */
   --color-accent-velvet: var(--color-velvet-red);
+  --font-ui-thai: 'Noto Sans Thai';
+  --font-brand-latin: 'Playfair Display', 'Noto Sans Thai';
 }
 
 /* Reset & Base Rules */
@@ -72,7 +74,7 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui-thai);
   background-color: #0A1128;
   /* Dark outer container for desktop mockups */
   color: #1E293B;
@@ -82,6 +84,14 @@ body {
   align-items: center;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+button,
+input,
+textarea,
+select,
+option {
+  font-family: var(--font-ui-thai);
 }
 
 /* Mobile Frame Wrapper (Vibe: Mobile-first & LINE LIFF optimized) */
@@ -183,7 +193,7 @@ body {
   letter-spacing: 3px;
   color: #2d1b69;
   margin: 0;
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-brand-latin);
   text-transform: uppercase;
 }
 
@@ -205,7 +215,7 @@ body {
 
 .landing-hero-title {
   font-size: clamp(34px, 5vw, 58px);
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-brand-latin);
   color: #2d1b69;
   font-weight: 700;
   line-height: 1.2;
@@ -417,7 +427,7 @@ body {
 }
 
 .brand-logo {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-brand-latin);
   font-weight: 700;
   font-size: 19px;
   letter-spacing: 1px;
@@ -568,7 +578,7 @@ body {
 
 /* Typography styles inside steps */
 .step-title {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-ui-thai);
   font-size: 24px;
   color: var(--color-navy-dark);
   margin-bottom: 4px;
@@ -1846,7 +1856,7 @@ button.stone-card {
 }
 
 .meaning-item-title {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-ui-thai);
   font-size: 14px;
   font-weight: 700;
   color: var(--color-navy-dark);
@@ -2044,7 +2054,7 @@ button.stone-card {
 }
 
 .modal-header h3 {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-ui-thai);
   color: var(--color-navy-dark);
   font-size: 18px;
   font-weight: 700;
@@ -2327,7 +2337,7 @@ button.stone-card {
 }
 
 .brand-logo {
-  font-family: 'Playfair Display', serif !important;
+  font-family: var(--font-brand-latin) !important;
 }
 
 /* Active Bead highlight pulse */
@@ -2510,7 +2520,7 @@ button.stone-card {
   font-size: 32px;
   font-weight: 800;
   color: #1E293B;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-ui-thai);
   letter-spacing: -0.5px;
 }
 
@@ -2610,7 +2620,7 @@ button.stone-card {
 }
 
 .landing-logo {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-brand-latin);
   font-weight: 700;
   font-size: 22px;
   letter-spacing: 1px;
@@ -2643,7 +2653,7 @@ button.stone-card {
   font-weight: 800;
   line-height: 1.45;
   color: #1E293B;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-ui-thai);
 }
 
 .landing-subtitle-text {

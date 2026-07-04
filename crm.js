@@ -254,8 +254,8 @@ const IMAGE_PREVIEW_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIC
     <circle cx="118" cy="118" r="36" fill="#d8e2f0" />
     <circle cx="118" cy="118" r="22" fill="#b7c5d8" />
     <path d="M110 118c5-10 17-17 30-17" fill="none" stroke="#f8fbff" stroke-width="6" stroke-linecap="round" opacity="0.8" />
-    <text x="186" y="112" fill="#5b6b7f" font-family="Arial, sans-serif" font-size="18" font-weight="700">Image preview</text>
-    <text x="186" y="136" fill="#7e8ea3" font-family="Arial, sans-serif" font-size="12">Paste a URL or asset path</text>
+    <text x="186" y="112" fill="#5b6b7f" font-family="Noto Sans Thai" font-size="18" font-weight="700">Image preview</text>
+    <text x="186" y="136" fill="#7e8ea3" font-family="Noto Sans Thai" font-size="12">Paste a URL or asset path</text>
   </svg>
 `.trim())}`;
 

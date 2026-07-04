@@ -2602,6 +2602,14 @@ async function preloadRenderImages(urls) {
 
 // Draw the designed bracelet and invoice to canvas
 async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, previewKey = '') {
+  if (document.fonts?.load) {
+    await Promise.all([
+      document.fonts.load("400 16px 'Noto Sans Thai'"),
+      document.fonts.load("700 16px 'Noto Sans Thai'"),
+      document.fonts.load("italic 400 16px 'Noto Sans Thai'")
+    ]);
+  }
+
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const uniqueUrls = [];
   getPlacedResolvedLayoutNodes(resolvedLayout, ['stone', 'charm']).forEach((node) => {
@@ -2721,12 +2729,12 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
 
   // Header Title
   rCtx.fillStyle = "#40304D";
-  rCtx.font = "bold 36px Georgia, serif";
+  rCtx.font = "700 36px 'Noto Sans Thai'";
   rCtx.textAlign = "center";
   rCtx.fillText("LUCKY.COLORSTONE", 400, 90);
 
   rCtx.fillStyle = "#8B0000";
-  rCtx.font = "bold 13px Arial, sans-serif";
+  rCtx.font = "700 13px 'Noto Sans Thai'";
   rCtx.fillText("CUSTOM BRACELET ORDER RECEIPT", 400, 125);
 
   function drawDashedDivider(y) {
@@ -2745,7 +2753,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   // Customer metadata
   rCtx.textAlign = "left";
   rCtx.fillStyle = "#554466";
-  rCtx.font = "14px Arial, sans-serif";
+  rCtx.font = "400 14px 'Noto Sans Thai'";
   const formattedDate = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   rCtx.fillText(`👤 Customer:  ${State.ownerName || "Khun Guest"}`, 70, 195);
   rCtx.fillText(`📅 Date:           ${formattedDate}`, 70, 225);
@@ -2759,14 +2767,14 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
 
   rCtx.textAlign = "center";
   rCtx.fillStyle = "#40304D";
-  rCtx.font = "bold 14px Arial, sans-serif";
+  rCtx.font = "700 14px 'Noto Sans Thai'";
   rCtx.fillText("Wrist Size", 150, 285);
   rCtx.fillText("Length", 310, 285);
   rCtx.fillText("Bead Size", 470, 285);
   rCtx.fillText("Beads Count", 630, 285);
 
   rCtx.fillStyle = "#8B0000";
-  rCtx.font = "bold 18px Arial, sans-serif";
+  rCtx.font = "700 18px 'Noto Sans Thai'";
   rCtx.fillText(`${State.wristSize.toFixed(1)} cm`, 150, 315);
   rCtx.fillText(`${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`, 310, 315);
   rCtx.fillText(`${getCurrentBeadSizeMm()}mm`, 470, 315);
@@ -2777,7 +2785,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   // Stringing Map Header
   rCtx.textAlign = "center";
   rCtx.fillStyle = "#40304D";
-  rCtx.font = "bold 15px Arial, sans-serif";
+  rCtx.font = "700 15px 'Noto Sans Thai'";
   rCtx.fillText("VISUAL STRINGING MAP (ลำดับการร้อย)", 400, 410);
 
   const mapY = 465;
@@ -2834,22 +2842,22 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   // Pricing lines
   rCtx.textAlign = "left";
   rCtx.fillStyle = "#554466";
-  rCtx.font = "15px Arial, sans-serif";
+  rCtx.font = "400 15px 'Noto Sans Thai'";
   rCtx.fillText("Original Subtotal:", 70, 570);
   rCtx.fillText("LINE Special Promotion (20% Discount):", 70, 605);
   
-  rCtx.font = "bold 20px Arial, sans-serif";
+  rCtx.font = "700 20px 'Noto Sans Thai'";
   rCtx.fillStyle = "#40304D";
   rCtx.fillText("Total Net Price:", 70, 650);
 
   rCtx.textAlign = "right";
-  rCtx.font = "15px Arial, sans-serif";
+  rCtx.font = "400 15px 'Noto Sans Thai'";
   rCtx.fillStyle = "#554466";
   rCtx.fillText(`฿${subtotal.toLocaleString()}`, 730, 570);
   rCtx.fillStyle = "#8B0000";
   rCtx.fillText(`-฿${discount.toLocaleString()}`, 730, 605);
 
-  rCtx.font = "bold 24px Arial, sans-serif";
+  rCtx.font = "700 24px 'Noto Sans Thai'";
   rCtx.fillStyle = "#8B0000";
   rCtx.fillText(`฿${finalPrice.toLocaleString()}`, 730, 650);
 
@@ -2858,7 +2866,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   // Meanings list
   rCtx.textAlign = "left";
   rCtx.fillStyle = "#40304D";
-  rCtx.font = "bold 16px Arial, sans-serif";
+  rCtx.font = "700 16px 'Noto Sans Thai'";
   rCtx.fillText("✨ STONE MEANINGS & METAPHYSICAL BENEFITS", 70, 735);
 
   let meaningY = 770;
@@ -2866,11 +2874,11 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const stone = STONES.find(s => s.id === id);
     if (stone && meaningY < 1120) {
       rCtx.fillStyle = "#8B0000";
-      rCtx.font = "bold 14px Arial, sans-serif";
+      rCtx.font = "700 14px 'Noto Sans Thai'";
       rCtx.fillText(`• ${stone.nameTh} (${stone.name})`, 70, meaningY);
       
       rCtx.fillStyle = "#554466";
-      rCtx.font = "italic 12px Arial, sans-serif";
+      rCtx.font = "italic 400 12px 'Noto Sans Thai'";
       const desc = `${stone.meaningTh} - ${stone.meaning}`;
       
       const maxTextWidth = 660;
@@ -2903,7 +2911,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
 
   rCtx.textAlign = "center";
   rCtx.fillStyle = "#9E8DAE";
-  rCtx.font = "italic 13px Arial, sans-serif";
+  rCtx.font = "italic 400 13px 'Noto Sans Thai'";
   rCtx.fillText("Thank you for designing with LUCKY.COLORSTONE!", 400, 1160);
 
   const receiptDataUrl = receiptCanvas.toDataURL("image/png");
