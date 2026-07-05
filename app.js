@@ -975,15 +975,8 @@ function renderStep2() {
 }
 
 function initCharmSelection() {
-  if (!DOM.charmSectionMount) return;
-
-  DOM.charmSectionMount.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-charm-id]');
-    if (!button || button.disabled) return;
-
-    const nextCharmId = button.dataset.charmId || null;
-    applySelectedCharm(nextCharmId);
-  });
+  // Charm cards attach their own click handlers when rendered.
+  // Avoid duplicate selection by not binding a second delegated listener here.
 }
 
 function formatDisplayPrice(value) {
@@ -1330,15 +1323,16 @@ function applySelectedCharm(charmId) {
     return;
   }
 
-  if (currentCharmIds.length >= 2) {
-    showToast("You can select up to 2 charms.");
-    return;
-  }
-
   const selectedCharm = getVisibleCharmCatalog().find((charm) => charm.id === nextCharmId);
   if (!selectedCharm) return;
 
-  State.selectedCharmIds = [...currentCharmIds, nextCharmId];
+  if (currentCharmIds.length === 0) {
+    State.selectedCharmIds = [nextCharmId];
+  } else if (currentCharmIds.length === 1) {
+    State.selectedCharmIds = [currentCharmIds[0], nextCharmId];
+  } else {
+    State.selectedCharmIds = [currentCharmIds[0], nextCharmId];
+  }
   syncSelectedCharmState();
   adjustBeadsToNewCapacity();
   saveState();
