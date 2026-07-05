@@ -1950,6 +1950,20 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     return resolvedNode;
   });
 
+  const charmNodes = nodes.filter((node) => node.isPlaced && node.component?.type === 'charm');
+  if (charmNodes.length > 0) {
+    const setNodeAngle = (node, angle) => {
+      node.centerAngle = angle;
+      node.centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(angle);
+      node.centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(angle);
+    };
+
+    setNodeAngle(charmNodes[0], -Math.PI / 2);
+    if (charmNodes.length > 1) {
+      setNodeAngle(charmNodes[1], Math.PI / 2);
+    }
+  }
+
   return {
     braceletConfig,
     braceletComponentList,
