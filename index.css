@@ -2307,38 +2307,6 @@ button.stone-card {
   transform: translateX(-50%) translateY(0);
 }
 
-/* CRM Sandbox styling */
-.sandbox-banner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 32px;
-  background: linear-gradient(90deg, var(--color-navy-dark) 0%, var(--color-gold-dark) 100%);
-  color: var(--color-white);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 600;
-  z-index: 101;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
-}
-
-.sandbox-banner a {
-  color: var(--color-gold-light);
-  text-decoration: underline;
-  margin-left: 4px;
-}
-
-.app-header {
-  top: 32px !important;
-}
-
-.app-content {
-  padding-top: 142px !important;
-}
-
 .crm-sandbox-card {
   background-color: var(--color-white);
   border-radius: 12px;
