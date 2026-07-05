@@ -201,7 +201,6 @@ function normalizeSelectedCharmIds(source = []) {
   return rawIds
     .map((id) => String(id || '').trim())
     .filter(Boolean)
-    .filter((id, index, list) => list.indexOf(id) === index)
     .slice(0, 2);
 }
 
@@ -1174,7 +1173,15 @@ function getSelectedCharmCatalogEntries() {
   const visibleCharms = getVisibleCharmCatalog();
   const charmMap = new Map(visibleCharms.map((charm) => [charm.id, charm]));
   return selectedIds
-    .map((charmId) => charmMap.get(charmId))
+    .map((charmId, selectionIndex) => {
+      const charm = charmMap.get(charmId);
+      if (!charm) return null;
+      return {
+        ...charm,
+        selectionIndex,
+        charmInstanceKey: `${charmId}_${selectionIndex}`
+      };
+    })
     .filter(Boolean);
 }
 
@@ -1323,7 +1330,6 @@ function applySelectedCharm(charmId) {
     return;
   }
 
-  if (currentCharmIds.includes(nextCharmId)) return;
   if (currentCharmIds.length >= 2) {
     showToast("You can select up to 2 charms.");
     return;
@@ -1368,6 +1374,8 @@ function buildSelectedCharmOrderData() {
     const charmMeta = getCharmDisplayMeta(charm);
     return {
       id: charm.id,
+      selectionIndex: charm.selectionIndex,
+      charmInstanceKey: charm.charmInstanceKey,
       sku: charm.sku || null,
       nameTh: charmMeta.nameTh,
       nameEn: charmMeta.nameEn,
@@ -1429,16 +1437,18 @@ function getResolvedNodeRotationRad(node) {
   return node.centerAngle + Math.PI / 2;
 }
 
-async function removeSelectedCharm(charmId = null, showToastNotification = true) {
+async function removeSelectedCharm(selectionIndex = null, showToastNotification = true) {
   const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
   if (currentCharmIds.length === 0) return;
 
-  const targetCharmId = String(charmId || '').trim() || currentCharmIds[currentCharmIds.length - 1];
-  const nextCharmIds = targetCharmId
-    ? currentCharmIds.filter((id) => id !== targetCharmId)
-    : currentCharmIds.slice(0, -1);
+  const normalizedSelectionIndex = Number.isInteger(selectionIndex)
+    ? selectionIndex
+    : Number.isFinite(Number(selectionIndex))
+      ? Number(selectionIndex)
+      : currentCharmIds.length - 1;
+  if (normalizedSelectionIndex < 0 || normalizedSelectionIndex >= currentCharmIds.length) return;
 
-  if (nextCharmIds.length === currentCharmIds.length) return;
+  const nextCharmIds = currentCharmIds.filter((_, index) => index !== normalizedSelectionIndex);
 
   State.selectedCharmIds = nextCharmIds;
   syncSelectedCharmState();
@@ -1473,7 +1483,7 @@ function buildStep4MeaningEntries(uniqueStoneIds = new Set(), selectedCharms = g
       .filter(Boolean);
 
     entries.push({
-      key: `charm_${selectedCharm.id}`,
+      key: `charm_${selectedCharm.id}_${selectedCharm.selectionIndex ?? 0}`,
       image: selectedCharm.image || '',
       nameTh: charmMeta.nameTh,
       nameEn: charmMeta.nameEn,
@@ -1838,19 +1848,21 @@ function createBraceletComponentList() {
     const renderTuning = resolveCharmRenderTuning(charm);
     const footprintMm = getCharmFootprintMm(charm);
     return {
-      id: `charm-${charm.id}`,
+      id: `charm-${charm.id}-${charm.selectionIndex}`,
       type: 'charm',
       layoutRole: 'loop',
       placementMode: 'sequence',
       track: 'main_loop',
       sourceId: charm.id,
       charmId: charm.id,
+      selectionIndex: charm.selectionIndex,
+      charmInstanceKey: charm.charmInstanceKey,
       image: charm.image,
       sizeCm: charm.sizeCm,
       footprintMm,
       sizeMm: footprintMm,
       ...renderTuning,
-      uniqueId: `charm-${charm.id}`
+      uniqueId: `charm-${charm.id}-${charm.selectionIndex}`
     };
   });
 
@@ -1861,31 +1873,9 @@ function createBraceletComponentList() {
     ];
   }
 
-  const [topCharm, bottomCharm] = charmComponents.slice(0, 2);
-  const stoneTotalSizeMm = stoneComponents.reduce((sum, stone) => sum + stone.sizeMm, 0);
-  const totalLoopSizeMm = stoneTotalSizeMm + topCharm.sizeMm + bottomCharm.sizeMm;
-  const targetStoneBeforeBottomMm = Math.max(0, (totalLoopSizeMm / 2) - (bottomCharm.sizeMm / 2) - topCharm.sizeMm);
-  let bestSplitIndex = 0;
-  let bestSplitDelta = Infinity;
-  let accumulatedStoneSizeMm = 0;
-
-  for (let index = 0; index <= stoneComponents.length; index += 1) {
-    const delta = Math.abs(accumulatedStoneSizeMm - targetStoneBeforeBottomMm);
-    if (delta < bestSplitDelta) {
-      bestSplitDelta = delta;
-      bestSplitIndex = index;
-    }
-
-    if (index < stoneComponents.length) {
-      accumulatedStoneSizeMm += stoneComponents[index].sizeMm;
-    }
-  }
-
   return [
-    topCharm,
-    ...stoneComponents.slice(0, bestSplitIndex),
-    bottomCharm,
-    ...stoneComponents.slice(bestSplitIndex)
+    ...charmComponents,
+    ...stoneComponents
   ];
 }
 
@@ -1913,15 +1903,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const totalVirtualDiameter = loopItems.reduce((sum, item) => sum + item.sizeMm, 0);
   const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm;
   const scaleMmToPx = (2 * Math.PI * braceletConfig.svg.radiusPx) / loopCircumferenceMm;
-
-  let accumulatedAngle = -Math.PI / 2;
-  if (loopItems.length > 0 && loopItems[0].kind === 'component' && loopItems[0].component.type === 'charm') {
-    const firstItemAngleWidth = (loopItems[0].sizeMm / loopCircumferenceMm) * 2 * Math.PI;
-    accumulatedAngle -= firstItemAngleWidth / 2;
-  }
-  const nodes = loopItems.map((item, index) => {
-    const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
-    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
+  const buildResolvedNode = (item, index, itemAngleWidth, centerAngle, isFirstPlaceholder = false) => {
     const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
     const centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(centerAngle);
     const radiusPx = (item.sizeMm / 2) * scaleMmToPx;
@@ -1935,7 +1917,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       centerY,
       radiusPx,
       isPlaced: item.kind === 'component',
-      isFirstPlaceholder: item.kind === 'placeholder' && index === placedCount
+      isFirstPlaceholder
     };
 
     if (item.kind === 'component') {
@@ -1946,23 +1928,121 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       resolvedNode.isActiveSlot = item.component.type === 'stone' && item.component.sourceIndex === braceletConfig.activeSlotIndex;
     }
 
+    return resolvedNode;
+  };
+
+  const charmComponents = loopComponents.filter((component) => component.type === 'charm');
+  if (charmComponents.length === 2) {
+    const [topCharm, bottomCharm] = charmComponents;
+    const fillerItems = [
+      ...loopComponents
+        .filter((component) => component.type !== 'charm')
+        .map((component) => ({
+          kind: 'component',
+          component,
+          sizeMm: component.sizeMm
+        })),
+      ...Array.from({ length: numPlaceholders }, (_, index) => ({
+        kind: 'placeholder',
+        placeholderIndex: index,
+        sizeMm: braceletConfig.placingSizeMm
+      }))
+    ];
+    const fillerTotalSizeMm = fillerItems.reduce((sum, item) => sum + item.sizeMm, 0);
+    const targetFirstArcSizeMm = fillerTotalSizeMm / 2;
+    let splitIndex = 0;
+    let bestSplitDelta = Infinity;
+    let accumulatedFillerSizeMm = 0;
+
+    for (let index = 0; index <= fillerItems.length; index += 1) {
+      const delta = Math.abs(accumulatedFillerSizeMm - targetFirstArcSizeMm);
+      if (delta < bestSplitDelta) {
+        bestSplitDelta = delta;
+        splitIndex = index;
+      }
+
+      if (index < fillerItems.length) {
+        accumulatedFillerSizeMm += fillerItems[index].sizeMm;
+      }
+    }
+
+    const firstArcItems = fillerItems.slice(0, splitIndex);
+    const secondArcItems = fillerItems.slice(splitIndex);
+    const topCharmAngleWidth = (topCharm.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    const bottomCharmAngleWidth = (bottomCharm.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    const availableArcAngle = Math.max(0, Math.PI - (topCharmAngleWidth / 2) - (bottomCharmAngleWidth / 2));
+    const firstArcTotalSizeMm = firstArcItems.reduce((sum, item) => sum + item.sizeMm, 0);
+    const secondArcTotalSizeMm = secondArcItems.reduce((sum, item) => sum + item.sizeMm, 0);
+    const firstArcAnglePerMm = firstArcTotalSizeMm > 0 ? availableArcAngle / firstArcTotalSizeMm : 0;
+    const secondArcAnglePerMm = secondArcTotalSizeMm > 0 ? availableArcAngle / secondArcTotalSizeMm : 0;
+    const nodes = [];
+    let nodeIndex = 0;
+    let firstPlaceholderAssigned = false;
+    const pushArcItems = (items, startAngle, anglePerMm) => {
+      let currentAngle = startAngle;
+      items.forEach((item) => {
+        const itemAngleWidth = item.sizeMm * anglePerMm;
+        const centerAngle = currentAngle + (itemAngleWidth / 2);
+        const isFirstPlaceholder = item.kind === 'placeholder' && !firstPlaceholderAssigned;
+        if (isFirstPlaceholder) {
+          firstPlaceholderAssigned = true;
+        }
+        nodes.push(buildResolvedNode(item, nodeIndex, itemAngleWidth, centerAngle, isFirstPlaceholder));
+        nodeIndex += 1;
+        currentAngle += itemAngleWidth;
+      });
+    };
+
+    nodes.push(buildResolvedNode({
+      kind: 'component',
+      component: topCharm,
+      sizeMm: topCharm.sizeMm
+    }, nodeIndex, topCharmAngleWidth, -Math.PI / 2));
+    nodeIndex += 1;
+    pushArcItems(firstArcItems, -Math.PI / 2 + (topCharmAngleWidth / 2), firstArcAnglePerMm);
+    nodes.push(buildResolvedNode({
+      kind: 'component',
+      component: bottomCharm,
+      sizeMm: bottomCharm.sizeMm
+    }, nodeIndex, bottomCharmAngleWidth, Math.PI / 2));
+    nodeIndex += 1;
+    pushArcItems(secondArcItems, Math.PI / 2 + (bottomCharmAngleWidth / 2), secondArcAnglePerMm);
+
+    return {
+      braceletConfig,
+      braceletComponentList,
+      summary: {
+        placedCount,
+        braceletLengthMm: capacityMetrics.braceletLengthMm,
+        charmFootprintMm: capacityMetrics.charmFootprintMm,
+        stoneLengthMm: capacityMetrics.stoneLengthMm,
+        totalUsedLengthMm: capacityMetrics.totalUsedLengthMm,
+        usableBeadLengthMm: capacityMetrics.usableBeadLengthMm,
+        uniformCapacity: capacityMetrics.uniformCapacity,
+        sumPlacedDiameter,
+        spaceLeft,
+        numPlaceholders,
+        totalItems: loopItems.length,
+        totalVirtualDiameter,
+        loopCircumferenceMm,
+        scaleMmToPx
+      },
+      nodes
+    };
+  }
+
+  let accumulatedAngle = -Math.PI / 2;
+  if (loopItems.length > 0 && loopItems[0].kind === 'component' && loopItems[0].component.type === 'charm') {
+    const firstItemAngleWidth = (loopItems[0].sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    accumulatedAngle -= firstItemAngleWidth / 2;
+  }
+  const nodes = loopItems.map((item, index) => {
+    const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
+    const resolvedNode = buildResolvedNode(item, index, itemAngleWidth, centerAngle, item.kind === 'placeholder' && index === placedCount);
     accumulatedAngle += itemAngleWidth;
     return resolvedNode;
   });
-
-  const charmNodes = nodes.filter((node) => node.isPlaced && node.component?.type === 'charm');
-  if (charmNodes.length > 0) {
-    const setNodeAngle = (node, angle) => {
-      node.centerAngle = angle;
-      node.centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(angle);
-      node.centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(angle);
-    };
-
-    setNodeAngle(charmNodes[0], -Math.PI / 2);
-    if (charmNodes.length > 1) {
-      setNodeAngle(charmNodes[1], Math.PI / 2);
-    }
-  }
 
   return {
     braceletConfig,
@@ -2146,7 +2226,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
         group.appendChild(charmImage);
         group.addEventListener('click', async () => {
-          await removeSelectedCharm(component.charmId);
+          await removeSelectedCharm(component.selectionIndex);
         });
       } else {
         const stoneId = component.stoneId;
