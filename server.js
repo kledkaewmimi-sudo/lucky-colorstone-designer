@@ -6,13 +6,28 @@ const path = require("path");
 const { URL } = require("url");
 
 const workspaceDir = __dirname;
-const dataDir = path.join(workspaceDir, "data");
-const dataFiles = {
-  stones: path.join(dataDir, "stones.json"),
-  charms: path.join(dataDir, "charms.json"),
-  orders: path.join(dataDir, "orders.json"),
-  settings: path.join(dataDir, "settings.json")
+const bundledDataDir = path.join(workspaceDir, "data");
+
+function resolveMutableDataDir() {
+  const configuredDataDir = process.env.DATA_DIR || process.env.RENDER_PERSISTENT_DATA_DIR || "";
+  const trimmedDataDir = String(configuredDataDir).trim();
+  if (!trimmedDataDir) return bundledDataDir;
+  return path.resolve(workspaceDir, trimmedDataDir);
+}
+
+const dataDir = resolveMutableDataDir();
+const dataFileNames = {
+  stones: "stones.json",
+  charms: "charms.json",
+  orders: "orders.json",
+  settings: "settings.json"
 };
+const dataFiles = Object.fromEntries(
+  Object.entries(dataFileNames).map(([key, fileName]) => [key, path.join(dataDir, fileName)])
+);
+const bundledDataFiles = Object.fromEntries(
+  Object.entries(dataFileNames).map(([key, fileName]) => [key, path.join(bundledDataDir, fileName)])
+);
 
 const defaultFileText = {
   stones: "[]",
@@ -48,10 +63,13 @@ function ensureDataDirectory() {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-function ensureDataFile(filePath, fallbackText) {
+function ensureDataFile(filePath, fallbackText, sourceFilePath = "") {
   if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, fallbackText, "utf8");
-    return;
+    if (sourceFilePath && fs.existsSync(sourceFilePath)) {
+      fs.copyFileSync(sourceFilePath, filePath);
+    } else {
+      fs.writeFileSync(filePath, fallbackText, "utf8");
+    }
   }
 
   const raw = fs.readFileSync(filePath);
@@ -83,10 +101,10 @@ function writeJsonFile(filePath, value) {
 
 function seedDatabase() {
   ensureDataDirectory();
-  ensureDataFile(dataFiles.stones, defaultFileText.stones);
-  ensureDataFile(dataFiles.charms, defaultFileText.charms);
-  ensureDataFile(dataFiles.orders, defaultFileText.orders);
-  ensureDataFile(dataFiles.settings, defaultFileText.settings);
+  ensureDataFile(dataFiles.stones, defaultFileText.stones, bundledDataFiles.stones);
+  ensureDataFile(dataFiles.charms, defaultFileText.charms, bundledDataFiles.charms);
+  ensureDataFile(dataFiles.orders, defaultFileText.orders, bundledDataFiles.orders);
+  ensureDataFile(dataFiles.settings, defaultFileText.settings, bundledDataFiles.settings);
 
   Object.entries(dataFiles).forEach(([key, filePath]) => {
     const fallback = defaultFileText[key];
