@@ -27,7 +27,8 @@ const State = {
     province: '',
     postalCode: ''
   },
-  selectedCharmId: null,    // Reserved for charm selection state
+  selectedCharmIds: [],     // Up to two selected charm IDs, kept in selection order
+  selectedCharmId: null,    // Legacy primary charm alias for compatibility
   liffInitialized: false,   // Ready flag for LINE LIFF Login API
   landingDismissed: false,  // Keep landing visible until CTA is clicked
   selectedStones: [],       // Array of placed beads: { stoneId: string, size: number, uniqueId: number }
@@ -193,6 +194,20 @@ function normalizeShippingInfo(source = {}) {
   });
 
   return shippingInfo;
+}
+
+function normalizeSelectedCharmIds(source = []) {
+  const rawIds = Array.isArray(source) ? source : [source];
+  return rawIds
+    .map((id) => String(id || '').trim())
+    .filter(Boolean)
+    .filter((id, index, list) => list.indexOf(id) === index)
+    .slice(0, 2);
+}
+
+function syncSelectedCharmState() {
+  State.selectedCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  State.selectedCharmId = State.selectedCharmIds[0] || null;
 }
 
 function getShippingInfoSnapshot({ trimValues = false } = {}) {
@@ -410,7 +425,13 @@ function loadPersistedState() {
       State.ownerName = parsed.ownerName || '';
       State.lineUserId = typeof parsed.lineUserId === 'string' ? parsed.lineUserId : '';
       State.shippingInfo = normalizeShippingInfo(parsed.shippingInfo);
-      State.selectedCharmId = parsed.selectedCharmId ?? null;
+      const persistedCharmIds = Array.isArray(parsed.selectedCharmIds)
+        ? parsed.selectedCharmIds
+        : parsed.selectedCharmId != null
+          ? [parsed.selectedCharmId]
+          : [];
+      State.selectedCharmIds = normalizeSelectedCharmIds(persistedCharmIds);
+      syncSelectedCharmState();
       State.selectedStones = parsed.selectedStones || [];
       
       // Normalize unique IDs to prevent clashes and empty values
@@ -443,7 +464,8 @@ function saveState() {
     ownerName: State.ownerName,
     lineUserId: State.lineUserId,
     shippingInfo: normalizeShippingInfo(State.shippingInfo),
-    selectedCharmId: State.selectedCharmId,
+    selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
+    selectedCharmId: State.selectedCharmIds[0] || null,
     selectedStones: State.selectedStones,
     currentStep: State.currentStep
   };
@@ -1142,8 +1164,22 @@ function getCharmDisplayMeta(charm) {
 }
 
 function getSelectedCharmCatalogEntry() {
-  if (!State.selectedCharmId) return null;
-  return getVisibleCharmCatalog().find((charm) => charm.id === State.selectedCharmId) || null;
+  return getSelectedCharmCatalogEntries()[0] || null;
+}
+
+function getSelectedCharmCatalogEntries() {
+  const selectedIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  if (selectedIds.length === 0) return [];
+
+  const visibleCharms = getVisibleCharmCatalog();
+  const charmMap = new Map(visibleCharms.map((charm) => [charm.id, charm]));
+  return selectedIds
+    .map((charmId) => charmMap.get(charmId))
+    .filter(Boolean);
+}
+
+function getSelectedCharmFootprintMm() {
+  return getSelectedCharmCatalogEntries().reduce((sum, charm) => sum + getCharmFootprintMm(charm), 0);
 }
 
 function getBraceletLengthMm() {
@@ -1231,7 +1267,7 @@ function resolveCharmRenderTuning(source = null) {
 }
 
 function getUsableBeadLengthMm() {
-  return Math.max(0, getBraceletLengthMm() - getCharmFootprintMm(getSelectedCharmCatalogEntry()));
+  return Math.max(0, getBraceletLengthMm() - getSelectedCharmFootprintMm());
 }
 
 function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
@@ -1267,9 +1303,37 @@ function getCurrentBraceletCapacityMetrics() {
 }
 
 function applySelectedCharm(charmId) {
-  if (State.selectedCharmId === charmId) return;
+  const nextCharmId = String(charmId || '').trim();
+  const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
 
-  State.selectedCharmId = charmId;
+  if (!nextCharmId) {
+    if (currentCharmIds.length === 0) return;
+    State.selectedCharmIds = [];
+    syncSelectedCharmState();
+    State.activeSlotIndex = null;
+    adjustBeadsToNewCapacity();
+    saveState();
+    updateEstimationText();
+    renderCharmOptions();
+
+    if (State.currentStep === 3) {
+      renderStep3();
+      syncStep3NextValidationUI();
+    }
+    return;
+  }
+
+  if (currentCharmIds.includes(nextCharmId)) return;
+  if (currentCharmIds.length >= 2) {
+    showToast("You can select up to 2 charms.");
+    return;
+  }
+
+  const selectedCharm = getVisibleCharmCatalog().find((charm) => charm.id === nextCharmId);
+  if (!selectedCharm) return;
+
+  State.selectedCharmIds = [...currentCharmIds, nextCharmId];
+  syncSelectedCharmState();
   adjustBeadsToNewCapacity();
   saveState();
   updateEstimationText();
@@ -1282,10 +1346,13 @@ function applySelectedCharm(charmId) {
 }
 
 function buildSelectedCharmOrderData() {
-  const selectedCharm = getSelectedCharmCatalogEntry();
-  if (!selectedCharm) {
+  const selectedCharms = getSelectedCharmCatalogEntries();
+  if (selectedCharms.length === 0) {
     return {
       hasCharm: false,
+      charmCount: 0,
+      charmIds: [],
+      charms: [],
       charmId: null,
       charmSku: null,
       charmNameTh: null,
@@ -1297,17 +1364,35 @@ function buildSelectedCharmOrderData() {
     };
   }
 
-  const charmMeta = getCharmDisplayMeta(selectedCharm);
+  const charms = selectedCharms.map((charm) => {
+    const charmMeta = getCharmDisplayMeta(charm);
+    return {
+      id: charm.id,
+      sku: charm.sku || null,
+      nameTh: charmMeta.nameTh,
+      nameEn: charmMeta.nameEn,
+      type: charm.type || null,
+      sizeCm: charm.sizeCm || null,
+      price: Number(charm.price || 0),
+      image: charm.image || null,
+      meaningTh: charm.meaningTh || '',
+      meaningEn: charm.meaningEn || ''
+    };
+  });
+  const primaryCharm = charms[0];
   return {
     hasCharm: true,
-    charmId: selectedCharm.id,
-    charmSku: selectedCharm.sku || null,
-    charmNameTh: charmMeta.nameTh,
-    charmNameEn: charmMeta.nameEn,
-    charmType: selectedCharm.type || null,
-    charmSizeCm: selectedCharm.sizeCm || null,
-    charmPrice: Number(selectedCharm.price || 0),
-    charmImage: selectedCharm.image || null
+    charmCount: charms.length,
+    charmIds: charms.map((charm) => charm.id),
+    charms,
+    charmId: primaryCharm.id,
+    charmSku: primaryCharm.sku,
+    charmNameTh: primaryCharm.nameTh,
+    charmNameEn: primaryCharm.nameEn,
+    charmType: primaryCharm.type,
+    charmSizeCm: primaryCharm.sizeCm,
+    charmPrice: primaryCharm.price,
+    charmImage: primaryCharm.image
   };
 }
 
@@ -1317,7 +1402,8 @@ function calculateCurrentOrderPricing() {
     return sum + getStonePriceForSize(stoneData, bead.size);
   }, 0);
   const charmData = buildSelectedCharmOrderData();
-  const subtotal = stonesSubtotal + (charmData.hasCharm ? charmData.charmPrice : 0);
+  const charmSubtotal = charmData.charms.reduce((sum, charm) => sum + Number(charm.price || 0), 0);
+  const subtotal = stonesSubtotal + charmSubtotal;
   const discountPercent = 20;
   const discount = Math.round(subtotal * 0.2);
   const netPrice = subtotal - discount;
@@ -1343,10 +1429,19 @@ function getResolvedNodeRotationRad(node) {
   return node.centerAngle + Math.PI / 2;
 }
 
-async function removeSelectedCharm(showToastNotification = true) {
-  if (!State.selectedCharmId) return;
+async function removeSelectedCharm(charmId = null, showToastNotification = true) {
+  const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  if (currentCharmIds.length === 0) return;
 
-  State.selectedCharmId = null;
+  const targetCharmId = String(charmId || '').trim() || currentCharmIds[currentCharmIds.length - 1];
+  const nextCharmIds = targetCharmId
+    ? currentCharmIds.filter((id) => id !== targetCharmId)
+    : currentCharmIds.slice(0, -1);
+
+  if (nextCharmIds.length === currentCharmIds.length) return;
+
+  State.selectedCharmIds = nextCharmIds;
+  syncSelectedCharmState();
   State.activeSlotIndex = null;
   updateEstimationText();
   saveState();
@@ -1369,11 +1464,9 @@ function getMeaningThumbnailLabel({ nameTh = '', nameEn = '' } = {}) {
   return source ? source.charAt(0).toUpperCase() : 'LC';
 }
 
-function buildStep4MeaningEntries(uniqueStoneIds = new Set()) {
+function buildStep4MeaningEntries(uniqueStoneIds = new Set(), selectedCharms = getSelectedCharmCatalogEntries()) {
   const entries = [];
-  const selectedCharm = getSelectedCharmCatalogEntry();
-
-  if (selectedCharm) {
+  selectedCharms.forEach((selectedCharm) => {
     const charmMeta = getCharmDisplayMeta(selectedCharm);
     const charmMeaningParts = [selectedCharm.meaningTh, selectedCharm.meaningEn]
       .map((value) => String(value || '').trim())
@@ -1387,7 +1480,7 @@ function buildStep4MeaningEntries(uniqueStoneIds = new Set()) {
       meaning: charmMeaningParts.join(' - ') || 'ไม่มีคำอธิบายเพิ่มเติม',
       thumbnailLabel: getMeaningThumbnailLabel(charmMeta)
     });
-  }
+  });
 
   uniqueStoneIds.forEach((id) => {
     const stone = STONES.find((entry) => entry.id === id);
@@ -1460,7 +1553,8 @@ function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
   const visibleCharms = getVisibleCharmCatalog();
-  const selectedCharmId = visibleCharms.some((charm) => charm.id === State.selectedCharmId) ? State.selectedCharmId : null;
+  const selectedCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  const selectedCharmIdSet = new Set(selectedCharmIds.filter((charmId) => visibleCharms.some((charm) => charm.id === charmId)));
   const thumbnailTargetRatio = getCharmCatalogThumbnailTargetRatio(visibleCharms);
   DOM.charmSectionMount.innerHTML = '';
 
@@ -1472,7 +1566,7 @@ function renderCharmOptions() {
   heading.innerHTML = `
     <div>
       <h3>Charm</h3>
-      <p>Select one charm or leave the bracelet without one.</p>
+      <p>Select up to 2 charms or leave the bracelet without one.</p>
     </div>
   `;
   section.appendChild(heading);
@@ -1492,7 +1586,7 @@ function renderCharmOptions() {
     nameTh: 'No Charm',
     nameEn: 'Leave bracelet clean',
     priceText: formatDisplayPrice(0),
-    isSelected: selectedCharmId === null,
+    isSelected: selectedCharmIds.length === 0,
     onCardClick: () => selectCharm(null),
     onActionClick: () => selectCharm(null),
     actionText: '+',
@@ -1500,7 +1594,7 @@ function renderCharmOptions() {
   }));
 
   visibleCharms.forEach((charm) => {
-    const isSelected = selectedCharmId === charm.id;
+    const isSelected = selectedCharmIdSet.has(charm.id);
     const charmMeta = getCharmDisplayMeta(charm);
     if (charm.image) {
       scheduleCharmVisibleBoundsDetection(charm.image);
@@ -1535,14 +1629,15 @@ function renderCharmOptions() {
 function setupDesignerEvents() {
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
-    if (State.selectedStones.length > 0 || State.selectedCharmId) {
+    if (State.selectedStones.length > 0 || State.selectedCharmIds.length > 0) {
       const proceed = await showCustomConfirm(
         "Are you sure you want to clear your current bracelet design? (รีเซ็ตกำไล)",
         "Reset Bracelet"
       );
       if (proceed) {
         State.selectedStones = [];
-        State.selectedCharmId = null;
+        State.selectedCharmIds = [];
+        syncSelectedCharmState();
         State.activeSlotIndex = null;
         State.newlyAddedIds = [];
         updateEstimationText();
@@ -1734,30 +1829,63 @@ function createBraceletComponentList() {
     uniqueId: bead.uniqueId
   }));
 
-  const selectedCharm = getSelectedCharmCatalogEntry();
-  if (!selectedCharm) {
+  const selectedCharms = getSelectedCharmCatalogEntries();
+  if (selectedCharms.length === 0) {
     return stoneComponents;
   }
 
-  const renderTuning = resolveCharmRenderTuning(selectedCharm);
-
-  return [
-    {
-      id: `charm-${selectedCharm.id}`,
+  const charmComponents = selectedCharms.map((charm) => {
+    const renderTuning = resolveCharmRenderTuning(charm);
+    const footprintMm = getCharmFootprintMm(charm);
+    return {
+      id: `charm-${charm.id}`,
       type: 'charm',
       layoutRole: 'loop',
       placementMode: 'sequence',
       track: 'main_loop',
-      sourceId: selectedCharm.id,
-      charmId: selectedCharm.id,
-      image: selectedCharm.image,
-      sizeCm: selectedCharm.sizeCm,
-      footprintMm: getCharmFootprintMm(selectedCharm),
-      sizeMm: getCharmFootprintMm(selectedCharm),
+      sourceId: charm.id,
+      charmId: charm.id,
+      image: charm.image,
+      sizeCm: charm.sizeCm,
+      footprintMm,
+      sizeMm: footprintMm,
       ...renderTuning,
-      uniqueId: `charm-${selectedCharm.id}`
-    },
-    ...stoneComponents
+      uniqueId: `charm-${charm.id}`
+    };
+  });
+
+  if (charmComponents.length === 1) {
+    return [
+      charmComponents[0],
+      ...stoneComponents
+    ];
+  }
+
+  const [topCharm, bottomCharm] = charmComponents.slice(0, 2);
+  const stoneTotalSizeMm = stoneComponents.reduce((sum, stone) => sum + stone.sizeMm, 0);
+  const totalLoopSizeMm = stoneTotalSizeMm + topCharm.sizeMm + bottomCharm.sizeMm;
+  const targetStoneBeforeBottomMm = Math.max(0, (totalLoopSizeMm / 2) - (bottomCharm.sizeMm / 2) - topCharm.sizeMm);
+  let bestSplitIndex = 0;
+  let bestSplitDelta = Infinity;
+  let accumulatedStoneSizeMm = 0;
+
+  for (let index = 0; index <= stoneComponents.length; index += 1) {
+    const delta = Math.abs(accumulatedStoneSizeMm - targetStoneBeforeBottomMm);
+    if (delta < bestSplitDelta) {
+      bestSplitDelta = delta;
+      bestSplitIndex = index;
+    }
+
+    if (index < stoneComponents.length) {
+      accumulatedStoneSizeMm += stoneComponents[index].sizeMm;
+    }
+  }
+
+  return [
+    topCharm,
+    ...stoneComponents.slice(0, bestSplitIndex),
+    bottomCharm,
+    ...stoneComponents.slice(bestSplitIndex)
   ];
 }
 
@@ -2004,7 +2132,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
         group.appendChild(charmImage);
         group.addEventListener('click', async () => {
-          await removeSelectedCharm();
+          await removeSelectedCharm(component.charmId);
         });
       } else {
         const stoneId = component.stoneId;
@@ -2207,10 +2335,7 @@ function createSvgDefs() {
 function renderStep3() {
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);
-  const totalStonesPrice = State.selectedStones.reduce((sum, b) => {
-    const sData = STONES.find(s => s.id === b.stoneId);
-    return sum + getStonePriceForSize(sData, b.size);
-  }, 0);
+  const pricing = calculateCurrentOrderPricing();
   
   const braceletLengthMm = validationState.braceletLengthMm;
   const totalDiameter = validationState.totalDiameter;
@@ -2221,7 +2346,7 @@ function renderStep3() {
   }
   
   // Render statistics text
-  DOM.canvasPriceText.textContent = `฿${totalStonesPrice.toLocaleString()}`;
+  DOM.canvasPriceText.textContent = `฿${pricing.subtotal.toLocaleString()}`;
   if (false) {
   
   const capText = `${State.selectedStones.length} / ${validationState.capacity} เน€เธกเนเธ”`;
@@ -2314,8 +2439,8 @@ async function renderStep4() {
   // Aggregate stones selected for receipt and meanings
   const aggregatedStones = {}; // key: stoneId_size, val: { stoneId, size, count, totalPrice }
   const uniqueStoneIds = new Set();
-  const selectedCharm = getSelectedCharmCatalogEntry();
-  const selectedCharmMeta = selectedCharm ? getCharmDisplayMeta(selectedCharm) : null;
+  const charmData = buildSelectedCharmOrderData();
+  const selectedCharms = charmData.charms;
   
   State.selectedStones.forEach(placedBead => {
     const key = `${placedBead.stoneId}_${placedBead.size}`;
@@ -2367,27 +2492,26 @@ async function renderStep4() {
     DOM.billingItemsList.appendChild(div);
   });
 
-  if (selectedCharm && selectedCharmMeta) {
-    const charmPrice = Number(selectedCharm.price || 0);
-    subtotal += charmPrice;
+  selectedCharms.forEach((selectedCharm) => {
+    subtotal += Number(selectedCharm.price || 0);
 
     const div = document.createElement('div');
     div.className = 'billing-item';
     div.innerHTML = `
       <div class="billing-item-info">
         <div class="billing-item-thumbnail">
-          <img class="billing-thumbnail-img" src="${selectedCharm.image}" alt="${selectedCharmMeta.nameEn}">
+          <img class="billing-thumbnail-img" src="${selectedCharm.image}" alt="${selectedCharm.nameEn}">
         </div>
         <div class="billing-item-name">
-          <h5>${selectedCharmMeta.nameTh} (${selectedCharmMeta.nameEn})</h5>
-          <p>${selectedCharm.sizeCm.toFixed(1)} cm (${getCharmFootprintMm(selectedCharm)}mm) x 1 ชิ้น</p>
+          <h5>${selectedCharm.nameTh} (${selectedCharm.nameEn})</h5>
+          <p>${Number(selectedCharm.sizeCm || 0).toFixed(1)} cm (${getCharmFootprintMm(selectedCharm)}mm) x 1 ชิ้น</p>
         </div>
       </div>
-      <div class="billing-item-price">฿${charmPrice.toLocaleString()}</div>
+      <div class="billing-item-price">฿${Number(selectedCharm.price || 0).toLocaleString()}</div>
     `;
 
     DOM.billingItemsList.appendChild(div);
-  }
+  });
   
   // Hardcoded 20% LINE promotion discount logic
   const discountPercent = 20;
@@ -2407,7 +2531,7 @@ async function renderStep4() {
   
   // Populate charm + stone meanings
   DOM.meaningsList.innerHTML = '';
-  buildStep4MeaningEntries(uniqueStoneIds).forEach((entry) => {
+  buildStep4MeaningEntries(uniqueStoneIds, selectedCharms).forEach((entry) => {
     DOM.meaningsList.appendChild(createMeaningItemElement(entry));
   });
 
@@ -2436,6 +2560,7 @@ function buildDesignConfigurationCode() {
     w: State.wristSize,
     b: State.beadSize,
     n: State.ownerName,
+    c: normalizeSelectedCharmIds(State.selectedCharmIds),
     s: State.selectedStones.map((stone) => ({ i: stone.stoneId, z: stone.size }))
   };
 
@@ -2659,7 +2784,7 @@ function getBraceletShowcaseRenderKey() {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
-    selectedCharmId: State.selectedCharmId,
+    selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
     selectedStones: State.selectedStones.map((bead) => `${bead.stoneId}:${bead.size}`)
   });
 }
@@ -3345,7 +3470,7 @@ async function handleLineOrder() {
   lines.push(`- Bead Selection: ${beadSizeText}`);
   const charmData = buildSelectedCharmOrderData();
   lines.push(`- Total Beads: ${State.selectedStones.length} beads`);
-  lines.push(`- Charm: ${charmData.hasCharm ? `${charmData.charmNameEn} (${charmData.charmSizeCm.toFixed(1)} cm)` : 'No Charm'}`);
+  lines.push(`- Charm: ${charmData.hasCharm ? charmData.charms.map((charm) => `${charm.nameEn} (${Number(charm.sizeCm || 0).toFixed(1)} cm)`).join(' + ') : 'No Charm'}`);
   lines.push(``);
   
   // Aggregate items
@@ -3359,9 +3484,9 @@ async function handleLineOrder() {
   Object.entries(counts).forEach(([item, count]) => {
     lines.push(`- ${item} x ${count} beads`);
   });
-  if (charmData.hasCharm) {
-    lines.push(`- ${charmData.charmNameEn} x 1 charm`);
-  }
+  charmData.charms.forEach((charm) => {
+    lines.push(`- ${charm.nameEn} x 1 charm`);
+  });
   lines.push(``);
   
   // Pricing
