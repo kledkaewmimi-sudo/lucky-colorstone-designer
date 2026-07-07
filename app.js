@@ -2620,11 +2620,24 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
           const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
           img.setAttributeNS("http://www.w3.org/1999/xlink", "href", spacerImageUrl);
-          img.setAttribute("x", bx - halfSpacer);
-          img.setAttribute("y", by - halfSpacer);
-          img.setAttribute("width", spacerSizePx);
-          img.setAttribute("height", spacerSizePx);
-          img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          const spacerBounds = spacerImageUrl ? charmVisibleBoundsCache.get(spacerImageUrl) : null;
+          if (spacerBounds) {
+            const placement = getVisibleBoundsPlacement(spacerSizePx, spacerSizePx, null, spacerBounds);
+            img.setAttribute("x", bx - halfSpacer + placement.x);
+            img.setAttribute("y", by - halfSpacer + placement.y);
+            img.setAttribute("width", placement.width);
+            img.setAttribute("height", placement.height);
+            img.setAttribute("preserveAspectRatio", "none");
+          } else {
+            img.setAttribute("x", bx - halfSpacer);
+            img.setAttribute("y", by - halfSpacer);
+            img.setAttribute("width", spacerSizePx);
+            img.setAttribute("height", spacerSizePx);
+            img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            if (spacerImageUrl) {
+              scheduleCharmVisibleBoundsDetection(spacerImageUrl);
+            }
+          }
           img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
           imgGroup.appendChild(img);
           group.appendChild(imgGroup);
@@ -3590,6 +3603,32 @@ function getCharmRenderPlacement(component, frameWidth, frameHeight, image = nul
   );
 }
 
+function getVisibleBoundsPlacement(frameWidth, frameHeight, image = null, bounds = null) {
+  const sourceWidth = image?.naturalWidth || image?.width || bounds?.sourceWidth || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || bounds?.sourceHeight || 0;
+
+  if (!sourceWidth || !sourceHeight) {
+    return {
+      width: frameWidth,
+      height: frameHeight,
+      x: 0,
+      y: 0
+    };
+  }
+
+  const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
+  const scale = Math.min(frameWidth / visibleBounds.width, frameHeight / visibleBounds.height);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+
+  return {
+    width,
+    height,
+    x: ((frameWidth - visibleBounds.width * scale) / 2) - (visibleBounds.minX * scale),
+    y: ((frameHeight - visibleBounds.height * scale) / 2) - (visibleBounds.minY * scale)
+  };
+}
+
 // Asynchronously pre-load render texture images
 async function preloadRenderImages(urls) {
   const cache = {};
@@ -3687,11 +3726,20 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
       }
     } else if (component.type === 'spacer' && imgObj) {
       if (component.spacerShape === 'ball') {
+        const spacerSizePx = bRadiusPx * 2;
+        const spacerBounds = getVisibleImageBounds(imgObj, imgUrl);
+        const placement = getVisibleBoundsPlacement(spacerSizePx, spacerSizePx, imgObj, spacerBounds);
         ctx.save();
         ctx.beginPath();
         ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
         ctx.clip();
-        ctx.drawImage(imgObj, -bRadiusPx, -bRadiusPx, bRadiusPx * 2, bRadiusPx * 2);
+        ctx.drawImage(
+          imgObj,
+          -bRadiusPx + placement.x,
+          -bRadiusPx + placement.y,
+          placement.width,
+          placement.height
+        );
         ctx.restore();
       } else {
         const spacerSizePx = bRadiusPx * 2;
