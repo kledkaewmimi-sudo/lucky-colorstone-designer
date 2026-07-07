@@ -1386,7 +1386,12 @@ function getBraceletLengthMm() {
 }
 
 function getCharmFootprintMm(charm) {
-  if (!charm || typeof charm.sizeCm !== 'number') return 0;
+  if (!charm) return 0;
+  const explicitFootprintMm = Number(charm.footprintMm);
+  if (Number.isFinite(explicitFootprintMm) && explicitFootprintMm > 0) {
+    return explicitFootprintMm;
+  }
+  if (typeof charm.sizeCm !== 'number') return 0;
   return charm.sizeCm * 10;
 }
 
@@ -1655,9 +1660,12 @@ function calculateCurrentOrderPricing() {
 
 function getResolvedNodeRotationRad(node) {
   if (node?.component?.type === 'charm') {
-    // Charm assets are authored upright, so add an extra quarter-turn
-    // relative to bead-facing rotation to keep them lying horizontally.
-    const baseRotation = node.centerAngle + Math.PI;
+    const isOutwardFacingBeeHeart = node.component.charmType === 'bee_heart';
+    // Most charm assets are authored upright and need a quarter-turn to lie
+    // across the bracelet. Bee heart pendants should hang outward instead.
+    const baseRotation = isOutwardFacingBeeHeart
+      ? node.centerAngle + (Math.PI * 1.5)
+      : node.centerAngle + Math.PI;
     const rotationOffsetRad = (normalizeCharmRotation(node.component.rotation) * Math.PI) / 180;
     return baseRotation + rotationOffsetRad;
   }
@@ -2216,6 +2224,7 @@ function createBraceletComponentList() {
       track: 'main_loop',
       sourceId: charm.id,
       charmId: charm.id,
+      charmType: charm.type || null,
       selectionIndex: charm.selectionIndex,
       charmInstanceKey: charm.charmInstanceKey,
       image: charm.image,
