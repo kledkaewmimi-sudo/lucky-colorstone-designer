@@ -157,6 +157,95 @@ let braceletShowcaseGenerationInFlight = false;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
+const SPACER_CATALOG = Object.freeze([
+  {
+    id: 'diamond_ball_orange',
+    nameTh: 'ไดมอนด์บอล สีส้ม',
+    nameEn: 'Diamond Ball Orange',
+    type: 'ball',
+    color: 'orange',
+    image: '/assets/spacers/diamond-ball-orange-9mm.png',
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0
+  },
+  {
+    id: 'diamond_ball_pink',
+    nameTh: 'ไดมอนด์บอล สีชมพู',
+    nameEn: 'Diamond Ball Pink',
+    type: 'ball',
+    color: 'pink',
+    image: '/assets/spacers/diamond-ball-pink-9mm.png',
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0
+  },
+  {
+    id: 'diamond_ball_purple',
+    nameTh: 'ไดมอนด์บอล สีม่วง',
+    nameEn: 'Diamond Ball Purple',
+    type: 'ball',
+    color: 'purple',
+    image: '/assets/spacers/diamond-ball-purple-9mm.png',
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0
+  },
+  {
+    id: 'diamond_ball_white',
+    nameTh: 'ไดมอนด์บอล สีขาว',
+    nameEn: 'Diamond Ball White',
+    type: 'ball',
+    color: 'white',
+    image: '/assets/spacers/diamond-ball-white-9mm.png',
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0
+  },
+  {
+    id: 'golden_ball',
+    nameTh: 'โกลเด้นบอล',
+    nameEn: 'Golden Ball',
+    type: 'ball',
+    color: 'gold',
+    image: '/assets/spacers/golden-ball-7mm.png',
+    displaySizeMm: 7,
+    effectiveLengthMm: 7,
+    renderSizeMm: 7,
+    price: 0
+  },
+  {
+    id: 'gold_flower',
+    nameTh: 'ดอกไม้ทอง',
+    nameEn: 'Gold Flower',
+    type: 'flat-spacer',
+    color: 'gold',
+    image: '/assets/spacers/flower-gold-6mm.png',
+    displaySizeMm: 6,
+    effectiveLengthMm: 1,
+    thicknessMm: 1,
+    renderSizeMm: 6,
+    price: 0
+  },
+  {
+    id: 'silver_flower',
+    nameTh: 'ดอกไม้เงิน',
+    nameEn: 'Silver Flower',
+    type: 'flat-spacer',
+    color: 'silver',
+    image: '/assets/spacers/flower-silver-6mm.png',
+    displaySizeMm: 6,
+    effectiveLengthMm: 1,
+    thicknessMm: 1,
+    renderSizeMm: 6,
+    price: 0
+  }
+]);
+const SPACER_CATALOG_MAP = new Map(SPACER_CATALOG.map((spacer) => [spacer.id, spacer]));
 
 function normalizeBeadSizeOption(value) {
   const beadSize = String(value || '').trim();
@@ -171,9 +260,115 @@ function getCurrentBeadSizeMm() {
 
 function normalizeSelectedStoneSizes() {
   const normalizedBeadSize = getCurrentBeadSizeMm();
-  State.selectedStones.forEach((bead) => {
-    bead.size = normalizedBeadSize;
+  State.selectedStones.forEach((item) => {
+    if ((item?.componentType || 'stone') === 'spacer') return;
+    item.size = normalizedBeadSize;
   });
+}
+
+function getSpacerCatalogEntry(spacerId) {
+  return SPACER_CATALOG_MAP.get(String(spacerId || '').trim()) || null;
+}
+
+function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSizeMm()) {
+  if (!item || typeof item !== 'object') return null;
+
+  const componentType = String(item.componentType || 'stone').trim().toLowerCase();
+  const uniqueId = Number.isFinite(Number(item.uniqueId)) ? Number(item.uniqueId) : null;
+
+  if (componentType === 'spacer') {
+    const spacerId = String(item.spacerId || item.id || '').trim();
+    const spacer = getSpacerCatalogEntry(spacerId);
+    if (!spacer) return null;
+
+    return {
+      componentType: 'spacer',
+      spacerId: spacer.id,
+      size: spacer.effectiveLengthMm,
+      uniqueId
+    };
+  }
+
+  const stoneId = String(item.stoneId || '').trim();
+  if (!stoneId) return null;
+  const size = Number.isFinite(Number(item.size)) ? Number(item.size) : normalizedBeadSize;
+
+  return {
+    componentType: 'stone',
+    stoneId,
+    size,
+    uniqueId
+  };
+}
+
+function normalizeSelectedLoopItems(source = []) {
+  const normalizedBeadSize = getCurrentBeadSizeMm();
+  if (!Array.isArray(source)) return [];
+
+  return source
+    .map((item) => normalizeSelectedLoopItem(item, normalizedBeadSize))
+    .filter(Boolean);
+}
+
+function getSelectedLoopItems() {
+  return normalizeSelectedLoopItems(State.selectedStones);
+}
+
+function isSelectedSpacerItem(item) {
+  return (item?.componentType || 'stone') === 'spacer';
+}
+
+function isSelectedStoneItem(item) {
+  return !isSelectedSpacerItem(item);
+}
+
+function getSelectedStoneItems() {
+  return getSelectedLoopItems().filter((item) => isSelectedStoneItem(item));
+}
+
+function getSelectedSpacerItems() {
+  return getSelectedLoopItems()
+    .map((item, sourceIndex) => {
+      if (!isSelectedSpacerItem(item)) return null;
+      const spacer = getSpacerCatalogEntry(item.spacerId);
+      if (!spacer) return null;
+      return {
+        ...spacer,
+        sourceIndex,
+        uniqueId: item.uniqueId,
+        effectiveLengthMm: spacer.effectiveLengthMm
+      };
+    })
+    .filter(Boolean);
+}
+
+function getLoopItemLengthMm(item) {
+  if (isSelectedSpacerItem(item)) {
+    const spacer = getSpacerCatalogEntry(item.spacerId);
+    return spacer ? spacer.effectiveLengthMm : 0;
+  }
+  return Number(item?.size || 0);
+}
+
+function createStoneSelectionItem(stoneId, size, uniqueId) {
+  return {
+    componentType: 'stone',
+    stoneId,
+    size,
+    uniqueId
+  };
+}
+
+function createSpacerSelectionItem(spacerId, uniqueId) {
+  const spacer = getSpacerCatalogEntry(spacerId);
+  if (!spacer) return null;
+
+  return {
+    componentType: 'spacer',
+    spacerId: spacer.id,
+    size: spacer.effectiveLengthMm,
+    uniqueId
+  };
 }
 
 function createEmptyShippingInfo() {
@@ -431,17 +626,19 @@ function loadPersistedState() {
           : [];
       State.selectedCharmIds = normalizeSelectedCharmIds(persistedCharmIds);
       syncSelectedCharmState();
-      State.selectedStones = parsed.selectedStones || [];
+      State.selectedStones = normalizeSelectedLoopItems(parsed.selectedStones || []);
       
       // Normalize unique IDs to prevent clashes and empty values
       const seenIds = new Set();
-      State.selectedStones.forEach((b, idx) => {
-        if (!b.uniqueId || seenIds.has(b.uniqueId)) {
-          b.uniqueId = idx + 1;
+      let maxUniqueId = 0;
+      State.selectedStones.forEach((item, idx) => {
+        if (!item.uniqueId || seenIds.has(item.uniqueId)) {
+          item.uniqueId = idx + 1;
         }
-        seenIds.add(b.uniqueId);
+        seenIds.add(item.uniqueId);
+        maxUniqueId = Math.max(maxUniqueId, Number(item.uniqueId) || 0);
       });
-      State.uniqueCounter = State.selectedStones.length;
+      State.uniqueCounter = maxUniqueId;
       normalizeSelectedStoneSizes();
       
       State.currentStep = parsed.currentStep || 1;
@@ -465,7 +662,7 @@ function saveState() {
     shippingInfo: normalizeShippingInfo(State.shippingInfo),
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
     selectedCharmId: State.selectedCharmIds[0] || null,
-    selectedStones: State.selectedStones,
+    selectedStones: normalizeSelectedLoopItems(State.selectedStones),
     currentStep: State.currentStep
   };
   localStorage.setItem('lucky_colorstone_state', JSON.stringify(stateCopy));
@@ -911,8 +1108,9 @@ function initBeadSizeOptions() {
       
       if (State.selectedStones.length > 0) {
         const newSize = getCurrentBeadSizeMm();
-        State.selectedStones.forEach(b => {
-          b.size = newSize;
+        State.selectedStones.forEach((item) => {
+          if (isSelectedSpacerItem(item)) return;
+          item.size = newSize;
         });
         adjustBeadsToNewCapacity();
       }
@@ -948,18 +1146,19 @@ function adjustBeadsToNewCapacity() {
   let usedLengthMm = 0;
   let keptCount = 0;
 
-  for (const bead of State.selectedStones) {
-    if ((usedLengthMm + bead.size) > usableBeadLengthMm + 1.0) {
+  for (const item of State.selectedStones) {
+    const itemLengthMm = getLoopItemLengthMm(item);
+    if ((usedLengthMm + itemLengthMm) > usableBeadLengthMm + 1.0) {
       break;
     }
-    usedLengthMm += bead.size;
+    usedLengthMm += itemLengthMm;
     keptCount += 1;
   }
 
   if (keptCount < State.selectedStones.length) {
     State.selectedStones = State.selectedStones.slice(0, keptCount);
     State.activeSlotIndex = null;
-    showToast(`Removed trailing beads to fit new size capacity.`);
+    showToast(`Removed trailing components to fit new size capacity.`);
   }
 }
 
@@ -1276,7 +1475,7 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
     .filter((component) => component.type === 'charm')
     .reduce((sum, component) => sum + (component.footprintMm || component.sizeMm || 0), 0);
   const stoneLengthMm = loopComponents
-    .filter((component) => component.type === 'stone')
+    .filter((component) => component.type !== 'charm')
     .reduce((sum, component) => sum + component.sizeMm, 0);
   const totalUsedLengthMm = stoneLengthMm + charmFootprintMm;
   const braceletLengthMm = braceletConfig.braceletLengthMm;
@@ -1398,25 +1597,59 @@ function buildSelectedCharmOrderData() {
   };
 }
 
+function buildSelectedSpacerOrderData() {
+  const selectedSpacers = getSelectedSpacerItems();
+  if (selectedSpacers.length === 0) {
+    return {
+      hasSpacer: false,
+      spacerCount: 0,
+      spacerIds: [],
+      spacers: []
+    };
+  }
+
+  return {
+    hasSpacer: true,
+    spacerCount: selectedSpacers.length,
+    spacerIds: selectedSpacers.map((spacer) => spacer.id),
+    spacers: selectedSpacers.map((spacer) => ({
+      spacerId: spacer.id,
+      nameTh: spacer.nameTh,
+      nameEn: spacer.nameEn,
+      type: spacer.type,
+      color: spacer.color,
+      image: spacer.image,
+      price: Number(spacer.price || 0),
+      displaySizeMm: spacer.displaySizeMm,
+      effectiveLengthMm: spacer.effectiveLengthMm,
+      thicknessMm: spacer.thicknessMm || null
+    }))
+  };
+}
+
 function calculateCurrentOrderPricing() {
-  const stonesSubtotal = State.selectedStones.reduce((sum, bead) => {
+  const stonesSubtotal = getSelectedStoneItems().reduce((sum, bead) => {
     const stoneData = STONES.find((stone) => stone.id === bead.stoneId);
     return sum + getStonePriceForSize(stoneData, bead.size);
   }, 0);
   const charmData = buildSelectedCharmOrderData();
+  const spacerData = buildSelectedSpacerOrderData();
   const charmSubtotal = charmData.charms.reduce((sum, charm) => sum + Number(charm.price || 0), 0);
-  const subtotal = stonesSubtotal + charmSubtotal;
+  const spacerSubtotal = spacerData.spacers.reduce((sum, spacer) => sum + Number(spacer.price || 0), 0);
+  const subtotal = stonesSubtotal + spacerSubtotal + charmSubtotal;
   const discountPercent = 20;
   const discount = Math.round(subtotal * 0.2);
   const netPrice = subtotal - discount;
 
   return {
     stonesSubtotal,
+    spacerSubtotal,
     subtotal,
     discountPercent,
     discount,
     netPrice,
-    charmData
+    charmData,
+    spacerData
   };
 }
 
@@ -1625,6 +1858,59 @@ function renderCharmOptions() {
 
   section.appendChild(grid);
   DOM.charmSectionMount.appendChild(section);
+  renderSpacerOptions();
+}
+
+function renderSpacerOptions() {
+  if (!DOM.charmSectionMount || State.currentStep !== 3) return;
+
+  const selectedSpacers = getSelectedSpacerItems();
+  const spacerCounts = selectedSpacers.reduce((counts, spacer) => {
+    counts[spacer.id] = (counts[spacer.id] || 0) + 1;
+    return counts;
+  }, {});
+
+  const section = document.createElement('section');
+  section.className = 'component-section';
+
+  const heading = document.createElement('div');
+  heading.className = 'section-heading';
+  heading.innerHTML = `
+    <div>
+      <h3>Spacer</h3>
+      <p>Add decorative spacer pieces to the bracelet loop. Flower spacers stay slim while only using 1mm of bracelet length.</p>
+    </div>
+  `;
+  section.appendChild(heading);
+
+  const grid = document.createElement('div');
+  grid.className = 'stone-catalog-grid';
+
+  SPACER_CATALOG.forEach((spacer) => {
+    const quantity = spacerCounts[spacer.id] || 0;
+    grid.appendChild(buildStoneCard({
+      rootTag: 'div',
+      dataAttributeName: 'spacer-id',
+      dataAttributeValue: spacer.id,
+      image: spacer.image,
+      imageAlt: spacer.nameEn,
+      imageClassName: 'stone-img spacer-card-img',
+      imageStyle: {
+        '--spacer-thumb-scale': spacer.type === 'flat-spacer' ? '0.78' : '0.96'
+      },
+      nameTh: spacer.nameTh,
+      nameEn: spacer.nameEn,
+      priceText: `${formatDisplayPrice(spacer.price)} • ${spacer.effectiveLengthMm}mm`,
+      isSelected: quantity > 0,
+      onCardClick: () => addSpacerToBracelet(spacer.id),
+      onActionClick: () => addSpacerToBracelet(spacer.id),
+      actionText: quantity > 0 ? String(quantity) : '+',
+      actionTitle: quantity > 0 ? 'Add Another Spacer' : 'Add Spacer'
+    }));
+  });
+
+  section.appendChild(grid);
+  DOM.charmSectionMount.appendChild(section);
 }
 
 // ==========================================
@@ -1733,11 +2019,7 @@ function fillEntireBracelet(stoneId) {
   
   while (currentTotalDiameter + placedSize <= usableBeadLengthMm + 1.0) {
     State.uniqueCounter++;
-    State.selectedStones.push({
-      stoneId: stoneId,
-      size: placedSize,
-      uniqueId: State.uniqueCounter
-    });
+    State.selectedStones.push(createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter));
     State.newlyAddedIds.push(State.uniqueCounter);
     currentTotalDiameter += placedSize;
   }
@@ -1746,6 +2028,32 @@ function fillEntireBracelet(stoneId) {
   showToast(`Filled entire bracelet with ${stoneData.nameTh}.`);
   renderStep3();
   saveState();
+}
+
+function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
+  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
+  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
+  const remainingMm = usableBeadLengthMm - currentTotalDiameter;
+
+  if (remainingMm < lengthMm) {
+    showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${lengthMm}mm)`);
+    return false;
+  }
+
+  State.newlyAddedIds = [loopItem.uniqueId];
+
+  if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
+    State.selectedStones.splice(State.activeSlotIndex, 0, loopItem);
+    State.activeSlotIndex = null;
+    showToast(`Added ${itemLabel} in chosen position.`);
+  } else {
+    State.selectedStones.push(loopItem);
+  }
+
+  renderStep3();
+  saveState();
+  syncStep3NextValidationUI();
+  return true;
 }
 
 // Add Stone Logic
@@ -1757,7 +2065,7 @@ function addStoneToBracelet(stoneId) {
   const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
   
   // Calculate total diameter of current beads
-  const currentTotalDiameter = State.selectedStones.reduce((sum, s) => sum + s.size, 0);
+  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
   
   // Dynamic remainingMm Calculation to prevent over-filling
   const remainingMm = usableBeadLengthMm - currentTotalDiameter;
@@ -1769,11 +2077,7 @@ function addStoneToBracelet(stoneId) {
   }
   
   State.uniqueCounter++;
-  const newBead = {
-    stoneId: stoneId,
-    size: placedSize,
-    uniqueId: State.uniqueCounter
-  };
+  const newBead = createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter);
   State.newlyAddedIds = [newBead.uniqueId];
   
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
@@ -1792,17 +2096,51 @@ function addStoneToBracelet(stoneId) {
   syncStep3NextValidationUI();
 }
 
-// Remove Stone Logic
-function removeStoneFromBracelet(index) {
-  if (index < 0 || index >= State.selectedStones.length) return;
-  const removed = State.selectedStones.splice(index, 1);
-  State.activeSlotIndex = null; // Reset selection
-  showToast("Bead removed.");
-  
+function addSpacerToBracelet(spacerId) {
+  const spacer = getSpacerCatalogEntry(spacerId);
+  if (!spacer) return;
+
+  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
+  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
+  const remainingMm = usableBeadLengthMm - currentTotalDiameter;
+
+  if (remainingMm < spacer.effectiveLengthMm) {
+    showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${spacer.effectiveLengthMm}mm)`);
+    return;
+  }
+
+  State.uniqueCounter++;
+  const newSpacer = createSpacerSelectionItem(spacer.id, State.uniqueCounter);
+  if (!newSpacer) return;
+  State.newlyAddedIds = [newSpacer.uniqueId];
+
+  if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
+    State.selectedStones.splice(State.activeSlotIndex, 0, newSpacer);
+    State.activeSlotIndex = null;
+    showToast(`Added ${spacer.nameEn} in chosen position.`);
+  } else {
+    State.selectedStones.push(newSpacer);
+  }
+
   renderStep3();
   saveState();
-  
   syncStep3NextValidationUI();
+}
+
+function removeLoopItemFromBracelet(index) {
+  if (index < 0 || index >= State.selectedStones.length) return;
+  const [removed] = State.selectedStones.splice(index, 1);
+  State.activeSlotIndex = null;
+  showToast(isSelectedSpacerItem(removed) ? "Spacer removed." : "Bead removed.");
+
+  renderStep3();
+  saveState();
+  syncStep3NextValidationUI();
+}
+
+// Remove Stone Logic
+function removeStoneFromBracelet(index) {
+  removeLoopItemFromBracelet(index);
 }
 
 function createBraceletConfig() {
@@ -1823,15 +2161,44 @@ function createBraceletConfig() {
 }
 
 function createBraceletComponentList() {
-  const stoneComponents = State.selectedStones.map((bead, index) => ({
-    id: bead.uniqueId,
-    type: 'stone',
-    layoutRole: 'loop',
-    sourceIndex: index,
-    stoneId: bead.stoneId,
-    sizeMm: bead.size,
-    uniqueId: bead.uniqueId
-  }));
+  const stoneComponents = State.selectedStones
+    .map((item, index) => {
+      if (isSelectedSpacerItem(item)) {
+        const spacer = getSpacerCatalogEntry(item.spacerId);
+        if (!spacer) return null;
+
+        return {
+          id: item.uniqueId,
+          type: 'spacer',
+          layoutRole: 'loop',
+          sourceIndex: index,
+          spacerId: spacer.id,
+          spacerShape: spacer.type,
+          nameTh: spacer.nameTh,
+          nameEn: spacer.nameEn,
+          image: spacer.image,
+          color: spacer.color,
+          displaySizeMm: spacer.displaySizeMm,
+          effectiveLengthMm: spacer.effectiveLengthMm,
+          renderSizeMm: spacer.renderSizeMm || spacer.displaySizeMm,
+          thicknessMm: spacer.thicknessMm || null,
+          price: Number(spacer.price || 0),
+          sizeMm: spacer.effectiveLengthMm,
+          uniqueId: item.uniqueId
+        };
+      }
+
+      return {
+        id: item.uniqueId,
+        type: 'stone',
+        layoutRole: 'loop',
+        sourceIndex: index,
+        stoneId: item.stoneId,
+        sizeMm: item.size,
+        uniqueId: item.uniqueId
+      };
+    })
+    .filter(Boolean);
 
   const selectedCharms = getSelectedCharmCatalogEntries();
   if (selectedCharms.length === 0) {
@@ -1900,7 +2267,10 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const buildResolvedNode = (item, index, itemAngleWidth, centerAngle, isFirstPlaceholder = false) => {
     const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
     const centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(centerAngle);
-    const radiusPx = (item.sizeMm / 2) * scaleMmToPx;
+    const visualSizeMm = item.kind === 'component' && Number.isFinite(Number(item.component?.renderSizeMm))
+      ? Number(item.component.renderSizeMm)
+      : item.sizeMm;
+    const radiusPx = (visualSizeMm / 2) * scaleMmToPx;
     const resolvedNode = {
       index,
       kind: item.kind,
@@ -1916,10 +2286,10 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
 
     if (item.kind === 'component') {
       resolvedNode.component = item.component;
-      resolvedNode.sourceIndex = item.component.type === 'stone' ? item.component.sourceIndex : null;
+      resolvedNode.sourceIndex = item.component.type === 'charm' ? null : item.component.sourceIndex;
       resolvedNode.uniqueClipId = `clip-${item.component.uniqueId}`;
       resolvedNode.isNewlyAdded = braceletConfig.newlyAddedIds.includes(item.component.uniqueId);
-      resolvedNode.isActiveSlot = item.component.type === 'stone' && item.component.sourceIndex === braceletConfig.activeSlotIndex;
+      resolvedNode.isActiveSlot = item.component.type !== 'charm' && item.component.sourceIndex === braceletConfig.activeSlotIndex;
     }
 
     return resolvedNode;
@@ -2076,7 +2446,7 @@ function getPlacedResolvedLayoutNodes(resolvedLayout, allowedComponentTypes = nu
 }
 
 function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
-  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, surfaceConfig.componentTypes || ['stone']);
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, surfaceConfig.componentTypes || ['stone', 'spacer']);
   const baseRadiusPx = resolvedLayout.braceletConfig.svg.radiusPx;
   const radiusScale = baseRadiusPx > 0 ? surfaceConfig.radiusPx / baseRadiusPx : 1;
 
@@ -2090,7 +2460,7 @@ function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
 }
 
 function projectResolvedLayoutToLinearMap(resolvedLayout, surfaceConfig) {
-  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, ['stone']);
+  const placedNodes = getPlacedResolvedLayoutNodes(resolvedLayout, surfaceConfig.componentTypes || ['stone', 'spacer']);
   const totalBeadSizeMm = placedNodes.reduce((sum, node) => sum + node.sizeMm, 0);
   const widthScale = totalBeadSizeMm > 0 ? (surfaceConfig.availableWidth / totalBeadSizeMm) : 5;
   const linearScale = Math.min(widthScale, surfaceConfig.maxRadiusPx * 2 / surfaceConfig.referenceSizeMm);
@@ -2222,6 +2592,55 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         group.addEventListener('click', async () => {
           await removeSelectedCharm(component.selectionIndex);
         });
+      } else if (component.type === 'spacer') {
+        const spacerSizePx = (component.renderSizeMm || component.sizeMm) * summary.scaleMmToPx;
+        const halfSpacer = spacerSizePx / 2;
+        const spacerImageUrl = component.image || '';
+        const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
+
+        if (component.spacerShape === 'ball') {
+          const uniqueClipId = node.uniqueClipId;
+          const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+          clip.setAttribute("id", uniqueClipId);
+          const clipCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          clipCircle.setAttribute("cx", bx);
+          clipCircle.setAttribute("cy", by);
+          clipCircle.setAttribute("r", bRadiusPx);
+          clip.appendChild(clipCircle);
+          defs.appendChild(clip);
+
+          const baseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          baseCircle.setAttribute("cx", bx);
+          baseCircle.setAttribute("cy", by);
+          baseCircle.setAttribute("r", bRadiusPx);
+          baseCircle.setAttribute("fill", component.color === 'white' ? '#F5F3EE' : '#E8DCC7');
+          group.appendChild(baseCircle);
+
+          const imgGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
+          const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+          img.setAttributeNS("http://www.w3.org/1999/xlink", "href", spacerImageUrl);
+          img.setAttribute("x", bx - halfSpacer);
+          img.setAttribute("y", by - halfSpacer);
+          img.setAttribute("width", spacerSizePx);
+          img.setAttribute("height", spacerSizePx);
+          img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+          imgGroup.appendChild(img);
+          group.appendChild(imgGroup);
+        } else {
+          const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+          img.setAttributeNS("http://www.w3.org/1999/xlink", "href", spacerImageUrl);
+          img.setAttribute("x", bx - halfSpacer);
+          img.setAttribute("y", by - halfSpacer);
+          img.setAttribute("width", spacerSizePx);
+          img.setAttribute("height", spacerSizePx);
+          img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+          group.appendChild(img);
+        }
+
+        group.addEventListener('click', () => removeLoopItemFromBracelet(node.sourceIndex));
       } else {
         const stoneId = component.stoneId;
         const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
@@ -2294,7 +2713,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         
         const currentIdx = node.sourceIndex;
-        group.addEventListener('click', () => removeStoneFromBracelet(currentIdx));
+        group.addEventListener('click', () => removeLoopItemFromBracelet(currentIdx));
       }
       
     } else {
@@ -2346,7 +2765,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       // Add active index slot choice
       group.addEventListener('click', () => {
         State.activeSlotIndex = placedCount; // Click placeholders defaults to append
-        showToast("Select a stone from the catalog below to add!");
+        showToast("Select a stone or spacer from the catalog below to add!");
       });
     }
     
@@ -2450,7 +2869,7 @@ function renderStep3() {
   }
   DOM.canvasBeadCountText.textContent = capText;
   }
-  DOM.canvasBeadCountText.textContent = `${State.selectedStones.length} / ${validationState.capacity} beads`;
+  DOM.canvasBeadCountText.textContent = `${getSelectedStoneItems().length} / ${validationState.capacity} beads`;
   
   const remainingSpaceText = `เหลือ ${remainingSpace.toFixed(1)} mm`;
   DOM.canvasSpaceText.textContent = remainingSpaceText;
@@ -2521,7 +2940,9 @@ async function renderStep4() {
   DOM.specLength.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`;
   
   DOM.specBeadSize.textContent = `${getCurrentBeadSizeMm()}mm`;
-  DOM.specBeadsCount.textContent = `${State.selectedStones.length} เม็ด`;
+  const selectedStoneItems = getSelectedStoneItems();
+  const spacerData = buildSelectedSpacerOrderData();
+  DOM.specBeadsCount.textContent = `${selectedStoneItems.length} เม็ด`;
   renderShippingForm();
   
   // Aggregate stones selected for receipt and meanings
@@ -2530,7 +2951,7 @@ async function renderStep4() {
   const charmData = buildSelectedCharmOrderData();
   const selectedCharms = charmData.charms;
   
-  State.selectedStones.forEach(placedBead => {
+  selectedStoneItems.forEach((placedBead) => {
     const key = `${placedBead.stoneId}_${placedBead.size}`;
     uniqueStoneIds.add(placedBead.stoneId);
     
@@ -2600,6 +3021,41 @@ async function renderStep4() {
 
     DOM.billingItemsList.appendChild(div);
   });
+
+  const aggregatedSpacers = spacerData.spacers.reduce((spacerMap, spacer) => {
+    const key = `${spacer.spacerId}_${spacer.effectiveLengthMm}`;
+    if (!spacerMap[key]) {
+      spacerMap[key] = {
+        ...spacer,
+        count: 0,
+        totalPrice: 0
+      };
+    }
+    spacerMap[key].count += 1;
+    spacerMap[key].totalPrice += Number(spacer.price || 0);
+    return spacerMap;
+  }, {});
+
+  Object.values(aggregatedSpacers).forEach((spacer) => {
+    subtotal += Number(spacer.totalPrice || 0);
+
+    const div = document.createElement('div');
+    div.className = 'billing-item';
+    div.innerHTML = `
+      <div class="billing-item-info">
+        <div class="billing-item-thumbnail">
+          <img class="billing-thumbnail-img" src="${spacer.image}" alt="${spacer.nameEn}">
+        </div>
+        <div class="billing-item-name">
+          <h5>${spacer.nameTh} (${spacer.nameEn})</h5>
+          <p>${spacer.displaySizeMm}mm visual / ${spacer.effectiveLengthMm}mm length x ${spacer.count} ชิ้น</p>
+        </div>
+      </div>
+      <div class="billing-item-price">฿${Number(spacer.totalPrice || 0).toLocaleString()}</div>
+    `;
+
+    DOM.billingItemsList.appendChild(div);
+  });
   
   // Hardcoded 20% LINE promotion discount logic
   const discountPercent = 20;
@@ -2644,12 +3100,20 @@ async function renderStep4() {
 }
 
 function buildDesignConfigurationCode() {
+  const selectedStoneItems = getSelectedStoneItems();
+  const selectedSpacerItems = getSelectedSpacerItems();
   const designData = {
     w: State.wristSize,
     b: State.beadSize,
     n: State.ownerName,
     c: normalizeSelectedCharmIds(State.selectedCharmIds),
-    s: State.selectedStones.map((stone) => ({ i: stone.stoneId, z: stone.size }))
+    s: selectedStoneItems.map((stone) => ({ i: stone.stoneId, z: stone.size })),
+    p: selectedSpacerItems.map((spacer) => ({ i: spacer.id, l: spacer.effectiveLengthMm })),
+    l: State.selectedStones.map((item) => (
+      isSelectedSpacerItem(item)
+        ? { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) }
+        : { t: 'stone', i: item.stoneId, z: item.size }
+    ))
   };
 
   return btoa(unescape(encodeURIComponent(JSON.stringify(designData))));
@@ -2658,19 +3122,20 @@ function buildDesignConfigurationCode() {
 function buildCurrentOrderPayload(overrides = {}) {
   const pricing = calculateCurrentOrderPricing();
   const shippingInfo = getShippingInfoSnapshot({ trimValues: true });
+  const selectedStoneItems = getSelectedStoneItems();
 
   return {
     customerName: State.ownerName || "Khun Guest",
     lineUserId: State.lineUserId || '',
     wristSize: State.wristSize,
     beadSize: State.beadSize,
-    totalBeads: State.selectedStones.length,
-    beads: State.selectedStones.map((stone) => {
+    totalBeads: selectedStoneItems.length,
+    beads: selectedStoneItems.map((stone) => {
       const stoneData = STONES.find((entry) => entry.id === stone.stoneId);
       return {
         stoneId: stone.stoneId,
         name: stoneData ? stoneData.name : 'Unknown Stone',
-        nameTh: stoneData ? stoneData.nameTh : 'เธซเธดเธเธเธฃเธฃเธกเธเธฒเธ•เธด',
+        nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
         color: stoneData ? stoneData.color : '#E2E8F0',
         image: stoneData ? stoneData.image : '',
         size: stone.size
@@ -2688,6 +3153,7 @@ function buildCurrentOrderPayload(overrides = {}) {
     province: shippingInfo.province,
     postalCode: shippingInfo.postalCode,
     ...pricing.charmData,
+    ...pricing.spacerData,
     ...overrides
   };
 }
@@ -2873,13 +3339,20 @@ function getBraceletShowcaseRenderKey() {
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
-    selectedStones: State.selectedStones.map((bead) => `${bead.stoneId}:${bead.size}`)
+    selectedStones: State.selectedStones.map((item) => (
+      isSelectedSpacerItem(item)
+        ? `spacer:${item.spacerId}:${getLoopItemLengthMm(item)}`
+        : `stone:${item.stoneId}:${item.size}`
+    ))
   });
 }
 
 function getComponentRenderImageUrl(component) {
   if (!component) return '';
   if (component.type === 'charm') {
+    return component.image || '';
+  }
+  if (component.type === 'spacer') {
     return component.image || '';
   }
   if (component.type === 'stone') {
@@ -3150,7 +3623,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
 
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const uniqueUrls = [];
-  getPlacedResolvedLayoutNodes(resolvedLayout, ['stone', 'charm']).forEach((node) => {
+  getPlacedResolvedLayoutNodes(resolvedLayout, ['stone', 'spacer', 'charm']).forEach((node) => {
     const imageUrl = getComponentRenderImageUrl(node.component);
     if (imageUrl && !uniqueUrls.includes(imageUrl)) {
       uniqueUrls.push(imageUrl);
@@ -3176,7 +3649,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     centerX: cx,
     centerY: cy,
     radiusPx: rCanvas,
-    componentTypes: ['stone', 'charm']
+    componentTypes: ['stone', 'spacer', 'charm']
   });
 
   heroNodes.forEach((node) => {
@@ -3211,6 +3684,18 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
           placement.height
         );
         ctx.restore();
+      }
+    } else if (component.type === 'spacer' && imgObj) {
+      if (component.spacerShape === 'ball') {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
+        ctx.clip();
+        ctx.drawImage(imgObj, -bRadiusPx, -bRadiusPx, bRadiusPx * 2, bRadiusPx * 2);
+        ctx.restore();
+      } else {
+        const spacerSizePx = bRadiusPx * 2;
+        ctx.drawImage(imgObj, -spacerSizePx / 2, -spacerSizePx / 2, spacerSizePx, spacerSizePx);
       }
     } else if (imgObj) {
       ctx.save();
@@ -3316,7 +3801,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   rCtx.fillText(`${State.wristSize.toFixed(1)} cm`, 150, 315);
   rCtx.fillText(`${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`, 310, 315);
   rCtx.fillText(`${getCurrentBeadSizeMm()}mm`, 470, 315);
-  rCtx.fillText(`${State.selectedStones.length} beads`, 630, 315);
+  rCtx.fillText(`${getSelectedStoneItems().length} beads`, 630, 315);
 
   drawDashedDivider(370);
 
@@ -3479,12 +3964,35 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
     if (showToastNotification) showToast("Bracelet is empty!");
     return null;
   }
-  
+
+  const nextOrderPayload = buildCurrentOrderPayload({
+    configurationCode: buildDesignConfigurationCode(),
+    ...overrides
+  });
+
+  if (nextOrderPayload.stripeCheckoutSessionId) {
+    const existingOrders = await getSharedOrders();
+    const existingOrder = Array.isArray(existingOrders)
+      ? existingOrders.find((order) => order?.stripeCheckoutSessionId === nextOrderPayload.stripeCheckoutSessionId)
+      : null;
+    if (existingOrder) {
+      return existingOrder;
+    }
+  }
+
+  const savedOrder = await addSharedOrder(nextOrderPayload);
+  if (showToastNotification && savedOrder) {
+    showToast(`Order ${savedOrder.id} submitted to CRM!`);
+  }
+  return savedOrder;
+
   const pricing = calculateCurrentOrderPricing();
   const discountPercent = pricing.discountPercent;
   const discount = pricing.discount;
   const netPrice = pricing.netPrice;
   const charmData = pricing.charmData;
+  const spacerData = pricing.spacerData;
+  const selectedStoneItems = getSelectedStoneItems();
   
   // Design details encoded payload
   const base64Code = buildDesignConfigurationCode();
@@ -3513,6 +4021,20 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
     configurationCode: base64Code,
     ...charmData
   };
+
+  orderPayload.totalBeads = selectedStoneItems.length;
+  orderPayload.beads = selectedStoneItems.map((stone) => {
+    const stoneData = STONES.find((st) => st.id === stone.stoneId);
+    return {
+      stoneId: stone.stoneId,
+      name: stoneData ? stoneData.name : 'Unknown Stone',
+      nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
+      color: stoneData ? stoneData.color : '#E2E8F0',
+      image: stoneData ? stoneData.image : '',
+      size: stone.size
+    };
+  });
+  Object.assign(orderPayload, spacerData);
 
   Object.assign(orderPayload, overrides);
 
@@ -3557,14 +4079,17 @@ async function handleLineOrder() {
   const beadSizeText = `${getCurrentBeadSizeMm()} mm`;
   lines.push(`- Bead Selection: ${beadSizeText}`);
   const charmData = buildSelectedCharmOrderData();
-  lines.push(`- Total Beads: ${State.selectedStones.length} beads`);
+  const spacerData = buildSelectedSpacerOrderData();
+  const selectedStoneItems = getSelectedStoneItems();
+  lines.push(`- Total Beads: ${selectedStoneItems.length} beads`);
   lines.push(`- Charm: ${charmData.hasCharm ? charmData.charms.map((charm) => `${charm.nameEn} (${Number(charm.sizeCm || 0).toFixed(1)} cm)`).join(' + ') : 'No Charm'}`);
+  lines.push(`- Spacer: ${spacerData.hasSpacer ? `${spacerData.spacerCount} selected` : 'No Spacer'}`);
   lines.push(``);
   
   // Aggregate items
   lines.push(`💎 *Design Details:*`);
   const counts = {};
-  State.selectedStones.forEach(b => {
+  selectedStoneItems.forEach((b) => {
     const key = `${b.stoneId} (${b.size}mm)`;
     counts[key] = (counts[key] || 0) + 1;
   });
@@ -3575,6 +4100,17 @@ async function handleLineOrder() {
   charmData.charms.forEach((charm) => {
     lines.push(`- ${charm.nameEn} x 1 charm`);
   });
+  if (spacerData.hasSpacer) {
+    const spacerCounts = spacerData.spacers.reduce((spacerMap, spacer) => {
+      const key = `${spacer.nameEn} (${spacer.displaySizeMm}mm visual / ${spacer.effectiveLengthMm}mm length)`;
+      spacerMap[key] = (spacerMap[key] || 0) + 1;
+      return spacerMap;
+    }, {});
+
+    Object.entries(spacerCounts).forEach(([item, count]) => {
+      lines.push(`- ${item} x ${count} spacer`);
+    });
+  }
   lines.push(``);
   
   // Pricing
@@ -3594,7 +4130,14 @@ async function handleLineOrder() {
     w: State.wristSize,
     b: State.beadSize,
     n: State.ownerName,
-    s: State.selectedStones.map(s => ({ i: s.stoneId, z: s.size }))
+    c: normalizeSelectedCharmIds(State.selectedCharmIds),
+    s: selectedStoneItems.map((stone) => ({ i: stone.stoneId, z: stone.size })),
+    p: spacerData.spacers.map((spacer) => ({ i: spacer.spacerId, l: spacer.effectiveLengthMm })),
+    l: State.selectedStones.map((item) => (
+      isSelectedSpacerItem(item)
+        ? { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) }
+        : { t: 'stone', i: item.stoneId, z: item.size }
+    ))
   };
   const jsonString = JSON.stringify(designData);
   const base64Code = btoa(unescape(encodeURIComponent(jsonString)));
