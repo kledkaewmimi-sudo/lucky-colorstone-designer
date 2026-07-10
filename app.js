@@ -1851,6 +1851,11 @@ function getCharmRenderFrameDimensions(component, scaleMmToPx) {
   };
 }
 
+function getCharmOutwardOffsetPx(component, scaleMmToPx) {
+  const offsetMm = Number(component?.outwardOffsetMm);
+  return Number.isFinite(offsetMm) ? offsetMm * scaleMmToPx : 0;
+}
+
 async function removeSelectedCharm(selectionIndex = null, showToastNotification = true) {
   const normalizedSelectionIndex = Number.isInteger(selectionIndex)
     ? selectionIndex
@@ -2420,6 +2425,7 @@ function createBraceletComponentList() {
           renderHeightMm: 18,
           ...renderTuning,
           visualScale: 0.46,
+          outwardOffsetMm: 2.4,
           uniqueId: item.uniqueId
         };
       }
@@ -2771,6 +2777,9 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 
       if (component.type === 'charm') {
         const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, summary.scaleMmToPx);
+        const charmOutwardOffsetPx = getCharmOutwardOffsetPx(component, summary.scaleMmToPx);
+        const charmCenterX = bx + (Math.cos(node.centerAngle) * charmOutwardOffsetPx);
+        const charmCenterY = by + (Math.sin(node.centerAngle) * charmOutwardOffsetPx);
         const halfCharmWidth = charmFrameWidthPx / 2;
         const halfCharmHeight = charmFrameHeightPx / 2;
         const charmImageUrl = component.image || '';
@@ -2782,8 +2791,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
           clip.setAttribute("id", clipId);
           const clipRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          clipRect.setAttribute("x", bx - halfCharmWidth);
-          clipRect.setAttribute("y", by - halfCharmHeight);
+          clipRect.setAttribute("x", charmCenterX - halfCharmWidth);
+          clipRect.setAttribute("y", charmCenterY - halfCharmHeight);
           clipRect.setAttribute("width", charmFrameWidthPx);
           clipRect.setAttribute("height", charmFrameHeightPx);
           clip.appendChild(clipRect);
@@ -2808,8 +2817,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             rotationRad,
             node.centerAngle,
           );
-          charmImage.setAttribute("x", bx - halfCharmWidth + placement.x);
-          charmImage.setAttribute("y", by - halfCharmHeight + placement.y);
+          charmImage.setAttribute("x", charmCenterX - halfCharmWidth + placement.x);
+          charmImage.setAttribute("y", charmCenterY - halfCharmHeight + placement.y);
           charmImage.setAttribute("width", placement.width);
           charmImage.setAttribute("height", placement.height);
         } else {
@@ -2822,8 +2831,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             rotationRad,
             node.centerAngle
           );
-          charmImage.setAttribute("x", bx - halfCharmWidth + fallbackPlacement.x);
-          charmImage.setAttribute("y", by - halfCharmHeight + fallbackPlacement.y);
+          charmImage.setAttribute("x", charmCenterX - halfCharmWidth + fallbackPlacement.x);
+          charmImage.setAttribute("y", charmCenterY - halfCharmHeight + fallbackPlacement.y);
           charmImage.setAttribute("width", fallbackPlacement.width);
           charmImage.setAttribute("height", fallbackPlacement.height);
           charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -2831,7 +2840,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
             scheduleCharmVisibleBoundsDetection(charmImageUrl);
           }
         }
-        charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+        charmImage.setAttribute("transform", `rotate(${angleDeg}, ${charmCenterX}, ${charmCenterY})`);
         group.appendChild(charmImage);
         group.addEventListener('click', async () => {
           if (isSlotPlaceableCharmType(component.charmType)) {
@@ -3938,9 +3947,14 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const bRadiusPx = node.renderRadiusPx;
     const imgUrl = getComponentRenderImageUrl(component);
     const imgObj = imageCache[imgUrl];
+    const outwardOffsetPx = component.type === 'charm'
+      ? getCharmOutwardOffsetPx(component, node.renderScalePxPerMm || 0)
+      : 0;
+    const renderCenterX = bx + (Math.cos(node.centerAngle) * outwardOffsetPx);
+    const renderCenterY = by + (Math.sin(node.centerAngle) * outwardOffsetPx);
 
     ctx.save();
-    ctx.translate(bx, by);
+    ctx.translate(renderCenterX, renderCenterY);
     ctx.rotate(node.renderRotationRad); // Rotate to face outward
 
     if (component.type === 'charm') {
