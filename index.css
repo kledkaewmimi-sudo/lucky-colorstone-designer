@@ -1015,6 +1015,10 @@ option {
   margin-bottom: 12px;
 }
 
+#charmSectionMount .section-heading {
+  margin-bottom: 8px;
+}
+
 .section-heading h3 {
   font-size: 16px;
   font-weight: 700;
@@ -1456,6 +1460,16 @@ button.stone-card {
   transform-origin: center;
 }
 
+.spacer-card-img {
+  clip-path: none;
+  width: 100%;
+  height: 100%;
+  padding: 6px;
+  object-fit: contain;
+  transform: scale(var(--spacer-thumb-scale, 1));
+  transform-origin: center;
+}
+
 .stone-card-media-label {
   display: flex;
   align-items: center;
@@ -1475,6 +1489,10 @@ button.stone-card {
 
 .stone-card:hover .charm-card-img {
   transform: none;
+}
+
+.stone-card:hover .spacer-card-img {
+  transform: scale(var(--spacer-thumb-scale, 1));
 }
 
 .info-icon-btn {
@@ -2531,7 +2549,7 @@ button.stone-card {
 }
 
 #canvasPriceText {
-  color: var(--color-velvet-red) !important;
+  color: #047a3d !important;
 }
 
 /* Modal and Dialog Buttons Theme Sync */

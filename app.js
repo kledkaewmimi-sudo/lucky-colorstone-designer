@@ -2004,7 +2004,6 @@ function renderCharmOptions() {
   heading.innerHTML = `
     <div>
       <h3>Charm</h3>
-      <p>Select up to 2 charms or leave the bracelet without one.</p>
     </div>
   `;
   section.appendChild(heading);
@@ -2015,21 +2014,6 @@ function renderCharmOptions() {
   const selectCharm = (charmId) => {
     applySelectedCharm(charmId);
   };
-
-  grid.appendChild(buildStoneCard({
-    rootTag: 'div',
-    dataAttributeName: 'charm-id',
-    dataAttributeValue: '',
-    mediaLabel: 'No Charm',
-    nameTh: 'No Charm',
-    nameEn: 'Leave bracelet clean',
-    priceText: formatDisplayPrice(0),
-    isSelected: selectedCharms.length === 0,
-    onCardClick: () => selectCharm(null),
-    onActionClick: () => selectCharm(null),
-    actionText: '+',
-    actionTitle: 'Select No Charm'
-  }));
 
   visibleCharms.forEach((charm) => {
     const isSelected = selectedCharmIdSet.has(charm.id);
@@ -2079,7 +2063,6 @@ function renderSpacerOptions() {
   heading.innerHTML = `
     <div>
       <h3>Spacer</h3>
-      <p>Add decorative spacer pieces to the bracelet loop. Flower spacers stay slim while only using 1mm of bracelet length.</p>
     </div>
   `;
   section.appendChild(heading);
