@@ -2415,9 +2415,9 @@ function createBraceletComponentList() {
           sizeCm: charm.sizeCm,
           footprintMm: getCharmFootprintMm(charm),
           sizeMm: getCharmFootprintMm(charm),
-          renderSizeMm: 27,
-          renderWidthMm: 18.5,
-          renderHeightMm: 27,
+          renderSizeMm: 18,
+          renderWidthMm: 12.5,
+          renderHeightMm: 18,
           ...renderTuning,
           uniqueId: item.uniqueId
         };
