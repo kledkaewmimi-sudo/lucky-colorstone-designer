@@ -2419,7 +2419,7 @@ function createBraceletComponentList() {
           renderWidthMm: 12.5,
           renderHeightMm: 18,
           ...renderTuning,
-          visualScale: 0.58,
+          visualScale: 0.46,
           uniqueId: item.uniqueId
         };
       }
