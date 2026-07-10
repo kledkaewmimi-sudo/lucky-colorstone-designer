@@ -490,5 +490,140 @@
       "anchor": "top"
     },
     "displayOrder": 120
+  },
+  {
+    "id": "bh01",
+    "entityType": "charm",
+    "sku": "BH01",
+    "slug": "bh01",
+    "name": {
+      "en": "Bee Heart Blue",
+      "th": "บีฮาร์ต สีน้ำเงิน"
+    },
+    "categoryId": "takrud",
+    "type": "bee_heart",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/takrud/bee=blue.png"
+    },
+    "pricing": {
+      "base": 990
+    },
+    "business": {
+      "sizeCm": 2.7,
+      "footprintMm": 2
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 1,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1,
+      "contactInsetLeft": 0.4,
+      "contactInsetRight": 0.4,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 140
+  },
+  {
+    "id": "bh02",
+    "entityType": "charm",
+    "sku": "BH02",
+    "slug": "bh02",
+    "name": {
+      "en": "Bee Heart Orange",
+      "th": "บีฮาร์ต สีส้ม"
+    },
+    "categoryId": "takrud",
+    "type": "bee_heart",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/takrud/bee-orange.png"
+    },
+    "pricing": {
+      "base": 990
+    },
+    "business": {
+      "sizeCm": 2.7,
+      "footprintMm": 2
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 1,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1,
+      "contactInsetLeft": 0.4,
+      "contactInsetRight": 0.4,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 150
+  },
+  {
+    "id": "bh03",
+    "entityType": "charm",
+    "sku": "BH03",
+    "slug": "bh03",
+    "name": {
+      "en": "Bee Heart Purple",
+      "th": "บีฮาร์ต สีม่วง"
+    },
+    "categoryId": "takrud",
+    "type": "bee_heart",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/takrud/bee-purple.png"
+    },
+    "pricing": {
+      "base": 990
+    },
+    "business": {
+      "sizeCm": 2.7,
+      "footprintMm": 2
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 1,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1,
+      "contactInsetLeft": 0.4,
+      "contactInsetRight": 0.4,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 160
   }
 ]
