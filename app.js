@@ -33,6 +33,7 @@ const State = {
   landingDismissed: false,  // Keep landing visible until CTA is clicked
   selectedStones: [],       // Array of placed beads: { stoneId: string, size: number, uniqueId: number }
   activeCategory: 'all',    // Current category filter in Step 3
+  activeCatalogSection: 'stones', // Step 3 catalog type filter: stones, charms, spacer
   activeSlotIndex: null,    // Index of selected slot in Step 3 (-1 or null for append)
   uniqueCounter: 0,         // For generating unique IDs for animation keys
   newlyAddedIds: []         // Track newly added bead unique IDs for pop animation
@@ -91,6 +92,8 @@ const DOM = {
   btnResetBracelet: document.getElementById('btnResetBracelet'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
   mixedToggleBtns: document.querySelectorAll('.mixed-toggle-btn'),
+  catalogTypeFilter: document.getElementById('catalogTypeFilter'),
+  catalogTypeTabs: document.querySelectorAll('.catalog-type-tab'),
   catalogFiltersContainer: document.getElementById('catalogFiltersContainer'),
   stoneCatalogGrid: document.getElementById('stoneCatalogGrid'),
   
@@ -1997,7 +2000,7 @@ function renderCharmOptions() {
   DOM.charmSectionMount.innerHTML = '';
 
   const section = document.createElement('section');
-  section.className = 'component-section';
+  section.className = 'component-section charm-component-section';
 
   const heading = document.createElement('div');
   heading.className = 'section-heading';
@@ -2056,7 +2059,7 @@ function renderSpacerOptions() {
   }, {});
 
   const section = document.createElement('section');
-  section.className = 'component-section';
+  section.className = 'component-section spacer-component-section';
 
   const heading = document.createElement('div');
   heading.className = 'section-heading';
@@ -2137,6 +2140,48 @@ function setupDesignerEvents() {
   DOM.btnBackToSteps.addEventListener('click', () => {
     goToStep(2);
   });
+
+  DOM.catalogTypeTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const section = tab.getAttribute('data-catalog-section');
+      if (!['stones', 'charms', 'spacer'].includes(section)) return;
+      State.activeCatalogSection = section;
+      syncCatalogSectionFilter();
+    });
+  });
+}
+
+function syncCatalogSectionFilter() {
+  const activeSection = ['stones', 'charms', 'spacer'].includes(State.activeCatalogSection)
+    ? State.activeCatalogSection
+    : 'stones';
+
+  DOM.catalogTypeTabs.forEach((tab) => {
+    const isActive = tab.getAttribute('data-catalog-section') === activeSection;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  const catalogContainer = DOM.catalogFiltersContainer?.closest('.catalog-container');
+  if (catalogContainer) {
+    catalogContainer.hidden = activeSection !== 'stones';
+  }
+
+  if (DOM.mixedSizeSelectorBar) {
+    DOM.mixedSizeSelectorBar.hidden = activeSection !== 'stones';
+  }
+
+  if (DOM.charmSectionMount) {
+    DOM.charmSectionMount.hidden = activeSection === 'stones';
+    DOM.charmSectionMount
+      .querySelectorAll('.component-section')
+      .forEach((section) => {
+        const isCharmSection = section.classList.contains('charm-component-section');
+        const isSpacerSection = section.classList.contains('spacer-component-section');
+        section.hidden = (activeSection === 'charms' && !isCharmSection)
+          || (activeSection === 'spacer' && !isSpacerSection);
+      });
+  }
 }
 
 function initCatalogFilters() {
@@ -3153,6 +3198,7 @@ function renderStep3() {
   renderBraceletCanvas(resolvedLayout);
   renderCatalogGrid();
   renderCharmOptions();
+  syncCatalogSectionFilter();
   syncStep3NextValidationUI(validationState);
   
   // Clear newly added IDs after rendering so they only animate on insertion
