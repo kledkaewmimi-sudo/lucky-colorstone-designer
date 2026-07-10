@@ -261,13 +261,25 @@ function getCurrentBeadSizeMm() {
 function normalizeSelectedStoneSizes() {
   const normalizedBeadSize = getCurrentBeadSizeMm();
   State.selectedStones.forEach((item) => {
-    if ((item?.componentType || 'stone') === 'spacer') return;
+    if (isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
     item.size = normalizedBeadSize;
   });
 }
 
 function getSpacerCatalogEntry(spacerId) {
   return SPACER_CATALOG_MAP.get(String(spacerId || '').trim()) || null;
+}
+
+function getCharmCatalogEntry(charmId) {
+  return legacyCharmCatalogCache.find((charm) => charm?.id === String(charmId || '').trim()) || null;
+}
+
+function isSlotPlaceableCharmType(charmType) {
+  return String(charmType || '').trim().toLowerCase() === 'bee_heart';
+}
+
+function isAnchoredCharmType(charmType) {
+  return !isSlotPlaceableCharmType(charmType);
 }
 
 function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSizeMm()) {
@@ -285,6 +297,20 @@ function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSize
       componentType: 'spacer',
       spacerId: spacer.id,
       size: spacer.effectiveLengthMm,
+      uniqueId
+    };
+  }
+
+  if (componentType === 'charm') {
+    const charmId = String(item.charmId || item.id || '').trim();
+    if (!charmId) return null;
+    const charm = getCharmCatalogEntry(charmId);
+    if (charm && !isSlotPlaceableCharmType(charm.type)) return null;
+
+    return {
+      componentType: 'charm',
+      charmId: charm?.id || charmId,
+      size: charm ? getCharmFootprintMm(charm) : Number(item.size || 2),
       uniqueId
     };
   }
@@ -318,8 +344,12 @@ function isSelectedSpacerItem(item) {
   return (item?.componentType || 'stone') === 'spacer';
 }
 
+function isSelectedCharmItem(item) {
+  return (item?.componentType || 'stone') === 'charm';
+}
+
 function isSelectedStoneItem(item) {
-  return !isSelectedSpacerItem(item);
+  return !isSelectedSpacerItem(item) && !isSelectedCharmItem(item);
 }
 
 function getSelectedStoneItems() {
@@ -342,12 +372,54 @@ function getSelectedSpacerItems() {
     .filter(Boolean);
 }
 
+function getSelectedLoopCharmItems() {
+  return getSelectedLoopItems()
+    .map((item, sourceIndex) => {
+      if (!isSelectedCharmItem(item)) return null;
+      const charm = getCharmCatalogEntry(item.charmId);
+      if (!charm || !isSlotPlaceableCharmType(charm.type)) return null;
+      const charmMeta = getCharmDisplayMeta(charm);
+      return {
+        ...charm,
+        ...charmMeta,
+        sourceIndex,
+        uniqueId: item.uniqueId,
+        footprintMm: getCharmFootprintMm(charm)
+      };
+    })
+    .filter(Boolean);
+}
+
 function getLoopItemLengthMm(item) {
   if (isSelectedSpacerItem(item)) {
     const spacer = getSpacerCatalogEntry(item.spacerId);
     return spacer ? spacer.effectiveLengthMm : 0;
   }
+  if (isSelectedCharmItem(item)) {
+    const charm = getCharmCatalogEntry(item.charmId);
+    return charm ? getCharmFootprintMm(charm) : Number(item?.size || 2);
+  }
   return Number(item?.size || 0);
+}
+
+function serializeSelectedLoopItem(item) {
+  if (isSelectedSpacerItem(item)) {
+    return { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) };
+  }
+  if (isSelectedCharmItem(item)) {
+    return { t: 'charm', i: item.charmId, l: getLoopItemLengthMm(item) };
+  }
+  return { t: 'stone', i: item.stoneId, z: item.size };
+}
+
+function getSelectedLoopItemRenderKey(item) {
+  if (isSelectedSpacerItem(item)) {
+    return `spacer:${item.spacerId}:${getLoopItemLengthMm(item)}`;
+  }
+  if (isSelectedCharmItem(item)) {
+    return `charm:${item.charmId}:${getLoopItemLengthMm(item)}:${item.uniqueId}`;
+  }
+  return `stone:${item.stoneId}:${item.size}`;
 }
 
 function createStoneSelectionItem(stoneId, size, uniqueId) {
@@ -367,6 +439,18 @@ function createSpacerSelectionItem(spacerId, uniqueId) {
     componentType: 'spacer',
     spacerId: spacer.id,
     size: spacer.effectiveLengthMm,
+    uniqueId
+  };
+}
+
+function createCharmSelectionItem(charmId, uniqueId) {
+  const charm = getCharmCatalogEntry(charmId);
+  if (!charm || !isSlotPlaceableCharmType(charm.type)) return null;
+
+  return {
+    componentType: 'charm',
+    charmId: charm.id,
+    size: getCharmFootprintMm(charm),
     uniqueId
   };
 }
@@ -400,8 +484,43 @@ function normalizeSelectedCharmIds(source = []) {
 }
 
 function syncSelectedCharmState() {
-  State.selectedCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  State.selectedCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds)
+    .filter((charmId) => {
+      const charm = getCharmCatalogEntry(charmId);
+      return !charm || isAnchoredCharmType(charm.type);
+    });
   State.selectedCharmId = State.selectedCharmIds[0] || null;
+}
+
+function migrateSlotPlaceableCharmSelectionsIntoLoop() {
+  const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  if (currentCharmIds.length === 0) return;
+
+  const anchoredCharmIds = [];
+  const migratedLoopItems = [];
+
+  currentCharmIds.forEach((charmId) => {
+    const charm = getCharmCatalogEntry(charmId);
+    if (charm && isSlotPlaceableCharmType(charm.type)) {
+      State.uniqueCounter += 1;
+      const loopCharm = createCharmSelectionItem(charm.id, State.uniqueCounter);
+      if (loopCharm) {
+        migratedLoopItems.push(loopCharm);
+      }
+      return;
+    }
+    anchoredCharmIds.push(charmId);
+  });
+
+  if (migratedLoopItems.length === 0) {
+    State.selectedCharmIds = anchoredCharmIds;
+    syncSelectedCharmState();
+    return;
+  }
+
+  State.selectedCharmIds = anchoredCharmIds;
+  syncSelectedCharmState();
+  State.selectedStones.push(...migratedLoopItems);
 }
 
 function getShippingInfoSnapshot({ trimValues = false } = {}) {
@@ -811,6 +930,9 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 
 async function renderStepViews() {
   legacyCharmCatalogCache = await getLegacyCharmCatalog();
+  migrateSlotPlaceableCharmSelectionsIntoLoop();
+  State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
+  syncSelectedCharmState();
 
   DOM.stepViews.forEach((view, idx) => {
     const stepNum = idx + 1;
@@ -1109,7 +1231,7 @@ function initBeadSizeOptions() {
       if (State.selectedStones.length > 0) {
         const newSize = getCurrentBeadSizeMm();
         State.selectedStones.forEach((item) => {
-          if (isSelectedSpacerItem(item)) return;
+          if (isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
           item.size = newSize;
         });
         adjustBeadsToNewCapacity();
@@ -1358,7 +1480,7 @@ function getSelectedCharmCatalogEntry() {
   return getSelectedCharmCatalogEntries()[0] || null;
 }
 
-function getSelectedCharmCatalogEntries() {
+function getSelectedAnchoredCharmCatalogEntries() {
   const selectedIds = normalizeSelectedCharmIds(State.selectedCharmIds);
   if (selectedIds.length === 0) return [];
 
@@ -1374,11 +1496,24 @@ function getSelectedCharmCatalogEntries() {
         charmInstanceKey: `${charmId}_${selectionIndex}`
       };
     })
+    .filter((charm) => charm && isAnchoredCharmType(charm.type));
+}
+
+function getSelectedCharmCatalogEntries() {
+  const anchoredCharms = getSelectedAnchoredCharmCatalogEntries();
+  const loopCharms = getSelectedLoopCharmItems().map((charm) => ({
+    ...charm,
+    selectionIndex: anchoredCharms.length + charm.sourceIndex,
+    charmInstanceKey: `loop_${charm.id}_${charm.uniqueId}`
+  }));
+
+  return anchoredCharms
+    .concat(loopCharms)
     .filter(Boolean);
 }
 
 function getSelectedCharmFootprintMm() {
-  return getSelectedCharmCatalogEntries().reduce((sum, charm) => sum + getCharmFootprintMm(charm), 0);
+  return getSelectedAnchoredCharmCatalogEntries().reduce((sum, charm) => sum + getCharmFootprintMm(charm), 0);
 }
 
 function getBraceletLengthMm() {
@@ -1476,15 +1611,15 @@ function getUsableBeadLengthMm() {
 
 function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
   const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
-  const charmFootprintMm = loopComponents
-    .filter((component) => component.type === 'charm')
+  const anchoredCharmFootprintMm = loopComponents
+    .filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType))
     .reduce((sum, component) => sum + (component.footprintMm || component.sizeMm || 0), 0);
-  const stoneLengthMm = loopComponents
-    .filter((component) => component.type !== 'charm')
+  const sequencedLengthMm = loopComponents
+    .filter((component) => component.type !== 'charm' || isSlotPlaceableCharmType(component.charmType))
     .reduce((sum, component) => sum + component.sizeMm, 0);
-  const totalUsedLengthMm = stoneLengthMm + charmFootprintMm;
+  const totalUsedLengthMm = anchoredCharmFootprintMm + sequencedLengthMm;
   const braceletLengthMm = braceletConfig.braceletLengthMm;
-  const usableBeadLengthMm = Math.max(0, braceletLengthMm - charmFootprintMm);
+  const usableBeadLengthMm = Math.max(0, braceletLengthMm - anchoredCharmFootprintMm);
   const remainingLengthMm = braceletLengthMm - totalUsedLengthMm;
   const uniformCapacity = braceletConfig.beadSizeMode === 'mixed'
     ? null
@@ -1492,8 +1627,8 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
 
   return {
     braceletLengthMm,
-    charmFootprintMm,
-    stoneLengthMm,
+    charmFootprintMm: anchoredCharmFootprintMm,
+    stoneLengthMm: sequencedLengthMm,
     totalUsedLengthMm,
     usableBeadLengthMm,
     remainingLengthMm,
@@ -1509,10 +1644,13 @@ function getCurrentBraceletCapacityMetrics() {
 function applySelectedCharm(charmId) {
   const nextCharmId = String(charmId || '').trim();
   const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+  const currentLoopCharms = getSelectedLoopCharmItems();
+  const totalSelectedCharms = currentCharmIds.length + currentLoopCharms.length;
 
   if (!nextCharmId) {
-    if (currentCharmIds.length === 0) return;
+    if (currentCharmIds.length === 0 && currentLoopCharms.length === 0) return;
     State.selectedCharmIds = [];
+    State.selectedStones = State.selectedStones.filter((item) => !isSelectedCharmItem(item));
     syncSelectedCharmState();
     State.activeSlotIndex = null;
     adjustBeadsToNewCapacity();
@@ -1529,6 +1667,29 @@ function applySelectedCharm(charmId) {
 
   const selectedCharm = getVisibleCharmCatalog().find((charm) => charm.id === nextCharmId);
   if (!selectedCharm) return;
+
+  if (isSlotPlaceableCharmType(selectedCharm.type)) {
+    if (totalSelectedCharms >= 2) {
+      showToast('You can select up to 2 charms.');
+      return;
+    }
+
+    State.uniqueCounter += 1;
+    const loopCharm = createCharmSelectionItem(selectedCharm.id, State.uniqueCounter);
+    if (!loopCharm) return;
+    const itemLabel = getCharmDisplayMeta(selectedCharm).nameEn || selectedCharm.nameEn || 'Bee Heart';
+    const added = addLoopItemToBracelet(loopCharm, itemLabel, getCharmFootprintMm(selectedCharm));
+    if (added) {
+      updateEstimationText();
+      renderCharmOptions();
+    }
+    return;
+  }
+
+  if (totalSelectedCharms >= 2) {
+    showToast('You can select up to 2 charms.');
+    return;
+  }
 
   if (currentCharmIds.length === 0) {
     State.selectedCharmIds = [nextCharmId];
@@ -1672,31 +1833,58 @@ function getResolvedNodeRotationRad(node) {
   return node.centerAngle + Math.PI / 2;
 }
 
-async function removeSelectedCharm(selectionIndex = null, showToastNotification = true) {
-  const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
-  if (currentCharmIds.length === 0) return;
+function getCharmRenderFrameDimensions(component, scaleMmToPx) {
+  const renderWidthMm = Number(component?.renderWidthMm);
+  const renderHeightMm = Number(component?.renderHeightMm);
+  if (Number.isFinite(renderWidthMm) && renderWidthMm > 0 && Number.isFinite(renderHeightMm) && renderHeightMm > 0) {
+    return {
+      widthPx: renderWidthMm * scaleMmToPx,
+      heightPx: renderHeightMm * scaleMmToPx
+    };
+  }
 
+  const renderSizeMm = Number(component?.renderSizeMm ?? component?.sizeMm);
+  const frameSizePx = Math.max(0, renderSizeMm) * scaleMmToPx;
+  return {
+    widthPx: frameSizePx,
+    heightPx: frameSizePx
+  };
+}
+
+async function removeSelectedCharm(selectionIndex = null, showToastNotification = true) {
   const normalizedSelectionIndex = Number.isInteger(selectionIndex)
     ? selectionIndex
     : Number.isFinite(Number(selectionIndex))
       ? Number(selectionIndex)
-      : currentCharmIds.length - 1;
-  if (normalizedSelectionIndex < 0 || normalizedSelectionIndex >= currentCharmIds.length) return;
+      : getSelectedCharmCatalogEntries().length - 1;
+  const selectedCharms = getSelectedCharmCatalogEntries();
+  if (normalizedSelectionIndex < 0 || normalizedSelectionIndex >= selectedCharms.length) return;
 
-  const nextCharmIds = currentCharmIds.filter((_, index) => index !== normalizedSelectionIndex);
+  const selectedCharm = selectedCharms[normalizedSelectionIndex];
+  if (isSlotPlaceableCharmType(selectedCharm?.type)) {
+    const loopCharm = getSelectedLoopCharmItems().find((charm) => charm.uniqueId === selectedCharm.uniqueId);
+    if (!loopCharm) return;
+    removeLoopItemFromBracelet(loopCharm.sourceIndex, false);
+  } else {
+    const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+    const anchoredIndex = currentCharmIds.findIndex((charmId, index) => (
+      index === normalizedSelectionIndex && charmId === selectedCharm?.id
+    ));
+    if (anchoredIndex < 0) return;
 
-  State.selectedCharmIds = nextCharmIds;
-  syncSelectedCharmState();
-  State.activeSlotIndex = null;
-  updateEstimationText();
-  saveState();
+    State.selectedCharmIds = currentCharmIds.filter((_, index) => index !== anchoredIndex);
+    syncSelectedCharmState();
+    State.activeSlotIndex = null;
+    updateEstimationText();
+    saveState();
 
-  if (State.currentStep === 3) {
-    renderCharmOptions();
-    renderStep3();
-    syncStep3NextValidationUI();
-  } else if (State.currentStep === 4) {
-    await renderStep4();
+    if (State.currentStep === 3) {
+      renderCharmOptions();
+      renderStep3();
+      syncStep3NextValidationUI();
+    } else if (State.currentStep === 4) {
+      await renderStep4();
+    }
   }
 
   if (showToastNotification) {
@@ -1798,8 +1986,8 @@ function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
   const visibleCharms = getVisibleCharmCatalog();
-  const selectedCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
-  const selectedCharmIdSet = new Set(selectedCharmIds.filter((charmId) => visibleCharms.some((charm) => charm.id === charmId)));
+  const selectedCharms = getSelectedCharmCatalogEntries();
+  const selectedCharmIdSet = new Set(selectedCharms.map((charm) => charm.id));
   const thumbnailTargetRatio = getCharmCatalogThumbnailTargetRatio(visibleCharms);
   DOM.charmSectionMount.innerHTML = '';
 
@@ -1831,7 +2019,7 @@ function renderCharmOptions() {
     nameTh: 'No Charm',
     nameEn: 'Leave bracelet clean',
     priceText: formatDisplayPrice(0),
-    isSelected: selectedCharmIds.length === 0,
+    isSelected: selectedCharms.length === 0,
     onCardClick: () => selectCharm(null),
     onActionClick: () => selectCharm(null),
     actionText: '+',
@@ -2135,12 +2323,22 @@ function addSpacerToBracelet(spacerId) {
   syncStep3NextValidationUI();
 }
 
-function removeLoopItemFromBracelet(index) {
+function removeLoopItemFromBracelet(index, showToastNotification = true) {
   if (index < 0 || index >= State.selectedStones.length) return;
   const [removed] = State.selectedStones.splice(index, 1);
   State.activeSlotIndex = null;
-  showToast(isSelectedSpacerItem(removed) ? "Spacer removed." : "Bead removed.");
+  if (showToastNotification) {
+    if (isSelectedSpacerItem(removed)) {
+      showToast("Spacer removed.");
+    } else if (isSelectedCharmItem(removed)) {
+      showToast("Charm removed.");
+    } else {
+      showToast("Bead removed.");
+    }
+  }
 
+  updateEstimationText();
+  renderCharmOptions();
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -2169,7 +2367,7 @@ function createBraceletConfig() {
 }
 
 function createBraceletComponentList() {
-  const stoneComponents = State.selectedStones
+  const loopComponents = State.selectedStones
     .map((item, index) => {
       if (isSelectedSpacerItem(item)) {
         const spacer = getSpacerCatalogEntry(item.spacerId);
@@ -2196,6 +2394,35 @@ function createBraceletComponentList() {
         };
       }
 
+      if (isSelectedCharmItem(item)) {
+        const charm = getCharmCatalogEntry(item.charmId);
+        if (!charm || !isSlotPlaceableCharmType(charm.type)) return null;
+
+        const renderTuning = resolveCharmRenderTuning(charm);
+        return {
+          id: item.uniqueId,
+          type: 'charm',
+          layoutRole: 'loop',
+          placementMode: 'sequence',
+          track: 'main_loop',
+          sourceIndex: index,
+          sourceId: charm.id,
+          charmId: charm.id,
+          charmType: charm.type || null,
+          selectionIndex: index,
+          charmInstanceKey: `loop_${charm.id}_${item.uniqueId}`,
+          image: charm.image,
+          sizeCm: charm.sizeCm,
+          footprintMm: getCharmFootprintMm(charm),
+          sizeMm: getCharmFootprintMm(charm),
+          renderSizeMm: 27,
+          renderWidthMm: 18.5,
+          renderHeightMm: 27,
+          ...renderTuning,
+          uniqueId: item.uniqueId
+        };
+      }
+
       return {
         id: item.uniqueId,
         type: 'stone',
@@ -2208,9 +2435,9 @@ function createBraceletComponentList() {
     })
     .filter(Boolean);
 
-  const selectedCharms = getSelectedCharmCatalogEntries();
+  const selectedCharms = getSelectedAnchoredCharmCatalogEntries();
   if (selectedCharms.length === 0) {
-    return stoneComponents;
+    return loopComponents;
   }
 
   const charmComponents = selectedCharms.map((charm) => {
@@ -2239,13 +2466,13 @@ function createBraceletComponentList() {
   if (charmComponents.length === 1) {
     return [
       charmComponents[0],
-      ...stoneComponents
+      ...loopComponents
     ];
   }
 
   return [
     ...charmComponents,
-    ...stoneComponents
+    ...loopComponents
   ];
 }
 
@@ -2295,16 +2522,16 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
 
     if (item.kind === 'component') {
       resolvedNode.component = item.component;
-      resolvedNode.sourceIndex = item.component.type === 'charm' ? null : item.component.sourceIndex;
+      resolvedNode.sourceIndex = Number.isInteger(item.component.sourceIndex) ? item.component.sourceIndex : null;
       resolvedNode.uniqueClipId = `clip-${item.component.uniqueId}`;
       resolvedNode.isNewlyAdded = braceletConfig.newlyAddedIds.includes(item.component.uniqueId);
-      resolvedNode.isActiveSlot = item.component.type !== 'charm' && item.component.sourceIndex === braceletConfig.activeSlotIndex;
+      resolvedNode.isActiveSlot = Number.isInteger(item.component.sourceIndex) && item.component.sourceIndex === braceletConfig.activeSlotIndex;
     }
 
     return resolvedNode;
   };
 
-  const charmComponents = loopComponents.filter((component) => component.type === 'charm');
+  const charmComponents = loopComponents.filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType));
   if (charmComponents.length === 2) {
     const [topCharm, bottomCharm] = charmComponents;
     const fillerItems = [
@@ -2405,7 +2632,12 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   }
 
   let accumulatedAngle = -Math.PI / 2;
-  if (loopItems.length > 0 && loopItems[0].kind === 'component' && loopItems[0].component.type === 'charm') {
+  if (
+    loopItems.length > 0 &&
+    loopItems[0].kind === 'component' &&
+    loopItems[0].component.type === 'charm' &&
+    isAnchoredCharmType(loopItems[0].component.charmType)
+  ) {
     const firstItemAngleWidth = (loopItems[0].sizeMm / loopCircumferenceMm) * 2 * Math.PI;
     accumulatedAngle -= firstItemAngleWidth / 2;
   }
@@ -2464,6 +2696,7 @@ function projectResolvedLayoutToCircle(resolvedLayout, surfaceConfig) {
     renderCenterX: surfaceConfig.centerX + surfaceConfig.radiusPx * Math.cos(node.centerAngle),
     renderCenterY: surfaceConfig.centerY + surfaceConfig.radiusPx * Math.sin(node.centerAngle),
     renderRadiusPx: node.radiusPx * radiusScale,
+    renderScalePxPerMm: resolvedLayout.summary.scaleMmToPx * radiusScale,
     renderRotationRad: getResolvedNodeRotationRad(node)
   }));
 }
@@ -2536,8 +2769,9 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       group.setAttribute("class", `bead-node placed ${node.isNewlyAdded ? 'newly-added' : ''}`);
 
       if (component.type === 'charm') {
-        const charmDiameterPx = component.sizeMm * summary.scaleMmToPx;
-        const halfCharm = charmDiameterPx / 2;
+        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, summary.scaleMmToPx);
+        const halfCharmWidth = charmFrameWidthPx / 2;
+        const halfCharmHeight = charmFrameHeightPx / 2;
         const charmImageUrl = component.image || '';
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
         const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
@@ -2547,10 +2781,10 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
           clip.setAttribute("id", clipId);
           const clipRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          clipRect.setAttribute("x", bx - halfCharm);
-          clipRect.setAttribute("y", by - halfCharm);
-          clipRect.setAttribute("width", charmDiameterPx);
-          clipRect.setAttribute("height", charmDiameterPx);
+          clipRect.setAttribute("x", bx - halfCharmWidth);
+          clipRect.setAttribute("y", by - halfCharmHeight);
+          clipRect.setAttribute("width", charmFrameWidthPx);
+          clipRect.setAttribute("height", charmFrameHeightPx);
           clip.appendChild(clipRect);
           defs.appendChild(clip);
         }
@@ -2566,29 +2800,29 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         if (charmBounds) {
           const placement = getCharmRenderPlacement(
             component,
-            charmDiameterPx,
-            charmDiameterPx,
+            charmFrameWidthPx,
+            charmFrameHeightPx,
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
             charmBounds,
             rotationRad,
             node.centerAngle,
           );
-          charmImage.setAttribute("x", bx - halfCharm + placement.x);
-          charmImage.setAttribute("y", by - halfCharm + placement.y);
+          charmImage.setAttribute("x", bx - halfCharmWidth + placement.x);
+          charmImage.setAttribute("y", by - halfCharmHeight + placement.y);
           charmImage.setAttribute("width", placement.width);
           charmImage.setAttribute("height", placement.height);
         } else {
           const fallbackPlacement = getCharmRenderPlacement(
             component,
-            charmDiameterPx,
-            charmDiameterPx,
+            charmFrameWidthPx,
+            charmFrameHeightPx,
             null,
             null,
             rotationRad,
             node.centerAngle
           );
-          charmImage.setAttribute("x", bx - halfCharm + fallbackPlacement.x);
-          charmImage.setAttribute("y", by - halfCharm + fallbackPlacement.y);
+          charmImage.setAttribute("x", bx - halfCharmWidth + fallbackPlacement.x);
+          charmImage.setAttribute("y", by - halfCharmHeight + fallbackPlacement.y);
           charmImage.setAttribute("width", fallbackPlacement.width);
           charmImage.setAttribute("height", fallbackPlacement.height);
           charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -2599,7 +2833,11 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
         group.appendChild(charmImage);
         group.addEventListener('click', async () => {
-          await removeSelectedCharm(component.selectionIndex);
+          if (isSlotPlaceableCharmType(component.charmType)) {
+            removeLoopItemFromBracelet(node.sourceIndex);
+          } else {
+            await removeSelectedCharm(component.selectionIndex);
+          }
         });
       } else if (component.type === 'spacer') {
         const spacerSizePx = (component.renderSizeMm || component.sizeMm) * summary.scaleMmToPx;
@@ -3131,11 +3369,7 @@ function buildDesignConfigurationCode() {
     c: normalizeSelectedCharmIds(State.selectedCharmIds),
     s: selectedStoneItems.map((stone) => ({ i: stone.stoneId, z: stone.size })),
     p: selectedSpacerItems.map((spacer) => ({ i: spacer.id, l: spacer.effectiveLengthMm })),
-    l: State.selectedStones.map((item) => (
-      isSelectedSpacerItem(item)
-        ? { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) }
-        : { t: 'stone', i: item.stoneId, z: item.size }
-    ))
+    l: State.selectedStones.map((item) => serializeSelectedLoopItem(item))
   };
 
   return btoa(unescape(encodeURIComponent(JSON.stringify(designData))));
@@ -3361,11 +3595,7 @@ function getBraceletShowcaseRenderKey() {
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
-    selectedStones: State.selectedStones.map((item) => (
-      isSelectedSpacerItem(item)
-        ? `spacer:${item.spacerId}:${getLoopItemLengthMm(item)}`
-        : `stone:${item.stoneId}:${item.size}`
-    ))
+    selectedStones: State.selectedStones.map((item) => getSelectedLoopItemRenderKey(item))
   });
 }
 
@@ -3714,20 +3944,20 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
 
     if (component.type === 'charm') {
       if (imgObj) {
-        const charmSizePx = bRadiusPx * 2;
+        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, node.renderScalePxPerMm || 0);
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getCharmRenderPlacement(component, charmSizePx, charmSizePx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
+        const placement = getCharmRenderPlacement(component, charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
         const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
         ctx.save();
         if (useCharmClip) {
           ctx.beginPath();
-          ctx.rect(-charmSizePx / 2, -charmSizePx / 2, charmSizePx, charmSizePx);
+          ctx.rect(-charmFrameWidthPx / 2, -charmFrameHeightPx / 2, charmFrameWidthPx, charmFrameHeightPx);
           ctx.clip();
         }
         ctx.drawImage(
           imgObj,
-          -charmSizePx / 2 + placement.x,
-          -charmSizePx / 2 + placement.y,
+          -charmFrameWidthPx / 2 + placement.x,
+          -charmFrameHeightPx / 2 + placement.y,
           placement.width,
           placement.height
         );
@@ -4190,11 +4420,7 @@ async function handleLineOrder() {
     c: normalizeSelectedCharmIds(State.selectedCharmIds),
     s: selectedStoneItems.map((stone) => ({ i: stone.stoneId, z: stone.size })),
     p: spacerData.spacers.map((spacer) => ({ i: spacer.spacerId, l: spacer.effectiveLengthMm })),
-    l: State.selectedStones.map((item) => (
-      isSelectedSpacerItem(item)
-        ? { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) }
-        : { t: 'stone', i: item.stoneId, z: item.size }
-    ))
+    l: State.selectedStones.map((item) => serializeSelectedLoopItem(item))
   };
   const jsonString = JSON.stringify(designData);
   const base64Code = btoa(unescape(encodeURIComponent(jsonString)));
