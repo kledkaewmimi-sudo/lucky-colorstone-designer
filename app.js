@@ -2392,8 +2392,8 @@ function createBraceletConfig() {
     activeSlotIndex: State.activeSlotIndex,
     newlyAddedIds: State.newlyAddedIds || [],
     svg: {
-      centerX: 165,
-      centerY: 165,
+      centerX: 125,
+      centerY: 125,
       radiusPx: 82
     }
   };
