@@ -217,6 +217,9 @@ const DOM = {
   btnInvoiceModalClose: document.getElementById('btnInvoiceModalClose'),
   btnPrintInvoice: document.getElementById('btnPrintInvoice'),
   btnCopyInvoiceMessage: document.getElementById('btnCopyInvoiceMessage'),
+  orderDetailModal: document.getElementById('orderDetailModal'),
+  btnOrderDetailModalClose: document.getElementById('btnOrderDetailModalClose'),
+  orderDetailBody: document.getElementById('orderDetailBody'),
   confirmModal: document.getElementById('confirmModal'),
   confirmModalTitle: document.getElementById('confirmModalTitle'),
   confirmModalMessage: document.getElementById('confirmModalMessage'),
@@ -1765,6 +1768,155 @@ function formatNotificationTimestamp(timestamp) {
   });
 }
 
+function formatDetailDateTime(value) {
+  if (!value) return '';
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  return parsed.toLocaleString('th-TH', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function formatDetailMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '';
+  return `฿${amount.toLocaleString()} THB`;
+}
+
+function detailValue(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized ? escapeHtml(normalized) : '&mdash;';
+}
+
+function detailDateValue(value) {
+  return detailValue(formatDetailDateTime(value));
+}
+
+function detailMoneyValue(value) {
+  return detailValue(formatDetailMoney(value));
+}
+
+function getOrderShippingInfo(order = {}) {
+  const shippingInfo = order.shippingInfo && typeof order.shippingInfo === 'object'
+    ? order.shippingInfo
+    : {};
+
+  return {
+    recipientName: shippingInfo.recipientName || order.recipientName || '',
+    phoneNumber: shippingInfo.phoneNumber || order.phoneNumber || '',
+    addressLine: shippingInfo.addressLine || order.addressLine || '',
+    province: shippingInfo.province || order.province || '',
+    postalCode: shippingInfo.postalCode || order.postalCode || ''
+  };
+}
+
+function getOrderCharmDetailEntries(order = {}) {
+  if (Array.isArray(order.charms) && order.charms.length > 0) {
+    return aggregateOrderDetailItems(
+      order.charms,
+      (charm) => `${charm.id || charm.charmId || charm.sku || charm.nameEn || charm.nameTh || 'charm'}_${charm.sizeCm || ''}`,
+      (charm) => {
+        const name = charm.nameTh && charm.nameEn
+          ? `${charm.nameTh} (${charm.nameEn})`
+          : charm.nameEn || charm.nameTh || charm.sku || charm.id || 'Charm';
+        const meta = [charm.sku, charm.sizeCm ? `${Number(charm.sizeCm).toFixed(1)} cm` : '']
+          .filter(Boolean)
+          .join(' • ');
+        return meta ? `${name} - ${meta}` : name;
+      }
+    );
+  }
+
+  if (!order.hasCharm) return [];
+
+  return [{
+    label: getOrderCharmDisplayText(order),
+    quantity: Number(order.charmCount || 1) || 1
+  }];
+}
+
+function aggregateOrderDetailItems(items = [], keyBuilder, labelBuilder) {
+  const itemMap = new Map();
+
+  items.forEach((item) => {
+    const key = keyBuilder(item);
+    const label = labelBuilder(item);
+    if (!itemMap.has(key)) {
+      itemMap.set(key, { label, quantity: 0 });
+    }
+    itemMap.get(key).quantity += 1;
+  });
+
+  return [...itemMap.values()];
+}
+
+function getOrderStoneDetailEntries(order = {}) {
+  return aggregateOrderDetailItems(
+    Array.isArray(order.beads) ? order.beads : [],
+    (bead) => `${bead.stoneId || bead.name || bead.nameTh || 'stone'}_${bead.size || ''}`,
+    (bead) => {
+      const name = bead.nameTh && bead.name
+        ? `${bead.nameTh} (${bead.name})`
+        : bead.name || bead.nameTh || bead.stoneId || 'Stone';
+      return `${name}${bead.size ? ` - ${bead.size}mm` : ''}`;
+    }
+  );
+}
+
+function getOrderSpacerDetailEntries(order = {}) {
+  return aggregateOrderDetailItems(
+    Array.isArray(order.spacers) ? order.spacers : [],
+    (spacer) => `${spacer.spacerId || spacer.nameEn || spacer.nameTh || 'spacer'}_${spacer.effectiveLengthMm || spacer.displaySizeMm || ''}`,
+    (spacer) => {
+      const name = spacer.nameTh && spacer.nameEn
+        ? `${spacer.nameTh} (${spacer.nameEn})`
+        : spacer.nameEn || spacer.nameTh || spacer.spacerId || 'Spacer';
+      return `${name}${spacer.displaySizeMm ? ` - ${spacer.displaySizeMm}mm` : ''}`;
+    }
+  );
+}
+
+function renderOrderDetailList(entries = []) {
+  if (!entries.length) return '<div class="order-detail-empty">&mdash;</div>';
+
+  return `
+    <ul class="order-detail-list">
+      ${entries.map((entry) => `
+        <li>
+          <span>${detailValue(entry.label)}</span>
+          <strong>x ${Number(entry.quantity || 0).toLocaleString()}</strong>
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
+function renderOrderDetailFields(fields = []) {
+  return fields.map(({ label, value, rawHtml = false }) => `
+    <div class="order-detail-field">
+      <span>${escapeHtml(label)}</span>
+      <strong>${rawHtml ? value : detailValue(value)}</strong>
+    </div>
+  `).join('');
+}
+
+function getOrderDetailItemCount(order = {}) {
+  const beadCount = Number(order.totalBeads || (Array.isArray(order.beads) ? order.beads.length : 0)) || 0;
+  const charmCount = Array.isArray(order.charms) && order.charms.length > 0
+    ? order.charms.length
+    : (order.hasCharm ? (Number(order.charmCount || 1) || 1) : 0);
+  const spacerCount = Number(order.spacerCount || (Array.isArray(order.spacers) ? order.spacers.length : 0)) || 0;
+  return beadCount + charmCount + spacerCount;
+}
+
 function buildOrderNotificationStateHtml(order = {}) {
   const paymentSentAt = formatNotificationTimestamp(order?.notifications?.paymentReceivedSentAt);
   const shippedSentAt = formatNotificationTimestamp(order?.notifications?.shippedSentAt);
@@ -1959,16 +2111,21 @@ function renderOrdersList(orders) {
       <td data-label="Pricing">${priceText}</td>
       <td data-label="Status">${workflowMetaHtml}</td>
       <td data-label="Invoice" class="text-right">
-        <button class="btn btn-outline btn-invoice-export" data-id="${order.id}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-          </svg>
-          Export
-        </button>
+        <div class="order-row-actions">
+          <button class="btn btn-outline btn-order-detail" data-id="${order.id}">
+            View Detail
+          </button>
+          <button class="btn btn-outline btn-invoice-export" data-id="${order.id}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Export
+          </button>
+        </div>
       </td>
     `;
     
@@ -1990,6 +2147,9 @@ function renderOrdersList(orders) {
       await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
     });
     
+    const detailBtn = tr.querySelector('.btn-order-detail');
+    detailBtn.addEventListener('click', () => openOrderDetailModal(order.id));
+
     const exportBtn = tr.querySelector('.btn-invoice-export');
     exportBtn.addEventListener('click', () => openInvoiceModal(order.id));
     
@@ -2030,6 +2190,130 @@ function getOrderSpacerDisplayText(order) {
     return acc;
   }, {});
   return Object.entries(spacerDetails).map(([name, count]) => `${name} x ${count} ชิ้น`).join(', ');
+}
+
+async function openOrderDetailModal(orderId) {
+  const orders = await getSharedOrders();
+  const order = orders.find((entry) => entry.id === orderId);
+  if (!order || !DOM.orderDetailBody || !DOM.orderDetailModal) return;
+
+  const shippingInfo = getOrderShippingInfo(order);
+  const shippingFields = normalizeOrderShippingFields(order);
+  const shippingCarrierDisplay = getOrderShippingCarrierDisplay(order);
+  const paymentSentAt = formatDetailDateTime(order?.notifications?.paymentReceivedSentAt);
+  const shippedSentAt = formatDetailDateTime(order?.notifications?.shippedSentAt);
+  const rawJson = JSON.stringify(order, null, 2);
+
+  DOM.orderDetailBody.innerHTML = `
+    <div class="order-detail-summary">
+      <div>
+        <span>Order ID</span>
+        <strong>${detailValue(order.id)}</strong>
+      </div>
+      <div>
+        <span>Status</span>
+        <strong>${detailValue(order.status || 'New Order')}</strong>
+      </div>
+      <div>
+        <span>Total</span>
+        <strong>${detailMoneyValue(order.netPrice)}</strong>
+      </div>
+    </div>
+
+    <div class="order-detail-grid">
+      <section class="order-detail-section">
+        <h4>Order Identity</h4>
+        ${renderOrderDetailFields([
+          { label: 'Order ID', value: order.id },
+          { label: 'Created', value: detailDateValue(order.date), rawHtml: true },
+          { label: 'Current Status', value: order.status || 'New Order' },
+          { label: 'Stripe Checkout Session ID', value: order.stripeCheckoutSessionId },
+          { label: 'Stripe Payment Status', value: order.stripePaymentStatus },
+          { label: 'Stripe Checkout Status', value: order.stripeCheckoutStatus }
+        ])}
+      </section>
+
+      <section class="order-detail-section">
+        <h4>Customer / Recipient</h4>
+        ${renderOrderDetailFields([
+          { label: 'Customer Name', value: order.customerName },
+          { label: 'Recipient Name', value: shippingInfo.recipientName },
+          { label: 'Phone Number', value: shippingInfo.phoneNumber },
+          { label: 'LINE userId', value: order.lineUserId }
+        ])}
+      </section>
+
+      <section class="order-detail-section">
+        <h4>Shipping Information</h4>
+        ${renderOrderDetailFields([
+          { label: 'Full Address', value: shippingInfo.addressLine },
+          { label: 'Province', value: shippingInfo.province },
+          { label: 'Postal Code', value: shippingInfo.postalCode },
+          { label: 'Shipping Carrier', value: shippingCarrierDisplay || shippingFields.shippingCarrier },
+          { label: 'Custom Carrier', value: shippingFields.shippingCarrierCustom },
+          { label: 'Tracking Number', value: shippingFields.trackingNumber }
+        ])}
+      </section>
+
+      <section class="order-detail-section">
+        <h4>Notification Status</h4>
+        ${renderOrderDetailFields([
+          { label: 'Paid LINE Notification', value: paymentSentAt || 'Not sent yet' },
+          { label: 'Shipped LINE Notification', value: shippedSentAt || 'Not sent yet' }
+        ])}
+      </section>
+
+      <section class="order-detail-section order-detail-section-wide">
+        <h4>Bracelet Items</h4>
+        ${renderOrderDetailFields([
+          { label: 'Wrist Size', value: order.wristSize ? `${Number(order.wristSize).toFixed(1)} cm` : '' },
+          { label: 'Bead Size', value: order.beadSize === 'mixed' ? 'Mixed' : (order.beadSize ? `${order.beadSize}mm` : '') },
+          { label: 'Total Item Count', value: getOrderDetailItemCount(order) || '' }
+        ])}
+        <div class="order-detail-subsection">
+          <h5>Stones</h5>
+          ${renderOrderDetailList(getOrderStoneDetailEntries(order))}
+        </div>
+        <div class="order-detail-subsection">
+          <h5>Charms</h5>
+          ${renderOrderDetailList(getOrderCharmDetailEntries(order))}
+        </div>
+        <div class="order-detail-subsection">
+          <h5>Spacers</h5>
+          ${renderOrderDetailList(getOrderSpacerDetailEntries(order))}
+        </div>
+      </section>
+
+      <section class="order-detail-section">
+        <h4>Pricing</h4>
+        ${renderOrderDetailFields([
+          { label: 'Subtotal', value: detailMoneyValue(order.subtotal), rawHtml: true },
+          { label: 'Discount Percent', value: order.discountPercent !== undefined ? `${order.discountPercent}%` : '' },
+          { label: 'Discount Amount', value: detailMoneyValue(order.discountAmount), rawHtml: true },
+          { label: 'Final Total', value: detailMoneyValue(order.netPrice), rawHtml: true },
+          { label: 'Currency', value: 'THB' }
+        ])}
+      </section>
+
+      <section class="order-detail-section order-detail-section-wide">
+        <details class="order-raw-json">
+          <summary>Raw Order JSON</summary>
+          <pre>${escapeHtml(rawJson)}</pre>
+        </details>
+      </section>
+    </div>
+  `;
+
+  DOM.orderDetailModal.classList.add('show');
+}
+
+function closeOrderDetailModal() {
+  if (DOM.orderDetailModal) {
+    DOM.orderDetailModal.classList.remove('show');
+  }
+  if (DOM.orderDetailBody) {
+    DOM.orderDetailBody.innerHTML = '<div class="empty-state">Select an order to view details.</div>';
+  }
 }
 
 // ==========================================
@@ -2485,6 +2769,16 @@ function setupFunctionalEvents() {
   DOM.btnInvoiceModalClose.addEventListener('click', closeInvoiceModal);
   DOM.btnPrintInvoice.addEventListener('click', triggerPrint);
   DOM.btnCopyInvoiceMessage.addEventListener('click', copyLINEInvoiceSummary);
+  if (DOM.btnOrderDetailModalClose) {
+    DOM.btnOrderDetailModalClose.addEventListener('click', closeOrderDetailModal);
+  }
+  if (DOM.orderDetailModal) {
+    DOM.orderDetailModal.addEventListener('click', (event) => {
+      if (event.target === DOM.orderDetailModal) {
+        closeOrderDetailModal();
+      }
+    });
+  }
   
   // Global settings form submit
   DOM.globalSettingsForm.addEventListener('submit', async (e) => {
