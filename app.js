@@ -2451,7 +2451,7 @@ function createBraceletComponentList() {
           renderWidthMm: 12.5,
           renderHeightMm: 18,
           ...renderTuning,
-          visualScale: 0.86,
+          visualScale: 1,
           outwardOffsetMm: 4.8,
           uniqueId: item.uniqueId
         };
