@@ -91,6 +91,18 @@
             </button>
           </li>
           <li>
+            <button class="nav-item" data-tab="simulator" id="btnTabSimulator">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <circle cx="8" cy="10" r="1.5" />
+                <circle cx="16" cy="10" r="1.5" />
+                <path d="M8 14c1.5 1 2.5 1 4 0" />
+                <path d="M12 14c1.5 1 2.5 1 4 0" />
+              </svg>
+              Bracelet Simulator
+            </button>
+          </li>
+          <li>
             <button class="nav-item" data-tab="categories" id="btnTabCategories">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M4 7h16" />
@@ -385,6 +397,57 @@
                 <!-- Populated Dynamically -->
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 3: BRACELET SIMULATOR SHELL
+             ========================================== -->
+        <section class="tab-view" id="tabSimulator">
+          <div class="panel card-panel simulator-shell-card">
+            <div class="panel-header">
+              <div>
+                <h4>Bracelet Layout Simulator</h4>
+                <p class="simulator-subtitle">Preview bracelet layouts before drag and drop tools are connected.</p>
+              </div>
+              <div class="simulator-header-actions">
+                <span class="simulator-phase-badge">Phase 5 shell</span>
+                <button class="btn btn-outline simulator-reset-btn" type="button" id="btnSimulatorResetLayout">Reset Layout</button>
+              </div>
+            </div>
+
+            <div class="panel-body simulator-shell-body">
+              <div class="simulator-shell-grid">
+                <div class="simulator-preview-panel">
+                  <div class="simulator-preview-ring">
+                    <div class="simulator-layout-stage" id="simulatorLayoutStage"></div>
+                    <div class="simulator-preview-core">
+                      <span class="simulator-preview-label">Empty Bracelet Preview</span>
+                      <span class="simulator-preview-note">Layout builder will attach here in the next phase.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="simulator-catalog-panel">
+                  <div class="simulator-catalog-header">
+                    <div>
+                      <h5>Item Catalog</h5>
+                      <p class="simulator-catalog-note">Choose the item family that will be mapped into the bracelet layout.</p>
+                    </div>
+                    <div class="simulator-category-tabs" role="tablist" aria-label="Bracelet layout categories">
+                      <button class="simulator-category-tab active" type="button" data-simulator-category="stones" aria-pressed="true">Stones</button>
+                      <button class="simulator-category-tab" type="button" data-simulator-category="charms" aria-pressed="false">Charms</button>
+                      <button class="simulator-category-tab" type="button" data-simulator-category="spacers" aria-pressed="false">Spacers</button>
+                    </div>
+                  </div>
+                  <div class="simulator-catalog-grid" id="simulatorItemGrid"></div>
+                  <div class="simulator-catalog-empty" id="simulatorCatalogEmpty" hidden>
+                    <div class="simulator-catalog-empty-title" id="simulatorEmptyTitle">No items available in this category.</div>
+                    <div class="simulator-catalog-empty-subtitle" id="simulatorCategoryHint">Stones will be used as the default layout source.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 

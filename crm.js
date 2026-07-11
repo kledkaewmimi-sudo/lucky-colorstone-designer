@@ -29,7 +29,7 @@ import {
 // ==========================================
 const CRMState = {
   sessionActive: false,
-  activeTab: 'overview', // 'overview', 'inventory', 'categories', 'charms', 'orders', 'settings'
+  activeTab: 'overview', // 'overview', 'inventory', 'simulator', 'categories', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditStoneColor: '#E2C974',
   activeEditCharmId: null,
@@ -37,6 +37,10 @@ const CRMState = {
   pendingStoneImage: null,
   pendingCharmImage: null,
   inventoryTypeFilter: 'all',
+  simulatorCategory: 'stones',
+  simulatorCatalogCache: { stones: [], charms: [], spacers: [] },
+  simulatorLayout: [],
+  simulatorLayoutSeq: 0,
   charmSort: 'displayOrder-asc',
   charmActiveFilter: 'all',
   charmStockFilter: 'all',
@@ -71,6 +75,7 @@ const DOM = {
   navButtons: {
     overview: document.getElementById('btnTabOverview'),
     inventory: document.getElementById('btnTabInventory'),
+    simulator: document.getElementById('btnTabSimulator'),
     categories: document.getElementById('btnTabCategories'),
     charms: document.getElementById('btnTabCharms'),
     orders: document.getElementById('btnTabOrders'),
@@ -89,6 +94,7 @@ const DOM = {
   tabViews: {
     overview: document.getElementById('tabOverview'),
     inventory: document.getElementById('tabInventory'),
+    simulator: document.getElementById('tabSimulator'),
     categories: document.getElementById('tabCategories'),
     charms: document.getElementById('tabCharms'),
     orders: document.getElementById('tabOrders'),
@@ -112,6 +118,14 @@ const DOM = {
   inventoryTypeTabs: Array.from(document.querySelectorAll('[data-inventory-type]')),
   btnOpenAddStoneModal: document.getElementById('btnOpenAddStoneModal'),
   inventoryTableBody: document.getElementById('inventoryTableBody'),
+  simulatorCategoryTabs: Array.from(document.querySelectorAll('[data-simulator-category]')),
+  simulatorItemGrid: document.getElementById('simulatorItemGrid'),
+  simulatorCatalogEmpty: document.getElementById('simulatorCatalogEmpty'),
+  simulatorEmptyTitle: document.getElementById('simulatorEmptyTitle'),
+  simulatorCategoryHint: document.getElementById('simulatorCategoryHint'),
+  simulatorLayoutStage: document.getElementById('simulatorLayoutStage'),
+  simulatorPreviewRing: document.querySelector('.simulator-preview-ring'),
+  btnSimulatorResetLayout: document.getElementById('btnSimulatorResetLayout'),
 
   // Tab 3: Category Master Data
   categoriesSearch: document.getElementById('categoriesSearch'),
@@ -397,6 +411,7 @@ function resetImageUploadState(kind) {
 document.addEventListener('DOMContentLoaded', async () => {
   // Check auth session
   checkAuthSession();
+  loadSimulatorPresetFromStorage();
   
   // Setup clock & logger
   initClock();
@@ -489,6 +504,7 @@ async function switchTab(tabName) {
   const titles = {
     overview: "CRM Overview",
     inventory: "Stone Inventory Manager (Module A)",
+    simulator: "Bracelet Layout Simulator",
     categories: "Catalog Category Manager",
     charms: "Shared Charm Catalog Management",
     orders: "Order Management & OMS (Module B)",
@@ -616,6 +632,7 @@ async function loadDashboardData() {
   const spacers = await getSharedSpacerCatalog();
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
+  CRMState.simulatorCatalogCache = { stones, charms, spacers };
   
   // Calculate Metric values
   const totalOrdersCount = orders.length;
@@ -647,6 +664,8 @@ async function loadDashboardData() {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
     renderInventoryCatalog(stones, charms, spacers);
+  } else if (CRMState.activeTab === 'simulator') {
+    renderBraceletLayoutSimulator(stones, charms, spacers);
   } else if (CRMState.activeTab === 'categories') {
     renderCategoryCatalog(categories, stones, charms);
   } else if (CRMState.activeTab === 'charms') {
@@ -1002,6 +1021,377 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     });
 
     DOM.inventoryTableBody.appendChild(tr);
+  });
+}
+
+function renderBraceletLayoutSimulatorLegacy(stones = [], charms = [], spacers = []) {
+  const activeCategory = CRMState.simulatorCategory || 'stones';
+  const categoryLabelMap = {
+    stones: 'Stones',
+    charms: 'Charms',
+    spacers: 'Spacers'
+  };
+
+  DOM.simulatorCategoryTabs.forEach((tab) => {
+    const isActive = tab.dataset.simulatorCategory === activeCategory;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-pressed', String(isActive));
+  });
+
+  const allItems = buildInventoryItems(stones, charms, spacers);
+  const filteredItems = allItems.filter((item) => item.type === activeCategory.slice(0, -1));
+  const categoryLabel = categoryLabelMap[activeCategory] || 'Stones';
+
+  if (DOM.simulatorCategoryHint) {
+    DOM.simulatorCategoryHint.textContent = `Showing ${categoryLabel.toLowerCase()} from the shared catalog.`;
+  }
+
+  if (!DOM.simulatorItemGrid || !DOM.simulatorCatalogEmpty) return;
+
+  if (filteredItems.length === 0) {
+    DOM.simulatorItemGrid.innerHTML = '';
+    DOM.simulatorItemGrid.hidden = true;
+    DOM.simulatorCatalogEmpty.hidden = false;
+    if (DOM.simulatorEmptyTitle) {
+      DOM.simulatorEmptyTitle.textContent = `No ${categoryLabel.toLowerCase()} available in the catalog yet.`;
+    }
+    return;
+  }
+
+  DOM.simulatorCatalogEmpty.hidden = true;
+  DOM.simulatorItemGrid.hidden = false;
+  DOM.simulatorItemGrid.innerHTML = filteredItems.map((item) => {
+    const typeLabel = item.typeLabel || (item.type === 'stone' ? 'Stone' : item.type === 'charm' ? 'Charm' : 'Spacer');
+    const priceText = item.priceText || '—';
+    return `
+      <div class="simulator-item-card" data-simulator-item-type="${escapeHtml(item.type)}" data-simulator-item-id="${escapeHtml(item.id)}">
+        <div class="simulator-item-grip" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <img class="simulator-item-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+        <div class="simulator-item-copy">
+          <div class="simulator-item-name">${escapeHtml(item.nameTh)}</div>
+          <div class="simulator-item-en">${escapeHtml(item.nameEn)}</div>
+          <div class="simulator-item-meta-row">
+            <span class="simulator-item-badge">${escapeHtml(typeLabel)}</span>
+            <span class="simulator-item-size">${escapeHtml(item.sizeText || '—')}</span>
+          </div>
+          <div class="simulator-item-price">${priceText}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+const SIMULATOR_STORAGE_KEY = 'lucky_crm_simulator_layout_v1';
+
+function normalizeSimulatorCategory(value) {
+  const nextValue = String(value || '').toLowerCase();
+  return ['stones', 'charms', 'spacers'].includes(nextValue) ? nextValue : 'stones';
+}
+
+function getSimulatorCatalogCache() {
+  const cache = CRMState.simulatorCatalogCache || {};
+  return {
+    stones: Array.isArray(cache.stones) ? cache.stones : [],
+    charms: Array.isArray(cache.charms) ? cache.charms : [],
+    spacers: Array.isArray(cache.spacers) ? cache.spacers : []
+  };
+}
+
+function getSimulatorCatalogItems(category = 'stones') {
+  const cache = getSimulatorCatalogCache();
+  const normalizedCategory = normalizeSimulatorCategory(category);
+  return buildInventoryItems(cache.stones, cache.charms, cache.spacers)
+    .filter((item) => item.type === normalizedCategory.slice(0, -1));
+}
+
+function getSimulatorLayoutSeqFromUid(uid) {
+  const match = String(uid || '').match(/(\d+)$/);
+  return match ? Number(match[1]) || 0 : 0;
+}
+
+function syncSimulatorLayoutSeq(layout = []) {
+  CRMState.simulatorLayoutSeq = layout.reduce((max, item) => {
+    return Math.max(max, getSimulatorLayoutSeqFromUid(item?.uid));
+  }, 0);
+}
+
+function createSimulatorLayoutUid() {
+  CRMState.simulatorLayoutSeq = Number.isFinite(CRMState.simulatorLayoutSeq) ? CRMState.simulatorLayoutSeq + 1 : 1;
+  return `sim-layout-${CRMState.simulatorLayoutSeq}`;
+}
+
+function normalizeSimulatorLayoutItem(item, fallbackIndex = 0) {
+  if (!item || typeof item !== 'object') return null;
+  const typeValue = String(item.type || item.itemType || '').toLowerCase();
+  if (!['stone', 'charm', 'spacer'].includes(typeValue)) return null;
+  const id = String(item.id || item.catalogId || '').trim();
+  if (!id) return null;
+
+  return {
+    uid: String(item.uid || item.instanceId || item.layoutId || `${typeValue}-${id}-${fallbackIndex}`),
+    type: typeValue,
+    id,
+    typeLabel: item.typeLabel || (typeValue === 'stone' ? 'Stone' : typeValue === 'charm' ? 'Charm' : 'Spacer'),
+    nameTh: item.nameTh || item.labelTh || item.titleTh || '',
+    nameEn: item.nameEn || item.labelEn || item.titleEn || '',
+    image: item.image || '',
+    priceText: item.priceText || item.price || '—',
+    sizeText: item.sizeText || item.size || item.sizeMm || item.sizeCm || '—'
+  };
+}
+
+function normalizeSimulatorPreset(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { category: 'stones', layout: [], seq: 0 };
+  }
+
+  const layout = Array.isArray(payload.layout)
+    ? payload.layout.map((item, index) => normalizeSimulatorLayoutItem(item, index)).filter(Boolean)
+    : [];
+
+  return {
+    category: normalizeSimulatorCategory(payload.category),
+    layout,
+    seq: Number.isFinite(Number(payload.seq)) ? Number(payload.seq) : 0
+  };
+}
+
+function saveSimulatorPresetToStorage() {
+  try {
+    const payload = {
+      version: 1,
+      category: normalizeSimulatorCategory(CRMState.simulatorCategory),
+      seq: CRMState.simulatorLayoutSeq || 0,
+      layout: Array.isArray(CRMState.simulatorLayout) ? CRMState.simulatorLayout : []
+    };
+    localStorage.setItem(SIMULATOR_STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('Unable to save simulator preset.', err);
+  }
+}
+
+function loadSimulatorPresetFromStorage() {
+  try {
+    const raw = localStorage.getItem(SIMULATOR_STORAGE_KEY);
+    if (!raw) return;
+    const preset = normalizeSimulatorPreset(JSON.parse(raw));
+    CRMState.simulatorCategory = preset.category;
+    CRMState.simulatorLayout = preset.layout;
+    syncSimulatorLayoutSeq(preset.layout);
+    CRMState.simulatorLayoutSeq = Math.max(CRMState.simulatorLayoutSeq, preset.seq || 0);
+  } catch (err) {
+    console.warn('Unable to load simulator preset.', err);
+  }
+}
+
+function persistAndRenderSimulatorLayout(stones = [], charms = [], spacers = []) {
+  saveSimulatorPresetToStorage();
+  renderBraceletLayoutSimulator(stones, charms, spacers);
+}
+
+function addSimulatorCatalogItemToLayout(itemType, itemId) {
+  const sourceCategories = ['stones', 'charms', 'spacers'];
+  const catalogItem = sourceCategories
+    .flatMap((category) => getSimulatorCatalogItems(category))
+    .find((item) => item.type === itemType && item.id === itemId);
+
+  if (!catalogItem) return false;
+  const placedItem = normalizeSimulatorLayoutItem(catalogItem, CRMState.simulatorLayoutSeq + 1);
+  if (!placedItem) return false;
+  placedItem.uid = createSimulatorLayoutUid();
+  CRMState.simulatorLayout = [...(CRMState.simulatorLayout || []), placedItem];
+  saveSimulatorPresetToStorage();
+  return true;
+}
+
+function removeSimulatorLayoutItem(uid) {
+  const currentLayout = Array.isArray(CRMState.simulatorLayout) ? CRMState.simulatorLayout : [];
+  const nextLayout = currentLayout.filter((item) => item.uid !== uid);
+  if (nextLayout.length === currentLayout.length) return false;
+  CRMState.simulatorLayout = nextLayout;
+  saveSimulatorPresetToStorage();
+  return true;
+}
+
+function moveSimulatorLayoutItem(uid, direction) {
+  const layout = Array.isArray(CRMState.simulatorLayout) ? CRMState.simulatorLayout.slice() : [];
+  const fromIndex = layout.findIndex((item) => item.uid === uid);
+  if (fromIndex === -1) return false;
+  const toIndex = Math.min(Math.max(fromIndex + direction, 0), layout.length - 1);
+  if (fromIndex === toIndex) return false;
+  const [item] = layout.splice(fromIndex, 1);
+  layout.splice(toIndex, 0, item);
+  CRMState.simulatorLayout = layout;
+  saveSimulatorPresetToStorage();
+  return true;
+}
+
+function resetSimulatorLayout() {
+  CRMState.simulatorLayout = [];
+  CRMState.simulatorLayoutSeq = 0;
+  saveSimulatorPresetToStorage();
+}
+
+function renderSimulatorPreviewLayout() {
+  const stage = DOM.simulatorLayoutStage;
+  const ring = DOM.simulatorPreviewRing || stage?.closest('.simulator-preview-ring');
+  const layout = Array.isArray(CRMState.simulatorLayout) ? CRMState.simulatorLayout : [];
+
+  if (ring) {
+    ring.classList.toggle('has-layout', layout.length > 0);
+  }
+
+  if (!stage) return;
+
+  stage.innerHTML = '';
+  if (layout.length === 0) return;
+
+  const radiusPercent = layout.length <= 3 ? 38 : layout.length <= 6 ? 40 : 42;
+
+  layout.forEach((item, index) => {
+    const angle = -90 + (360 / layout.length) * index;
+    const angleRad = (angle * Math.PI) / 180;
+    const x = 50 + (radiusPercent * Math.cos(angleRad));
+    const y = 50 + (radiusPercent * Math.sin(angleRad));
+    const orientation = angle + 90;
+    const placed = document.createElement('div');
+    placed.className = 'simulator-placed-item';
+    placed.style.left = `${x}%`;
+    placed.style.top = `${y}%`;
+    placed.style.setProperty('--simulator-rotation', `${orientation}deg`);
+    placed.dataset.simulatorUid = item.uid;
+    placed.innerHTML = `
+      <div class="simulator-placed-card">
+        <div class="simulator-placed-actions">
+          <button type="button" class="simulator-placed-action simulator-placed-move" data-simulator-uid="${escapeHtml(item.uid)}" data-simulator-move="-1" aria-label="Move left">◀</button>
+          <button type="button" class="simulator-placed-action simulator-placed-move" data-simulator-uid="${escapeHtml(item.uid)}" data-simulator-move="1" aria-label="Move right">▶</button>
+          <button type="button" class="simulator-placed-action simulator-placed-remove" data-simulator-uid="${escapeHtml(item.uid)}" aria-label="Remove item">×</button>
+        </div>
+        <img class="simulator-placed-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn || item.nameTh || item.id)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+        <div class="simulator-placed-meta">
+          <div class="simulator-placed-name">${escapeHtml(item.nameTh || item.id)}</div>
+          <div class="simulator-placed-subtitle">${escapeHtml(item.typeLabel || item.type)}</div>
+        </div>
+      </div>
+    `;
+    stage.appendChild(placed);
+  });
+
+  stage.querySelectorAll('[data-simulator-move]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const uid = button.dataset.simulatorUid || '';
+      const move = Number(button.dataset.simulatorMove || 0);
+      if (!uid || !move) return;
+      if (moveSimulatorLayoutItem(uid, move)) {
+        const cache = getSimulatorCatalogCache();
+        persistAndRenderSimulatorLayout(cache.stones, cache.charms, cache.spacers);
+      }
+    });
+  });
+
+  stage.querySelectorAll('.simulator-placed-remove').forEach((button) => {
+    button.addEventListener('click', () => {
+      const uid = button.dataset.simulatorUid || '';
+      if (!uid) return;
+      if (removeSimulatorLayoutItem(uid)) {
+        const cache = getSimulatorCatalogCache();
+        persistAndRenderSimulatorLayout(cache.stones, cache.charms, cache.spacers);
+      }
+    });
+  });
+}
+
+function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
+  const activeCategory = normalizeSimulatorCategory(CRMState.simulatorCategory || 'stones');
+  const categoryLabelMap = {
+    stones: 'Stones',
+    charms: 'Charms',
+    spacers: 'Spacers'
+  };
+  const allItems = buildInventoryItems(stones, charms, spacers);
+  const filteredItems = allItems.filter((item) => item.type === activeCategory.slice(0, -1));
+  const categoryLabel = categoryLabelMap[activeCategory] || 'Stones';
+
+  DOM.simulatorCategoryTabs.forEach((tab) => {
+    const isActive = tab.dataset.simulatorCategory === activeCategory;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-pressed', String(isActive));
+  });
+
+  if (DOM.simulatorCategoryHint) {
+    DOM.simulatorCategoryHint.textContent = `Showing ${categoryLabel.toLowerCase()} from the shared catalog.`;
+  }
+
+  renderSimulatorPreviewLayout();
+
+  if (!DOM.simulatorItemGrid || !DOM.simulatorCatalogEmpty) return;
+
+  if (filteredItems.length === 0) {
+    DOM.simulatorItemGrid.innerHTML = '';
+    DOM.simulatorItemGrid.hidden = true;
+    DOM.simulatorCatalogEmpty.hidden = false;
+    if (DOM.simulatorEmptyTitle) {
+      DOM.simulatorEmptyTitle.textContent = `No ${categoryLabel.toLowerCase()} available in the catalog yet.`;
+    }
+    if (DOM.simulatorCategoryHint) {
+      DOM.simulatorCategoryHint.textContent = `Add ${categoryLabel.toLowerCase()} items in CRM Inventory to populate this simulator view.`;
+    }
+    return;
+  }
+
+  const placedLookup = new Map((CRMState.simulatorLayout || []).map((item) => [`${item.type}:${item.id}`, true]));
+
+  DOM.simulatorCatalogEmpty.hidden = true;
+  DOM.simulatorItemGrid.hidden = false;
+  DOM.simulatorItemGrid.innerHTML = filteredItems.map((item) => {
+    const typeLabel = item.typeLabel || (item.type === 'stone' ? 'Stone' : item.type === 'charm' ? 'Charm' : 'Spacer');
+    const priceText = item.priceText || '—';
+    const isPlaced = placedLookup.has(`${item.type}:${item.id}`);
+    return `
+      <div
+        class="simulator-item-card ${isPlaced ? 'is-placed' : ''}"
+        data-simulator-item-type="${escapeHtml(item.type)}"
+        data-simulator-item-id="${escapeHtml(item.id)}"
+        role="button"
+        tabindex="0"
+        aria-label="Add ${escapeHtml(item.nameTh || item.nameEn || item.id)} to the bracelet"
+      >
+        <div class="simulator-item-grip" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <img class="simulator-item-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn || item.nameTh || item.id)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+        <div class="simulator-item-copy">
+          <div class="simulator-item-name">${escapeHtml(item.nameTh)}</div>
+          <div class="simulator-item-en">${escapeHtml(item.nameEn)}</div>
+          <div class="simulator-item-meta-row">
+            <span class="simulator-item-badge">${escapeHtml(typeLabel)}</span>
+            <span class="simulator-item-size">${escapeHtml(item.sizeText || '—')}</span>
+          </div>
+          <div class="simulator-item-price">${priceText}</div>
+          <div class="simulator-item-placed-note">${isPlaced ? 'Already placed' : 'Tap to add to bracelet'}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  DOM.simulatorItemGrid.querySelectorAll('.simulator-item-card').forEach((card) => {
+    const itemType = card.dataset.simulatorItemType || '';
+    const itemId = card.dataset.simulatorItemId || '';
+    const addItem = () => {
+      if (!itemType || !itemId) return;
+      if (addSimulatorCatalogItemToLayout(itemType, itemId)) {
+        persistAndRenderSimulatorLayout(stones, charms, spacers);
+      }
+    };
+    card.addEventListener('click', addItem);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        addItem();
+      }
+    });
   });
 }
 
@@ -2859,6 +3249,20 @@ function setupFunctionalEvents() {
       loadDashboardData();
     });
   });
+  DOM.simulatorCategoryTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      CRMState.simulatorCategory = tab.dataset.simulatorCategory || 'stones';
+      const cache = getSimulatorCatalogCache();
+      renderBraceletLayoutSimulator(cache.stones, cache.charms, cache.spacers);
+    });
+  });
+  if (DOM.btnSimulatorResetLayout) {
+    DOM.btnSimulatorResetLayout.addEventListener('click', () => {
+      resetSimulatorLayout();
+      const cache = getSimulatorCatalogCache();
+      renderBraceletLayoutSimulator(cache.stones, cache.charms, cache.spacers);
+    });
+  }
   if (DOM.btnOpenAddCategoryModal) {
     DOM.btnOpenAddCategoryModal.addEventListener('click', openAddCategoryForm);
   }
