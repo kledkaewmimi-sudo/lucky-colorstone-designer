@@ -1425,6 +1425,78 @@ option {
   color: currentColor;
 }
 
+.charm-amulet-icon {
+  overflow: visible;
+}
+
+.charm-amulet-symbol {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: charmAmuletCycle 7.2s ease-in-out infinite;
+}
+
+.charm-amulet-lotus {
+  animation-delay: 0s;
+}
+
+.charm-amulet-ganesha {
+  animation-delay: -4.8s;
+}
+
+.charm-amulet-pixiu {
+  animation-delay: -2.4s;
+}
+
+@keyframes charmAmuletCycle {
+  0%,
+  18%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 3px rgba(124, 92, 207, 0.42));
+    transform: translateX(0) scale(1.06);
+  }
+
+  28% {
+    opacity: 0.35;
+    filter: blur(0.35px);
+    transform: translateX(3px) scale(0.88);
+  }
+
+  36%,
+  62% {
+    opacity: 0;
+    filter: blur(0.45px);
+    transform: translateX(5px) scale(0.82);
+  }
+
+  72% {
+    opacity: 0.32;
+    filter: blur(0.35px);
+    transform: translateX(-3px) scale(0.88);
+  }
+
+  82% {
+    opacity: 1;
+    filter: drop-shadow(0 0 3px rgba(124, 92, 207, 0.42));
+    transform: translateX(0) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .charm-amulet-symbol {
+    animation: none;
+    opacity: 0;
+    filter: none;
+    transform: none;
+  }
+
+  .charm-amulet-lotus {
+    opacity: 1;
+    filter: drop-shadow(0 0 3px rgba(124, 92, 207, 0.32));
+  }
+}
+
 /* Catalog Filter Tabs */
 .catalog-filters {
   display: flex;
