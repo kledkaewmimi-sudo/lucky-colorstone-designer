@@ -1426,6 +1426,8 @@ option {
 }
 
 .charm-amulet-icon {
+  width: 27px;
+  height: 27px;
   color: #C79A3A;
   overflow: visible;
 }
