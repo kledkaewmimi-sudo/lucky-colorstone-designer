@@ -288,6 +288,123 @@ export function getCategoryLabelById(categoryId, entityType = "all") {
 
 export const CHARM_PLACEHOLDER_IMAGE = "/assets/charms/_placeholder.png";
 
+export const SPACER_CATALOG = Object.freeze([
+  {
+    id: "diamond_ball_orange",
+    sku: "SP-DB-ORANGE",
+    nameTh: "Diamond Ball Orange",
+    nameEn: "Diamond Ball Orange",
+    type: "ball",
+    color: "orange",
+    image: "/assets/spacers/diamond-ball-orange-9mm.png",
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0,
+    description: "Decorative orange spacer bead",
+    inStock: true,
+    displayOrder: 10
+  },
+  {
+    id: "diamond_ball_pink",
+    sku: "SP-DB-PINK",
+    nameTh: "Diamond Ball Pink",
+    nameEn: "Diamond Ball Pink",
+    type: "ball",
+    color: "pink",
+    image: "/assets/spacers/diamond-ball-pink-9mm.png",
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0,
+    description: "Decorative pink spacer bead",
+    inStock: true,
+    displayOrder: 20
+  },
+  {
+    id: "diamond_ball_purple",
+    sku: "SP-DB-PURPLE",
+    nameTh: "Diamond Ball Purple",
+    nameEn: "Diamond Ball Purple",
+    type: "ball",
+    color: "purple",
+    image: "/assets/spacers/diamond-ball-purple-9mm.png",
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0,
+    description: "Decorative purple spacer bead",
+    inStock: true,
+    displayOrder: 30
+  },
+  {
+    id: "diamond_ball_white",
+    sku: "SP-DB-WHITE",
+    nameTh: "Diamond Ball White",
+    nameEn: "Diamond Ball White",
+    type: "ball",
+    color: "white",
+    image: "/assets/spacers/diamond-ball-white-9mm.png",
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 0,
+    description: "Decorative white spacer bead",
+    inStock: true,
+    displayOrder: 40
+  },
+  {
+    id: "golden_ball",
+    sku: "SP-GOLD-BALL",
+    nameTh: "Golden Ball",
+    nameEn: "Golden Ball",
+    type: "ball",
+    color: "gold",
+    image: "/assets/spacers/golden-ball-7mm.png",
+    displaySizeMm: 7,
+    effectiveLengthMm: 7,
+    renderSizeMm: 7,
+    price: 0,
+    description: "Decorative gold spacer bead",
+    inStock: true,
+    displayOrder: 50
+  },
+  {
+    id: "gold_flower",
+    sku: "SP-GOLD-FLOWER",
+    nameTh: "Gold Flower",
+    nameEn: "Gold Flower",
+    type: "flat-spacer",
+    color: "gold",
+    image: "/assets/spacers/flower-gold-6mm.png",
+    displaySizeMm: 6,
+    effectiveLengthMm: 1,
+    thicknessMm: 1,
+    renderSizeMm: 6,
+    price: 0,
+    description: "Flat gold flower spacer",
+    inStock: true,
+    displayOrder: 60
+  },
+  {
+    id: "silver_flower",
+    sku: "SP-SILVER-FLOWER",
+    nameTh: "Silver Flower",
+    nameEn: "Silver Flower",
+    type: "flat-spacer",
+    color: "silver",
+    image: "/assets/spacers/flower-silver-6mm.png",
+    displaySizeMm: 6,
+    effectiveLengthMm: 1,
+    thicknessMm: 1,
+    renderSizeMm: 6,
+    price: 0,
+    description: "Flat silver flower spacer",
+    inStock: true,
+    displayOrder: 70
+  }
+]);
+
 export const CHARM_CATALOG = [
   {
     id: "px01",
@@ -675,6 +792,53 @@ function normalizeCharmRecord(record, index = 0) {
   };
 }
 
+function normalizeSpacerRecord(record, index = 0) {
+  if (!record || typeof record !== "object") return null;
+
+  const id = String(record.id || "").trim();
+  if (!id) return null;
+
+  const displaySizeMm = toFiniteNumber(record.business?.displaySizeMm ?? record.displaySizeMm ?? record.sizeMm, 0);
+  const effectiveLengthMm = toFiniteNumber(record.business?.effectiveLengthMm ?? record.effectiveLengthMm ?? record.footprintMm, displaySizeMm);
+
+  return {
+    id,
+    entityType: "spacer",
+    sku: record.sku || id.toUpperCase(),
+    slug: record.slug || id,
+    name: {
+      en: record.name?.en || record.nameEn || "",
+      th: record.name?.th || record.nameTh || record.name?.en || record.nameEn || ""
+    },
+    categoryId: record.categoryId || record.collection || "spacer",
+    type: record.type || "spacer",
+    collection: record.collection || "spacer",
+    color: record.color || "",
+    image: {
+      primary: record.image?.primary || record.image || ""
+    },
+    pricing: {
+      base: toFiniteNumber(record.pricing?.base ?? record.price ?? 0, 0)
+    },
+    business: {
+      sizeMm: displaySizeMm,
+      displaySizeMm,
+      effectiveLengthMm,
+      renderSizeMm: toFiniteNumber(record.business?.renderSizeMm ?? record.renderSizeMm, displaySizeMm),
+      thicknessMm: toFiniteNumber(record.business?.thicknessMm ?? record.thicknessMm, 0)
+    },
+    meaning: {
+      en: record.meaning?.en || record.description || record.meaningEn || "",
+      th: record.meaning?.th || record.descriptionTh || record.meaningTh || ""
+    },
+    availability: {
+      inStock: record.availability?.inStock !== false && record.inStock !== false,
+      isActive: record.availability?.isActive !== false && record.isActive !== false
+    },
+    displayOrder: toFiniteNumber(record.displayOrder, (index + 1) * 10)
+  };
+}
+
 export function adaptNormalizedCharmToLegacy(record) {
   if (!record) return null;
 
@@ -723,6 +887,7 @@ export let STONES = [];
 export let SETTINGS = { globalDiscountPercent: 20 };
 export let ORDERS = [];
 export let CHARM_RECORDS = [];
+export let SPACER_RECORDS = [];
 
 // --- Price calculation helper based on bead size ---
 export function getStonePriceForSize(stone, size) {
@@ -906,6 +1071,23 @@ export async function getSharedCharmCatalog() {
     await refreshCharmCatalog();
   }
   return CHARM_RECORDS;
+}
+
+export async function refreshSpacerCatalog() {
+  const normalized = SPACER_CATALOG
+    .map((record, index) => normalizeSpacerRecord(record, index))
+    .filter(Boolean)
+    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  SPACER_RECORDS.length = 0;
+  SPACER_RECORDS.push(...normalized);
+  return SPACER_RECORDS;
+}
+
+export async function getSharedSpacerCatalog() {
+  if (SPACER_RECORDS.length === 0) {
+    await refreshSpacerCatalog();
+  }
+  return SPACER_RECORDS;
 }
 
 export async function getLegacyCharmCatalog() {

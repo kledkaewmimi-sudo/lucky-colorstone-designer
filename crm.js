@@ -2,6 +2,7 @@ import {
   getCategoryLabelById,
   getSharedCatalog, 
   getSharedCharmCatalog,
+  getSharedSpacerCatalog,
   getSharedCategoryCatalog,
   saveSharedCharmCatalogEntry,
   deleteSharedCharmCatalogEntry,
@@ -612,6 +613,7 @@ async function loadDashboardData() {
   const stones = await getSharedCatalog();
   const categories = await getSharedCategoryCatalog();
   const charms = await getSharedCharmCatalog();
+  const spacers = await getSharedSpacerCatalog();
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
   
@@ -644,7 +646,7 @@ async function loadDashboardData() {
   if (CRMState.activeTab === 'overview') {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
-    renderInventoryCatalog(stones, charms);
+    renderInventoryCatalog(stones, charms, spacers);
   } else if (CRMState.activeTab === 'categories') {
     renderCategoryCatalog(categories, stones, charms);
   } else if (CRMState.activeTab === 'charms') {
@@ -795,7 +797,7 @@ function formatInventoryStonePrice(stone) {
     .join(' / ') || '&mdash;';
 }
 
-function buildInventoryItems(stones = [], charms = []) {
+function buildInventoryItems(stones = [], charms = [], spacers = []) {
   const stoneItems = stones.map((stone) => {
     const categoryKey = stone.categoryId || stone.category;
     const categoryLabel = getCategoryLabelById(categoryKey, 'stone');
@@ -866,10 +868,48 @@ function buildInventoryItems(stones = [], charms = []) {
     };
   });
 
-  return [...stoneItems, ...charmItems];
+  const spacerItems = spacers.map((spacer) => {
+    const nameTh = spacer.name?.th || spacer.name?.en || spacer.id;
+    const nameEn = spacer.name?.en || spacer.name?.th || spacer.id;
+    const displaySizeMm = Number(spacer.business?.displaySizeMm || spacer.business?.sizeMm || 0);
+    const effectiveLengthMm = Number(spacer.business?.effectiveLengthMm || 0);
+    const thicknessMm = Number(spacer.business?.thicknessMm || 0);
+    const sizeParts = [];
+    if (displaySizeMm) sizeParts.push(`${displaySizeMm}mm visual`);
+    if (effectiveLengthMm) sizeParts.push(`${effectiveLengthMm}mm length`);
+    if (thicknessMm) sizeParts.push(`${thicknessMm}mm thick`);
+
+    return {
+      id: spacer.id,
+      type: 'spacer',
+      typeLabel: getInventoryTypeLabel('spacer'),
+      image: spacer.image?.primary || '',
+      nameTh,
+      nameEn,
+      meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || 'Spacer',
+      priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
+      sizeText: sizeParts.join(' / ') || '&mdash;',
+      isInStock: spacer.availability?.inStock !== false,
+      isActive: spacer.availability?.isActive !== false,
+      searchText: [
+        spacer.id,
+        spacer.sku,
+        nameTh,
+        nameEn,
+        spacer.type,
+        spacer.color,
+        spacer.collection,
+        spacer.meaning?.en,
+        spacer.meaning?.th,
+        'spacer'
+      ].filter(Boolean).join(' ').toLowerCase()
+    };
+  });
+
+  return [...stoneItems, ...charmItems, ...spacerItems];
 }
 
-function renderInventoryCatalog(stones, charms = []) {
+function renderInventoryCatalog(stones, charms = [], spacers = []) {
   const query = DOM.inventorySearch.value.trim().toLowerCase();
   const activeType = CRMState.inventoryTypeFilter || 'all';
   DOM.inventoryTypeTabs.forEach((tab) => {
@@ -878,7 +918,7 @@ function renderInventoryCatalog(stones, charms = []) {
     tab.setAttribute('aria-pressed', String(isActive));
   });
 
-  const filtered = buildInventoryItems(stones, charms).filter((item) => {
+  const filtered = buildInventoryItems(stones, charms, spacers).filter((item) => {
     if (activeType !== 'all' && item.type !== activeType) return false;
     if (!query) return true;
     return item.searchText.includes(query);
@@ -887,9 +927,7 @@ function renderInventoryCatalog(stones, charms = []) {
   DOM.inventoryTableBody.innerHTML = '';
   if (filtered.length === 0) {
     const itemLabel = activeType === 'all' ? 'inventory items' : `${getInventoryTypeLabel(activeType).toLowerCase()} items`;
-    const emptyMessage = activeType === 'spacer'
-      ? 'Spacer inventory structure is ready. Spacer data management will be connected in a later phase.'
-      : `No matching ${itemLabel} found.`;
+    const emptyMessage = `No matching ${itemLabel} found.`;
     DOM.inventoryTableBody.innerHTML = `<tr><td colspan="6" class="empty-state">${emptyMessage}</td></tr>`;
     return;
   }
@@ -902,6 +940,9 @@ function renderInventoryCatalog(stones, charms = []) {
     const statusText = item.isInStock ? 'In Stock' : 'Out of Stock';
     const statusClass = item.isInStock ? 'badge-in-stock' : 'badge-out-of-stock';
     const visibilityText = item.isActive === false ? '<span class="inventory-muted-status">Hidden</span>' : '';
+    const actionDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
+    const actionTitle = item.type === 'spacer' ? 'Spacer CRUD is not available yet' : `Edit ${item.typeLabel}`;
+    const deleteTitle = item.type === 'spacer' ? 'Spacer CRUD is not available yet' : `Delete ${item.typeLabel}`;
 
     tr.innerHTML = `
       <td data-label="Item">
@@ -925,13 +966,13 @@ function renderInventoryCatalog(stones, charms = []) {
       </td>
       <td data-label="Actions" class="text-right">
         <div class="action-btns inventory-action-btns">
-          <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="Edit ${item.typeLabel}">
+          <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${actionTitle}" ${actionDisabled}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
           </button>
-          <button class="action-btn delete" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="Delete ${item.typeLabel}">
+          <button class="action-btn delete" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${deleteTitle}" ${actionDisabled}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -944,6 +985,7 @@ function renderInventoryCatalog(stones, charms = []) {
     `;
 
     tr.querySelector('.action-btn.edit').addEventListener('click', () => {
+      if (item.type === 'spacer') return;
       if (item.type === 'charm') {
         openEditCharmForm(item.id);
         return;
@@ -951,6 +993,7 @@ function renderInventoryCatalog(stones, charms = []) {
       openEditStoneForm(item.id);
     });
     tr.querySelector('.action-btn.delete').addEventListener('click', () => {
+      if (item.type === 'spacer') return;
       if (item.type === 'charm') {
         deleteCharmType(item.id);
         return;
