@@ -418,7 +418,6 @@ function resetImageUploadState(kind) {
 document.addEventListener('DOMContentLoaded', async () => {
   // Check auth session
   checkAuthSession();
-  await loadSimulatorPresetFromStorage();
   
   // Setup clock & logger
   initClock();
@@ -434,6 +433,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Setup real-time tab syncing
   setupRealtimeSync();
+
+  loadSimulatorPresetFromStorage().catch((error) => {
+    console.warn('Catalog layout order prefetch failed during CRM startup.', error);
+  });
   
   // Initial draw
   if (CRMState.sessionActive) {
