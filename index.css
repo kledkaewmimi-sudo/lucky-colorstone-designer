@@ -1426,14 +1426,16 @@ option {
 }
 
 .charm-amulet-icon {
+  color: #C79A3A;
   overflow: visible;
 }
 
 .charm-amulet-symbol {
   transform-box: fill-box;
   transform-origin: center;
-  opacity: 0;
-  animation: charmAmuletCycle 7.2s ease-in-out infinite;
+  opacity: 0.34;
+  filter: blur(0.28px);
+  animation: charmAmuletCycle 7.5s ease-in-out infinite;
 }
 
 .charm-amulet-lotus {
@@ -1441,45 +1443,47 @@ option {
 }
 
 .charm-amulet-ganesha {
-  animation-delay: -4.8s;
+  animation-delay: -2.5s;
 }
 
 .charm-amulet-pixiu {
-  animation-delay: -2.4s;
+  animation-delay: -5s;
 }
 
 @keyframes charmAmuletCycle {
   0%,
-  18%,
+  22%,
   100% {
     opacity: 1;
-    filter: drop-shadow(0 0 3px rgba(124, 92, 207, 0.42));
-    transform: translateX(0) scale(1.06);
+    filter:
+      drop-shadow(0 0 2px rgba(245, 211, 139, 0.82))
+      drop-shadow(0 0 5px rgba(199, 154, 58, 0.28));
+    transform: translateX(0) scale(1.12);
   }
 
-  28% {
-    opacity: 0.35;
-    filter: blur(0.35px);
-    transform: translateX(3px) scale(0.88);
+  31%,
+  55% {
+    opacity: 0.36;
+    filter: blur(0.3px);
+    transform: translateX(6px) scale(0.78);
   }
 
-  36%,
-  62% {
-    opacity: 0;
+  64%,
+  88% {
+    opacity: 0.34;
+    filter: blur(0.3px);
+    transform: translateX(-6px) scale(0.78);
+  }
+
+  27%,
+  60%,
+  93% {
+    opacity: 0.18;
     filter: blur(0.45px);
-    transform: translateX(5px) scale(0.82);
   }
 
-  72% {
-    opacity: 0.32;
-    filter: blur(0.35px);
-    transform: translateX(-3px) scale(0.88);
-  }
-
-  82% {
-    opacity: 1;
-    filter: drop-shadow(0 0 3px rgba(124, 92, 207, 0.42));
-    transform: translateX(0) scale(1.06);
+  96% {
+    transform: translateX(-2px) scale(0.9);
   }
 }
 
@@ -1493,7 +1497,10 @@ option {
 
   .charm-amulet-lotus {
     opacity: 1;
-    filter: drop-shadow(0 0 3px rgba(124, 92, 207, 0.32));
+    filter:
+      drop-shadow(0 0 2px rgba(245, 211, 139, 0.72))
+      drop-shadow(0 0 5px rgba(199, 154, 58, 0.22));
+    transform: scale(1.08);
   }
 }
 
