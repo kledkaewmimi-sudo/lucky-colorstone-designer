@@ -2451,8 +2451,8 @@ function createBraceletComponentList() {
           renderWidthMm: 12.5,
           renderHeightMm: 18,
           ...renderTuning,
-          visualScale: 1,
-          outwardOffsetMm: 4.8,
+          visualScale: 1.15,
+          outwardOffsetMm: 5.4,
           uniqueId: item.uniqueId
         };
       }
@@ -3811,7 +3811,10 @@ function getContactEdgeMetrics(rotatedBoundsMetrics, tuning = DEFAULT_CHARM_REND
 
 function getFixedBeeHeartPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING) {
   const safeTuning = resolveCharmRenderTuning(tuning);
-  const safeVisualScale = safeTuning.visualScale;
+  const rawVisualScale = Number(tuning?.visualScale);
+  const safeVisualScale = Number.isFinite(rawVisualScale)
+    ? Math.min(1.2, Math.max(0.1, rawVisualScale))
+    : safeTuning.visualScale;
   const maxFrameWidth = frameWidth * safeTuning.maxWidthRatio;
   const maxFrameHeight = frameHeight * safeTuning.maxHeightRatio;
 
