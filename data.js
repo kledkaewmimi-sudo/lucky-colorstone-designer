@@ -12,6 +12,83 @@ const CANONICAL_CATEGORY_LABELS = {
   takrud: { en: "Takrud", th: "ตะกรุด" }
 };
 
+export const CATALOG_LAYOUT_ORDER_STORAGE_KEY = "lucky_crm_catalog_layout_order";
+
+const CATALOG_LAYOUT_CATEGORIES = Object.freeze(["stones", "charms", "spacers"]);
+
+function normalizeCatalogLayoutCategory(category) {
+  const value = String(category || "").trim().toLowerCase();
+  return CATALOG_LAYOUT_CATEGORIES.includes(value) ? value : "stones";
+}
+
+export function normalizeCatalogLayoutOrder(order = {}) {
+  return CATALOG_LAYOUT_CATEGORIES.reduce((normalized, category) => {
+    const ids = Array.isArray(order?.[category]) ? order[category] : [];
+    const seen = new Set();
+    normalized[category] = ids
+      .map((id) => String(id || "").trim())
+      .filter((id) => {
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    return normalized;
+  }, { stones: [], charms: [], spacers: [] });
+}
+
+export function getCatalogLayoutOrder() {
+  try {
+    const raw = typeof window !== "undefined"
+      ? window.localStorage?.getItem(CATALOG_LAYOUT_ORDER_STORAGE_KEY)
+      : "";
+    return normalizeCatalogLayoutOrder(raw ? JSON.parse(raw) : {});
+  } catch (err) {
+    console.warn("Unable to read catalog layout order.", err);
+    return normalizeCatalogLayoutOrder();
+  }
+}
+
+export function saveCatalogLayoutOrder(order = {}) {
+  const normalized = normalizeCatalogLayoutOrder(order);
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage?.setItem(CATALOG_LAYOUT_ORDER_STORAGE_KEY, JSON.stringify(normalized));
+      window.dispatchEvent?.(new Event("catalog_layout_order_updated"));
+    }
+  } catch (err) {
+    console.warn("Unable to save catalog layout order.", err);
+  }
+  return normalized;
+}
+
+export function resetCatalogLayoutOrder(category = "all") {
+  const normalizedCategory = String(category || "all").trim().toLowerCase();
+  if (normalizedCategory === "all") {
+    return saveCatalogLayoutOrder();
+  }
+
+  const currentOrder = getCatalogLayoutOrder();
+  currentOrder[normalizeCatalogLayoutCategory(normalizedCategory)] = [];
+  return saveCatalogLayoutOrder(currentOrder);
+}
+
+export function applyCatalogLayoutOrder(items = [], category = "stones", getId = (item) => item?.id) {
+  const list = Array.isArray(items) ? items.slice() : [];
+  const order = getCatalogLayoutOrder()[normalizeCatalogLayoutCategory(category)] || [];
+  if (order.length === 0) return list;
+
+  const orderIndex = new Map(order.map((id, index) => [id, index]));
+  return list
+    .map((item, index) => ({ item, index, id: String(getId(item) || "") }))
+    .sort((a, b) => {
+      const aRank = orderIndex.has(a.id) ? orderIndex.get(a.id) : Number.MAX_SAFE_INTEGER;
+      const bRank = orderIndex.has(b.id) ? orderIndex.get(b.id) : Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
+}
+
 const KNOWN_BAD_CATEGORY_THAI = {
   all: new Set([
     "เธ—เธฑเนเธเธซเธกเธ”",
@@ -1255,6 +1332,28 @@ export async function getSharedSettings() {
   return SETTINGS;
 }
 
+export async function getSharedCatalogLayoutOrder() {
+  return refreshCatalogLayoutOrder();
+}
+
+export async function refreshCatalogLayoutOrder() {
+  try {
+    const res = await fetch("/api/settings");
+    if (!res.ok) {
+      throw new Error(`GET /api/settings failed with HTTP ${res.status}`);
+    }
+    const settings = await res.json();
+    SETTINGS = settings;
+    const normalized = normalizeCatalogLayoutOrder(settings?.catalogLayoutOrder || {});
+    saveCatalogLayoutOrder(normalized);
+    return normalized;
+  } catch (e) {
+    console.warn("Failed to refresh shared catalog layout order; using local cache.", e);
+  }
+
+  return getCatalogLayoutOrder();
+}
+
 export async function saveSharedSettings(newSettings) {
   try {
     const res = await fetch("/api/settings/save", {
@@ -1271,6 +1370,50 @@ export async function saveSharedSettings(newSettings) {
     console.error("Failed to save settings to API", e);
   }
   return SETTINGS;
+}
+
+export async function saveSharedCatalogLayoutOrder(order = {}) {
+  const normalized = normalizeCatalogLayoutOrder(order);
+  saveCatalogLayoutOrder(normalized);
+
+  let currentSettings;
+  try {
+    const res = await fetch("/api/settings");
+    if (!res.ok) {
+      throw new Error(`GET /api/settings failed with HTTP ${res.status}`);
+    }
+    currentSettings = await res.json();
+  } catch (e) {
+    console.error("Failed to load settings before saving catalog layout order", e);
+    throw e;
+  }
+
+  const nextSettings = {
+    ...(currentSettings && typeof currentSettings === "object" ? currentSettings : {}),
+    catalogLayoutOrder: normalized
+  };
+
+  try {
+    const res = await fetch("/api/settings/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nextSettings)
+    });
+    if (!res.ok) {
+      throw new Error(`POST /api/settings/save failed with HTTP ${res.status}`);
+    }
+    const savedSettings = await res.json();
+    SETTINGS = savedSettings;
+    const savedOrder = normalizeCatalogLayoutOrder(savedSettings?.catalogLayoutOrder || {});
+    saveCatalogLayoutOrder(savedOrder);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("storage_sync"));
+    }
+    return savedOrder;
+  } catch (e) {
+    console.error("Failed to save shared catalog layout order", e);
+    throw e;
+  }
 }
 
 export async function getSharedOrders() {

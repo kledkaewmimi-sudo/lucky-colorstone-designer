@@ -14,6 +14,11 @@ import {
   saveSharedSettings, 
   getSharedOrders, 
   updateOrderStatus,
+  getCatalogLayoutOrder,
+  resetCatalogLayoutOrder,
+  refreshCatalogLayoutOrder,
+  saveSharedCatalogLayoutOrder,
+  applyCatalogLayoutOrder,
   refreshCatalog,
   refreshCategoryCatalog,
   refreshCharmCatalog,
@@ -40,6 +45,7 @@ const CRMState = {
   simulatorCategory: 'stones',
   simulatorCatalogCache: { stones: [], charms: [], spacers: [] },
   simulatorLayout: [],
+  simulatorLayoutLoaded: false,
   simulatorLayoutSeq: 0,
   charmSort: 'displayOrder-asc',
   charmActiveFilter: 'all',
@@ -126,6 +132,7 @@ const DOM = {
   simulatorLayoutStage: document.getElementById('simulatorLayoutStage'),
   simulatorPreviewRing: document.querySelector('.simulator-preview-ring'),
   btnSimulatorResetLayout: document.getElementById('btnSimulatorResetLayout'),
+  btnSimulatorSaveLayout: document.getElementById('btnSimulatorSaveLayout'),
 
   // Tab 3: Category Master Data
   categoriesSearch: document.getElementById('categoriesSearch'),
@@ -411,7 +418,7 @@ function resetImageUploadState(kind) {
 document.addEventListener('DOMContentLoaded', async () => {
   // Check auth session
   checkAuthSession();
-  loadSimulatorPresetFromStorage();
+  await loadSimulatorPresetFromStorage();
   
   // Setup clock & logger
   initClock();
@@ -504,7 +511,7 @@ async function switchTab(tabName) {
   const titles = {
     overview: "CRM Overview",
     inventory: "Stone Inventory Manager (Module A)",
-    simulator: "Bracelet Layout Simulator",
+    simulator: "Catalog Layout Manager",
     categories: "Catalog Category Manager",
     charms: "Shared Charm Catalog Management",
     orders: "Order Management & OMS (Module B)",
@@ -665,6 +672,7 @@ async function loadDashboardData() {
   } else if (CRMState.activeTab === 'inventory') {
     renderInventoryCatalog(stones, charms, spacers);
   } else if (CRMState.activeTab === 'simulator') {
+    await loadSimulatorPresetFromStorage();
     renderBraceletLayoutSimulator(stones, charms, spacers);
   } else if (CRMState.activeTab === 'categories') {
     renderCategoryCatalog(categories, stones, charms);
@@ -1390,6 +1398,184 @@ function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         addItem();
+      }
+    });
+  });
+}
+
+function getCatalogLayoutDraft() {
+  if (!CRMState.simulatorLayout || Array.isArray(CRMState.simulatorLayout)) {
+    CRMState.simulatorLayout = getCatalogLayoutOrder();
+  }
+  return CRMState.simulatorLayout;
+}
+
+function getCatalogLayoutCategory() {
+  return ['stones', 'charms', 'spacers'].includes(CRMState.simulatorCategory)
+    ? CRMState.simulatorCategory
+    : 'stones';
+}
+
+async function loadSimulatorPresetFromStorage({ force = false } = {}) {
+  if (CRMState.simulatorLayoutLoaded && !force) {
+    return CRMState.simulatorLayout;
+  }
+
+  CRMState.simulatorLayout = await refreshCatalogLayoutOrder();
+  CRMState.simulatorLayoutLoaded = true;
+  return CRMState.simulatorLayout;
+}
+
+function getLayoutCatalogItems(stones = [], charms = [], spacers = [], category = getCatalogLayoutCategory()) {
+  const itemType = category.slice(0, -1);
+  const allItems = buildInventoryItems(stones, charms, spacers).filter((item) => item.type === itemType);
+  const draftOrder = getCatalogLayoutDraft();
+  return applyCatalogLayoutOrder(allItems, category, (item) => item.id)
+    .sort((a, b) => {
+      const order = draftOrder[category] || [];
+      if (order.length === 0) return 0;
+      const aIndex = order.indexOf(a.id);
+      const bIndex = order.indexOf(b.id);
+      const aRank = aIndex >= 0 ? aIndex : Number.MAX_SAFE_INTEGER;
+      const bRank = bIndex >= 0 ? bIndex : Number.MAX_SAFE_INTEGER;
+      return aRank - bRank;
+    });
+}
+
+function setCatalogLayoutCategoryOrder(category, items) {
+  const draftOrder = getCatalogLayoutDraft();
+  draftOrder[category] = items.map((item) => item.id);
+  CRMState.simulatorLayout = draftOrder;
+}
+
+function moveCatalogLayoutItem(category, itemId, direction, stones = [], charms = [], spacers = []) {
+  const items = getLayoutCatalogItems(stones, charms, spacers, category);
+  const fromIndex = items.findIndex((item) => item.id === itemId);
+  if (fromIndex === -1) return false;
+  const toIndex = Math.max(0, Math.min(items.length - 1, fromIndex + direction));
+  if (fromIndex === toIndex) return false;
+  const [item] = items.splice(fromIndex, 1);
+  items.splice(toIndex, 0, item);
+  setCatalogLayoutCategoryOrder(category, items);
+  return true;
+}
+
+function reorderCatalogLayoutByDrop(category, draggedId, targetId, stones = [], charms = [], spacers = []) {
+  if (!draggedId || !targetId || draggedId === targetId) return false;
+  const items = getLayoutCatalogItems(stones, charms, spacers, category);
+  const fromIndex = items.findIndex((item) => item.id === draggedId);
+  const toIndex = items.findIndex((item) => item.id === targetId);
+  if (fromIndex === -1 || toIndex === -1) return false;
+  const [item] = items.splice(fromIndex, 1);
+  items.splice(toIndex, 0, item);
+  setCatalogLayoutCategoryOrder(category, items);
+  return true;
+}
+
+function resetSimulatorLayout() {
+  const category = getCatalogLayoutCategory();
+  const draftOrder = getCatalogLayoutDraft();
+  draftOrder[category] = [];
+  CRMState.simulatorLayout = draftOrder;
+  resetCatalogLayoutOrder(category);
+}
+
+function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
+  const activeCategory = getCatalogLayoutCategory();
+  const categoryLabelMap = {
+    stones: 'Stones',
+    charms: 'Charms',
+    spacers: 'Spacers'
+  };
+  const categoryLabel = categoryLabelMap[activeCategory] || 'Stones';
+  const items = getLayoutCatalogItems(stones, charms, spacers, activeCategory);
+
+  DOM.simulatorCategoryTabs.forEach((tab) => {
+    const isActive = tab.dataset.simulatorCategory === activeCategory;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-pressed', String(isActive));
+  });
+
+  if (DOM.simulatorCategoryHint) {
+    DOM.simulatorCategoryHint.textContent = `Reorder ${categoryLabel.toLowerCase()} for the customer Step 3 catalog.`;
+  }
+
+  if (!DOM.simulatorItemGrid || !DOM.simulatorCatalogEmpty) return;
+
+  if (items.length === 0) {
+    DOM.simulatorItemGrid.innerHTML = '';
+    DOM.simulatorItemGrid.hidden = true;
+    DOM.simulatorCatalogEmpty.hidden = false;
+    if (DOM.simulatorEmptyTitle) {
+      DOM.simulatorEmptyTitle.textContent = `No ${categoryLabel.toLowerCase()} available in the catalog yet.`;
+    }
+    return;
+  }
+
+  DOM.simulatorCatalogEmpty.hidden = true;
+  DOM.simulatorItemGrid.hidden = false;
+  DOM.simulatorItemGrid.innerHTML = items.map((item, index) => {
+    const typeLabel = item.typeLabel || (item.type === 'stone' ? 'Stone' : item.type === 'charm' ? 'Charm' : 'Spacer');
+    const priceText = item.priceText || '—';
+    return `
+      <div class="catalog-layout-card" draggable="true" data-layout-item-id="${escapeHtml(item.id)}">
+        <div class="catalog-layout-handle" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <img class="catalog-layout-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn || item.nameTh || item.id)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+        <div class="catalog-layout-copy">
+          <div class="catalog-layout-name">${escapeHtml(item.nameTh || item.id)}</div>
+          <div class="catalog-layout-en">${escapeHtml(item.nameEn || '')}</div>
+          <div class="catalog-layout-meta">
+            <span>${escapeHtml(typeLabel)}</span>
+            <span>${escapeHtml(priceText)}</span>
+          </div>
+        </div>
+        <div class="catalog-layout-controls">
+          <button type="button" class="catalog-layout-move" data-layout-move="-1" data-layout-item-id="${escapeHtml(item.id)}" ${index === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+          <button type="button" class="catalog-layout-move" data-layout-move="1" data-layout-item-id="${escapeHtml(item.id)}" ${index === items.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  let draggedItemId = '';
+
+  DOM.simulatorItemGrid.querySelectorAll('.catalog-layout-card').forEach((card) => {
+    card.addEventListener('dragstart', (event) => {
+      draggedItemId = card.dataset.layoutItemId || '';
+      card.classList.add('is-dragging');
+      event.dataTransfer?.setData('text/plain', draggedItemId);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('is-dragging');
+      draggedItemId = '';
+    });
+    card.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      card.classList.add('is-drop-target');
+    });
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('is-drop-target');
+    });
+    card.addEventListener('drop', (event) => {
+      event.preventDefault();
+      card.classList.remove('is-drop-target');
+      const targetId = card.dataset.layoutItemId || '';
+      const sourceId = event.dataTransfer?.getData('text/plain') || draggedItemId;
+      if (reorderCatalogLayoutByDrop(activeCategory, sourceId, targetId, stones, charms, spacers)) {
+        renderBraceletLayoutSimulator(stones, charms, spacers);
+      }
+    });
+  });
+
+  DOM.simulatorItemGrid.querySelectorAll('.catalog-layout-move').forEach((button) => {
+    button.addEventListener('click', () => {
+      const itemId = button.dataset.layoutItemId || '';
+      const move = Number(button.dataset.layoutMove || 0);
+      if (moveCatalogLayoutItem(activeCategory, itemId, move, stones, charms, spacers)) {
+        renderBraceletLayoutSimulator(stones, charms, spacers);
       }
     });
   });
@@ -3261,6 +3447,28 @@ function setupFunctionalEvents() {
       resetSimulatorLayout();
       const cache = getSimulatorCatalogCache();
       renderBraceletLayoutSimulator(cache.stones, cache.charms, cache.spacers);
+      showToast('Layout reset to default order.');
+    });
+  }
+  if (DOM.btnSimulatorSaveLayout) {
+    DOM.btnSimulatorSaveLayout.addEventListener('click', async () => {
+      const originalText = DOM.btnSimulatorSaveLayout.textContent;
+      DOM.btnSimulatorSaveLayout.disabled = true;
+      DOM.btnSimulatorSaveLayout.textContent = 'Saving...';
+
+      try {
+        CRMState.simulatorLayout = await saveSharedCatalogLayoutOrder(getCatalogLayoutDraft());
+        CRMState.simulatorLayoutLoaded = true;
+        showToast('Catalog layout saved to shared settings.');
+        const cache = getSimulatorCatalogCache();
+        renderBraceletLayoutSimulator(cache.stones, cache.charms, cache.spacers);
+      } catch (error) {
+        console.error('Failed to save catalog layout to shared settings', error);
+        showToast('Production layout save failed. Draft is still kept locally.');
+      } finally {
+        DOM.btnSimulatorSaveLayout.disabled = false;
+        DOM.btnSimulatorSaveLayout.textContent = originalText;
+      }
     });
   }
   if (DOM.btnOpenAddCategoryModal) {

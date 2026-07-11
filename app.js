@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize } from './data.js';
+import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -619,7 +619,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Fetch initial catalog from shared persistence
   await Promise.all([
     refreshCatalog(),
-    refreshCharmCatalog()
+    refreshCharmCatalog(),
+    refreshCatalogLayoutOrder()
   ]);
 
   await handleStripeReturnIfNeeded();
@@ -1542,7 +1543,7 @@ function getSelectedAnchoredCharmCatalogEntries() {
   const selectedIds = normalizeSelectedCharmIds(State.selectedCharmIds);
   if (selectedIds.length === 0) return [];
 
-  const visibleCharms = getVisibleCharmCatalog();
+  const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
   const charmMap = new Map(visibleCharms.map((charm) => [charm.id, charm]));
   return selectedIds
     .map((charmId, selectionIndex) => {
@@ -2054,7 +2055,7 @@ function appendCatalogEmptyState(container, message = 'Coming soon') {
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
-  const visibleCharms = getVisibleCharmCatalog();
+  const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
   const selectedCharms = getSelectedCharmCatalogEntries();
   const selectedCharmIdSet = new Set(selectedCharms.map((charm) => charm.id));
   const thumbnailTargetRatio = getCharmCatalogThumbnailTargetRatio(visibleCharms);
@@ -2124,7 +2125,7 @@ function renderSpacerOptions() {
     appendCatalogEmptyState(grid, 'Spacers coming soon');
   }
 
-  SPACER_CATALOG.forEach((spacer) => {
+  applyCatalogLayoutOrder(SPACER_CATALOG, 'spacers').forEach((spacer) => {
     const quantity = spacerCounts[spacer.id] || 0;
     grid.appendChild(buildStoneCard({
       rootTag: 'div',
@@ -2262,7 +2263,7 @@ function renderCatalogGrid() {
   DOM.stoneCatalogGrid.innerHTML = '';
   
   // Filter out of stock items
-  const availableStones = STONES.filter(s => s.inStock !== false);
+  const availableStones = applyCatalogLayoutOrder(STONES.filter(s => s.inStock !== false), 'stones');
   
   const filtered = State.activeCategory === 'all' 
     ? availableStones 
