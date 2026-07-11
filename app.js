@@ -1648,7 +1648,6 @@ function applySelectedCharm(charmId) {
   const nextCharmId = String(charmId || '').trim();
   const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
   const currentLoopCharms = getSelectedLoopCharmItems();
-  const totalSelectedCharms = currentCharmIds.length + currentLoopCharms.length;
 
   if (!nextCharmId) {
     if (currentCharmIds.length === 0 && currentLoopCharms.length === 0) return;
@@ -1672,8 +1671,8 @@ function applySelectedCharm(charmId) {
   if (!selectedCharm) return;
 
   if (isSlotPlaceableCharmType(selectedCharm.type)) {
-    if (totalSelectedCharms >= 2) {
-      showToast('You can select up to 2 charms.');
+    if (currentLoopCharms.length >= 2) {
+      showToast('You can select up to 2 Bee Heart charms.');
       return;
     }
 
@@ -1689,8 +1688,8 @@ function applySelectedCharm(charmId) {
     return;
   }
 
-  if (totalSelectedCharms >= 2) {
-    showToast('You can select up to 2 charms.');
+  if (currentCharmIds.length >= 2) {
+    showToast('You can select up to 2 anchored charms.');
     return;
   }
 
@@ -2452,7 +2451,7 @@ function createBraceletComponentList() {
           renderWidthMm: 12.5,
           renderHeightMm: 18,
           ...renderTuning,
-          visualScale: 0.46,
+          visualScale: 0.86,
           outwardOffsetMm: 2.4,
           uniqueId: item.uniqueId
         };
