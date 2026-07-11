@@ -3810,6 +3810,38 @@ function getContactEdgeMetrics(rotatedBoundsMetrics, tuning = DEFAULT_CHARM_REND
   };
 }
 
+function getFixedBeeHeartPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING) {
+  const safeTuning = resolveCharmRenderTuning(tuning);
+  const safeVisualScale = safeTuning.visualScale;
+  const maxFrameWidth = frameWidth * safeTuning.maxWidthRatio;
+  const maxFrameHeight = frameHeight * safeTuning.maxHeightRatio;
+
+  if (!sourceWidth || !sourceHeight) {
+    const scaledWidth = maxFrameWidth * safeVisualScale;
+    const scaledHeight = maxFrameHeight * safeVisualScale;
+    return {
+      width: scaledWidth,
+      height: scaledHeight,
+      x: (frameWidth - scaledWidth) / 2 + (frameWidth * safeTuning.visualOffsetX),
+      y: (frameHeight - scaledHeight) / 2 + (frameHeight * safeTuning.visualOffsetY)
+    };
+  }
+
+  const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
+  const widthFitScale = maxFrameWidth / visibleBounds.width;
+  const heightFitScale = maxFrameHeight / visibleBounds.height;
+  const scale = Math.min(widthFitScale, heightFitScale) * safeVisualScale;
+  const visibleWidth = visibleBounds.width * scale;
+  const visibleHeight = visibleBounds.height * scale;
+
+  return {
+    width: sourceWidth * scale,
+    height: sourceHeight * scale,
+    x: ((frameWidth - visibleWidth) / 2) - (visibleBounds.minX * scale) + (frameWidth * safeTuning.visualOffsetX),
+    y: ((frameHeight - visibleHeight) / 2) - (visibleBounds.minY * scale) + (frameHeight * safeTuning.visualOffsetY)
+  };
+}
+
 function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null, tuning = DEFAULT_CHARM_RENDER_TUNING, rotationRad = 0, centerAngle = 0) {
   const safeTuning = resolveCharmRenderTuning(tuning);
   const safeVisualScale = safeTuning.visualScale;
@@ -3869,6 +3901,10 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
 function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null, rotationRad = 0, centerAngle = 0) {
   const sourceWidth = image?.naturalWidth || image?.width || 0;
   const sourceHeight = image?.naturalHeight || image?.height || 0;
+  if (isSlotPlaceableCharmType(component?.charmType)) {
+    return getFixedBeeHeartPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds, component);
+  }
+
   return getInlineCharmPlacement(
     frameWidth,
     frameHeight,
