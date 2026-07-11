@@ -160,6 +160,7 @@ let braceletShowcaseGenerationInFlight = false;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
+let liffLoginInProgress = false;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -651,30 +652,60 @@ document.addEventListener('DOMContentLoaded', async () => {
   await renderApp();
 });
 
+function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+  });
+
+  return Promise.race([promise, timeoutPromise])
+    .finally(() => {
+      window.clearTimeout(timeoutId);
+    });
+}
+
+function getLiffRedirectUri() {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
 // LIFF Initialization
 async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
-  if (typeof liff !== 'undefined') {
-    try {
-      await liff.init({ liffId: "2010525799-qImIuhla" });
-      console.log("LIFF Initialized successfully");
-      State.liffInitialized = true;
-      if (liff.isLoggedIn()) {
-        const profile = await liff.getProfile();
+  if (typeof liff === 'undefined') {
+    State.liffInitialized = false;
+    if (loader) loader.style.display = 'none';
+    console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
+    return;
+  }
+
+  try {
+    console.log("LIFF init start");
+    await withTimeout(liff.init({ liffId: "2010525799-qImIuhla" }), 6000, "LIFF init");
+    console.log("LIFF init complete");
+    State.liffInitialized = true;
+
+    const isLoggedIn = liff.isLoggedIn();
+    console.log("LIFF isLoggedIn:", isLoggedIn);
+    if (isLoggedIn) {
+      try {
+        console.log("LIFF getProfile start");
+        const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
+        console.log("LIFF getProfile complete");
         State.lineUserId = String(profile.userId || '').trim();
         if (profile.displayName) {
           State.ownerName = profile.displayName;
           DOM.braceletOwnerName.value = profile.displayName;
         }
+      } catch (profileErr) {
+        console.warn("LIFF profile fetch failed. Continuing as guest.", profileErr);
       }
-    } catch (err) {
-      console.warn("LIFF Initialization failed. Fallback URL will be used.", err);
-      State.liffInitialized = false;
-    } finally {
-      if (loader) loader.style.display = 'none';
     }
-  } else {
+  } catch (err) {
+    console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
+  } finally {
     if (loader) loader.style.display = 'none';
   }
 }
@@ -696,10 +727,23 @@ function setupLandingEvents() {
     persistLandingDismissed();
     
     const loader = DOM.liffLoadingOverlay;
+    if (typeof liff !== 'undefined' && State.liffInitialized && liffLoginInProgress) {
+      console.warn("LIFF login already in progress.");
+      return;
+    }
     if (loader) loader.style.display = 'flex';
     
     if (typeof liff !== 'undefined' && State.liffInitialized) {
-      liff.login();
+      liffLoginInProgress = true;
+      console.log("LIFF login start");
+      try {
+        liff.login({ redirectUri: getLiffRedirectUri() });
+      } catch (loginErr) {
+        liffLoginInProgress = false;
+        if (loader) loader.style.display = 'none';
+        console.warn("LIFF login failed to start. Continuing without LINE login.", loginErr);
+        renderApp();
+      }
     } else {
       // Mock desktop login fallback
       setTimeout(() => {
