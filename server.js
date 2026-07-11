@@ -576,8 +576,6 @@ async function createStripeCheckoutSession({ order, origin }) {
   form.append("success_url", `${safeOrigin}/?step=4&stripe=success&session_id={CHECKOUT_SESSION_ID}`);
   form.append("cancel_url", `${safeOrigin}/?step=4&stripe=cancel`);
   form.append("locale", "auto");
-  form.append("shipping_address_collection[allowed_countries][0]", "TH");
-  form.append("phone_number_collection[enabled]", "true");
   form.append("payment_method_types[0]", "card");
   form.append("payment_method_types[1]", "promptpay");
   form.append("line_items[0][quantity]", "1");
