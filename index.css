@@ -1200,8 +1200,8 @@ option {
 
 .canvas-container {
   position: relative;
-  width: 250px;
-  height: 250px;
+  width: 330px;
+  height: 330px;
   margin: 8px 0;
   display: flex;
   align-items: center;
