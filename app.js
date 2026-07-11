@@ -2044,6 +2044,13 @@ function createMeaningItemElement(entry) {
   return wrapper;
 }
 
+function appendCatalogEmptyState(container, message = 'Coming soon') {
+  const emptyState = document.createElement('div');
+  emptyState.className = 'catalog-empty-state';
+  emptyState.textContent = message;
+  container.appendChild(emptyState);
+}
+
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
 
@@ -2062,6 +2069,10 @@ function renderCharmOptions() {
   const selectCharm = (charmId) => {
     applySelectedCharm(charmId);
   };
+
+  if (visibleCharms.length === 0) {
+    appendCatalogEmptyState(grid, 'Charms coming soon');
+  }
 
   visibleCharms.forEach((charm) => {
     const isSelected = selectedCharmIdSet.has(charm.id);
@@ -2108,6 +2119,10 @@ function renderSpacerOptions() {
 
   const grid = document.createElement('div');
   grid.className = 'stone-catalog-grid';
+
+  if (SPACER_CATALOG.length === 0) {
+    appendCatalogEmptyState(grid, 'Spacers coming soon');
+  }
 
   SPACER_CATALOG.forEach((spacer) => {
     const quantity = spacerCounts[spacer.id] || 0;
@@ -2201,6 +2216,7 @@ function syncCatalogSectionFilter() {
   const catalogContainer = DOM.catalogFiltersContainer?.closest('.catalog-container');
   if (catalogContainer) {
     catalogContainer.hidden = activeSection !== 'stones';
+    catalogContainer.style.display = activeSection === 'stones' ? '' : 'none';
   }
 
   if (DOM.mixedSizeSelectorBar) {
@@ -2209,13 +2225,16 @@ function syncCatalogSectionFilter() {
 
   if (DOM.charmSectionMount) {
     DOM.charmSectionMount.hidden = activeSection === 'stones';
+    DOM.charmSectionMount.style.display = activeSection === 'stones' ? 'none' : '';
     DOM.charmSectionMount
       .querySelectorAll('.component-section')
       .forEach((section) => {
         const isCharmSection = section.classList.contains('charm-component-section');
         const isSpacerSection = section.classList.contains('spacer-component-section');
-        section.hidden = (activeSection === 'charms' && !isCharmSection)
+        const shouldHide = (activeSection === 'charms' && !isCharmSection)
           || (activeSection === 'spacer' && !isSpacerSection);
+        section.hidden = shouldHide;
+        section.style.display = shouldHide ? 'none' : '';
       });
   }
 }

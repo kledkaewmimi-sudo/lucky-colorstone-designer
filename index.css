@@ -605,6 +605,8 @@ option {
   display: none;
 }
 
+#stepView4 > .step-title,
+#stepView4 .summary-header,
 #stepView1 .wrist-visual-caption,
 #stepView1 .name-input-group,
 #stepView2 > .step-title,
@@ -1582,11 +1584,29 @@ option {
   padding-bottom: var(--step-content-bottom-clearance);
 }
 
+#stepView3 .catalog-container[hidden],
+#stepView3 #charmSectionMount[hidden],
+#stepView3 .component-section[hidden] {
+  display: none !important;
+}
+
 /* Stone Catalog Cards Grid */
 .stone-catalog-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.catalog-empty-state {
+  grid-column: 1 / -1;
+  padding: 18px 12px;
+  border: 1px dashed var(--color-gray-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-navy-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .stone-card {
@@ -3191,19 +3211,27 @@ button.stone-card {
     padding: 16px;
   }
 
+  #stepView1 .step-title {
+    font-size: 20px;
+    line-height: 1.2;
+    margin-bottom: 2px;
+  }
+
   #stepView1 .step-subtitle {
-    margin-bottom: 12px;
+    font-size: 12px;
+    line-height: 1.35;
+    margin-bottom: 8px;
   }
 
   #stepView1 .wrist-visual-card {
-    padding: 14px;
-    margin-bottom: 14px;
+    padding: 10px;
+    margin-bottom: 10px;
     border-radius: 14px;
   }
 
   #stepView1 .wrist-measuring-tape-image {
-    max-height: 176px;
-    padding: 10px;
+    max-height: 150px;
+    padding: 8px;
     border-radius: 14px;
   }
 
@@ -3213,13 +3241,13 @@ button.stone-card {
   }
 
   #stepView1 .selected-size-display-card {
-    height: 56px;
-    padding: 12px;
-    margin: 12px 0;
+    height: 48px;
+    padding: 8px 12px;
+    margin: 8px 0;
   }
 
   #stepView1 .display-size-value {
-    font-size: 28px;
+    font-size: 26px;
   }
 
   #stepView1 .display-size-unit {
@@ -3228,12 +3256,12 @@ button.stone-card {
 
   #stepView1 #wristSizeGrid {
     gap: 6px;
-    margin: 10px 0 8px;
+    margin: 8px 0 4px;
   }
 
   #stepView1 #wristSizeGrid .size-btn {
     min-width: 48px;
-    height: 34px;
+    height: 32px;
     font-size: 12px;
   }
 
