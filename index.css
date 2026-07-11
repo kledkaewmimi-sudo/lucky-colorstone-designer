@@ -1206,6 +1206,11 @@ option {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
+}
+
+#braceletSvg {
+  overflow: visible;
 }
 
 /* SVG loop nodes animation */
