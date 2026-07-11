@@ -349,12 +349,20 @@
         </section>
 
         <!-- ==========================================
-             TAB 2: STONE INVENTORY (CRUD)
+             TAB 2: UNIFIED INVENTORY (CRUD)
              ========================================== -->
         <section class="tab-view" id="tabInventory">
-          <div class="table-actions-header">
-            <div class="search-box">
-              <input type="text" id="inventorySearch" placeholder="Search stones by name or meaning...">
+          <div class="table-actions-header inventory-actions-header">
+            <div class="inventory-toolbar-left">
+              <div class="search-box">
+                <input type="text" id="inventorySearch" placeholder="Search inventory by name, type, or ID...">
+              </div>
+              <div class="inventory-type-tabs" role="group" aria-label="Inventory type filter">
+                <button class="inventory-type-tab active" type="button" data-inventory-type="all" aria-pressed="true">All</button>
+                <button class="inventory-type-tab" type="button" data-inventory-type="stone" aria-pressed="false">Stones</button>
+                <button class="inventory-type-tab" type="button" data-inventory-type="charm" aria-pressed="false">Charms</button>
+                <button class="inventory-type-tab" type="button" data-inventory-type="spacer" aria-pressed="false">Spacers</button>
+              </div>
             </div>
             <button class="btn btn-primary" id="btnOpenAddStoneModal">
               <span class="icon-plus">+</span> Add New Stone
@@ -365,13 +373,11 @@
             <table class="crm-table" id="inventoryTable">
               <thead>
                 <tr>
-                  <th width="80">Bead</th>
-                  <th>Stone Name (EN / TH)</th>
+                  <th>Item</th>
+                  <th>Type</th>
                   <th>Price</th>
-                  <th>Sizes</th>
-                  <th>Category</th>
+                  <th>Size</th>
                   <th>Status</th>
-                  <th>Metaphysical Meanings</th>
                   <th width="150" class="text-right">Actions</th>
                 </tr>
               </thead>

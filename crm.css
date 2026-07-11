@@ -866,9 +866,55 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .category-actions-header .search-box,
+.inventory-actions-header .search-box,
 .charm-actions-header .search-box {
   flex: 1 1 220px;
   min-width: min(100%, 220px);
+}
+
+.inventory-actions-header {
+  align-items: flex-end;
+  padding: 10px 12px;
+  border: 1px solid var(--color-navy-border);
+  border-radius: 14px;
+  background-color: var(--color-card-bg);
+  box-shadow: 0 1px 4px rgba(178, 164, 212, 0.08);
+}
+
+.inventory-toolbar-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: flex-end;
+  flex: 1;
+}
+
+.inventory-type-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-navy-border);
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.55);
+}
+
+.inventory-type-tab {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-navy-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 9px 12px;
+  transition: var(--transition-fast);
+}
+
+.inventory-type-tab:hover,
+.inventory-type-tab.active {
+  background-color: var(--color-gold-glow);
+  color: var(--color-navy-dark);
 }
 
 .search-box input {
@@ -910,6 +956,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .category-actions-header .search-box input,
+.inventory-actions-header .search-box input,
 .charm-actions-header .search-box input {
   min-height: 36px;
   padding: 7px 12px;
@@ -917,11 +964,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .category-actions-header .filter-group,
+.inventory-actions-header .filter-group,
 .charm-actions-header .filter-group {
   gap: 6px;
 }
 
 .category-actions-header .form-control-select,
+.inventory-actions-header .form-control-select,
 .charm-actions-header .form-control-select {
   padding: 7px 10px;
   font-size: 11px;
@@ -929,6 +978,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .category-actions-header .btn,
+.inventory-actions-header .btn,
 .charm-actions-header .btn {
   min-height: 38px;
   padding: 7px 12px;
@@ -998,6 +1048,90 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 12px;
   background-color: var(--color-navy-darker);
   padding: 6px;
+}
+
+.inventory-compact-row td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.inventory-item-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.inventory-item-img {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.65);
+  padding: 4px;
+}
+
+.inventory-item-copy {
+  min-width: 0;
+}
+
+.inventory-item-meta {
+  color: var(--color-navy-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.inventory-type-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--color-navy-border);
+  color: var(--color-navy-dark);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  padding: 6px 9px;
+  text-transform: uppercase;
+}
+
+.inventory-type-stone {
+  background-color: rgba(178, 164, 212, 0.18);
+}
+
+.inventory-type-charm {
+  background-color: rgba(226, 201, 116, 0.22);
+}
+
+.inventory-type-spacer {
+  background-color: rgba(148, 163, 184, 0.16);
+}
+
+.inventory-price,
+.inventory-size {
+  color: var(--color-navy-dark);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.inventory-status-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.inventory-muted-status {
+  color: var(--color-navy-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.inventory-action-btns {
+  justify-content: flex-end;
 }
 
 .stone-title-th {
@@ -2176,6 +2310,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .category-actions-header,
+  .inventory-actions-header,
   .charm-actions-header {
     padding: 10px;
     gap: 8px;
@@ -2246,6 +2381,7 @@ h1, h2, h3, h4, h5, h6 {
   
   /* Aligning cell contents in card layout */
   .crm-table td[data-label="Bead Map"], 
+  .crm-table td[data-label="Item"],
   .crm-table td[data-label="Meanings"],
   .crm-table td[data-label="Visibility"],
   .crm-table td[data-label="Stock"],
@@ -2263,6 +2399,7 @@ h1, h2, h3, h4, h5, h6 {
   }
   
   .crm-table td[data-label="Bead Map"]::before, 
+  .crm-table td[data-label="Item"]::before,
   .crm-table td[data-label="Meanings"]::before,
   .crm-table td[data-label="Visibility"]::before,
   .crm-table td[data-label="Stock"]::before,
@@ -2322,6 +2459,37 @@ h1, h2, h3, h4, h5, h6 {
   .inventory-stone-img {
     width: 52px;
     height: 52px;
+  }
+
+  .inventory-toolbar-left {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .inventory-type-tabs {
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+  }
+
+  .inventory-type-tab {
+    flex: 1 0 auto;
+    padding: 9px 10px;
+  }
+
+  .inventory-item-cell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inventory-item-img {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+  }
+
+  .inventory-status-stack {
+    align-items: flex-end;
   }
 
   .charm-admin-img {

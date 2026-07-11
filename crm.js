@@ -35,6 +35,7 @@ const CRMState = {
   activeEditCategoryId: null,
   pendingStoneImage: null,
   pendingCharmImage: null,
+  inventoryTypeFilter: 'all',
   charmSort: 'displayOrder-asc',
   charmActiveFilter: 'all',
   charmStockFilter: 'all',
@@ -107,6 +108,7 @@ const DOM = {
   
   // Tab 2: Inventory CRUD
   inventorySearch: document.getElementById('inventorySearch'),
+  inventoryTypeTabs: Array.from(document.querySelectorAll('[data-inventory-type]')),
   btnOpenAddStoneModal: document.getElementById('btnOpenAddStoneModal'),
   inventoryTableBody: document.getElementById('inventoryTableBody'),
 
@@ -642,7 +644,7 @@ async function loadDashboardData() {
   if (CRMState.activeTab === 'overview') {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
-    renderInventoryCatalog(stones);
+    renderInventoryCatalog(stones, charms);
   } else if (CRMState.activeTab === 'categories') {
     renderCategoryCatalog(categories, stones, charms);
   } else if (CRMState.activeTab === 'charms') {
@@ -695,7 +697,7 @@ function renderRecentOrdersList(orders) {
 // ==========================================
 // 8. Tab 2: Stone Inventory CRUD (Module A)
 // ==========================================
-function renderInventoryCatalog(stones) {
+function renderStoneInventoryCatalogLegacy(stones) {
   const query = DOM.inventorySearch.value.trim().toLowerCase();
   
   // Filter list
@@ -776,6 +778,186 @@ function renderInventoryCatalog(stones) {
     tr.querySelector('.action-btn.edit').addEventListener('click', () => openEditStoneForm(stone.id));
     tr.querySelector('.action-btn.delete').addEventListener('click', () => deleteStoneType(stone.id));
     
+    DOM.inventoryTableBody.appendChild(tr);
+  });
+}
+
+function getInventoryTypeLabel(type) {
+  if (type === 'charm') return 'Charm';
+  if (type === 'spacer') return 'Spacer';
+  return 'Stone';
+}
+
+function formatInventoryStonePrice(stone) {
+  return [4, 6, 8]
+    .filter((size) => stone[`p${size}`] !== undefined)
+    .map((size) => `${size}mm &#3647;${Number(stone[`p${size}`] || 0).toLocaleString()}`)
+    .join(' / ') || '&mdash;';
+}
+
+function buildInventoryItems(stones = [], charms = []) {
+  const stoneItems = stones.map((stone) => {
+    const categoryKey = stone.categoryId || stone.category;
+    const categoryLabel = getCategoryLabelById(categoryKey, 'stone');
+    const nameTh = stone.nameTh || stone.name || stone.id;
+    const nameEn = stone.name || stone.nameTh || stone.id;
+    const sizes = (stone.sizes || []).map((size) => `${size}mm`).join(', ');
+
+    return {
+      id: stone.id,
+      type: 'stone',
+      typeLabel: getInventoryTypeLabel('stone'),
+      image: stone.image || '',
+      nameTh,
+      nameEn,
+      meta: categoryLabel.th || stone.categoryTh || stone.category || categoryKey || 'Uncategorized',
+      priceText: formatInventoryStonePrice(stone),
+      sizeText: sizes || '&mdash;',
+      isInStock: stone.inStock !== false,
+      isActive: true,
+      searchText: [
+        stone.id,
+        nameTh,
+        nameEn,
+        stone.meaning,
+        stone.meaningTh,
+        categoryKey,
+        categoryLabel.th,
+        categoryLabel.en,
+        'stone'
+      ].filter(Boolean).join(' ').toLowerCase()
+    };
+  });
+
+  const charmItems = charms.map((charm) => {
+    const categoryLabel = getCategoryLabelById(charm.collection || charm.categoryId, 'charm');
+    const nameTh = charm.name?.th || charm.name?.en || charm.id;
+    const nameEn = charm.name?.en || charm.name?.th || charm.id;
+    const sizeCm = Number(charm.business?.sizeCm || 0);
+    const footprintMm = Number(charm.business?.footprintMm || charm.business?.effectiveLengthMm || 0);
+    const sizeParts = [];
+    if (sizeCm) sizeParts.push(`${sizeCm.toFixed(1)} cm`);
+    if (footprintMm) sizeParts.push(`${footprintMm}mm footprint`);
+
+    return {
+      id: charm.id,
+      type: 'charm',
+      typeLabel: getInventoryTypeLabel('charm'),
+      image: charm.image?.primary || '',
+      nameTh,
+      nameEn,
+      meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || 'Charm',
+      priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
+      sizeText: sizeParts.join(' / ') || '&mdash;',
+      isInStock: charm.availability?.inStock !== false,
+      isActive: charm.availability?.isActive !== false,
+      searchText: [
+        charm.id,
+        charm.sku,
+        nameTh,
+        nameEn,
+        charm.type,
+        charm.collection,
+        charm.categoryId,
+        categoryLabel.th,
+        categoryLabel.en,
+        'charm'
+      ].filter(Boolean).join(' ').toLowerCase()
+    };
+  });
+
+  return [...stoneItems, ...charmItems];
+}
+
+function renderInventoryCatalog(stones, charms = []) {
+  const query = DOM.inventorySearch.value.trim().toLowerCase();
+  const activeType = CRMState.inventoryTypeFilter || 'all';
+  DOM.inventoryTypeTabs.forEach((tab) => {
+    const isActive = tab.dataset.inventoryType === activeType;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-pressed', String(isActive));
+  });
+
+  const filtered = buildInventoryItems(stones, charms).filter((item) => {
+    if (activeType !== 'all' && item.type !== activeType) return false;
+    if (!query) return true;
+    return item.searchText.includes(query);
+  });
+
+  DOM.inventoryTableBody.innerHTML = '';
+  if (filtered.length === 0) {
+    const itemLabel = activeType === 'all' ? 'inventory items' : `${getInventoryTypeLabel(activeType).toLowerCase()} items`;
+    const emptyMessage = activeType === 'spacer'
+      ? 'Spacer inventory structure is ready. Spacer data management will be connected in a later phase.'
+      : `No matching ${itemLabel} found.`;
+    DOM.inventoryTableBody.innerHTML = `<tr><td colspan="6" class="empty-state">${emptyMessage}</td></tr>`;
+    return;
+  }
+
+  filtered.forEach((item) => {
+    const tr = document.createElement('tr');
+    tr.className = 'inventory-compact-row';
+    tr.dataset.itemType = item.type;
+
+    const statusText = item.isInStock ? 'In Stock' : 'Out of Stock';
+    const statusClass = item.isInStock ? 'badge-in-stock' : 'badge-out-of-stock';
+    const visibilityText = item.isActive === false ? '<span class="inventory-muted-status">Hidden</span>' : '';
+
+    tr.innerHTML = `
+      <td data-label="Item">
+        <div class="inventory-item-cell">
+          <img class="table-bead-img inventory-item-img" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+          <div class="inventory-item-copy">
+            <div class="stone-title-th">${escapeHtml(item.nameTh)}</div>
+            <div class="stone-title-en">${escapeHtml(item.nameEn)}</div>
+            <div class="inventory-item-meta">${escapeHtml(item.meta || item.id)} &bull; ${escapeHtml(item.id)}</div>
+          </div>
+        </div>
+      </td>
+      <td data-label="Type"><span class="inventory-type-badge inventory-type-${item.type}">${item.typeLabel}</span></td>
+      <td data-label="Price"><span class="inventory-price">${item.priceText}</span></td>
+      <td data-label="Size"><span class="inventory-size">${item.sizeText}</span></td>
+      <td data-label="Status">
+        <div class="inventory-status-stack">
+          <span class="badge ${statusClass}">${statusText}</span>
+          ${visibilityText}
+        </div>
+      </td>
+      <td data-label="Actions" class="text-right">
+        <div class="action-btns inventory-action-btns">
+          <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="Edit ${item.typeLabel}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="action-btn delete" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="Delete ${item.typeLabel}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    `;
+
+    tr.querySelector('.action-btn.edit').addEventListener('click', () => {
+      if (item.type === 'charm') {
+        openEditCharmForm(item.id);
+        return;
+      }
+      openEditStoneForm(item.id);
+    });
+    tr.querySelector('.action-btn.delete').addEventListener('click', () => {
+      if (item.type === 'charm') {
+        deleteCharmType(item.id);
+        return;
+      }
+      deleteStoneType(item.id);
+    });
+
     DOM.inventoryTableBody.appendChild(tr);
   });
 }
@@ -2627,6 +2809,12 @@ function setupFunctionalEvents() {
   DOM.inventorySearch.addEventListener('input', () => {
     const query = DOM.inventorySearch.value.trim();
     loadDashboardData();
+  });
+  DOM.inventoryTypeTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      CRMState.inventoryTypeFilter = tab.dataset.inventoryType || 'all';
+      loadDashboardData();
+    });
   });
   if (DOM.btnOpenAddCategoryModal) {
     DOM.btnOpenAddCategoryModal.addEventListener('click', openAddCategoryForm);
