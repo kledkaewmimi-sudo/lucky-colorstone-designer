@@ -2570,7 +2570,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     const [topCharm, bottomCharm] = charmComponents;
     const fillerItems = [
       ...loopComponents
-        .filter((component) => component.type !== 'charm')
+        .filter((component) => component.type !== 'charm' || isSlotPlaceableCharmType(component.charmType))
         .map((component) => ({
           kind: 'component',
           component,
