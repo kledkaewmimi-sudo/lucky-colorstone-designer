@@ -3378,6 +3378,66 @@ button.stone-card {
   letter-spacing: 0.2px;
 }
 
+@media (max-width: 640px) {
+  #stepView4 .step-title {
+    font-size: 20px;
+    line-height: 1.2;
+    margin-bottom: 2px;
+  }
+
+  #stepView4 .summary-container {
+    gap: 10px;
+  }
+
+  #stepView4 .summary-header {
+    padding-bottom: 4px;
+    border-bottom-width: 1px;
+  }
+
+  #stepView4 .summary-date {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  #stepView4 .specs-grid {
+    gap: 6px;
+  }
+
+  #stepView4 .spec-box {
+    padding: 6px 3px;
+    border-radius: 10px;
+  }
+
+  #stepView4 .spec-box-label {
+    font-size: 8px;
+    margin-bottom: 2px;
+  }
+
+  #stepView4 .spec-box-value {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  #stepView4 .bracelet-showcase-card {
+    padding: 8px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  #stepView4 .bracelet-showcase-frame {
+    width: min(100%, 260px);
+  }
+
+  #stepView4 .billing-card {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  #stepView4 .billing-title {
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+  }
+}
+
 .landing-page .landing-container {
   padding: 18px 18px 16px;
   justify-content: flex-start;
