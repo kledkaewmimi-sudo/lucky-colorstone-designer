@@ -1006,6 +1006,10 @@ async function renderStepViews() {
   }
 
   // Configure navigation buttons in sticky footer
+  if (DOM.appFooter) {
+    DOM.appFooter.style.display = 'flex';
+  }
+  DOM.btnBack.style.display = '';
   if (State.currentStep === 1) {
     DOM.btnBack.style.visibility = 'hidden';
     DOM.btnNext.innerHTML = `ถัดไป &nbsp;
@@ -1025,12 +1029,16 @@ async function renderStepViews() {
       DOM.btnNext.className = 'footer-btn btn-next';
       DOM.btnNext.disabled = false;
     } else if (State.currentStep === 3) {
-      DOM.btnNext.innerHTML = `ถัดไป &nbsp;
+      const validationState = syncStep3NextValidationUI();
+      if (DOM.appFooter) {
+        DOM.appFooter.style.display = validationState.isFull ? 'flex' : 'none';
+      }
+      DOM.btnBack.style.display = 'none';
+      DOM.btnNext.className = 'footer-btn btn-next';
+      DOM.btnNext.innerHTML = `&#3606;&#3633;&#3604;&#3652;&#3611; &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m9 18 6-6-6-6"/>
         </svg>`;
-      DOM.btnNext.className = 'footer-btn btn-next';
-      syncStep3NextValidationUI();
     } else if (State.currentStep === 4) {
       DOM.btnNext.innerHTML = `สั่งซื้อผ่าน LINE &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1048,6 +1056,9 @@ async function renderStepViews() {
   }
 
   if (State.currentStep !== 3) {
+    if (DOM.appFooter) {
+      DOM.appFooter.style.display = 'flex';
+    }
     syncStep3NextValidationUI({
       isFull: true,
       warningText: ''
@@ -2045,15 +2056,6 @@ function renderCharmOptions() {
   const section = document.createElement('section');
   section.className = 'component-section charm-component-section';
 
-  const heading = document.createElement('div');
-  heading.className = 'section-heading';
-  heading.innerHTML = `
-    <div>
-      <h3>Charm</h3>
-    </div>
-  `;
-  section.appendChild(heading);
-
   const grid = document.createElement('div');
   grid.className = 'stone-catalog-grid';
 
@@ -2103,15 +2105,6 @@ function renderSpacerOptions() {
 
   const section = document.createElement('section');
   section.className = 'component-section spacer-component-section';
-
-  const heading = document.createElement('div');
-  heading.className = 'section-heading';
-  heading.innerHTML = `
-    <div>
-      <h3>Spacer</h3>
-    </div>
-  `;
-  section.appendChild(heading);
 
   const grid = document.createElement('div');
   grid.className = 'stone-catalog-grid';

@@ -605,6 +605,13 @@ option {
   display: none;
 }
 
+#stepView1 .wrist-visual-caption,
+#stepView1 .name-input-group,
+#stepView2 > .step-title,
+#stepView2 .bead-size-guide-card {
+  display: none !important;
+}
+
 /* Step 1: Wrist Measurement elements */
 .wrist-visual-card {
   background-color: var(--color-white);
@@ -1314,10 +1321,20 @@ option {
   margin-top: 4px;
 }
 
+#stepView3 .canvas-stats-row {
+  justify-content: center;
+  gap: 12px;
+}
+
 .canvas-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: 1 1 0;
+}
+
+#stepView3 .canvas-stat:nth-child(3) {
+  display: none;
 }
 
 .canvas-stat-label {
@@ -1370,11 +1387,11 @@ option {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
   width: 100%;
-  min-height: 66px;
-  padding: 6px;
+  min-height: 52px;
+  padding: 4px;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid #D9CEF6;
-  border-radius: 18px;
+  border-radius: 16px;
   box-shadow: 0 8px 20px rgba(98, 80, 145, 0.08);
 }
 
@@ -1384,13 +1401,13 @@ option {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 2px;
   min-width: 0;
-  min-height: 54px;
-  padding: 8px 6px 10px;
+  min-height: 44px;
+  padding: 4px 6px 6px;
   background: transparent;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   color: var(--color-navy-muted);
   font-family: inherit;
   font-size: 12px;
@@ -1409,8 +1426,8 @@ option {
   position: absolute;
   left: 14px;
   right: 14px;
-  bottom: 5px;
-  height: 4px;
+  bottom: 3px;
+  height: 3px;
   border-radius: 9999px;
   background: transparent;
   transition: var(--transition-fast);
