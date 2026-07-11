@@ -85,7 +85,7 @@ const DOM = {
     overview: document.getElementById('btnMobTabOverview'),
     inventory: document.getElementById('btnMobTabInventory'),
     categories: document.getElementById('btnMobTabCategories'),
-    charms: document.getElementById('btnMobTabCharms'),
+    simulator: document.getElementById('btnMobTabSimulator'),
     orders: document.getElementById('btnMobTabOrders'),
     settings: document.getElementById('btnMobTabSettings')
   },
