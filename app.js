@@ -3188,6 +3188,21 @@ function renderStep3() {
   
   // Render statistics text
   DOM.canvasPriceText.textContent = `฿${pricing.subtotal.toLocaleString()}`;
+  const canvasInfoRow = document.querySelector('#stepView3 .canvas-info-row');
+  if (canvasInfoRow) {
+    const helperText = canvasInfoRow.querySelector('.helper-tooltip');
+    if (helperText) {
+      helperText.textContent = '\u0e41\u0e15\u0e30\u0e17\u0e35\u0e48\u0e2b\u0e34\u0e19\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e25\u0e1a';
+    }
+
+    let inlinePrice = canvasInfoRow.querySelector('.canvas-inline-price');
+    if (!inlinePrice) {
+      inlinePrice = document.createElement('span');
+      inlinePrice.className = 'canvas-inline-price';
+      canvasInfoRow.appendChild(inlinePrice);
+    }
+    inlinePrice.textContent = `Price \u0e3f${pricing.subtotal.toLocaleString()}`;
+  }
   if (false) {
   
   const capText = `${State.selectedStones.length} / ${validationState.capacity} เน€เธกเนเธ”`;
