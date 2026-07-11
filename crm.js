@@ -232,6 +232,7 @@ const DOM = {
   invWrist: document.getElementById('invWrist'),
   invLength: document.getElementById('invLength'),
   invCharm: document.getElementById('invCharm'),
+  invSpacer: document.getElementById('invSpacer'),
   invBeadSvg: document.getElementById('invBeadSvg'),
   invItemsBody: document.getElementById('invItemsBody'),
   invSubtotal: document.getElementById('invSubtotal'),
@@ -1866,6 +1867,7 @@ function renderOrdersList(orders) {
     const beadText = order.beadSize === 'mixed' ? 'Mixed' : `${order.beadSize}mm`;
     const beadCountText = `${order.totalBeads} beads`;
     const charmText = order.hasCharm ? `${order.charmNameEn || order.charmNameTh || 'Charm'} (${Number(order.charmSizeCm || 0).toFixed(1)} cm)` : 'No Charm';
+    const spacerText = order.hasSpacer ? `${order.spacerCount} spacers` : 'No Spacer';
     
     // Render visual bead sequence inline
     const beadMapNodeHtmls = (order.beads || []).map((bead, bIndex) => {
@@ -1951,6 +1953,7 @@ function renderOrdersList(orders) {
         <div>Wrist: ${wristText}</div>
         <div style="font-size: 11px; color: var(--color-navy-muted);">Bead: ${beadText} &bull; ${beadCountText}</div>
         <div style="font-size: 11px; color: var(--color-navy-muted);">Charm: ${charmText}</div>
+        <div style="font-size: 11px; color: var(--color-navy-muted);">Spacer: ${spacerText}</div>
       </td>
       <td data-label="Bead Map">${beadMapContainerHtml}</td>
       <td data-label="Pricing">${priceText}</td>
@@ -2019,6 +2022,16 @@ function getOrderCharmDisplayText(order) {
   return charmMeta.length > 0 ? `${charmName} • ${charmMeta.join(' • ')}` : charmName;
 }
 
+function getOrderSpacerDisplayText(order) {
+  if (!order?.hasSpacer || !Array.isArray(order.spacers) || order.spacers.length === 0) return 'No Spacer';
+  const spacerDetails = order.spacers.reduce((acc, spacer) => {
+    const key = `${spacer.nameTh || spacer.nameEn} (${spacer.displaySizeMm || 6}mm)`;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.entries(spacerDetails).map(([name, count]) => `${name} x ${count} ชิ้น`).join(', ');
+}
+
 // ==========================================
 // 10. Printable Invoice Exporting
 // ==========================================
@@ -2053,6 +2066,7 @@ async function openInvoiceModal(orderId) {
   DOM.invWrist.textContent = `${order.wristSize.toFixed(1)} cm`;
   DOM.invLength.textContent = `${(order.wristSize + 1.5).toFixed(1)} cm (Tolerance included)`;
   DOM.invCharm.textContent = getOrderCharmDisplayText(order);
+  DOM.invSpacer.textContent = getOrderSpacerDisplayText(order);
   
   DOM.invSubtotal.textContent = `฿${order.subtotal.toLocaleString()}`;
   DOM.invDiscountLabel.textContent = `LINE Special Discount (${order.discountPercent}%):`;
@@ -2192,10 +2206,41 @@ function drawInvoicePricingTable(order) {
       </td>
       <td>${order.charmSizeCm ? `${Number(order.charmSizeCm).toFixed(1)} cm` : '-'}</td>
       <td>1 ชิ้น</td>
-      <td class="text-right">เธฟ${Number(order.charmPrice || 0).toLocaleString()}</td>
-      <td class="text-right" style="font-weight:600; color:#1e293b;">เธฟ${Number(order.charmPrice || 0).toLocaleString()}</td>
+      <td class="text-right">฿${Number(order.charmPrice || 0).toLocaleString()}</td>
+      <td class="text-right" style="font-weight:600; color:#1e293b;">฿${Number(order.charmPrice || 0).toLocaleString()}</td>
     `;
     DOM.invItemsBody.appendChild(tr);
+  }
+
+  if (order?.hasSpacer && Array.isArray(order.spacers) && order.spacers.length > 0) {
+    const aggregatedSpacers = order.spacers.reduce((spacerMap, spacer) => {
+      const key = `${spacer.spacerId}_${spacer.effectiveLengthMm}`;
+      if (!spacerMap[key]) {
+        spacerMap[key] = {
+          ...spacer,
+          qty: 0,
+          totalPrice: 0
+        };
+      }
+      spacerMap[key].qty++;
+      spacerMap[key].totalPrice += Number(spacer.price || 0);
+      return spacerMap;
+    }, {});
+
+    Object.values(aggregatedSpacers).forEach(spacer => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <div style="font-weight:600; color:#1e293b;">${spacer.nameTh || 'Spacer'}</div>
+          <div style="font-size:10px; color:#64748b;">${spacer.nameEn || ''}</div>
+        </td>
+        <td>${spacer.displaySizeMm || spacer.size || 6} mm</td>
+        <td>${spacer.qty} ชิ้น</td>
+        <td class="text-right">฿${Number(spacer.price || 0)}</td>
+        <td class="text-right" style="font-weight:600; color:#1e293b;">฿${spacer.totalPrice.toLocaleString()}</td>
+      `;
+      DOM.invItemsBody.appendChild(tr);
+    });
   }
 }
 
@@ -2218,6 +2263,15 @@ function copyLINEInvoiceSummary() {
   lines.push(`💎 Bead size: ${order.beadSize === 'mixed' ? 'Mixed Sizes' : order.beadSize + 'mm'}`);
   lines.push(`📿 Total Beads: ${order.totalBeads} beads`);
   lines.push(`✨ Charm: ${getOrderCharmDisplayText(order)}`);
+  if (order.hasSpacer && Array.isArray(order.spacers) && order.spacers.length > 0) {
+    const spacerDetails = order.spacers.reduce((acc, spacer) => {
+      const key = `${spacer.nameTh || spacer.nameEn} (${spacer.displaySizeMm || 6}mm)`;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const spacerStrings = Object.entries(spacerDetails).map(([name, count]) => `${name} x ${count} ชิ้น`);
+    lines.push(`✨ Spacers: ${spacerStrings.join(', ')}`);
+  }
   lines.push(``);
   lines.push(`💳 Price Details:`);
   lines.push(`Subtotal: ฿${order.subtotal.toLocaleString()}`);
