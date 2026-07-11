@@ -2452,7 +2452,7 @@ function createBraceletComponentList() {
           renderHeightMm: 18,
           ...renderTuning,
           visualScale: 0.86,
-          outwardOffsetMm: 2.4,
+          outwardOffsetMm: 4.8,
           uniqueId: item.uniqueId
         };
       }
