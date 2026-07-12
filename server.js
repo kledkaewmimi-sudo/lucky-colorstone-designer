@@ -279,7 +279,7 @@ function verifyLineSignature(rawBodyBuffer, signatureHeader) {
   return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
-async function sendLinePushTextMessage({ userId, text }) {
+async function sendLinePushMessages({ userId, messages }) {
   const lineChannelAccessToken = getLineChannelAccessToken();
   if (!lineChannelAccessToken) {
     throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
@@ -290,9 +290,8 @@ async function sendLinePushTextMessage({ userId, text }) {
     throw new Error("LINE push message requires a userId.");
   }
 
-  const normalizedText = String(text || "").trim();
-  if (!normalizedText) {
-    throw new Error("LINE push message requires text.");
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new Error("LINE push message requires at least one message.");
   }
 
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
@@ -303,12 +302,7 @@ async function sendLinePushTextMessage({ userId, text }) {
     },
     body: JSON.stringify({
       to: normalizedUserId,
-      messages: [
-        {
-          type: "text",
-          text: normalizedText
-        }
-      ]
+      messages
     })
   });
 
@@ -320,6 +314,23 @@ async function sendLinePushTextMessage({ userId, text }) {
 
   const responseText = await response.text();
   throw new Error(`LINE push API returned HTTP ${response.status}: ${responseText}`);
+}
+
+async function sendLinePushTextMessage({ userId, text }) {
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText) {
+    throw new Error("LINE push message requires text.");
+  }
+
+  return await sendLinePushMessages({
+    userId,
+    messages: [
+      {
+        type: "text",
+        text: normalizedText
+      }
+    ]
+  });
 }
 
 function getOrderLineUserId(order) {
@@ -353,6 +364,263 @@ function getOrderShippingCarrierDisplay(order) {
   }
 
   return shippingCarrier;
+}
+
+function formatLineCurrency(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "-";
+  return `฿${Math.round(amount).toLocaleString("th-TH")}`;
+}
+
+function getOrderTotalPrice(order) {
+  const candidates = [
+    order?.totalPrice,
+    order?.netPrice,
+    order?.total,
+    order?.amountTotal
+  ];
+  const value = candidates.find((candidate) => Number.isFinite(Number(candidate)));
+  return value == null ? null : Number(value);
+}
+
+function normalizeLineUri(value, fallback = "https://customize.luckycolorstone.com/") {
+  const rawValue = String(value || "").trim();
+  const candidate = rawValue || fallback;
+
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getOrderDetailUrl(order) {
+  return normalizeLineUri(
+    order?.orderDetailUrl || order?.detailUrl || order?.orderUrl,
+    "https://customize.luckycolorstone.com/"
+  );
+}
+
+function getOrderTrackingUrl(order) {
+  return normalizeLineUri(
+    order?.trackingUrl || order?.shipmentTrackingUrl || order?.shippingTrackingUrl,
+    getOrderDetailUrl(order)
+  );
+}
+
+function buildFlexField(label, value) {
+  return {
+    type: "box",
+    layout: "horizontal",
+    spacing: "sm",
+    contents: [
+      {
+        type: "text",
+        text: String(label || ""),
+        size: "xs",
+        color: "#7E6C90",
+        flex: 4,
+        wrap: true
+      },
+      {
+        type: "text",
+        text: String(value || "-"),
+        size: "xs",
+        color: "#40304D",
+        weight: "bold",
+        flex: 5,
+        align: "end",
+        wrap: true
+      }
+    ]
+  };
+}
+
+function buildLuckyColorstoneStatusFlexMessage({
+  altText,
+  label,
+  title,
+  bodyLines,
+  fields,
+  buttonLabel,
+  buttonUrl
+}) {
+  return {
+    type: "flex",
+    altText: String(altText || "LUCKY.COLORSTONE order update").slice(0, 400),
+    contents: {
+      type: "bubble",
+      size: "mega",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        paddingAll: "20px",
+        backgroundColor: "#FFFDF9",
+        contents: [
+          {
+            type: "text",
+            text: "LUCKY.COLORSTONE",
+            size: "xs",
+            weight: "bold",
+            color: "#6B1D2F"
+          },
+          {
+            type: "text",
+            text: String(label || ""),
+            size: "xxs",
+            weight: "bold",
+            color: "#9E8DAE"
+          },
+          {
+            type: "text",
+            text: String(title || ""),
+            size: "lg",
+            weight: "bold",
+            color: "#40304D",
+            wrap: true,
+            margin: "sm"
+          },
+          {
+            type: "text",
+            text: Array.isArray(bodyLines) ? bodyLines.join("\n") : String(bodyLines || ""),
+            size: "sm",
+            color: "#554466",
+            wrap: true,
+            margin: "md",
+            lineSpacing: "4px"
+          },
+          {
+            type: "separator",
+            margin: "lg",
+            color: "#E8E1D5"
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            margin: "lg",
+            contents: fields
+          }
+        ]
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "16px",
+        backgroundColor: "#FFFDF9",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            height: "sm",
+            color: "#6B1D2F",
+            action: {
+              type: "uri",
+              label: String(buttonLabel || "View"),
+              uri: normalizeLineUri(buttonUrl)
+            }
+          }
+        ]
+      }
+    }
+  };
+}
+
+function buildPaymentSuccessFlexMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  const totalPrice = getOrderTotalPrice(order);
+
+  return buildLuckyColorstoneStatusFlexMessage({
+    altText: `LUCKY.COLORSTONE Order Confirmed ${orderId}`,
+    label: "Order Confirmed",
+    title: "ชำระเงินเรียบร้อยแล้ว",
+    bodyLines: [
+      "ขอบคุณสำหรับคำสั่งซื้อค่ะ",
+      "เราได้รับยอดชำระเรียบร้อยแล้ว และกำไลของคุณกำลังเข้าสู่ขั้นตอนการจัดทำอย่างพิถีพิถัน"
+    ],
+    fields: [
+      buildFlexField("เลขออเดอร์", orderId),
+      buildFlexField("ยอดชำระ", totalPrice == null ? "-" : formatLineCurrency(totalPrice)),
+      buildFlexField("สถานะ", "กำลังจัดทำ")
+    ],
+    buttonLabel: "ดูรายละเอียดคำสั่งซื้อ",
+    buttonUrl: getOrderDetailUrl(order)
+  });
+}
+
+function buildShippedFlexMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  const shippingCarrier = getOrderShippingCarrierDisplay(order) || "-";
+  const trackingNumber = getOrderTrackingNumber(order) || "-";
+
+  return buildLuckyColorstoneStatusFlexMessage({
+    altText: `LUCKY.COLORSTONE Shipment Notice ${orderId}`,
+    label: "Shipment Notice",
+    title: "จัดส่งกำไลเรียบร้อยแล้ว",
+    bodyLines: [
+      "กำไลของคุณถูกส่งออกจากร้านแล้วค่ะ",
+      "สามารถติดตามสถานะพัสดุได้จากข้อมูลด้านล่าง"
+    ],
+    fields: [
+      buildFlexField("เลขออเดอร์", orderId),
+      buildFlexField("ขนส่ง", shippingCarrier),
+      buildFlexField("เลขพัสดุ", trackingNumber)
+    ],
+    buttonLabel: "ติดตามพัสดุ",
+    buttonUrl: getOrderTrackingUrl(order)
+  });
+}
+
+function buildPaymentSuccessFallbackLineMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  const totalPrice = getOrderTotalPrice(order);
+  return [
+    "ชำระเงินเรียบร้อยแล้ว",
+    "ขอบคุณสำหรับคำสั่งซื้อค่ะ",
+    "เราได้รับยอดชำระเรียบร้อยแล้ว และกำไลของคุณกำลังเข้าสู่ขั้นตอนการจัดทำอย่างพิถีพิถัน",
+    `เลขออเดอร์: ${orderId}`,
+    `ยอดชำระ: ${totalPrice == null ? "-" : formatLineCurrency(totalPrice)}`,
+    "สถานะ: กำลังจัดทำ"
+  ].join("\n");
+}
+
+function buildShippedFallbackLineMessage(order) {
+  const orderId = String(order?.id || "-").trim() || "-";
+  const shippingCarrier = getOrderShippingCarrierDisplay(order);
+  const trackingNumber = getOrderTrackingNumber(order);
+  const lines = [
+    "จัดส่งกำไลเรียบร้อยแล้ว",
+    "กำไลของคุณถูกส่งออกจากร้านแล้วค่ะ",
+    "สามารถติดตามสถานะพัสดุได้จากข้อมูลด้านล่าง",
+    `เลขออเดอร์: ${orderId}`
+  ];
+
+  if (shippingCarrier) {
+    lines.push(`ขนส่ง: ${shippingCarrier}`);
+  }
+
+  if (trackingNumber) {
+    lines.push(`เลขพัสดุ: ${trackingNumber}`);
+  }
+
+  return lines.join("\n");
+}
+
+async function sendLineFlexMessageWithTextFallback({ userId, flexMessage, fallbackText }) {
+  try {
+    return await sendLinePushMessages({
+      userId,
+      messages: [flexMessage]
+    });
+  } catch (error) {
+    console.error("LINE Flex message failed; sending plain text fallback.", error);
+    return await sendLinePushTextMessage({
+      userId,
+      text: fallbackText
+    });
+  }
 }
 
 function getOrderNotifications(order) {
@@ -459,6 +727,14 @@ function applyOrderWorkflowUpdates(baseOrder, updates) {
     nextOrder.trackingNumber = String(updates.trackingNumber || "").trim();
   }
 
+  if (hasOwn("orderDetailUrl")) {
+    nextOrder.orderDetailUrl = String(updates.orderDetailUrl || "").trim();
+  }
+
+  if (hasOwn("trackingUrl")) {
+    nextOrder.trackingUrl = String(updates.trackingUrl || "").trim();
+  }
+
   if (hasOwn("shippingCarrier")) {
     const rawCarrier = String(updates.shippingCarrier || "").trim();
     nextOrder.shippingCarrier = rawCarrier === "อื่นๆ" ? "Other" : rawCarrier;
@@ -489,9 +765,10 @@ async function trySendPaidOrderLineNotification(order) {
     return { sent: false, order };
   }
 
-  await sendLinePushTextMessage({
+  await sendLineFlexMessageWithTextFallback({
     userId: getOrderLineUserId(order),
-    text: buildPaidOrderLineMessage(order)
+    flexMessage: buildPaymentSuccessFlexMessage(order),
+    fallbackText: buildPaymentSuccessFallbackLineMessage(order)
   });
 
   return {
@@ -505,9 +782,10 @@ async function trySendShippedLineNotification(previousOrder, nextOrder) {
     return { sent: false, order: nextOrder };
   }
 
-  await sendLinePushTextMessage({
+  await sendLineFlexMessageWithTextFallback({
     userId: getOrderLineUserId(nextOrder),
-    text: buildCarrierAwareShippedOrderLineMessage(nextOrder)
+    flexMessage: buildShippedFlexMessage(nextOrder),
+    fallbackText: buildShippedFallbackLineMessage(nextOrder)
   });
 
   return {
