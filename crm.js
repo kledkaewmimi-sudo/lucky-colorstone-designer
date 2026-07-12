@@ -1497,21 +1497,15 @@ function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
 
   DOM.simulatorCatalogEmpty.hidden = true;
   DOM.simulatorItemGrid.hidden = false;
-  DOM.simulatorItemGrid.innerHTML = items.map((item, index) => {
-    const typeLabel = item.typeLabel || (item.type === 'stone' ? 'Stone' : item.type === 'charm' ? 'Charm' : 'Spacer');
-    const priceText = item.priceText || '—';
+  DOM.simulatorItemGrid.innerHTML = items.map((item) => {
     return `
       <div class="catalog-layout-card" draggable="true" data-layout-item-id="${escapeHtml(item.id)}">
-        <div class="catalog-layout-handle" aria-hidden="true">
-          <span></span><span></span><span></span>
-        </div>
         <img class="catalog-layout-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn || item.nameTh || item.id)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
         <div class="catalog-layout-copy">
           <div class="catalog-layout-name">${escapeHtml(item.nameTh || item.id)}</div>
         </div>
-        <div class="catalog-layout-controls">
-          <button type="button" class="catalog-layout-move" data-layout-move="-1" data-layout-item-id="${escapeHtml(item.id)}" ${index === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
-          <button type="button" class="catalog-layout-move" data-layout-move="1" data-layout-item-id="${escapeHtml(item.id)}" ${index === items.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+        <div class="catalog-layout-handle" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
       </div>
     `;
@@ -1548,15 +1542,6 @@ function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
     });
   });
 
-  DOM.simulatorItemGrid.querySelectorAll('.catalog-layout-move').forEach((button) => {
-    button.addEventListener('click', () => {
-      const itemId = button.dataset.layoutItemId || '';
-      const move = Number(button.dataset.layoutMove || 0);
-      if (moveCatalogLayoutItem(activeCategory, itemId, move, stones, charms, spacers)) {
-        renderBraceletLayoutSimulator(stones, charms, spacers);
-      }
-    });
-  });
 }
 
 function getCategoryScopeLabel(entityType) {
