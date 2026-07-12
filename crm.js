@@ -647,7 +647,7 @@ async function loadDashboardData() {
   // Calculate Metric values
   const totalOrdersCount = orders.length;
   
-  const netRevenueAmount = orders.reduce((sum, order) => sum + (order.netPrice || 0), 0);
+  const netRevenueAmount = orders.reduce((sum, order) => sum + getOrderFinalPrice(order), 0);
   
   const activeStonesCount = stones.filter(s => s.inStock !== false).length;
   const oosStonesCount = stones.filter(s => s.inStock === false).length;
@@ -719,7 +719,7 @@ function renderRecentOrdersList(orders) {
         <div class="ro-meta">${formattedDate} &bull; ${order.wristSize.toFixed(1)}cm &bull; ${order.totalBeads} beads</div>
       </div>
       <div class="ro-pricing">
-        <span class="ro-price">฿${(order.netPrice || 0).toLocaleString()}</span>
+        <span class="ro-price">฿${getOrderFinalPrice(order).toLocaleString()}</span>
       </div>
     `;
     DOM.overviewRecentOrders.appendChild(item);
@@ -2560,6 +2560,62 @@ function detailValue(value) {
   return normalized ? escapeHtml(normalized) : '&mdash;';
 }
 
+function getOrderSubtotal(order = {}) {
+  const candidate = [order.subtotal, order.checkoutSummary?.subtotal]
+    .find((value) => Number.isFinite(Number(value)));
+  return candidate == null ? 0 : Number(candidate);
+}
+
+function getOrderDiscountAmount(order = {}) {
+  const candidate = [order.discountAmount, order.checkoutSummary?.discountAmount]
+    .find((value) => Number.isFinite(Number(value)));
+  return candidate == null ? 0 : Number(candidate);
+}
+
+function getOrderDiscountPercent(order = {}) {
+  const candidate = [order.discountPercent, order.checkoutSummary?.discountPercent]
+    .find((value) => Number.isFinite(Number(value)));
+  return candidate == null ? 20 : Number(candidate);
+}
+
+function getOrderFinalPrice(order = {}) {
+  const candidate = [
+    order.finalPrice,
+    order.totalPrice,
+    order.netPrice,
+    order.checkoutSummary?.finalPrice
+  ].find((value) => Number.isFinite(Number(value)));
+  return candidate == null ? 0 : Number(candidate);
+}
+
+function getOrderItemizedBilling(order = {}) {
+  return Array.isArray(order.itemizedBilling) ? order.itemizedBilling : [];
+}
+
+function getOrderBraceletSequence(order = {}) {
+  if (Array.isArray(order.braceletSequence) && order.braceletSequence.length > 0) {
+    return order.braceletSequence;
+  }
+  if (Array.isArray(order.beadMap) && order.beadMap.length > 0) {
+    return order.beadMap;
+  }
+  return Array.isArray(order.beads)
+    ? order.beads.map((bead) => ({ ...bead, type: 'stone', componentType: 'stone' }))
+    : [];
+}
+
+function getOrderCharmItems(order = {}) {
+  if (Array.isArray(order.selectedCharms) && order.selectedCharms.length > 0) return order.selectedCharms;
+  if (Array.isArray(order.charms) && order.charms.length > 0) return order.charms;
+  return getOrderItemizedBilling(order).filter((item) => String(item.type || '').toLowerCase() === 'charm');
+}
+
+function getOrderSpacerItems(order = {}) {
+  if (Array.isArray(order.selectedSpacers) && order.selectedSpacers.length > 0) return order.selectedSpacers;
+  if (Array.isArray(order.spacers) && order.spacers.length > 0) return order.spacers;
+  return getOrderItemizedBilling(order).filter((item) => String(item.type || '').toLowerCase() === 'spacer');
+}
+
 function detailDateValue(value) {
   return detailValue(formatDetailDateTime(value));
 }
@@ -2583,9 +2639,10 @@ function getOrderShippingInfo(order = {}) {
 }
 
 function getOrderCharmDetailEntries(order = {}) {
-  if (Array.isArray(order.charms) && order.charms.length > 0) {
+  const charmItems = getOrderCharmItems(order);
+  if (charmItems.length > 0) {
     return aggregateOrderDetailItems(
-      order.charms,
+      charmItems,
       (charm) => `${charm.id || charm.charmId || charm.sku || charm.nameEn || charm.nameTh || 'charm'}_${charm.sizeCm || ''}`,
       (charm) => {
         const name = charm.nameTh && charm.nameEn
@@ -2623,6 +2680,14 @@ function aggregateOrderDetailItems(items = [], keyBuilder, labelBuilder) {
 }
 
 function getOrderStoneDetailEntries(order = {}) {
+  const stoneItems = getOrderItemizedBilling(order).filter((item) => String(item.type || '').toLowerCase() === 'stone');
+  if (stoneItems.length > 0) {
+    return stoneItems.map((item) => ({
+      label: `${item.nameTh || item.name || item.stoneId || 'Stone'}${item.size ? ` - ${item.size}mm` : ''}`,
+      quantity: Number(item.quantity || item.count || 1) || 1
+    }));
+  }
+
   return aggregateOrderDetailItems(
     Array.isArray(order.beads) ? order.beads : [],
     (bead) => `${bead.stoneId || bead.name || bead.nameTh || 'stone'}_${bead.size || ''}`,
@@ -2636,8 +2701,9 @@ function getOrderStoneDetailEntries(order = {}) {
 }
 
 function getOrderSpacerDetailEntries(order = {}) {
+  const spacerItems = getOrderSpacerItems(order);
   return aggregateOrderDetailItems(
-    Array.isArray(order.spacers) ? order.spacers : [],
+    spacerItems,
     (spacer) => `${spacer.spacerId || spacer.nameEn || spacer.nameTh || 'spacer'}_${spacer.effectiveLengthMm || spacer.displaySizeMm || ''}`,
     (spacer) => {
       const name = spacer.nameTh && spacer.nameEn
@@ -2674,10 +2740,12 @@ function renderOrderDetailFields(fields = []) {
 
 function getOrderDetailItemCount(order = {}) {
   const beadCount = Number(order.totalBeads || (Array.isArray(order.beads) ? order.beads.length : 0)) || 0;
-  const charmCount = Array.isArray(order.charms) && order.charms.length > 0
-    ? order.charms.length
+  const charmItems = getOrderCharmItems(order);
+  const spacerItems = getOrderSpacerItems(order);
+  const charmCount = charmItems.length > 0
+    ? charmItems.length
     : (order.hasCharm ? (Number(order.charmCount || 1) || 1) : 0);
-  const spacerCount = Number(order.spacerCount || (Array.isArray(order.spacers) ? order.spacers.length : 0)) || 0;
+  const spacerCount = spacerItems.length || Number(order.spacerCount || (Array.isArray(order.spacers) ? order.spacers.length : 0)) || 0;
   return beadCount + charmCount + spacerCount;
 }
 
@@ -2782,17 +2850,25 @@ function renderOrdersList(orders) {
     const wristText = `${order.wristSize.toFixed(1)} cm`;
     const beadText = order.beadSize === 'mixed' ? 'Mixed' : `${order.beadSize}mm`;
     const beadCountText = `${order.totalBeads} beads`;
-    const charmText = order.hasCharm ? `${order.charmNameEn || order.charmNameTh || 'Charm'} (${Number(order.charmSizeCm || 0).toFixed(1)} cm)` : 'No Charm';
-    const spacerText = order.hasSpacer ? `${order.spacerCount} spacers` : 'No Spacer';
+    const orderCharmItems = getOrderCharmItems(order);
+    const orderSpacerItems = getOrderSpacerItems(order);
+    const charmText = orderCharmItems.length > 0
+      ? orderCharmItems.map((charm) => charm.nameEn || charm.nameTh || charm.sku || charm.id || charm.charmId || 'Charm').join(', ')
+      : (order.hasCharm ? `${order.charmNameEn || order.charmNameTh || 'Charm'} (${Number(order.charmSizeCm || 0).toFixed(1)} cm)` : 'No Charm');
+    const spacerText = orderSpacerItems.length > 0
+      ? `${orderSpacerItems.length} spacers`
+      : (order.hasSpacer ? `${order.spacerCount} spacers` : 'No Spacer');
     
     // Render visual bead sequence inline
-    const beadMapNodeHtmls = (order.beads || []).map((bead, bIndex) => {
+    const beadMapNodeHtmls = getOrderBraceletSequence(order).map((bead, bIndex) => {
+      const itemType = String(bead.componentType || bead.type || 'stone').toLowerCase();
       // Map size to visual class
       const sizeClass = `size-${bead.size || 6}`;
-      const tooltip = `${bIndex + 1}. ${bead.nameTh} (${bead.size}mm)`;
+      const tooltip = `${bIndex + 1}. ${bead.nameTh || bead.nameEn || bead.name || bead.id || itemType} (${bead.size || bead.effectiveLengthMm || bead.sizeCm || ''}${itemType === 'charm' ? 'cm' : 'mm'})`;
+      const nodeClass = itemType === 'charm' ? ' charm-node' : itemType === 'spacer' ? ' spacer-node' : '';
       return `
-        <div class="bead-map-node ${sizeClass}" style="background-color: ${bead.color || '#E2E8F0'}" data-tooltip="${tooltip}">
-          <img src="${bead.image}" alt="" onerror="this.style.display='none'">
+        <div class="bead-map-node ${sizeClass}${nodeClass}" style="background-color: ${bead.color || '#E2E8F0'}" data-tooltip="${escapeHtml(tooltip)}">
+          <img src="${escapeHtml(bead.image || '')}" alt="" onerror="this.style.display='none'">
         </div>
       `;
     }).join('');
@@ -2800,6 +2876,14 @@ function renderOrdersList(orders) {
     const beadMapContainerHtml = `<div class="bead-map-canvas">${beadMapNodeHtmls}</div>`;
     
     // Price summary details
+    const displaySubtotal = getOrderSubtotal(order);
+    const displayDiscountPercent = getOrderDiscountPercent(order);
+    const displayDiscountAmount = getOrderDiscountAmount(order);
+    const displayFinalPrice = getOrderFinalPrice(order);
+    order.subtotal = displaySubtotal;
+    order.discountPercent = displayDiscountPercent;
+    order.discountAmount = displayDiscountAmount;
+    order.netPrice = displayFinalPrice;
     const priceText = `
       <div style="font-size: 11px;">
         <div>Subtotal: ฿${order.subtotal.toLocaleString()}</div>
@@ -2932,6 +3016,18 @@ async function handleOrderStatusChange(orderId, newStatus, rowElement = null) {
 }
 
 function getOrderCharmDisplayText(order) {
+  const charmItems = getOrderCharmItems(order);
+  if (charmItems.length > 0) {
+    return charmItems.map((charm) => {
+      const charmName = charm.nameTh && charm.nameEn
+        ? `${charm.nameTh} (${charm.nameEn})`
+        : charm.nameEn || charm.nameTh || charm.sku || charm.id || charm.charmId || 'Charm';
+      const charmMeta = [];
+      if (charm.sizeCm) charmMeta.push(`${Number(charm.sizeCm).toFixed(1)} cm`);
+      if (charm.sku) charmMeta.push(charm.sku);
+      return charmMeta.length > 0 ? `${charmName} โ€ข ${charmMeta.join(' โ€ข ')}` : charmName;
+    }).join(', ');
+  }
   if (!order?.hasCharm) return 'No Charm';
   const charmName = order.charmNameTh && order.charmNameEn
     ? `${order.charmNameTh} (${order.charmNameEn})`
@@ -2947,8 +3043,10 @@ function getOrderCharmDisplayText(order) {
 }
 
 function getOrderSpacerDisplayText(order) {
-  if (!order?.hasSpacer || !Array.isArray(order.spacers) || order.spacers.length === 0) return 'No Spacer';
-  const spacerDetails = order.spacers.reduce((acc, spacer) => {
+  const spacerItems = getOrderSpacerItems(order);
+  if (!order?.hasSpacer && spacerItems.length === 0) return 'No Spacer';
+  if (spacerItems.length === 0) return 'No Spacer';
+  const spacerDetails = spacerItems.reduce((acc, spacer) => {
     const key = `${spacer.nameTh || spacer.nameEn} (${spacer.displaySizeMm || 6}mm)`;
     acc[key] = (acc[key] || 0) + 1;
     return acc;
@@ -2967,6 +3065,10 @@ async function openOrderDetailModal(orderId) {
   const paymentSentAt = formatDetailDateTime(order?.notifications?.paymentReceivedSentAt);
   const shippedSentAt = formatDetailDateTime(order?.notifications?.shippedSentAt);
   const rawJson = JSON.stringify(order, null, 2);
+  const detailSubtotal = getOrderSubtotal(order);
+  const detailDiscountPercent = getOrderDiscountPercent(order);
+  const detailDiscountAmount = getOrderDiscountAmount(order);
+  const detailFinalPrice = getOrderFinalPrice(order);
 
   DOM.orderDetailBody.innerHTML = `
     <div class="order-detail-summary">
@@ -2980,7 +3082,7 @@ async function openOrderDetailModal(orderId) {
       </div>
       <div>
         <span>Total</span>
-        <strong>${detailMoneyValue(order.netPrice)}</strong>
+        <strong>${detailMoneyValue(detailFinalPrice)}</strong>
       </div>
     </div>
 
@@ -3051,10 +3153,10 @@ async function openOrderDetailModal(orderId) {
       <section class="order-detail-section">
         <h4>Pricing</h4>
         ${renderOrderDetailFields([
-          { label: 'Subtotal', value: detailMoneyValue(order.subtotal), rawHtml: true },
-          { label: 'Discount Percent', value: order.discountPercent !== undefined ? `${order.discountPercent}%` : '' },
-          { label: 'Discount Amount', value: detailMoneyValue(order.discountAmount), rawHtml: true },
-          { label: 'Final Total', value: detailMoneyValue(order.netPrice), rawHtml: true },
+          { label: 'Subtotal', value: detailMoneyValue(detailSubtotal), rawHtml: true },
+          { label: 'Discount Percent', value: detailDiscountPercent !== undefined ? `${detailDiscountPercent}%` : '' },
+          { label: 'Discount Amount', value: detailMoneyValue(detailDiscountAmount), rawHtml: true },
+          { label: 'Final Total', value: detailMoneyValue(detailFinalPrice), rawHtml: true },
           { label: 'Currency', value: 'THB' }
         ])}
       </section>
@@ -3115,6 +3217,10 @@ async function openInvoiceModal(orderId) {
   DOM.invLength.textContent = `${(order.wristSize + 1.5).toFixed(1)} cm (Tolerance included)`;
   DOM.invCharm.textContent = getOrderCharmDisplayText(order);
   DOM.invSpacer.textContent = getOrderSpacerDisplayText(order);
+  order.subtotal = getOrderSubtotal(order);
+  order.discountPercent = getOrderDiscountPercent(order);
+  order.discountAmount = getOrderDiscountAmount(order);
+  order.netPrice = getOrderFinalPrice(order);
   
   DOM.invSubtotal.textContent = `฿${order.subtotal.toLocaleString()}`;
   DOM.invDiscountLabel.textContent = `LINE Special Discount (${order.discountPercent}%):`;
@@ -3124,7 +3230,7 @@ async function openInvoiceModal(orderId) {
   DOM.invConfigCode.textContent = order.configurationCode;
   
   // 1. Draw SVG bead layout map strip
-  drawInvoiceSvgBeadMap(order.beads);
+  drawInvoiceSvgBeadMap(getOrderBraceletSequence(order));
   
   // 2. Populate billing items table breakdown
   drawInvoicePricingTable(order);
@@ -3201,6 +3307,35 @@ function drawInvoiceSvgBeadMap(beads) {
 }
 
 function drawInvoicePricingTable(order) {
+  const itemizedBilling = getOrderItemizedBilling(order);
+  if (itemizedBilling.length > 0) {
+    DOM.invItemsBody.innerHTML = '';
+    itemizedBilling.forEach((item) => {
+      const type = String(item.type || item.componentType || 'item').toLowerCase();
+      const nameTh = item.nameTh || item.name || item.id || type;
+      const nameEn = item.nameEn || item.sku || item.stoneId || item.charmId || item.spacerId || '';
+      const sizeText = type === 'charm'
+        ? (item.sizeCm ? `${Number(item.sizeCm).toFixed(1)} cm` : '-')
+        : `${item.size || item.displaySizeMm || item.effectiveLengthMm || '-'} mm`;
+      const qty = Number(item.quantity || item.count || 1) || 1;
+      const unitPrice = Number(item.unitPrice ?? item.price ?? item.priceUnit ?? 0);
+      const totalPrice = Number(item.totalPrice ?? unitPrice * qty);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <div style="font-weight:600; color:#1e293b;">${escapeHtml(nameTh)}</div>
+          <div style="font-size:10px; color:#64748b;">${escapeHtml(nameEn)}</div>
+        </td>
+        <td>${escapeHtml(sizeText)}</td>
+        <td>${qty.toLocaleString()}</td>
+        <td class="text-right">เธฟ${unitPrice.toLocaleString()}</td>
+        <td class="text-right" style="font-weight:600; color:#1e293b;">เธฟ${totalPrice.toLocaleString()}</td>
+      `;
+      DOM.invItemsBody.appendChild(tr);
+    });
+    return;
+  }
+
   // Aggregate details
   const aggregated = {};
   const beads = order?.beads || [];
@@ -3301,6 +3436,10 @@ function triggerPrint() {
 function copyLINEInvoiceSummary() {
   const order = CRMState.selectedInvoiceOrder;
   if (!order) return;
+  order.subtotal = getOrderSubtotal(order);
+  order.discountPercent = getOrderDiscountPercent(order);
+  order.discountAmount = getOrderDiscountAmount(order);
+  order.netPrice = getOrderFinalPrice(order);
   
   const lines = [];
   lines.push(`🔮 *LUCKY.COLORSTONE Order Bill* 🔮`);

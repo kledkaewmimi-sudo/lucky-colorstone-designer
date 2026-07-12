@@ -398,6 +398,7 @@ function formatLineCurrency(value) {
 
 function getOrderTotalPrice(order) {
   const candidates = [
+    order?.finalPrice,
     order?.totalPrice,
     order?.netPrice,
     order?.total,
@@ -977,7 +978,7 @@ async function createStripeCheckoutSession({ order, origin }) {
   }
 
   const safeOrigin = getSafeOrigin(origin);
-  const amountTotal = normalizeCurrencyAmount(order.netPrice);
+  const amountTotal = normalizeCurrencyAmount(getOrderTotalPrice(order));
   const customerName = String(order.customerName || "Khun Guest").trim() || "Khun Guest";
   const beadSize = String(order.beadSize || "").trim() || "6";
   const totalBeads = Number.parseInt(order.totalBeads || 0, 10) || 0;
@@ -1010,7 +1011,7 @@ async function createStripeCheckoutSession({ order, origin }) {
   form.append("metadata[wristSize]", String(order.wristSize ?? ""));
   form.append("metadata[beadSize]", beadSize.slice(0, 500));
   form.append("metadata[totalBeads]", String(totalBeads));
-  form.append("metadata[netPrice]", String(order.netPrice ?? ""));
+  form.append("metadata[netPrice]", String(getOrderTotalPrice(order) ?? ""));
   if (recipientName) {
     form.append("metadata[recipientName]", recipientName.slice(0, 500));
   }

@@ -37,7 +37,8 @@ const State = {
   activeSlotIndex: null,    // Index of selected slot in Step 3 (-1 or null for append)
   uniqueCounter: 0,         // For generating unique IDs for animation keys
   newlyAddedIds: [],        // Track newly added bead unique IDs for pop animation
-  orderDetailLoadError: ''  // Friendly state for direct order summary links
+  orderDetailLoadError: '', // Friendly state for direct order summary links
+  orderDetailSnapshot: null // Saved order currently shown from ?orderId=
 };
 
 // ==========================================
@@ -881,6 +882,46 @@ function decodeOrderConfiguration(configurationCode) {
 }
 
 function buildLoopItemsFromOrder(order, decodedConfig) {
+  const savedSequence = Array.isArray(order?.braceletSequence)
+    ? order.braceletSequence
+    : Array.isArray(order?.beadMap)
+      ? order.beadMap
+      : null;
+
+  if (savedSequence?.length) {
+    return normalizeSelectedLoopItems(savedSequence.map((item, index) => {
+      const itemType = String(item?.componentType || item?.type || 'stone').trim().toLowerCase();
+      if (itemType === 'spacer') {
+        return {
+          componentType: 'spacer',
+          spacerId: String(item?.spacerId || item?.id || '').trim(),
+          uniqueId: index + 1
+        };
+      }
+      if (itemType === 'charm') {
+        const charmId = String(item?.charmId || item?.id || '').trim();
+        const charm = getCharmCatalogEntry(charmId);
+        if (charm && isAnchoredCharmType(charm.type)) {
+          return null;
+        }
+        return {
+          componentType: 'charm',
+          charmId,
+          uniqueId: index + 1
+        };
+      }
+      return {
+        componentType: 'stone',
+        stoneId: String(item?.stoneId || item?.id || '').trim(),
+        size: Number(item?.size || item?.sizeMm || order?.beadSize || State.beadSize),
+        uniqueId: index + 1
+      };
+    }).filter(Boolean)).map((item, index) => ({
+      ...item,
+      uniqueId: index + 1
+    }));
+  }
+
   const loopItems = Array.isArray(decodedConfig?.l)
     ? decodedConfig.l.map((item, index) => {
       const itemType = String(item?.t || 'stone').trim().toLowerCase();
@@ -946,6 +987,7 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
 }
 
 function getOrderCharmIds(order, decodedConfig) {
+  if (Array.isArray(order?.selectedCharms)) return order.selectedCharms.map((charm) => charm?.id || charm?.charmId);
   if (Array.isArray(order?.charmIds)) return order.charmIds;
   if (Array.isArray(decodedConfig?.c)) return decodedConfig.c;
   if (Array.isArray(order?.charms)) return order.charms.map((charm) => charm?.id || charm?.charmId);
@@ -981,6 +1023,7 @@ function hydrateStateFromOrder(order) {
   State.currentStep = 4;
   State.landingDismissed = true;
   State.orderDetailLoadError = '';
+  State.orderDetailSnapshot = order;
 
   if (DOM.braceletOwnerName) {
     DOM.braceletOwnerName.value = State.ownerName;
@@ -993,6 +1036,7 @@ async function loadOrderDetailFromUrlIfNeeded() {
 
   State.currentStep = 4;
   State.landingDismissed = true;
+  State.orderDetailSnapshot = null;
 
   try {
     const orders = await getSharedOrders();
@@ -2007,26 +2051,186 @@ function buildSelectedSpacerOrderData() {
 }
 
 function calculateCurrentOrderPricing() {
-  const stonesSubtotal = getSelectedStoneItems().reduce((sum, bead) => {
-    const stoneData = STONES.find((stone) => stone.id === bead.stoneId);
-    return sum + getStonePriceForSize(stoneData, bead.size);
-  }, 0);
+  const summary = buildCheckoutSummary();
+  return {
+    stonesSubtotal: summary.stonesSubtotal,
+    charmSubtotal: summary.charmSubtotal,
+    spacerSubtotal: summary.spacerSubtotal,
+    subtotal: summary.subtotal,
+    discountPercent: summary.discountPercent,
+    discount: summary.discountAmount,
+    discountAmount: summary.discountAmount,
+    netPrice: summary.finalPrice,
+    finalPrice: summary.finalPrice,
+    totalPrice: summary.finalPrice,
+    charmData: summary.charmData,
+    spacerData: summary.spacerData,
+    itemizedBilling: summary.itemizedBilling,
+    braceletSequence: summary.braceletSequence
+  };
+}
+
+function buildCheckoutSummary() {
+  const selectedStoneItems = getSelectedStoneItems();
   const charmData = buildSelectedCharmOrderData();
   const spacerData = buildSelectedSpacerOrderData();
-  const charmSubtotal = charmData.charms.reduce((sum, charm) => sum + Number(charm.price || 0), 0);
-  const spacerSubtotal = spacerData.spacers.reduce((sum, spacer) => sum + Number(spacer.price || 0), 0);
+  const aggregatedStones = {};
+  const uniqueStoneIds = new Set();
+
+  selectedStoneItems.forEach((placedBead) => {
+    const key = `${placedBead.stoneId}_${placedBead.size}`;
+    uniqueStoneIds.add(placedBead.stoneId);
+
+    const stoneData = STONES.find((stone) => stone.id === placedBead.stoneId);
+    const price = getStonePriceForSize(stoneData, placedBead.size);
+
+    if (!aggregatedStones[key]) {
+      aggregatedStones[key] = {
+        type: 'stone',
+        stoneId: placedBead.stoneId,
+        name: stoneData ? stoneData.name : 'Unknown Stone',
+        nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
+        color: stoneData ? stoneData.color : '#E2E8F0',
+        image: stoneData ? stoneData.image : '',
+        size: placedBead.size,
+        quantity: 0,
+        count: 0,
+        unitPrice: price,
+        priceUnit: price,
+        totalPrice: 0
+      };
+    }
+
+    aggregatedStones[key].quantity += 1;
+    aggregatedStones[key].count += 1;
+    aggregatedStones[key].totalPrice += price;
+  });
+
+  const aggregatedSpacers = spacerData.spacers.reduce((spacerMap, spacer) => {
+    const key = `${spacer.spacerId}_${spacer.effectiveLengthMm}`;
+    if (!spacerMap[key]) {
+      spacerMap[key] = {
+        type: 'spacer',
+        ...spacer,
+        quantity: 0,
+        count: 0,
+        unitPrice: Number(spacer.price || 0),
+        totalPrice: 0
+      };
+    }
+    spacerMap[key].quantity += 1;
+    spacerMap[key].count += 1;
+    spacerMap[key].totalPrice += Number(spacer.price || 0);
+    return spacerMap;
+  }, {});
+
+  const stoneBilling = Object.values(aggregatedStones);
+  const charmBilling = charmData.charms.map((charm) => ({
+    type: 'charm',
+    id: charm.id,
+    charmId: charm.id,
+    sku: charm.sku,
+    nameTh: charm.nameTh,
+    nameEn: charm.nameEn,
+    sizeCm: charm.sizeCm,
+    footprintMm: getCharmFootprintMm(charm),
+    image: charm.image,
+    quantity: 1,
+    count: 1,
+    unitPrice: Number(charm.price || 0),
+    price: Number(charm.price || 0),
+    totalPrice: Number(charm.price || 0)
+  }));
+  const spacerBilling = Object.values(aggregatedSpacers);
+
+  const stonesSubtotal = stoneBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+  const charmSubtotal = charmBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+  const spacerSubtotal = spacerBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
   const subtotal = stonesSubtotal + spacerSubtotal + charmSubtotal;
   const discountPercent = 20;
   const discount = Math.round(subtotal * 0.2);
-  const netPrice = subtotal - discount;
+  const finalPrice = subtotal - discount;
+  const braceletSequence = createBraceletComponentList().map((component, index) => {
+    if (component.type === 'charm') {
+      const charm = getCharmCatalogEntry(component.charmId);
+      const charmMeta = charm ? getCharmDisplayMeta(charm) : {};
+      return {
+        type: 'charm',
+        componentType: 'charm',
+        sequenceIndex: index,
+        charmId: component.charmId,
+        id: component.charmId,
+        sku: charm?.sku || null,
+        nameTh: charmMeta.nameTh || charm?.nameTh || '',
+        nameEn: charmMeta.nameEn || charm?.nameEn || '',
+        charmType: component.charmType || charm?.type || null,
+        image: component.image || charm?.image || '',
+        sizeCm: component.sizeCm || charm?.sizeCm || null,
+        footprintMm: component.footprintMm || (charm ? getCharmFootprintMm(charm) : component.sizeMm),
+        size: component.sizeMm || component.footprintMm || null,
+        price: Number(charm?.price || 0),
+        uniqueId: component.uniqueId || component.id
+      };
+    }
+
+    if (component.type === 'spacer') {
+      return {
+        type: 'spacer',
+        componentType: 'spacer',
+        sequenceIndex: index,
+        spacerId: component.spacerId,
+        id: component.spacerId,
+        nameTh: component.nameTh,
+        nameEn: component.nameEn,
+        color: component.color,
+        image: component.image,
+        displaySizeMm: component.displaySizeMm,
+        effectiveLengthMm: component.effectiveLengthMm,
+        size: component.sizeMm,
+        price: Number(component.price || 0),
+        uniqueId: component.uniqueId || component.id
+      };
+    }
+
+    const stoneData = STONES.find((stone) => stone.id === component.stoneId);
+    return {
+      type: 'stone',
+      componentType: 'stone',
+      sequenceIndex: index,
+      stoneId: component.stoneId,
+      id: component.stoneId,
+      name: stoneData ? stoneData.name : 'Unknown Stone',
+      nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
+      color: stoneData ? stoneData.color : '#E2E8F0',
+      image: stoneData ? stoneData.image : '',
+      size: component.sizeMm,
+      price: getStonePriceForSize(stoneData, component.sizeMm),
+      uniqueId: component.uniqueId || component.id
+    };
+  });
 
   return {
+    selectedStoneItems,
+    aggregatedStones,
+    aggregatedSpacers,
+    uniqueStoneIds,
+    itemizedBilling: [
+      ...stoneBilling,
+      ...charmBilling,
+      ...spacerBilling
+    ],
+    braceletSequence,
+    beadMap: braceletSequence,
     stonesSubtotal,
+    charmSubtotal,
     spacerSubtotal,
     subtotal,
     discountPercent,
     discount,
-    netPrice,
+    discountAmount: discount,
+    netPrice: finalPrice,
+    finalPrice,
+    totalPrice: finalPrice,
     charmData,
     spacerData
   };
@@ -3494,18 +3698,19 @@ async function renderStep4() {
   DOM.specLength.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`;
   
   DOM.specBeadSize.textContent = `${getCurrentBeadSizeMm()}mm`;
-  const selectedStoneItems = getSelectedStoneItems();
-  const spacerData = buildSelectedSpacerOrderData();
+  const checkoutSummary = buildCheckoutSummary();
+  const selectedStoneItems = checkoutSummary.selectedStoneItems;
+  const spacerData = checkoutSummary.spacerData;
   DOM.specBeadsCount.textContent = `${selectedStoneItems.length} เม็ด`;
   renderShippingForm();
   
   // Aggregate stones selected for receipt and meanings
-  const aggregatedStones = {}; // key: stoneId_size, val: { stoneId, size, count, totalPrice }
-  const uniqueStoneIds = new Set();
-  const charmData = buildSelectedCharmOrderData();
+  const aggregatedStones = checkoutSummary.aggregatedStones;
+  const uniqueStoneIds = checkoutSummary.uniqueStoneIds;
+  const charmData = checkoutSummary.charmData;
   const selectedCharms = charmData.charms;
   
-  selectedStoneItems.forEach((placedBead) => {
+  [].forEach((placedBead) => {
     const key = `${placedBead.stoneId}_${placedBead.size}`;
     uniqueStoneIds.add(placedBead.stoneId);
     
@@ -3612,9 +3817,19 @@ async function renderStep4() {
   });
   
   // Hardcoded 20% LINE promotion discount logic
-  const discountPercent = 20;
-  const discount = Math.round(subtotal * 0.2);
-  const finalPrice = subtotal - discount;
+  const savedOrderSnapshot = State.orderDetailSnapshot;
+  const savedSubtotal = Number(savedOrderSnapshot?.subtotal);
+  const savedDiscountPercent = Number(savedOrderSnapshot?.discountPercent);
+  const savedDiscountAmount = Number(savedOrderSnapshot?.discountAmount);
+  const savedFinalPrice = Number(
+    savedOrderSnapshot?.finalPrice ??
+    savedOrderSnapshot?.totalPrice ??
+    savedOrderSnapshot?.netPrice
+  );
+  subtotal = Number.isFinite(savedSubtotal) ? savedSubtotal : checkoutSummary.subtotal;
+  const discountPercent = Number.isFinite(savedDiscountPercent) ? savedDiscountPercent : checkoutSummary.discountPercent;
+  const discount = Number.isFinite(savedDiscountAmount) ? savedDiscountAmount : checkoutSummary.discountAmount;
+  const finalPrice = Number.isFinite(savedFinalPrice) ? savedFinalPrice : checkoutSummary.finalPrice;
   
   DOM.priceSubtotal.textContent = `฿${subtotal.toLocaleString()}`;
   DOM.priceDiscount.textContent = `-฿${discount.toLocaleString()}`;
@@ -3670,9 +3885,9 @@ function buildDesignConfigurationCode() {
 }
 
 function buildCurrentOrderPayload(overrides = {}) {
-  const pricing = calculateCurrentOrderPricing();
+  const pricing = buildCheckoutSummary();
   const shippingInfo = getShippingInfoSnapshot({ trimValues: true });
-  const selectedStoneItems = getSelectedStoneItems();
+  const selectedStoneItems = pricing.selectedStoneItems;
 
   return {
     customerName: State.ownerName || "Khun Guest",
@@ -3693,8 +3908,21 @@ function buildCurrentOrderPayload(overrides = {}) {
     }),
     subtotal: pricing.subtotal,
     discountPercent: pricing.discountPercent,
-    discountAmount: pricing.discount,
-    netPrice: pricing.netPrice,
+    discountAmount: pricing.discountAmount,
+    netPrice: pricing.finalPrice,
+    finalPrice: pricing.finalPrice,
+    totalPrice: pricing.finalPrice,
+    checkoutSummary: {
+      subtotal: pricing.subtotal,
+      discountPercent: pricing.discountPercent,
+      discountAmount: pricing.discountAmount,
+      finalPrice: pricing.finalPrice
+    },
+    itemizedBilling: pricing.itemizedBilling,
+    braceletSequence: pricing.braceletSequence,
+    beadMap: pricing.beadMap,
+    selectedCharms: pricing.charmData.charms,
+    selectedSpacers: pricing.spacerData.spacers,
     configurationCode: buildDesignConfigurationCode(),
     shippingInfo,
     recipientName: shippingInfo.recipientName,
