@@ -1328,12 +1328,24 @@ function configureFooterNavigation() {
   }
 
   if (State.currentStep === 4) {
-    if (State.orderDetailMode) {
-      DOM.btnBack.style.display = State.paymentCompletedView ? 'none' : '';
-      DOM.btnBack.style.visibility = State.paymentCompletedView ? 'hidden' : 'visible';
+    if (State.paymentCompletedView) {
+      DOM.btnBack.style.display = 'none';
+      DOM.btnBack.style.visibility = 'hidden';
       DOM.btnNext.className = 'footer-btn btn-paid-complete';
       DOM.btnNext.disabled = true;
-      DOM.btnNext.innerHTML = `${State.paymentCompletedView ? 'การชำระเงินเสร็จสิ้น' : 'รายละเอียดคำสั่งซื้อ'} &nbsp;
+      DOM.btnNext.innerHTML = `การชำระเงินเสร็จสิ้น &nbsp;
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5"/>
+        </svg>`;
+      return;
+    }
+
+    if (State.orderDetailMode) {
+      DOM.btnBack.style.display = '';
+      DOM.btnBack.style.visibility = 'visible';
+      DOM.btnNext.className = 'footer-btn btn-paid-complete';
+      DOM.btnNext.disabled = true;
+      DOM.btnNext.innerHTML = `รายละเอียดคำสั่งซื้อ &nbsp;
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 6 9 17l-5-5"/>
         </svg>`;
@@ -1360,7 +1372,7 @@ function setupNavigationEvents() {
   
   DOM.btnNext.addEventListener('click', async () => {
     if (State.currentStep === 4) {
-      if (State.orderDetailMode) return;
+      if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
       if (State.currentStep === 3) {
@@ -4505,6 +4517,29 @@ function cleanupStripeReturnParams() {
   window.history.replaceState({}, document.title, `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
 }
 
+function activatePaymentCompletedView(savedOrder = null) {
+  State.currentStep = 4;
+  State.landingDismissed = true;
+  State.paymentCompletedView = true;
+
+  if (savedOrder && typeof savedOrder === 'object') {
+    State.orderDetailSnapshot = savedOrder;
+    State.checkoutSummarySnapshot = buildOrderDetailCheckoutSummary(savedOrder);
+    if (savedOrder.shippingInfo || savedOrder.recipientName || savedOrder.phoneNumber || savedOrder.addressLine) {
+      State.shippingInfo = normalizeShippingInfo(savedOrder.shippingInfo || {
+        recipientName: savedOrder.recipientName || '',
+        phoneNumber: savedOrder.phoneNumber || '',
+        addressLine: savedOrder.addressLine || '',
+        province: savedOrder.province || '',
+        postalCode: savedOrder.postalCode || ''
+      });
+    }
+  }
+
+  saveState();
+  persistLandingDismissed();
+}
+
 async function handleStripeReturnIfNeeded() {
   const params = new URLSearchParams(window.location.search);
   const stripeState = params.get('stripe');
@@ -4529,6 +4564,11 @@ async function handleStripeReturnIfNeeded() {
 
   const processedKey = `stripe_checkout_processed_${sessionId}`;
   if (localStorage.getItem(processedKey) === 'true') {
+    const existingOrders = await getSharedOrders();
+    const processedOrder = Array.isArray(existingOrders)
+      ? existingOrders.find((order) => order?.stripeCheckoutSessionId === sessionId)
+      : null;
+    activatePaymentCompletedView(processedOrder || null);
     cleanupStripeReturnParams();
     showToast("Stripe payment already confirmed.");
     return;
@@ -4563,6 +4603,7 @@ async function handleStripeReturnIfNeeded() {
       ? payload.shippingDetails
       : getShippingDetailsFromInfo(persistedShippingInfo);
     const shippingAddress = shippingDetails?.address || getShippingAddressFromInfo(persistedShippingInfo);
+    let savedOrder = existingOrder || null;
 
     if (!existingOrder) {
       const paymentUpdates = {
@@ -4581,7 +4622,7 @@ async function handleStripeReturnIfNeeded() {
         postalCode: persistedShippingInfo.postalCode
       };
       const pendingStripeOrderPayload = readStripeOrderPayload(sessionId);
-      const savedOrder = pendingStripeOrderPayload
+      savedOrder = pendingStripeOrderPayload
         ? await addSharedOrder({
           ...pendingStripeOrderPayload,
           ...paymentUpdates
@@ -4593,6 +4634,7 @@ async function handleStripeReturnIfNeeded() {
       }
     }
 
+    activatePaymentCompletedView(savedOrder);
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();
@@ -4604,7 +4646,7 @@ async function handleStripeReturnIfNeeded() {
 }
 
 async function handleStripeCheckout() {
-  if (State.orderDetailMode) {
+  if (State.orderDetailMode || State.paymentCompletedView) {
     showToast("This order has already been created.");
     return;
   }
