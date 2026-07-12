@@ -1268,56 +1268,6 @@ async function renderStepViews() {
     DOM.charmSectionMount.innerHTML = '';
   }
 
-  // Configure navigation buttons in sticky footer
-  if (DOM.appFooter) {
-    DOM.appFooter.style.display = 'flex';
-  }
-  DOM.btnBack.style.display = '';
-  if (State.currentStep === 1) {
-    DOM.btnBack.style.visibility = 'hidden';
-    DOM.btnNext.innerHTML = `ถัดไป &nbsp;
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m9 18 6-6-6-6"/>
-      </svg>`;
-    DOM.btnNext.className = 'footer-btn btn-next';
-    DOM.btnNext.disabled = false;
-  } else {
-    DOM.btnBack.style.visibility = 'visible';
-    
-    if (State.currentStep === 2) {
-      DOM.btnNext.innerHTML = `ถัดไป &nbsp;
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m9 18 6-6-6-6"/>
-        </svg>`;
-      DOM.btnNext.className = 'footer-btn btn-next';
-      DOM.btnNext.disabled = false;
-    } else if (State.currentStep === 3) {
-      const validationState = syncStep3NextValidationUI();
-      if (DOM.appFooter) {
-        DOM.appFooter.style.display = validationState.isFull ? 'flex' : 'none';
-      }
-      DOM.btnBack.style.display = 'none';
-      DOM.btnNext.className = 'footer-btn btn-next';
-      DOM.btnNext.innerHTML = `&#3606;&#3633;&#3604;&#3652;&#3611; &nbsp;
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m9 18 6-6-6-6"/>
-        </svg>`;
-    } else if (State.currentStep === 4) {
-      DOM.btnNext.innerHTML = `สั่งซื้อผ่าน LINE &nbsp;
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>`;
-      DOM.btnNext.className = 'footer-btn btn-order';
-      DOM.btnNext.disabled = false;
-      DOM.btnNext.innerHTML = `ชำระเงิน &nbsp;
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 7h20"/>
-          <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
-          <path d="M16 15h2"/>
-        </svg>`;
-    }
-  }
-
   if (State.currentStep !== 3) {
     if (DOM.appFooter) {
       DOM.appFooter.style.display = 'flex';
@@ -1327,6 +1277,8 @@ async function renderStepViews() {
       warningText: ''
     });
   }
+
+  configureFooterNavigation();
 }
 
 // Navigate to step
@@ -1334,6 +1286,51 @@ async function goToStep(step) {
   if (step < 1 || step > 4) return;
   State.currentStep = step;
   await renderApp();
+}
+
+function configureFooterNavigation() {
+  if (DOM.appFooter) {
+    DOM.appFooter.style.display = 'flex';
+  }
+
+  DOM.btnBack.style.display = '';
+  DOM.btnBack.style.visibility = State.currentStep === 1 ? 'hidden' : 'visible';
+  DOM.btnNext.disabled = false;
+
+  if (State.currentStep === 1 || State.currentStep === 2) {
+    DOM.btnNext.innerHTML = `ถัดไป &nbsp;
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>`;
+    DOM.btnNext.className = 'footer-btn btn-next';
+    return;
+  }
+
+  if (State.currentStep === 3) {
+    const validationState = syncStep3NextValidationUI();
+    if (DOM.appFooter) {
+      DOM.appFooter.style.display = validationState.isFull ? 'flex' : 'none';
+    }
+    DOM.btnBack.style.display = 'none';
+    DOM.btnNext.className = 'footer-btn btn-next';
+    DOM.btnNext.innerHTML = `ถัดไป &nbsp;
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>`;
+    return;
+  }
+
+  if (State.currentStep === 4) {
+    DOM.btnBack.style.display = '';
+    DOM.btnBack.style.visibility = 'visible';
+    DOM.btnNext.className = 'footer-btn btn-order';
+    DOM.btnNext.innerHTML = `ชำระเงิน &nbsp;
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 7h20"/>
+        <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+        <path d="M16 15h2"/>
+      </svg>`;
+  }
 }
 
 // Setup Back/Next Events
@@ -2323,6 +2320,15 @@ function clearStripeOrderPayload(sessionId) {
 
 function calculateCurrentOrderPricing() {
   const summary = getEffectiveCheckoutSummary(buildCheckoutSummary());
+  return buildOrderPricingFromSummary(summary);
+}
+
+function calculateLiveBraceletPricing() {
+  const summary = normalizeCheckoutSummaryForOrder(buildCheckoutSummary());
+  return buildOrderPricingFromSummary(summary);
+}
+
+function buildOrderPricingFromSummary(summary) {
   return {
     stonesSubtotal: summary.stonesSubtotal,
     charmSubtotal: summary.charmSubtotal,
@@ -3826,7 +3832,7 @@ function createSvgDefs() {
 function renderStep3() {
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);
-  const pricing = calculateCurrentOrderPricing();
+  const pricing = calculateLiveBraceletPricing();
   
   const braceletLengthMm = validationState.braceletLengthMm;
   const totalDiameter = validationState.totalDiameter;
@@ -4120,7 +4126,7 @@ async function renderStep4() {
   });
 
   // Trigger HTML5 Canvas image compilation in the background asynchronously
-  if (isPreviewReady || braceletShowcaseGenerationInFlight) {
+  if (isPreviewReady) {
     return;
   }
 
@@ -4130,6 +4136,7 @@ async function renderStep4() {
       await generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, currentPreviewKey);
     } catch (e) {
       console.error("Canvas compilation failed", e);
+      renderBraceletShowcaseFallback(currentPreviewKey);
     } finally {
       braceletShowcaseGenerationInFlight = false;
       if (braceletShowcaseRenderKey !== currentPreviewKey) {
@@ -4728,6 +4735,7 @@ async function preloadRenderImages(urls) {
         console.error("Failed to preload canvas image:", url);
         resolve();
       };
+      img.crossOrigin = "anonymous";
       img.src = url;
     });
   });
@@ -5094,6 +5102,90 @@ function triggerDownload(dataUrl, filename) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+function renderBraceletShowcaseFallback(previewKey = '') {
+  if (previewKey && braceletShowcaseRenderKey !== previewKey) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const ctx = canvas.getContext('2d');
+  const resolvedLayout = createCurrentBraceletResolvedLayout();
+  const nodes = projectResolvedLayoutToCircle(resolvedLayout, {
+    centerX: 540,
+    centerY: 540,
+    radiusPx: 360,
+    componentTypes: ['stone', 'spacer', 'charm']
+  });
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(181, 169, 219, 0.28)';
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.arc(540, 540, 360, 0, Math.PI * 2);
+  ctx.stroke();
+
+  nodes.forEach((node) => {
+    const component = node.component;
+    const x = node.renderCenterX;
+    const y = node.renderCenterY;
+    const radius = Math.max(10, node.renderRadiusPx);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(node.renderRotationRad || 0);
+
+    if (component.type === 'charm') {
+      const frame = getCharmRenderFrameDimensions(component, node.renderScalePxPerMm || 0);
+      ctx.fillStyle = '#D7B56D';
+      ctx.strokeStyle = '#8B6A2B';
+      ctx.lineWidth = 5;
+      ctx.fillRect(-frame.widthPx / 2, -frame.heightPx / 2, frame.widthPx, frame.heightPx);
+      ctx.strokeRect(-frame.widthPx / 2, -frame.heightPx / 2, frame.widthPx, frame.heightPx);
+    } else if (component.type === 'spacer') {
+      ctx.fillStyle = component.color || '#D7C7A0';
+      ctx.strokeStyle = '#8B7B5B';
+      ctx.lineWidth = 4;
+      if (component.spacerShape === 'ball') {
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillRect(-radius * 0.45, -radius, radius * 0.9, radius * 2);
+        ctx.strokeRect(-radius * 0.45, -radius, radius * 0.9, radius * 2);
+      }
+    } else {
+      ctx.fillStyle = component.color || '#B5A9DB';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  });
+
+  const fallbackDataUrl = canvas.toDataURL('image/png');
+  const heroPreview = document.getElementById('exportHeroPreview');
+  const heroLoading = document.getElementById('exportHeroLoading');
+  const btnHero = document.getElementById('btnDownloadHero');
+
+  if (heroPreview) {
+    heroPreview.src = fallbackDataUrl;
+    heroPreview.style.display = 'block';
+    heroPreview.dataset.previewKey = previewKey;
+  }
+  if (heroLoading) {
+    heroLoading.style.display = 'none';
+  }
+  if (btnHero) {
+    btnHero.disabled = false;
+    btnHero.onclick = () => triggerDownload(fallbackDataUrl, `lucky-colorstone-hero-${State.ownerName || "design"}.png`);
+  }
 }
 
 // Submit Order to CRM backend database
