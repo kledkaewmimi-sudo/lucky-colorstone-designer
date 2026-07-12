@@ -9,6 +9,8 @@ if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearSto
 }
 
 const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
+const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
+const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
 
 // ==========================================
 // 1. Global Application State
@@ -38,7 +40,8 @@ const State = {
   uniqueCounter: 0,         // For generating unique IDs for animation keys
   newlyAddedIds: [],        // Track newly added bead unique IDs for pop animation
   orderDetailLoadError: '', // Friendly state for direct order summary links
-  orderDetailSnapshot: null // Saved order currently shown from ?orderId=
+  orderDetailSnapshot: null, // Saved order currently shown from ?orderId=
+  checkoutSummarySnapshot: null
 };
 
 // ==========================================
@@ -2110,8 +2113,216 @@ function buildSelectedSpacerOrderData() {
   };
 }
 
+function cloneCheckoutValue(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (error) {
+    return value;
+  }
+}
+
+function isCheckoutCharmItem(item) {
+  return String(item?.componentType || item?.type || '').trim().toLowerCase() === 'charm';
+}
+
+function isCheckoutSpacerItem(item) {
+  return String(item?.componentType || item?.type || '').trim().toLowerCase() === 'spacer';
+}
+
+function buildCharmOrderDataFromItems(items = []) {
+  const charms = items
+    .filter(isCheckoutCharmItem)
+    .flatMap((item, sourceIndex) => {
+      const charmId = String(item?.charmId || item?.id || '').trim();
+      if (!charmId) return [];
+      const quantity = Math.max(1, Number.parseInt(item?.quantity ?? item?.count ?? 1, 10) || 1);
+      return Array.from({ length: quantity }, (_, quantityIndex) => {
+        const catalogCharm = getCharmCatalogEntry(charmId);
+        const charmMeta = catalogCharm ? getCharmDisplayMeta(catalogCharm) : {};
+        return {
+          id: charmId,
+          selectionIndex: sourceIndex + quantityIndex,
+          charmInstanceKey: item?.charmInstanceKey || `${charmId}_${sourceIndex}_${quantityIndex}`,
+          sku: item?.sku || catalogCharm?.sku || null,
+          nameTh: item?.nameTh || charmMeta.nameTh || catalogCharm?.nameTh || '',
+          nameEn: item?.nameEn || charmMeta.nameEn || catalogCharm?.nameEn || '',
+          type: item?.type || item?.charmType || catalogCharm?.type || null,
+          sizeCm: Number(item?.sizeCm || catalogCharm?.sizeCm || 0) || null,
+          price: Number(item?.unitPrice ?? item?.price ?? item?.totalPrice ?? catalogCharm?.price ?? 0),
+          image: item?.image || catalogCharm?.image || null,
+          meaningTh: item?.meaningTh || catalogCharm?.meaningTh || '',
+          meaningEn: item?.meaningEn || catalogCharm?.meaningEn || ''
+        };
+      });
+    });
+
+  if (charms.length === 0) {
+    return buildSelectedCharmOrderData();
+  }
+
+  const primaryCharm = charms[0];
+  return {
+    hasCharm: true,
+    charmCount: charms.length,
+    charmIds: charms.map((charm) => charm.id),
+    charms,
+    charmId: primaryCharm.id,
+    charmSku: primaryCharm.sku,
+    charmNameTh: primaryCharm.nameTh,
+    charmNameEn: primaryCharm.nameEn,
+    charmType: primaryCharm.type,
+    charmSizeCm: primaryCharm.sizeCm,
+    charmPrice: primaryCharm.price,
+    charmImage: primaryCharm.image
+  };
+}
+
+function buildSpacerOrderDataFromItems(items = []) {
+  const spacers = items
+    .filter(isCheckoutSpacerItem)
+    .flatMap((item) => {
+      const spacerId = String(item?.spacerId || item?.id || '').trim();
+      if (!spacerId) return [];
+      const quantity = Math.max(1, Number.parseInt(item?.quantity ?? item?.count ?? 1, 10) || 1);
+      return Array.from({ length: quantity }, () => ({
+        spacerId,
+        nameTh: item?.nameTh || '',
+        nameEn: item?.nameEn || '',
+        type: item?.type || null,
+        color: item?.color || '',
+        image: item?.image || '',
+        price: Number(item?.unitPrice ?? item?.price ?? 0),
+        displaySizeMm: item?.displaySizeMm || item?.size || null,
+        effectiveLengthMm: item?.effectiveLengthMm || item?.size || null,
+        thicknessMm: item?.thicknessMm || null
+      }));
+    });
+
+  if (spacers.length === 0) {
+    return buildSelectedSpacerOrderData();
+  }
+
+  return {
+    hasSpacer: true,
+    spacerCount: spacers.length,
+    spacerIds: spacers.map((spacer) => spacer.spacerId),
+    spacers
+  };
+}
+
+function normalizeCheckoutSummaryForOrder(summary) {
+  if (!summary || typeof summary !== 'object') return summary;
+
+  const nextSummary = cloneCheckoutValue(summary);
+  const itemizedBilling = Array.isArray(nextSummary.itemizedBilling) ? nextSummary.itemizedBilling : [];
+  const braceletSequence = Array.isArray(nextSummary.braceletSequence) ? nextSummary.braceletSequence : [];
+  const existingCharms = Array.isArray(nextSummary.charmData?.charms) ? nextSummary.charmData.charms : [];
+  const existingSpacers = Array.isArray(nextSummary.spacerData?.spacers) ? nextSummary.spacerData.spacers : [];
+
+  if (existingCharms.length === 0) {
+    const charmSource = itemizedBilling.some(isCheckoutCharmItem)
+      ? itemizedBilling
+      : braceletSequence;
+    const derivedCharmData = buildCharmOrderDataFromItems(charmSource);
+    if (derivedCharmData.charms.length > 0) {
+      nextSummary.charmData = derivedCharmData;
+    }
+  }
+
+  if (existingSpacers.length === 0) {
+    const spacerSource = itemizedBilling.some(isCheckoutSpacerItem)
+      ? itemizedBilling
+      : braceletSequence;
+    const derivedSpacerData = buildSpacerOrderDataFromItems(spacerSource);
+    if (derivedSpacerData.spacers.length > 0) {
+      nextSummary.spacerData = derivedSpacerData;
+    }
+  }
+
+  return nextSummary;
+}
+
+function summaryHasCharmRows(summary) {
+  return Boolean(
+    summary?.charmData?.charms?.length ||
+    summary?.itemizedBilling?.some(isCheckoutCharmItem) ||
+    summary?.braceletSequence?.some(isCheckoutCharmItem)
+  );
+}
+
+function rememberCheckoutSummary(summary) {
+  const normalizedSummary = normalizeCheckoutSummaryForOrder(summary);
+  State.checkoutSummarySnapshot = cloneCheckoutValue(normalizedSummary);
+  try {
+    localStorage.setItem(CHECKOUT_SUMMARY_STORAGE_KEY, JSON.stringify(State.checkoutSummarySnapshot));
+  } catch (error) {
+    console.warn('Unable to persist checkout summary snapshot', error);
+  }
+  return normalizedSummary;
+}
+
+function readStoredCheckoutSummary() {
+  if (State.checkoutSummarySnapshot) {
+    return cloneCheckoutValue(State.checkoutSummarySnapshot);
+  }
+
+  try {
+    const storedSummary = JSON.parse(localStorage.getItem(CHECKOUT_SUMMARY_STORAGE_KEY) || 'null');
+    return storedSummary && typeof storedSummary === 'object' ? storedSummary : null;
+  } catch (error) {
+    console.warn('Unable to read checkout summary snapshot', error);
+    return null;
+  }
+}
+
+function getEffectiveCheckoutSummary(currentSummary) {
+  const normalizedCurrent = normalizeCheckoutSummaryForOrder(currentSummary);
+  const storedSummary = normalizeCheckoutSummaryForOrder(readStoredCheckoutSummary());
+  if (!summaryHasCharmRows(normalizedCurrent) && summaryHasCharmRows(storedSummary)) {
+    return storedSummary;
+  }
+  return normalizedCurrent;
+}
+
+function rememberStripeOrderPayload(sessionId, orderPayload) {
+  if (!sessionId || !orderPayload) return;
+  try {
+    const storedPayloads = JSON.parse(localStorage.getItem(STRIPE_ORDER_PAYLOAD_STORAGE_KEY) || '{}');
+    storedPayloads[sessionId] = cloneCheckoutValue({
+      ...orderPayload,
+      stripeCheckoutSessionId: sessionId
+    });
+    localStorage.setItem(STRIPE_ORDER_PAYLOAD_STORAGE_KEY, JSON.stringify(storedPayloads));
+  } catch (error) {
+    console.warn('Unable to persist Stripe order payload snapshot', error);
+  }
+}
+
+function readStripeOrderPayload(sessionId) {
+  if (!sessionId) return null;
+  try {
+    const storedPayloads = JSON.parse(localStorage.getItem(STRIPE_ORDER_PAYLOAD_STORAGE_KEY) || '{}');
+    const payload = storedPayloads?.[sessionId];
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch (error) {
+    console.warn('Unable to read Stripe order payload snapshot', error);
+    return null;
+  }
+}
+
+function clearStripeOrderPayload(sessionId) {
+  if (!sessionId) return;
+  try {
+    const storedPayloads = JSON.parse(localStorage.getItem(STRIPE_ORDER_PAYLOAD_STORAGE_KEY) || '{}');
+    delete storedPayloads[sessionId];
+    localStorage.setItem(STRIPE_ORDER_PAYLOAD_STORAGE_KEY, JSON.stringify(storedPayloads));
+  } catch (error) {
+    console.warn('Unable to clear Stripe order payload snapshot', error);
+  }
+}
+
 function calculateCurrentOrderPricing() {
-  const summary = buildCheckoutSummary();
+  const summary = getEffectiveCheckoutSummary(buildCheckoutSummary());
   return {
     stonesSubtotal: summary.stonesSubtotal,
     charmSubtotal: summary.charmSubtotal,
@@ -3758,7 +3969,7 @@ async function renderStep4() {
   DOM.specLength.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`;
   
   DOM.specBeadSize.textContent = `${getCurrentBeadSizeMm()}mm`;
-  const checkoutSummary = buildCheckoutSummary();
+  const checkoutSummary = rememberCheckoutSummary(buildCheckoutSummary());
   const selectedStoneItems = checkoutSummary.selectedStoneItems;
   const spacerData = checkoutSummary.spacerData;
   DOM.specBeadsCount.textContent = `${selectedStoneItems.length} เม็ด`;
@@ -3945,9 +4156,11 @@ function buildDesignConfigurationCode() {
 }
 
 function buildCurrentOrderPayload(overrides = {}) {
-  const pricing = buildCheckoutSummary();
+  const pricing = getEffectiveCheckoutSummary(buildCheckoutSummary());
+  const charmData = pricing.charmData || buildCharmOrderDataFromItems(pricing.itemizedBilling || pricing.braceletSequence || []);
+  const spacerData = pricing.spacerData || buildSpacerOrderDataFromItems(pricing.itemizedBilling || pricing.braceletSequence || []);
   const shippingInfo = getShippingInfoSnapshot({ trimValues: true });
-  const selectedStoneItems = pricing.selectedStoneItems;
+  const selectedStoneItems = Array.isArray(pricing.selectedStoneItems) ? pricing.selectedStoneItems : [];
 
   return {
     customerName: State.ownerName || "Khun Guest",
@@ -3983,8 +4196,8 @@ function buildCurrentOrderPayload(overrides = {}) {
     itemizedBilling: pricing.itemizedBilling,
     braceletSequence: pricing.braceletSequence,
     beadMap: pricing.beadMap,
-    selectedCharms: pricing.charmData.charms,
-    selectedSpacers: pricing.spacerData.spacers,
+    selectedCharms: charmData.charms,
+    selectedSpacers: spacerData.spacers,
     configurationCode: buildDesignConfigurationCode(),
     shippingInfo,
     recipientName: shippingInfo.recipientName,
@@ -3992,8 +4205,8 @@ function buildCurrentOrderPayload(overrides = {}) {
     addressLine: shippingInfo.addressLine,
     province: shippingInfo.province,
     postalCode: shippingInfo.postalCode,
-    ...pricing.charmData,
-    ...pricing.spacerData,
+    ...charmData,
+    ...spacerData,
     ...overrides
   };
 }
@@ -4069,7 +4282,7 @@ async function handleStripeReturnIfNeeded() {
     const shippingAddress = shippingDetails?.address || getShippingAddressFromInfo(persistedShippingInfo);
 
     if (!existingOrder) {
-      const savedOrder = await submitOrderToCRM(false, {
+      const paymentUpdates = {
         status: 'Payment Received',
         paymentMethod: 'stripe_checkout',
         stripeCheckoutSessionId: sessionId,
@@ -4083,7 +4296,14 @@ async function handleStripeReturnIfNeeded() {
         addressLine: persistedShippingInfo.addressLine,
         province: persistedShippingInfo.province,
         postalCode: persistedShippingInfo.postalCode
-      });
+      };
+      const pendingStripeOrderPayload = readStripeOrderPayload(sessionId);
+      const savedOrder = pendingStripeOrderPayload
+        ? await addSharedOrder({
+          ...pendingStripeOrderPayload,
+          ...paymentUpdates
+        })
+        : await submitOrderToCRM(false, paymentUpdates);
 
       if (!savedOrder) {
         throw new Error("Payment succeeded, but the order could not be saved from the current design state.");
@@ -4091,6 +4311,7 @@ async function handleStripeReturnIfNeeded() {
     }
 
     localStorage.setItem(processedKey, 'true');
+    clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();
     showToast("Stripe payment received. Your order was saved to CRM.");
   } catch (error) {
@@ -4120,21 +4341,22 @@ async function handleStripeCheckout() {
   saveState();
 
   try {
+    const orderPayload = buildCurrentOrderPayload({
+      shippingInfo,
+      recipientName: shippingInfo.recipientName,
+      phoneNumber: shippingInfo.phoneNumber,
+      addressLine: shippingInfo.addressLine,
+      province: shippingInfo.province,
+      postalCode: shippingInfo.postalCode,
+      paymentMethod: 'stripe_checkout',
+      stripePaymentStatus: 'pending'
+    });
     const response = await fetch('/api/stripe/checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         origin: window.location.origin,
-        order: buildCurrentOrderPayload({
-          shippingInfo,
-          recipientName: shippingInfo.recipientName,
-          phoneNumber: shippingInfo.phoneNumber,
-          addressLine: shippingInfo.addressLine,
-          province: shippingInfo.province,
-          postalCode: shippingInfo.postalCode,
-          paymentMethod: 'stripe_checkout',
-          stripePaymentStatus: 'pending'
-        })
+        order: orderPayload
       })
     });
 
@@ -4147,6 +4369,7 @@ async function handleStripeCheckout() {
       throw new Error("Stripe Checkout session did not include a redirect URL.");
     }
 
+    rememberStripeOrderPayload(payload.id, orderPayload);
     window.location.assign(payload.url);
   } catch (error) {
     console.error("Stripe checkout creation failed", error);
