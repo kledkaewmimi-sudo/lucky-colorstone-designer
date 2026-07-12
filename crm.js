@@ -2605,6 +2605,143 @@ function getOrderBraceletSequence(order = {}) {
     : [];
 }
 
+function getOrderBraceletItemType(item = {}) {
+  const rawType = String(item.componentType || item.type || item.category || '').toLowerCase();
+  if (rawType.includes('charm')) return 'charm';
+  if (rawType.includes('spacer')) return 'spacer';
+  return 'stone';
+}
+
+function getOrderBraceletItemName(item = {}) {
+  const name = item.nameTh && item.nameEn
+    ? `${item.nameTh} (${item.nameEn})`
+    : item.nameTh || item.nameEn || item.name || item.sku || item.id || item.stoneId || item.charmId || item.spacerId;
+  return name || 'Bracelet item';
+}
+
+function getOrderBraceletItemImage(item = {}) {
+  return item.image || item.imageUrl || item.imageSrc || item.thumbnail || item.icon || '';
+}
+
+function getOrderBraceletItemColor(item = {}) {
+  return item.color || item.hex || item.colorHex || item.baseColor || '#E2E8F0';
+}
+
+function getOrderBraceletItemSize(item = {}, itemType = getOrderBraceletItemType(item)) {
+  const candidates = itemType === 'charm'
+    ? [item.footprintMm, item.effectiveLengthMm, Number(item.sizeCm) * 10, item.displaySizeMm, item.sizeMm, item.size]
+    : itemType === 'spacer'
+      ? [item.effectiveLengthMm, item.displaySizeMm, item.sizeMm, item.size]
+      : [item.sizeMm, item.displaySizeMm, item.size];
+  const sizeValue = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+  return sizeValue == null ? (itemType === 'charm' ? 12 : itemType === 'spacer' ? 5 : 6) : Number(sizeValue);
+}
+
+function normalizeOrderBraceletPreviewItems(order = {}) {
+  return getOrderBraceletSequence(order)
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => {
+      const itemType = getOrderBraceletItemType(item);
+      return {
+        ...item,
+        index,
+        previewType: itemType,
+        previewName: getOrderBraceletItemName(item),
+        previewImage: getOrderBraceletItemImage(item),
+        previewColor: getOrderBraceletItemColor(item),
+        previewSizeMm: getOrderBraceletItemSize(item, itemType)
+      };
+    });
+}
+
+function renderOrderBraceletPreview(order = {}, options = {}) {
+  const items = normalizeOrderBraceletPreviewItems(order);
+  const size = Number(options.size || 150);
+  const center = size / 2;
+  const radius = Math.max(42, size * 0.34);
+  const className = options.className || '';
+  const title = options.title || 'Bracelet layout preview';
+
+  if (!items.length) {
+    return `
+      <div class="order-bracelet-preview ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
+        <svg class="order-bracelet-preview-svg" viewBox="0 0 ${size} ${size}" role="img" aria-label="${escapeHtml(title)}">
+          <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(148, 163, 184, 0.35)" stroke-width="4" stroke-dasharray="5 6"></circle>
+          <text x="${center}" y="${center}" text-anchor="middle" dominant-baseline="middle" class="order-bracelet-preview-empty">No layout</text>
+        </svg>
+      </div>
+    `;
+  }
+
+  const totalWeight = items.reduce((sum, item) => sum + Math.max(item.previewSizeMm, 3), 0) || items.length;
+  let angleCursor = -90;
+  const markerHtml = items.map((item) => {
+    const itemWeight = Math.max(item.previewSizeMm, 3);
+    const angleSpan = (itemWeight / totalWeight) * 360;
+    const angle = angleCursor + (angleSpan / 2);
+    angleCursor += angleSpan;
+
+    const radians = (angle * Math.PI) / 180;
+    const x = center + Math.cos(radians) * radius;
+    const y = center + Math.sin(radians) * radius;
+    const label = `${item.index + 1}. ${item.previewName}`;
+    const escapedLabel = escapeHtml(label);
+    const escapedImage = escapeHtml(item.previewImage);
+    const escapedColor = escapeHtml(item.previewColor);
+
+    if (item.previewType === 'charm') {
+      const width = Math.min(28, Math.max(18, item.previewSizeMm * 1.35));
+      const height = Math.min(22, Math.max(14, item.previewSizeMm * 0.9));
+      const tx = x - (width / 2);
+      const ty = y - (height / 2);
+      const imageHtml = escapedImage
+        ? `<image href="${escapedImage}" x="${tx + 2}" y="${ty + 2}" width="${width - 4}" height="${height - 4}" preserveAspectRatio="xMidYMid meet"></image>`
+        : '';
+      return `
+        <g class="order-bracelet-preview-item order-bracelet-preview-charm">
+          <title>${escapedLabel}</title>
+          <rect x="${tx}" y="${ty}" width="${width}" height="${height}" rx="5" fill="#F5D06F" stroke="#8A6F20" stroke-width="1.4"></rect>
+          ${imageHtml}
+        </g>
+      `;
+    }
+
+    if (item.previewType === 'spacer') {
+      const width = Math.min(18, Math.max(10, item.previewSizeMm * 1.5));
+      const height = Math.min(12, Math.max(7, item.previewSizeMm));
+      return `
+        <g class="order-bracelet-preview-item order-bracelet-preview-spacer" transform="translate(${x} ${y}) rotate(${angle + 90})">
+          <title>${escapedLabel}</title>
+          <rect x="${-(width / 2)}" y="${-(height / 2)}" width="${width}" height="${height}" rx="${height / 2}" fill="#F7E6A2" stroke="#A77C1D" stroke-width="1.2"></rect>
+        </g>
+      `;
+    }
+
+    const beadRadius = Math.min(10, Math.max(5.5, item.previewSizeMm * 0.85));
+    const imageHtml = escapedImage
+      ? `<image href="${escapedImage}" x="${x - beadRadius}" y="${y - beadRadius}" width="${beadRadius * 2}" height="${beadRadius * 2}" preserveAspectRatio="xMidYMid slice"></image>`
+      : '';
+    return `
+      <g class="order-bracelet-preview-item order-bracelet-preview-stone">
+        <title>${escapedLabel}</title>
+        <circle cx="${x}" cy="${y}" r="${beadRadius}" fill="${escapedColor}" stroke="rgba(15, 23, 42, 0.45)" stroke-width="1"></circle>
+        ${imageHtml}
+        <circle cx="${x - beadRadius * 0.28}" cy="${y - beadRadius * 0.3}" r="${Math.max(1.2, beadRadius * 0.22)}" fill="rgba(255,255,255,0.55)"></circle>
+      </g>
+    `;
+  }).join('');
+
+  return `
+    <div class="order-bracelet-preview ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
+      <svg class="order-bracelet-preview-svg" viewBox="0 0 ${size} ${size}" role="img" aria-label="${escapeHtml(title)}">
+        <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(226, 201, 116, 0.38)" stroke-width="3"></circle>
+        <circle cx="${center}" cy="${center}" r="${Math.max(20, radius - 18)}" fill="rgba(15, 23, 42, 0.1)"></circle>
+        ${markerHtml}
+      </svg>
+    </div>
+  `;
+}
+
 function getOrderCharmItems(order = {}) {
   if (Array.isArray(order.selectedCharms) && order.selectedCharms.length > 0) return order.selectedCharms;
   if (Array.isArray(order.charms) && order.charms.length > 0) return order.charms;
@@ -2860,21 +2997,10 @@ function renderOrdersList(orders) {
       ? `${orderSpacerItems.length} spacers`
       : (order.hasSpacer ? `${order.spacerCount} spacers` : 'No Spacer');
     
-    // Render visual bead sequence inline
-    const beadMapNodeHtmls = getOrderBraceletSequence(order).map((bead, bIndex) => {
-      const itemType = String(bead.componentType || bead.type || 'stone').toLowerCase();
-      // Map size to visual class
-      const sizeClass = `size-${bead.size || 6}`;
-      const tooltip = `${bIndex + 1}. ${bead.nameTh || bead.nameEn || bead.name || bead.id || itemType} (${bead.size || bead.effectiveLengthMm || bead.sizeCm || ''}${itemType === 'charm' ? 'cm' : 'mm'})`;
-      const nodeClass = itemType === 'charm' ? ' charm-node' : itemType === 'spacer' ? ' spacer-node' : '';
-      return `
-        <div class="bead-map-node ${sizeClass}${nodeClass}" style="background-color: ${bead.color || '#E2E8F0'}" data-tooltip="${escapeHtml(tooltip)}">
-          <img src="${escapeHtml(bead.image || '')}" alt="" onerror="this.style.display='none'">
-        </div>
-      `;
-    }).join('');
-    
-    const beadMapContainerHtml = `<div class="bead-map-canvas">${beadMapNodeHtmls}</div>`;
+    const braceletPreviewHtml = renderOrderBraceletPreview(order, {
+      className: 'order-bracelet-preview-compact',
+      title: `Bracelet layout for ${order.id}`
+    });
     
     // Price summary details
     const displaySubtotal = getOrderSubtotal(order);
@@ -2956,7 +3082,7 @@ function renderOrdersList(orders) {
         <div style="font-size: 11px; color: var(--color-navy-muted);">Charm: ${charmText}</div>
         <div style="font-size: 11px; color: var(--color-navy-muted);">Spacer: ${spacerText}</div>
       </td>
-      <td data-label="Bead Map">${beadMapContainerHtml}</td>
+      <td data-label="Bracelet Layout">${braceletPreviewHtml}</td>
       <td data-label="Pricing">${priceText}</td>
       <td data-label="Status">${workflowMetaHtml}</td>
       <td data-label="Invoice" class="text-right">
@@ -3132,6 +3258,10 @@ async function openOrderDetailModal(orderId) {
 
       <section class="order-detail-section order-detail-section-wide">
         <h4>Bracelet Items</h4>
+        ${renderOrderBraceletPreview(order, {
+          className: 'order-bracelet-preview-detail',
+          title: `Bracelet layout for ${order.id}`
+        })}
         ${renderOrderDetailFields([
           { label: 'Wrist Size', value: order.wristSize ? `${Number(order.wristSize).toFixed(1)} cm` : '' },
           { label: 'Bead Size', value: order.beadSize === 'mixed' ? 'Mixed' : (order.beadSize ? `${order.beadSize}mm` : '') },

@@ -1997,73 +1997,50 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ==========================================
-   VISUAL BEAD MAP LAYOUT (OMS TABLE)
+   CIRCULAR BRACELET PREVIEW (OMS TABLE)
    ========================================== */
-.bead-map-canvas {
-  display: flex;
-  align-items: center;
-  background-color: var(--color-navy-darker);
-  border: 1px solid var(--color-navy-border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  max-width: 320px;
-  overflow-x: auto;
-  gap: 4px;
-}
-
-.bead-map-node {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  position: relative;
-  flex-shrink: 0;
+.order-bracelet-preview {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-}
-
-.bead-map-node img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-/* Glowing sheen overlay on small beads */
-.bead-map-node::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.05) 50%, rgba(0,0,0,0.3) 100%);
-  pointer-events: none;
-}
-
-.bead-map-node.size-4 { width: 12px; height: 12px; }
-.bead-map-node.size-6 { width: 16px; height: 16px; }
-.bead-map-node.size-8 { width: 22px; height: 22px; }
-
-/* Tooltip on bead hover */
-.bead-map-node:hover::before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
   background-color: var(--color-navy-darker);
   border: 1px solid var(--color-navy-border);
-  color: var(--color-white);
-  font-size: 9px;
-  padding: 4px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  z-index: 10;
-  pointer-events: none;
-  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
+  padding: 8px;
+  max-width: 180px;
+  margin: 0 auto;
+}
+
+.order-bracelet-preview-compact {
+  width: 150px;
+}
+
+.order-bracelet-preview-detail {
+  width: min(220px, 100%);
+  max-width: 220px;
+  margin: 0 auto 18px;
+  padding: 12px;
+}
+
+.order-bracelet-preview-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.order-bracelet-preview-item {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.28));
+}
+
+.order-bracelet-preview-stone image {
+  clip-path: circle(50%);
+}
+
+.order-bracelet-preview-empty {
+  fill: var(--color-navy-muted);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 /* ==========================================
@@ -2987,7 +2964,7 @@ h1, h2, h3, h4, h5, h6 {
   }
   
   /* Aligning cell contents in card layout */
-  .crm-table td[data-label="Bead Map"], 
+  .crm-table td[data-label="Bracelet Layout"], 
   .crm-table td[data-label="Item"],
   .crm-table td[data-label="Meanings"],
   .crm-table td[data-label="Visibility"],
@@ -3005,7 +2982,7 @@ h1, h2, h3, h4, h5, h6 {
     text-align: left;
   }
   
-  .crm-table td[data-label="Bead Map"]::before, 
+  .crm-table td[data-label="Bracelet Layout"]::before, 
   .crm-table td[data-label="Item"]::before,
   .crm-table td[data-label="Meanings"]::before,
   .crm-table td[data-label="Visibility"]::before,
@@ -3025,7 +3002,7 @@ h1, h2, h3, h4, h5, h6 {
     min-width: 0;
   }
   
-  .crm-table td[data-label="Bead Map"] .bead-map-canvas {
+  .crm-table td[data-label="Bracelet Layout"] .order-bracelet-preview {
     max-width: 100%;
     width: 100%;
   }
