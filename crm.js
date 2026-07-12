@@ -1508,11 +1508,6 @@ function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
         <img class="catalog-layout-image" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn || item.nameTh || item.id)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
         <div class="catalog-layout-copy">
           <div class="catalog-layout-name">${escapeHtml(item.nameTh || item.id)}</div>
-          <div class="catalog-layout-en">${escapeHtml(item.nameEn || '')}</div>
-          <div class="catalog-layout-meta">
-            <span>${escapeHtml(typeLabel)}</span>
-            <span>${escapeHtml(priceText)}</span>
-          </div>
         </div>
         <div class="catalog-layout-controls">
           <button type="button" class="catalog-layout-move" data-layout-move="-1" data-layout-item-id="${escapeHtml(item.id)}" ${index === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
