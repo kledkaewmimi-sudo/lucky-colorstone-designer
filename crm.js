@@ -2561,29 +2561,30 @@ function detailValue(value) {
 }
 
 function getOrderSubtotal(order = {}) {
-  const candidate = [order.subtotal, order.checkoutSummary?.subtotal]
+  const candidate = [order.checkoutSummary?.subtotal, order.subtotal]
     .find((value) => Number.isFinite(Number(value)));
   return candidate == null ? 0 : Number(candidate);
 }
 
 function getOrderDiscountAmount(order = {}) {
-  const candidate = [order.discountAmount, order.checkoutSummary?.discountAmount]
+  const candidate = [order.checkoutSummary?.discountAmount, order.discountAmount]
     .find((value) => Number.isFinite(Number(value)));
   return candidate == null ? 0 : Number(candidate);
 }
 
 function getOrderDiscountPercent(order = {}) {
-  const candidate = [order.discountPercent, order.checkoutSummary?.discountPercent]
+  const candidate = [order.checkoutSummary?.discountPercent, order.discountPercent]
     .find((value) => Number.isFinite(Number(value)));
   return candidate == null ? 20 : Number(candidate);
 }
 
 function getOrderFinalPrice(order = {}) {
   const candidate = [
+    order.checkoutSummary?.finalPrice,
+    order.checkoutSummary?.totalPrice,
     order.finalPrice,
     order.totalPrice,
-    order.netPrice,
-    order.checkoutSummary?.finalPrice
+    order.netPrice
   ].find((value) => Number.isFinite(Number(value)));
   return candidate == null ? 0 : Number(candidate);
 }

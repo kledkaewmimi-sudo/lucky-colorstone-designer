@@ -955,6 +955,44 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
     }));
   }
 
+  const billingLoopItems = Array.isArray(order?.itemizedBilling)
+    ? order.itemizedBilling.flatMap((item) => {
+      const itemType = String(item?.componentType || item?.type || 'stone').trim().toLowerCase();
+      const quantity = Math.max(1, Number.parseInt(item?.quantity ?? item?.count ?? 1, 10) || 1);
+      return Array.from({ length: quantity }, () => {
+        if (itemType === 'spacer') {
+          return {
+            componentType: 'spacer',
+            spacerId: String(item?.spacerId || item?.id || '').trim()
+          };
+        }
+        if (itemType === 'charm') {
+          const charmId = String(item?.charmId || item?.id || '').trim();
+          const charm = getCharmCatalogEntry(charmId);
+          if (charm && isAnchoredCharmType(charm.type)) {
+            return null;
+          }
+          return {
+            componentType: 'charm',
+            charmId
+          };
+        }
+        return {
+          componentType: 'stone',
+          stoneId: String(item?.stoneId || item?.id || '').trim(),
+          size: Number(item?.size || item?.sizeMm || order?.beadSize || State.beadSize)
+        };
+      });
+    }).filter(Boolean)
+    : null;
+
+  if (billingLoopItems?.length) {
+    return normalizeSelectedLoopItems(billingLoopItems).map((item, index) => ({
+      ...item,
+      uniqueId: index + 1
+    }));
+  }
+
   const configuredStones = Array.isArray(decodedConfig?.s)
     ? decodedConfig.s.map((item, index) => ({
       componentType: 'stone',
@@ -987,8 +1025,30 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
 }
 
 function getOrderCharmIds(order, decodedConfig) {
-  if (Array.isArray(order?.selectedCharms)) return order.selectedCharms.map((charm) => charm?.id || charm?.charmId);
+  if (Array.isArray(order?.selectedCharms)) {
+    const selectedCharmIds = order.selectedCharms
+      .map((charm) => typeof charm === 'string' ? charm : charm?.id || charm?.charmId)
+      .filter(Boolean);
+    if (selectedCharmIds.length > 0) return selectedCharmIds;
+  }
   if (Array.isArray(order?.charmIds)) return order.charmIds;
+  if (Array.isArray(order?.braceletSequence)) {
+    const sequenceCharmIds = order.braceletSequence
+      .filter((item) => String(item?.componentType || item?.type || '').trim().toLowerCase() === 'charm')
+      .map((item) => item?.charmId || item?.id)
+      .filter(Boolean);
+    if (sequenceCharmIds.length > 0) return sequenceCharmIds;
+  }
+  if (Array.isArray(order?.itemizedBilling)) {
+    const billingCharmIds = order.itemizedBilling
+      .filter((item) => String(item?.componentType || item?.type || '').trim().toLowerCase() === 'charm')
+      .flatMap((item) => {
+        const charmId = item?.charmId || item?.id;
+        const quantity = Math.max(1, Number.parseInt(item?.quantity ?? item?.count ?? 1, 10) || 1);
+        return charmId ? Array.from({ length: quantity }, () => charmId) : [];
+      });
+    if (billingCharmIds.length > 0) return billingCharmIds;
+  }
   if (Array.isArray(decodedConfig?.c)) return decodedConfig.c;
   if (Array.isArray(order?.charms)) return order.charms.map((charm) => charm?.id || charm?.charmId);
   return order?.charmId ? [order.charmId] : [];
@@ -3916,7 +3976,9 @@ function buildCurrentOrderPayload(overrides = {}) {
       subtotal: pricing.subtotal,
       discountPercent: pricing.discountPercent,
       discountAmount: pricing.discountAmount,
-      finalPrice: pricing.finalPrice
+      finalPrice: pricing.finalPrice,
+      totalPrice: pricing.finalPrice,
+      netPrice: pricing.finalPrice
     },
     itemizedBilling: pricing.itemizedBilling,
     braceletSequence: pricing.braceletSequence,

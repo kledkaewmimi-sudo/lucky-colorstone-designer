@@ -341,6 +341,103 @@ function getOrderId(order) {
   return String(order?.id || order?.orderId || "").trim();
 }
 
+function parseMoneyValue(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function getOrderCheckoutSummary(order) {
+  const summary = order?.checkoutSummary;
+  if (!summary || typeof summary !== "object") return null;
+  return summary;
+}
+
+function getOrderItemizedBilling(order) {
+  return Array.isArray(order?.itemizedBilling) ? order.itemizedBilling : [];
+}
+
+function sumOrderItemizedBilling(order) {
+  const itemizedBilling = getOrderItemizedBilling(order);
+  if (itemizedBilling.length === 0) return null;
+
+  const subtotal = itemizedBilling.reduce((sum, item) => {
+    const itemTotal = parseMoneyValue(item?.totalPrice);
+    if (itemTotal != null) {
+      return sum + itemTotal;
+    }
+
+    const unitPrice = parseMoneyValue(item?.unitPrice ?? item?.price ?? item?.priceUnit);
+    const quantity = parseMoneyValue(item?.quantity ?? item?.count) ?? 1;
+    if (unitPrice != null) {
+      return sum + (unitPrice * quantity);
+    }
+
+    return sum;
+  }, 0);
+
+  return Number.isFinite(subtotal) && subtotal > 0 ? subtotal : null;
+}
+
+function normalizeCanonicalOrderPricing(order) {
+  if (!order || typeof order !== "object") return order;
+
+  const nextOrder = { ...order };
+  const summary = getOrderCheckoutSummary(order);
+  const itemizedSubtotal = sumOrderItemizedBilling(order);
+  const canonicalSubtotal = parseMoneyValue(summary?.subtotal) ?? parseMoneyValue(order.subtotal) ?? itemizedSubtotal;
+  const canonicalDiscountPercent = parseMoneyValue(summary?.discountPercent) ?? parseMoneyValue(order.discountPercent) ?? 20;
+  const canonicalDiscountAmount = parseMoneyValue(summary?.discountAmount) ?? parseMoneyValue(order.discountAmount);
+  const canonicalFinalPrice =
+    parseMoneyValue(summary?.finalPrice) ??
+    parseMoneyValue(summary?.totalPrice) ??
+    parseMoneyValue(order.finalPrice) ??
+    parseMoneyValue(order.totalPrice) ??
+    parseMoneyValue(order.netPrice);
+
+  if (canonicalSubtotal != null) {
+    nextOrder.subtotal = canonicalSubtotal;
+  }
+
+  if (canonicalDiscountPercent != null) {
+    nextOrder.discountPercent = canonicalDiscountPercent;
+  }
+
+  if (canonicalDiscountAmount != null) {
+    nextOrder.discountAmount = canonicalDiscountAmount;
+  } else if (canonicalSubtotal != null && canonicalDiscountPercent != null) {
+    nextOrder.discountAmount = Math.round(canonicalSubtotal * (canonicalDiscountPercent / 100));
+  }
+
+  if (canonicalFinalPrice != null) {
+    nextOrder.finalPrice = canonicalFinalPrice;
+    nextOrder.totalPrice = canonicalFinalPrice;
+    nextOrder.netPrice = canonicalFinalPrice;
+  }
+
+  if (summary && typeof summary === "object") {
+    nextOrder.checkoutSummary = {
+      subtotal: parseMoneyValue(summary.subtotal) ?? nextOrder.subtotal ?? null,
+      discountPercent: parseMoneyValue(summary.discountPercent) ?? nextOrder.discountPercent ?? 20,
+      discountAmount: parseMoneyValue(summary.discountAmount) ?? nextOrder.discountAmount ?? null,
+      finalPrice: parseMoneyValue(summary.finalPrice) ??
+        parseMoneyValue(summary.totalPrice) ??
+        nextOrder.finalPrice ??
+        nextOrder.totalPrice ??
+        nextOrder.netPrice ??
+        null
+    };
+  } else if (canonicalFinalPrice != null || canonicalSubtotal != null) {
+    nextOrder.checkoutSummary = {
+      subtotal: nextOrder.subtotal ?? null,
+      discountPercent: nextOrder.discountPercent ?? 20,
+      discountAmount: nextOrder.discountAmount ?? null,
+      finalPrice: nextOrder.finalPrice ?? nextOrder.totalPrice ?? nextOrder.netPrice ?? null
+    };
+  }
+
+  return nextOrder;
+}
+
 function getOrderTrackingNumber(order) {
   const candidateFields = [
     "trackingNumber",
@@ -398,6 +495,8 @@ function formatLineCurrency(value) {
 
 function getOrderTotalPrice(order) {
   const candidates = [
+    order?.checkoutSummary?.finalPrice,
+    order?.checkoutSummary?.totalPrice,
     order?.finalPrice,
     order?.totalPrice,
     order?.netPrice,
@@ -977,13 +1076,14 @@ async function createStripeCheckoutSession({ order, origin }) {
     throw new Error("Missing order payload.");
   }
 
+  const canonicalOrder = normalizeCanonicalOrderPricing(order);
   const safeOrigin = getSafeOrigin(origin);
-  const amountTotal = normalizeCurrencyAmount(getOrderTotalPrice(order));
-  const customerName = String(order.customerName || "Khun Guest").trim() || "Khun Guest";
-  const beadSize = String(order.beadSize || "").trim() || "6";
-  const totalBeads = Number.parseInt(order.totalBeads || 0, 10) || 0;
-  const configurationCode = String(order.configurationCode || "").trim();
-  const shippingSource = order.shippingInfo && typeof order.shippingInfo === "object" ? order.shippingInfo : order;
+  const amountTotal = normalizeCurrencyAmount(getOrderTotalPrice(canonicalOrder));
+  const customerName = String(canonicalOrder.customerName || "Khun Guest").trim() || "Khun Guest";
+  const beadSize = String(canonicalOrder.beadSize || "").trim() || "6";
+  const totalBeads = Number.parseInt(canonicalOrder.totalBeads || 0, 10) || 0;
+  const configurationCode = String(canonicalOrder.configurationCode || "").trim();
+  const shippingSource = canonicalOrder.shippingInfo && typeof canonicalOrder.shippingInfo === "object" ? canonicalOrder.shippingInfo : canonicalOrder;
   const recipientName = String(shippingSource.recipientName || "").trim();
   const phoneNumber = String(shippingSource.phoneNumber || "").trim();
   const addressLine = String(shippingSource.addressLine || "").trim();
@@ -1008,10 +1108,10 @@ async function createStripeCheckoutSession({ order, origin }) {
     form.append("metadata[configurationCode]", configurationCode.slice(0, 500));
   }
   form.append("metadata[customerName]", customerName.slice(0, 500));
-  form.append("metadata[wristSize]", String(order.wristSize ?? ""));
+  form.append("metadata[wristSize]", String(canonicalOrder.wristSize ?? ""));
   form.append("metadata[beadSize]", beadSize.slice(0, 500));
   form.append("metadata[totalBeads]", String(totalBeads));
-  form.append("metadata[netPrice]", String(getOrderTotalPrice(order) ?? ""));
+  form.append("metadata[netPrice]", String(getOrderTotalPrice(canonicalOrder) ?? ""));
   if (recipientName) {
     form.append("metadata[recipientName]", recipientName.slice(0, 500));
   }
@@ -1439,7 +1539,7 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
-    const nextOrder = { ...bodyObj };
+    const nextOrder = normalizeCanonicalOrderPricing({ ...bodyObj });
     if (!nextOrder.id) {
       nextOrder.id = nextRandomOrderId();
     }
