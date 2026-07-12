@@ -2594,8 +2594,17 @@ function getOrderItemizedBilling(order = {}) {
 }
 
 function getOrderBraceletSequence(order = {}) {
+  if (Array.isArray(order.checkoutSummary?.braceletSequence) && order.checkoutSummary.braceletSequence.length > 0) {
+    return order.checkoutSummary.braceletSequence;
+  }
   if (Array.isArray(order.braceletSequence) && order.braceletSequence.length > 0) {
     return order.braceletSequence;
+  }
+  if (Array.isArray(order.checkoutSummary?.itemizedBilling) && order.checkoutSummary.itemizedBilling.length > 0) {
+    return order.checkoutSummary.itemizedBilling;
+  }
+  if (Array.isArray(order.itemizedBilling) && order.itemizedBilling.length > 0) {
+    return order.itemizedBilling;
   }
   if (Array.isArray(order.beadMap) && order.beadMap.length > 0) {
     return order.beadMap;
@@ -2605,11 +2614,39 @@ function getOrderBraceletSequence(order = {}) {
     : [];
 }
 
+function getCrmCatalogEntryById(collection = [], id = '') {
+  const normalizedId = String(id || '').trim();
+  if (!normalizedId) return null;
+  return collection.find((entry) => String(entry?.id || entry?.sku || '').trim() === normalizedId) || null;
+}
+
+function getCrmCharmCatalogEntry(charmId = '') {
+  const charms = CRMState.simulatorCatalogCache?.charms || [];
+  return getCrmCatalogEntryById(charms, charmId);
+}
+
+function getCrmSpacerCatalogEntry(spacerId = '') {
+  const spacers = CRMState.simulatorCatalogCache?.spacers || [];
+  return getCrmCatalogEntryById(spacers, spacerId);
+}
+
+function getNestedImageValue(source = {}) {
+  return source.image?.primary || source.image || source.imageUrl || source.imageSrc || source.thumbnail || source.icon || '';
+}
+
+function getNestedNameValue(source = {}, locale = 'en') {
+  return source.name?.[locale] || (locale === 'th' ? source.nameTh : source.nameEn) || source.name || '';
+}
+
 function getOrderBraceletItemType(item = {}) {
   const rawType = String(item.componentType || item.type || item.category || '').toLowerCase();
   if (rawType.includes('charm')) return 'charm';
   if (rawType.includes('spacer')) return 'spacer';
   return 'stone';
+}
+
+function isOrderSlotPlaceableCharmType(charmType) {
+  return String(charmType || '').trim().toLowerCase() === 'bee_heart';
 }
 
 function getOrderBraceletItemName(item = {}) {
@@ -2627,14 +2664,43 @@ function getOrderBraceletItemColor(item = {}) {
   return item.color || item.hex || item.colorHex || item.baseColor || '#E2E8F0';
 }
 
-function getOrderBraceletItemSize(item = {}, itemType = getOrderBraceletItemType(item)) {
+function getOrderBraceletItemSize(item = {}, itemType = getOrderBraceletItemType(item), order = {}) {
+  const fallbackBeadSize = order.beadSize === 'mixed' ? order.mixedPlacingSize : order.beadSize;
   const candidates = itemType === 'charm'
-    ? [item.footprintMm, item.effectiveLengthMm, Number(item.sizeCm) * 10, item.displaySizeMm, item.sizeMm, item.size]
+    ? [item.footprintMm, item.business?.footprintMm, item.effectiveLengthMm, Number(item.sizeCm ?? item.business?.sizeCm) * 10, item.displaySizeMm, item.sizeMm, item.size]
     : itemType === 'spacer'
-      ? [item.effectiveLengthMm, item.displaySizeMm, item.sizeMm, item.size]
-      : [item.sizeMm, item.displaySizeMm, item.size];
+      ? [item.effectiveLengthMm, item.business?.effectiveLengthMm, item.displaySizeMm, item.business?.displaySizeMm, item.sizeMm, item.size]
+      : [item.sizeMm, item.displaySizeMm, item.size, fallbackBeadSize];
   const sizeValue = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) > 0);
   return sizeValue == null ? (itemType === 'charm' ? 12 : itemType === 'spacer' ? 5 : 6) : Number(sizeValue);
+}
+
+function getOrderCharmRenderTuning(item = {}, catalogCharm = null) {
+  const tuningSource = {
+    ...(catalogCharm?.renderTuning || {}),
+    ...catalogCharm,
+    ...(item.renderTuning || {}),
+    ...item
+  };
+  const numberOrDefault = (value, fallback) => {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : fallback;
+  };
+
+  return {
+    visualScale: Math.min(1, Math.max(0.1, numberOrDefault(tuningSource.visualScale, 0.9))),
+    visualOffsetX: Math.max(-0.5, Math.min(0.5, numberOrDefault(tuningSource.visualOffsetX, 0))),
+    visualOffsetY: Math.max(-0.5, Math.min(0.5, numberOrDefault(tuningSource.visualOffsetY, 0))),
+    maxWidthRatio: Math.min(1, Math.max(0.4, numberOrDefault(tuningSource.maxWidthRatio, 1))),
+    maxHeightRatio: Math.min(1, Math.max(0.4, numberOrDefault(tuningSource.maxHeightRatio, 0.92))),
+    edgeFitMode: tuningSource.edgeFitMode === 'horizontal_fill' ? 'horizontal_fill' : 'contain',
+    targetWidthFillRatio: Math.min(1.1, Math.max(0.5, numberOrDefault(tuningSource.targetWidthFillRatio, 1))),
+    rotation: numberOrDefault(tuningSource.rotation, 0),
+    outwardOffsetMm: numberOrDefault(tuningSource.outwardOffsetMm, 0),
+    renderWidthMm: numberOrDefault(tuningSource.renderWidthMm, 0),
+    renderHeightMm: numberOrDefault(tuningSource.renderHeightMm, 0),
+    renderSizeMm: numberOrDefault(tuningSource.renderSizeMm, 0)
+  };
 }
 
 function normalizeOrderBraceletPreviewItems(order = {}) {
@@ -2642,91 +2708,275 @@ function normalizeOrderBraceletPreviewItems(order = {}) {
     .filter((item) => item && typeof item === 'object')
     .map((item, index) => {
       const itemType = getOrderBraceletItemType(item);
+      const itemId = String(item.stoneId || item.charmId || item.spacerId || item.id || '').trim();
+      const stone = itemType === 'stone' ? getCrmCatalogEntryById(STONES, itemId) : null;
+      const charm = itemType === 'charm' ? getCrmCharmCatalogEntry(itemId) : null;
+      const spacer = itemType === 'spacer' ? getCrmSpacerCatalogEntry(itemId) : null;
+      const catalogItem = stone || charm || spacer || {};
+      const sizeMm = getOrderBraceletItemSize({ ...catalogItem, ...item }, itemType, order);
+      const displaySizeMm = item.displaySizeMm || spacer?.business?.displaySizeMm || spacer?.displaySizeMm || sizeMm;
+      const renderTuning = itemType === 'charm' ? getOrderCharmRenderTuning(item, charm) : {};
+      const charmType = item.charmType || item.type || charm?.type || null;
+      const isSlotCharm = itemType === 'charm' && isOrderSlotPlaceableCharmType(charmType);
       return {
         ...item,
         index,
         previewType: itemType,
-        previewName: getOrderBraceletItemName(item),
-        previewImage: getOrderBraceletItemImage(item),
-        previewColor: getOrderBraceletItemColor(item),
-        previewSizeMm: getOrderBraceletItemSize(item, itemType)
+        previewId: itemId,
+        previewName: getOrderBraceletItemName({
+          ...item,
+          nameTh: item.nameTh || getNestedNameValue(catalogItem, 'th'),
+          nameEn: item.nameEn || getNestedNameValue(catalogItem, 'en')
+        }),
+        previewImage: getOrderBraceletItemImage({ ...catalogItem, ...item, image: getNestedImageValue(item) || getNestedImageValue(catalogItem) }),
+        previewColor: getOrderBraceletItemColor({ ...catalogItem, ...item, color: item.color || catalogItem.color || catalogItem.colorHex }),
+        previewSizeMm: sizeMm,
+        displaySizeMm,
+        effectiveLengthMm: item.effectiveLengthMm || spacer?.business?.effectiveLengthMm || spacer?.effectiveLengthMm || sizeMm,
+        spacerShape: item.spacerShape || item.type || spacer?.type || 'ball',
+        charmType,
+        renderSizeMm: itemType === 'charm'
+          ? (renderTuning.renderSizeMm || item.renderSizeMm || (isSlotCharm ? 18 : 0))
+          : (item.renderSizeMm || spacer?.renderSizeMm || displaySizeMm),
+        renderWidthMm: renderTuning.renderWidthMm || item.renderWidthMm || (isSlotCharm ? 12.5 : 0),
+        renderHeightMm: renderTuning.renderHeightMm || item.renderHeightMm || (isSlotCharm ? 18 : 0),
+        visualScale: isSlotCharm ? 1.15 : renderTuning.visualScale,
+        visualOffsetX: renderTuning.visualOffsetX,
+        visualOffsetY: renderTuning.visualOffsetY,
+        maxWidthRatio: renderTuning.maxWidthRatio,
+        maxHeightRatio: renderTuning.maxHeightRatio,
+        edgeFitMode: renderTuning.edgeFitMode,
+        targetWidthFillRatio: renderTuning.targetWidthFillRatio,
+        rotation: renderTuning.rotation,
+        outwardOffsetMm: renderTuning.outwardOffsetMm || item.outwardOffsetMm || (isSlotCharm ? 7.2 : 0)
       };
     });
 }
 
+function getOrderBraceletLengthMm(order = {}) {
+  const wristSizeCm = Number(order.wristSize || order.checkoutSummary?.wristSize);
+  return Number.isFinite(wristSizeCm) && wristSizeCm > 0 ? (wristSizeCm + 1.5) * 10 : 175;
+}
+
+function getOrderBraceletPlacingSizeMm(order = {}) {
+  if (order.beadSize === 'mixed') {
+    const mixedSize = Number(order.mixedPlacingSize || order.checkoutSummary?.mixedPlacingSize);
+    return Number.isFinite(mixedSize) && mixedSize > 0 ? mixedSize : 6;
+  }
+  const beadSize = Number(order.beadSize || order.checkoutSummary?.beadSize);
+  return Number.isFinite(beadSize) && beadSize > 0 ? beadSize : 6;
+}
+
+function createOrderPreviewResolvedLayout(order = {}) {
+  const components = normalizeOrderBraceletPreviewItems(order).map((item, index) => {
+    const component = {
+      ...item,
+      type: item.previewType,
+      layoutRole: 'loop',
+      sourceIndex: index,
+      sizeMm: item.previewSizeMm,
+      image: item.previewImage,
+      color: item.previewColor,
+      nameTh: item.nameTh,
+      nameEn: item.nameEn,
+      uniqueId: item.uniqueId || `${item.previewType}-${item.previewId || index}-${index}`
+    };
+
+    if (component.type === 'charm') {
+      component.footprintMm = item.previewSizeMm;
+      component.sizeCm = item.sizeCm || item.business?.sizeCm || (item.previewSizeMm / 10);
+      component.renderSizeMm = item.renderSizeMm || 0;
+      component.renderWidthMm = item.renderWidthMm || 0;
+      component.renderHeightMm = item.renderHeightMm || 0;
+    }
+
+    if (component.type === 'spacer') {
+      component.sizeMm = item.effectiveLengthMm || item.previewSizeMm;
+      component.renderSizeMm = item.renderSizeMm || item.displaySizeMm || item.previewSizeMm;
+    }
+
+    return component;
+  });
+  const braceletLengthMm = getOrderBraceletLengthMm(order);
+  const placingSizeMm = getOrderBraceletPlacingSizeMm(order);
+  const centerX = 125;
+  const centerY = 125;
+  const radiusPx = 82;
+  const totalUsedLengthMm = components.reduce((sum, component) => sum + Number(component.sizeMm || 0), 0);
+  const remainingLengthMm = Math.max(0, braceletLengthMm - totalUsedLengthMm);
+  const numPlaceholders = Math.max(0, Math.floor(remainingLengthMm / placingSizeMm));
+  const loopItems = [
+    ...components.map((component) => ({ kind: 'component', component, sizeMm: component.sizeMm })),
+    ...Array.from({ length: numPlaceholders }, () => ({ kind: 'placeholder', sizeMm: placingSizeMm }))
+  ];
+  const totalVirtualDiameter = loopItems.reduce((sum, item) => sum + Number(item.sizeMm || 0), 0);
+  const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletLengthMm;
+  const scaleMmToPx = (2 * Math.PI * radiusPx) / loopCircumferenceMm;
+  let accumulatedAngle = -Math.PI / 2;
+
+  const nodes = loopItems.map((item, index) => {
+    const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
+    const centerAngle = accumulatedAngle + itemAngleWidth / 2;
+    accumulatedAngle += itemAngleWidth;
+    const visualSizeMm = item.kind === 'component' && Number.isFinite(Number(item.component?.renderSizeMm))
+      ? Number(item.component.renderSizeMm)
+      : item.sizeMm;
+    const node = {
+      index,
+      kind: item.kind,
+      sizeMm: item.sizeMm,
+      itemAngleWidth,
+      centerAngle,
+      centerX: centerX + radiusPx * Math.cos(centerAngle),
+      centerY: centerY + radiusPx * Math.sin(centerAngle),
+      radiusPx: (visualSizeMm / 2) * scaleMmToPx,
+      isPlaced: item.kind === 'component'
+    };
+    if (item.kind === 'component') {
+      node.component = item.component;
+    }
+    return node;
+  });
+
+  return {
+    braceletConfig: { svg: { centerX, centerY, radiusPx } },
+    summary: { scaleMmToPx },
+    nodes
+  };
+}
+
+function getOrderResolvedNodeRotationRad(node = {}) {
+  if (node.component?.type === 'charm') {
+    const baseRotation = node.centerAngle + Math.PI;
+    const rotationOffsetRad = (Number(node.component.rotation || 0) * Math.PI) / 180;
+    return baseRotation + rotationOffsetRad;
+  }
+  return node.centerAngle + Math.PI / 2;
+}
+
+function projectOrderLayoutToCircle(resolvedLayout, surfaceConfig = {}) {
+  const baseRadiusPx = resolvedLayout.braceletConfig.svg.radiusPx;
+  const radiusScale = baseRadiusPx > 0 ? surfaceConfig.radiusPx / baseRadiusPx : 1;
+  const allowedTypes = surfaceConfig.componentTypes || ['stone', 'spacer', 'charm'];
+
+  return resolvedLayout.nodes
+    .filter((node) => node.isPlaced && allowedTypes.includes(node.component?.type))
+    .map((node) => ({
+      ...node,
+      renderCenterX: surfaceConfig.centerX + surfaceConfig.radiusPx * Math.cos(node.centerAngle),
+      renderCenterY: surfaceConfig.centerY + surfaceConfig.radiusPx * Math.sin(node.centerAngle),
+      renderRadiusPx: node.radiusPx * radiusScale,
+      renderScalePxPerMm: resolvedLayout.summary.scaleMmToPx * radiusScale,
+      renderRotationRad: getOrderResolvedNodeRotationRad(node)
+    }));
+}
+
+function getOrderCharmFrameDimensions(component = {}, scaleMmToPx = 0) {
+  const renderWidthMm = Number(component.renderWidthMm);
+  const renderHeightMm = Number(component.renderHeightMm);
+  if (Number.isFinite(renderWidthMm) && renderWidthMm > 0 && Number.isFinite(renderHeightMm) && renderHeightMm > 0) {
+    return {
+      widthPx: renderWidthMm * scaleMmToPx,
+      heightPx: renderHeightMm * scaleMmToPx
+    };
+  }
+  const renderSizeMm = Number(component.renderSizeMm || component.sizeMm || 0);
+  return {
+    widthPx: renderSizeMm * scaleMmToPx,
+    heightPx: renderSizeMm * scaleMmToPx
+  };
+}
+
+function getOrderCharmOutwardOffsetPx(component = {}, scaleMmToPx = 0) {
+  const offsetMm = Number(component.outwardOffsetMm);
+  return Number.isFinite(offsetMm) ? offsetMm * scaleMmToPx : 0;
+}
+
 function renderOrderBraceletPreview(order = {}, options = {}) {
-  const items = normalizeOrderBraceletPreviewItems(order);
   const size = Number(options.size || 150);
   const center = size / 2;
-  const radius = Math.max(42, size * 0.34);
+  const radius = Math.max(42, size * 0.333);
   const className = options.className || '';
   const title = options.title || 'Bracelet layout preview';
+  const resolvedLayout = createOrderPreviewResolvedLayout(order);
+  const nodes = projectOrderLayoutToCircle(resolvedLayout, {
+    centerX: center,
+    centerY: center,
+    radiusPx: radius,
+    componentTypes: ['stone', 'spacer', 'charm']
+  });
 
-  if (!items.length) {
+  if (!nodes.length) {
     return `
       <div class="order-bracelet-preview ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
         <svg class="order-bracelet-preview-svg" viewBox="0 0 ${size} ${size}" role="img" aria-label="${escapeHtml(title)}">
-          <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(148, 163, 184, 0.35)" stroke-width="4" stroke-dasharray="5 6"></circle>
+          <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(181, 169, 219, 0.28)" stroke-width="${Math.max(2, size * 0.016)}" stroke-dasharray="5 6"></circle>
           <text x="${center}" y="${center}" text-anchor="middle" dominant-baseline="middle" class="order-bracelet-preview-empty">No layout</text>
         </svg>
       </div>
     `;
   }
 
-  const totalWeight = items.reduce((sum, item) => sum + Math.max(item.previewSizeMm, 3), 0) || items.length;
-  let angleCursor = -90;
-  const markerHtml = items.map((item) => {
-    const itemWeight = Math.max(item.previewSizeMm, 3);
-    const angleSpan = (itemWeight / totalWeight) * 360;
-    const angle = angleCursor + (angleSpan / 2);
-    angleCursor += angleSpan;
-
-    const radians = (angle * Math.PI) / 180;
-    const x = center + Math.cos(radians) * radius;
-    const y = center + Math.sin(radians) * radius;
-    const label = `${item.index + 1}. ${item.previewName}`;
+  const ringStrokeWidth = Math.max(2, size * 0.016);
+  const markerHtml = nodes.map((node) => {
+    const component = node.component;
+    const x = node.renderCenterX;
+    const y = node.renderCenterY;
+    const radiusPx = Math.max(1, node.renderRadiusPx);
+    const label = `${Number(component.sourceIndex ?? node.index) + 1}. ${component.previewName || getOrderBraceletItemName(component)}`;
     const escapedLabel = escapeHtml(label);
-    const escapedImage = escapeHtml(item.previewImage);
-    const escapedColor = escapeHtml(item.previewColor);
+    const escapedImage = escapeHtml(component.image || component.previewImage || '');
+    const escapedColor = escapeHtml(component.color || component.previewColor || '#B5A9DB');
+    const rotationDeg = (node.renderRotationRad || 0) * 180 / Math.PI;
 
-    if (item.previewType === 'charm') {
-      const width = Math.min(28, Math.max(18, item.previewSizeMm * 1.35));
-      const height = Math.min(22, Math.max(14, item.previewSizeMm * 0.9));
-      const tx = x - (width / 2);
-      const ty = y - (height / 2);
-      const imageHtml = escapedImage
-        ? `<image href="${escapedImage}" x="${tx + 2}" y="${ty + 2}" width="${width - 4}" height="${height - 4}" preserveAspectRatio="xMidYMid meet"></image>`
-        : '';
+    if (component.type === 'charm') {
+      const frame = getOrderCharmFrameDimensions(component, node.renderScalePxPerMm || 0);
+      const outwardOffsetPx = getOrderCharmOutwardOffsetPx(component, node.renderScalePxPerMm || 0);
+      const charmX = x + (Math.cos(node.centerAngle) * outwardOffsetPx);
+      const charmY = y + (Math.sin(node.centerAngle) * outwardOffsetPx);
+      const visualScale = Number(component.visualScale || 0.9);
+      const maxWidthRatio = Number(component.maxWidthRatio || 1);
+      const maxHeightRatio = Number(component.maxHeightRatio || 0.92);
+      const width = Math.max(1, frame.widthPx * maxWidthRatio * visualScale);
+      const height = Math.max(1, frame.heightPx * maxHeightRatio * visualScale);
       return `
-        <g class="order-bracelet-preview-item order-bracelet-preview-charm">
+        <g class="order-bracelet-preview-item order-bracelet-preview-charm" transform="translate(${charmX} ${charmY}) rotate(${rotationDeg})">
           <title>${escapedLabel}</title>
-          <rect x="${tx}" y="${ty}" width="${width}" height="${height}" rx="5" fill="#F5D06F" stroke="#8A6F20" stroke-width="1.4"></rect>
-          ${imageHtml}
+          ${escapedImage
+            ? `<image href="${escapedImage}" x="${-width / 2}" y="${-height / 2}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet"></image>`
+            : `<ellipse cx="0" cy="0" rx="${width / 2}" ry="${height / 2}" fill="#D7B56D"></ellipse>`}
         </g>
       `;
     }
 
-    if (item.previewType === 'spacer') {
-      const width = Math.min(18, Math.max(10, item.previewSizeMm * 1.5));
-      const height = Math.min(12, Math.max(7, item.previewSizeMm));
+    if (component.type === 'spacer') {
+      const spacerSizePx = radiusPx * 2;
+      if (escapedImage) {
+        return `
+          <g class="order-bracelet-preview-item order-bracelet-preview-spacer" transform="translate(${x} ${y}) rotate(${rotationDeg})">
+            <title>${escapedLabel}</title>
+            <image href="${escapedImage}" x="${-spacerSizePx / 2}" y="${-spacerSizePx / 2}" width="${spacerSizePx}" height="${spacerSizePx}" preserveAspectRatio="xMidYMid meet"></image>
+          </g>
+        `;
+      }
       return `
-        <g class="order-bracelet-preview-item order-bracelet-preview-spacer" transform="translate(${x} ${y}) rotate(${angle + 90})">
+        <g class="order-bracelet-preview-item order-bracelet-preview-spacer" transform="translate(${x} ${y}) rotate(${rotationDeg})">
           <title>${escapedLabel}</title>
-          <rect x="${-(width / 2)}" y="${-(height / 2)}" width="${width}" height="${height}" rx="${height / 2}" fill="#F7E6A2" stroke="#A77C1D" stroke-width="1.2"></rect>
+          ${component.spacerShape === 'ball'
+            ? `<circle cx="0" cy="0" r="${radiusPx}" fill="${escapedColor}" stroke="rgba(15, 23, 42, 0.35)" stroke-width="0.8"></circle>`
+            : `<rect x="${-radiusPx * 0.45}" y="${-radiusPx}" width="${radiusPx * 0.9}" height="${radiusPx * 2}" rx="${Math.max(1, radiusPx * 0.2)}" fill="${escapedColor}" stroke="rgba(15, 23, 42, 0.35)" stroke-width="0.8"></rect>`}
         </g>
       `;
     }
 
-    const beadRadius = Math.min(10, Math.max(5.5, item.previewSizeMm * 0.85));
-    const imageHtml = escapedImage
-      ? `<image href="${escapedImage}" x="${x - beadRadius}" y="${y - beadRadius}" width="${beadRadius * 2}" height="${beadRadius * 2}" preserveAspectRatio="xMidYMid slice"></image>`
-      : '';
+    const imageSize = radiusPx * 2 * 1.3;
     return `
       <g class="order-bracelet-preview-item order-bracelet-preview-stone">
         <title>${escapedLabel}</title>
-        <circle cx="${x}" cy="${y}" r="${beadRadius}" fill="${escapedColor}" stroke="rgba(15, 23, 42, 0.45)" stroke-width="1"></circle>
-        ${imageHtml}
-        <circle cx="${x - beadRadius * 0.28}" cy="${y - beadRadius * 0.3}" r="${Math.max(1.2, beadRadius * 0.22)}" fill="rgba(255,255,255,0.55)"></circle>
+        <circle cx="${x}" cy="${y}" r="${radiusPx}" fill="${escapedColor}" stroke="#FFFFFF" stroke-width="${Math.max(0.7, size * 0.006)}"></circle>
+        ${escapedImage
+          ? `<image href="${escapedImage}" x="${x - imageSize / 2}" y="${y - imageSize / 2}" width="${imageSize}" height="${imageSize}" preserveAspectRatio="xMidYMid slice"></image>`
+          : ''}
       </g>
     `;
   }).join('');
@@ -2734,8 +2984,7 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
   return `
     <div class="order-bracelet-preview ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
       <svg class="order-bracelet-preview-svg" viewBox="0 0 ${size} ${size}" role="img" aria-label="${escapeHtml(title)}">
-        <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(226, 201, 116, 0.38)" stroke-width="3"></circle>
-        <circle cx="${center}" cy="${center}" r="${Math.max(20, radius - 18)}" fill="rgba(15, 23, 42, 0.1)"></circle>
+        <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="rgba(181, 169, 219, 0.28)" stroke-width="${ringStrokeWidth}"></circle>
         ${markerHtml}
       </svg>
     </div>

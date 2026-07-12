@@ -2029,10 +2029,6 @@ h1, h2, h3, h4, h5, h6 {
   overflow: visible;
 }
 
-.order-bracelet-preview-item {
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.28));
-}
-
 .order-bracelet-preview-stone image {
   clip-path: circle(50%);
 }
