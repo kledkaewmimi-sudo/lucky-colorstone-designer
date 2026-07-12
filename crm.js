@@ -1183,20 +1183,6 @@ function saveSimulatorPresetToStorage() {
   }
 }
 
-function loadSimulatorPresetFromStorage() {
-  try {
-    const raw = localStorage.getItem(SIMULATOR_STORAGE_KEY);
-    if (!raw) return;
-    const preset = normalizeSimulatorPreset(JSON.parse(raw));
-    CRMState.simulatorCategory = preset.category;
-    CRMState.simulatorLayout = preset.layout;
-    syncSimulatorLayoutSeq(preset.layout);
-    CRMState.simulatorLayoutSeq = Math.max(CRMState.simulatorLayoutSeq, preset.seq || 0);
-  } catch (err) {
-    console.warn('Unable to load simulator preset.', err);
-  }
-}
-
 function persistAndRenderSimulatorLayout(stones = [], charms = [], spacers = []) {
   saveSimulatorPresetToStorage();
   renderBraceletLayoutSimulator(stones, charms, spacers);
@@ -1237,12 +1223,6 @@ function moveSimulatorLayoutItem(uid, direction) {
   CRMState.simulatorLayout = layout;
   saveSimulatorPresetToStorage();
   return true;
-}
-
-function resetSimulatorLayout() {
-  CRMState.simulatorLayout = [];
-  CRMState.simulatorLayoutSeq = 0;
-  saveSimulatorPresetToStorage();
 }
 
 function renderSimulatorPreviewLayout() {
@@ -1314,7 +1294,7 @@ function renderSimulatorPreviewLayout() {
   });
 }
 
-function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
+function renderLegacyBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
   const activeCategory = normalizeSimulatorCategory(CRMState.simulatorCategory || 'stones');
   const categoryLabelMap = {
     stones: 'Stones',
