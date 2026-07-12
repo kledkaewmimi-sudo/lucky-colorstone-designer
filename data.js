@@ -673,6 +673,27 @@ export const CHARM_CATALOG = [
     inStock: true
   },
   {
+    id: "tg03",
+    sku: "TG03",
+    nameTh: "ตะกรุดพระพิฆเนศ สีเงิน",
+    nameEn: "Ganesha Takrud Silver",
+    type: "takrud_ganesha",
+    collection: "takrud",
+    image: "/assets/charms/takrud/tg03.png",
+    sizeCm: 3.0,
+    visualScale: 1,
+    visualOffsetX: 0,
+    visualOffsetY: 0,
+    maxWidthRatio: 0.98,
+    maxHeightRatio: 1,
+    rotation: 0,
+    anchor: "top",
+    price: 990,
+    meaningTh: "",
+    meaningEn: "",
+    inStock: true
+  },
+  {
     id: "px09",
     sku: "PX09",
     nameTh: "ปี่เซียะ PX09",

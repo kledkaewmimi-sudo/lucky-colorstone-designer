@@ -369,6 +369,47 @@
     "displayOrder": 90
   },
   {
+    "id": "tg03",
+    "entityType": "charm",
+    "sku": "TG03",
+    "slug": "tg03",
+    "name": {
+      "en": "Ganesha Takrud Silver",
+      "th": "ตะกรุดพระพิฆเนศ สีเงิน"
+    },
+    "categoryId": "takrud",
+    "type": "takrud_ganesha",
+    "collection": "takrud",
+    "image": {
+      "primary": "/assets/charms/takrud/tg03.png"
+    },
+    "pricing": {
+      "base": 990
+    },
+    "business": {
+      "sizeCm": 3,
+      "footprintMm": 30
+    },
+    "meaning": {
+      "en": "",
+      "th": ""
+    },
+    "availability": {
+      "inStock": true,
+      "isActive": true
+    },
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 0.98,
+      "maxHeightRatio": 1,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 100
+  },
+  {
     "id": "px09",
     "entityType": "charm",
     "sku": "PX09",
