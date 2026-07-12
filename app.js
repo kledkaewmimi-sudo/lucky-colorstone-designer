@@ -2112,10 +2112,41 @@ function buildSelectedSpacerOrderData() {
 
 function cloneCheckoutValue(value) {
   try {
-    return JSON.parse(JSON.stringify(value));
+    return JSON.parse(JSON.stringify(value, (_key, currentValue) => {
+      if (currentValue instanceof Set) return Array.from(currentValue);
+      if (currentValue instanceof Map) return Object.fromEntries(currentValue);
+      return currentValue;
+    }));
   } catch (error) {
     return value;
   }
+}
+
+function normalizeUniqueStoneIds(uniqueStoneIds) {
+  let candidateIds = [];
+
+  if (Array.isArray(uniqueStoneIds)) {
+    candidateIds = uniqueStoneIds;
+  } else if (uniqueStoneIds instanceof Set) {
+    candidateIds = Array.from(uniqueStoneIds);
+  } else if (uniqueStoneIds instanceof Map) {
+    candidateIds = Array.from(uniqueStoneIds.keys());
+  } else if (uniqueStoneIds && typeof uniqueStoneIds === 'object') {
+    const stringValues = Object.values(uniqueStoneIds)
+      .filter((value) => typeof value === 'string' && value.trim());
+    candidateIds = stringValues.length > 0
+      ? stringValues
+      : Object.keys(uniqueStoneIds).filter((key) => uniqueStoneIds[key]);
+  }
+
+  const seenIds = new Set();
+  return candidateIds
+    .map((id) => String(id || '').trim())
+    .filter((id) => {
+      if (!id || seenIds.has(id)) return false;
+      seenIds.add(id);
+      return STONES.some((stone) => stone.id === id);
+    });
 }
 
 function isCheckoutCharmItem(item) {
@@ -2211,6 +2242,7 @@ function normalizeCheckoutSummaryForOrder(summary) {
   if (!summary || typeof summary !== 'object') return summary;
 
   const nextSummary = cloneCheckoutValue(summary);
+  nextSummary.uniqueStoneIds = normalizeUniqueStoneIds(nextSummary.uniqueStoneIds);
   const itemizedBilling = Array.isArray(nextSummary.itemizedBilling) ? nextSummary.itemizedBilling : [];
   const braceletSequence = Array.isArray(nextSummary.braceletSequence) ? nextSummary.braceletSequence : [];
   const existingCharms = Array.isArray(nextSummary.charmData?.charms) ? nextSummary.charmData.charms : [];
@@ -2598,7 +2630,10 @@ function getMeaningThumbnailLabel({ nameTh = '', nameEn = '' } = {}) {
 
 function buildStep4MeaningEntries(uniqueStoneIds = new Set(), selectedCharms = getSelectedCharmCatalogEntries()) {
   const entries = [];
-  selectedCharms.forEach((selectedCharm) => {
+  const safeSelectedCharms = Array.isArray(selectedCharms) ? selectedCharms : [];
+  const safeStoneIds = normalizeUniqueStoneIds(uniqueStoneIds);
+
+  safeSelectedCharms.forEach((selectedCharm) => {
     const charmMeta = getCharmDisplayMeta(selectedCharm);
     const charmMeaningParts = [selectedCharm.meaningTh, selectedCharm.meaningEn]
       .map((value) => String(value || '').trim())
@@ -2614,7 +2649,7 @@ function buildStep4MeaningEntries(uniqueStoneIds = new Set(), selectedCharms = g
     });
   });
 
-  uniqueStoneIds.forEach((id) => {
+  safeStoneIds.forEach((id) => {
     const stone = STONES.find((entry) => entry.id === id);
     if (!stone) return;
 
@@ -3983,7 +4018,7 @@ async function renderStep4() {
   
   // Aggregate stones selected for receipt and meanings
   const aggregatedStones = checkoutSummary.aggregatedStones;
-  const uniqueStoneIds = checkoutSummary.uniqueStoneIds;
+  const uniqueStoneIds = normalizeUniqueStoneIds(checkoutSummary.uniqueStoneIds);
   const charmData = checkoutSummary.charmData;
   const selectedCharms = charmData.charms;
   
@@ -4745,6 +4780,7 @@ async function preloadRenderImages(urls) {
 
 // Draw the designed bracelet and invoice to canvas
 async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, previewKey = '') {
+  const safeUniqueStoneIds = normalizeUniqueStoneIds(uniqueStoneIds);
   if (document.fonts?.load) {
     await Promise.all([
       document.fonts.load("400 16px 'Noto Sans Thai'"),
@@ -5039,7 +5075,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   rCtx.fillText("✨ STONE MEANINGS & METAPHYSICAL BENEFITS", 70, 735);
 
   let meaningY = 770;
-  uniqueStoneIds.forEach(id => {
+  safeUniqueStoneIds.forEach(id => {
     const stone = STONES.find(s => s.id === id);
     if (stone && meaningY < 1120) {
       rCtx.fillStyle = "#8B0000";
