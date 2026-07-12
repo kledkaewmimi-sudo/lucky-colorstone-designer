@@ -36,7 +36,8 @@ const State = {
   activeCatalogSection: 'stones', // Step 3 catalog type filter: stones, charms, spacer
   activeSlotIndex: null,    // Index of selected slot in Step 3 (-1 or null for append)
   uniqueCounter: 0,         // For generating unique IDs for animation keys
-  newlyAddedIds: []         // Track newly added bead unique IDs for pop animation
+  newlyAddedIds: [],        // Track newly added bead unique IDs for pop animation
+  orderDetailLoadError: ''  // Friendly state for direct order summary links
 };
 
 // ==========================================
@@ -589,7 +590,7 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
-  if (returnParams.get('step') === '4' || returnParams.has('stripe')) {
+  if (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId')) {
     State.currentStep = 4;
     State.landingDismissed = true;
   }
@@ -623,6 +624,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshCatalogLayoutOrder()
   ]);
 
+  await loadOrderDetailFromUrlIfNeeded();
   await handleStripeReturnIfNeeded();
   
   // Initialise step UI components
@@ -862,6 +864,156 @@ function clearOAuthQueryParams() {
   window.history.replaceState({}, document.title, nextUrl);
 }
 
+function getRequestedOrderId() {
+  return String(new URLSearchParams(window.location.search).get('orderId') || '').trim();
+}
+
+function decodeOrderConfiguration(configurationCode) {
+  const rawCode = String(configurationCode || '').trim();
+  if (!rawCode) return null;
+
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(rawCode))));
+  } catch (error) {
+    console.warn('Unable to decode order configuration code', error);
+    return null;
+  }
+}
+
+function buildLoopItemsFromOrder(order, decodedConfig) {
+  const loopItems = Array.isArray(decodedConfig?.l)
+    ? decodedConfig.l.map((item, index) => {
+      const itemType = String(item?.t || 'stone').trim().toLowerCase();
+      if (itemType === 'spacer') {
+        return {
+          componentType: 'spacer',
+          spacerId: String(item?.i || '').trim(),
+          uniqueId: index + 1
+        };
+      }
+      if (itemType === 'charm') {
+        return {
+          componentType: 'charm',
+          charmId: String(item?.i || '').trim(),
+          uniqueId: index + 1
+        };
+      }
+      return {
+        componentType: 'stone',
+        stoneId: String(item?.i || '').trim(),
+        size: Number(item?.z || item?.l || order?.beadSize || State.beadSize),
+        uniqueId: index + 1
+      };
+    })
+    : null;
+
+  if (loopItems?.length) {
+    return normalizeSelectedLoopItems(loopItems).map((item, index) => ({
+      ...item,
+      uniqueId: index + 1
+    }));
+  }
+
+  const configuredStones = Array.isArray(decodedConfig?.s)
+    ? decodedConfig.s.map((item, index) => ({
+      componentType: 'stone',
+      stoneId: String(item?.i || '').trim(),
+      size: Number(item?.z || order?.beadSize || State.beadSize),
+      uniqueId: index + 1
+    }))
+    : null;
+
+  if (configuredStones?.length) {
+    return normalizeSelectedLoopItems(configuredStones).map((item, index) => ({
+      ...item,
+      uniqueId: index + 1
+    }));
+  }
+
+  const orderBeads = Array.isArray(order?.beads)
+    ? order.beads.map((bead, index) => ({
+      componentType: 'stone',
+      stoneId: String(bead?.stoneId || bead?.id || '').trim(),
+      size: Number(bead?.size || order?.beadSize || State.beadSize),
+      uniqueId: index + 1
+    }))
+    : [];
+
+  return normalizeSelectedLoopItems(orderBeads).map((item, index) => ({
+    ...item,
+    uniqueId: index + 1
+  }));
+}
+
+function getOrderCharmIds(order, decodedConfig) {
+  if (Array.isArray(order?.charmIds)) return order.charmIds;
+  if (Array.isArray(decodedConfig?.c)) return decodedConfig.c;
+  if (Array.isArray(order?.charms)) return order.charms.map((charm) => charm?.id || charm?.charmId);
+  return order?.charmId ? [order.charmId] : [];
+}
+
+function hydrateStateFromOrder(order) {
+  const decodedConfig = decodeOrderConfiguration(order?.configurationCode);
+  const wristSize = Number(order?.wristSize ?? decodedConfig?.w);
+
+  if (Number.isFinite(wristSize) && wristSize > 0) {
+    State.wristSize = wristSize;
+  }
+
+  State.beadSize = normalizeBeadSizeOption(order?.beadSize || decodedConfig?.b || State.beadSize);
+  State.mixedPlacingSize = getCurrentBeadSizeMm();
+  State.ownerName = String(order?.customerName || decodedConfig?.n || State.ownerName || '').trim();
+  State.lineUserId = typeof order?.lineUserId === 'string' ? order.lineUserId : State.lineUserId;
+  State.shippingInfo = normalizeShippingInfo(order?.shippingInfo || {
+    recipientName: order?.recipientName || '',
+    phoneNumber: order?.phoneNumber || '',
+    addressLine: order?.addressLine || '',
+    province: order?.province || '',
+    postalCode: order?.postalCode || ''
+  });
+  State.selectedCharmIds = normalizeSelectedCharmIds(getOrderCharmIds(order, decodedConfig));
+  syncSelectedCharmState();
+  State.selectedStones = buildLoopItemsFromOrder(order, decodedConfig);
+  State.uniqueCounter = State.selectedStones.reduce(
+    (maxId, item) => Math.max(maxId, Number(item.uniqueId) || 0),
+    0
+  );
+  State.currentStep = 4;
+  State.landingDismissed = true;
+  State.orderDetailLoadError = '';
+
+  if (DOM.braceletOwnerName) {
+    DOM.braceletOwnerName.value = State.ownerName;
+  }
+}
+
+async function loadOrderDetailFromUrlIfNeeded() {
+  const orderId = getRequestedOrderId();
+  if (!orderId) return false;
+
+  State.currentStep = 4;
+  State.landingDismissed = true;
+
+  try {
+    const orders = await getSharedOrders();
+    const order = Array.isArray(orders)
+      ? orders.find((entry) => String(entry?.id || entry?.orderId || '').trim() === orderId)
+      : null;
+
+    if (!order) {
+      State.orderDetailLoadError = `We could not find order ${orderId}. Please check the link or contact Lucky Colorstone.`;
+      return false;
+    }
+
+    hydrateStateFromOrder(order);
+    return true;
+  } catch (error) {
+    console.error('Unable to load order detail from URL', error);
+    State.orderDetailLoadError = `We could not load order ${orderId} right now. Please try again later.`;
+    return false;
+  }
+}
+
 // ==========================================
 // 5. App Render Routing
 // ==========================================
@@ -1000,6 +1152,9 @@ async function renderStepViews() {
     renderStep3();
   } else if (State.currentStep === 4) {
     await renderStep4();
+    if (State.orderDetailLoadError) {
+      return;
+    }
   }
 
   if (State.currentStep !== 3 && DOM.charmSectionMount) {
@@ -3279,7 +3434,36 @@ function renderStep3() {
 // ==========================================
 // 9. Step 4: Final Summary & Commercial Logic
 // ==========================================
+function renderOrderDetailErrorState(message) {
+  const step4View = document.getElementById('stepView4');
+  if (!step4View) return;
+
+  step4View.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'summary-card';
+  const header = document.createElement('div');
+  header.className = 'summary-header';
+  const title = document.createElement('h2');
+  title.textContent = 'Order not found';
+  const body = document.createElement('p');
+  body.textContent = message || 'We could not load this order. Please check the link or contact Lucky Colorstone.';
+
+  header.appendChild(title);
+  header.appendChild(body);
+  card.appendChild(header);
+  step4View.appendChild(card);
+
+  if (DOM.appFooter) {
+    DOM.appFooter.style.display = 'none';
+  }
+}
+
 async function renderStep4() {
+  if (State.orderDetailLoadError) {
+    renderOrderDetailErrorState(State.orderDetailLoadError);
+    return;
+  }
+
   // Set today's date formatted
   const options = { day: 'numeric', month: 'long', year: 'numeric' };
   const today = new Date();

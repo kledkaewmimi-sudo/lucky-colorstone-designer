@@ -337,12 +337,23 @@ function getOrderLineUserId(order) {
   return String(order?.lineUserId || "").trim();
 }
 
+function getOrderId(order) {
+  return String(order?.id || order?.orderId || "").trim();
+}
+
 function getOrderTrackingNumber(order) {
   const candidateFields = [
     "trackingNumber",
+    "trackingCode",
     "trackingNo",
     "shippingTrackingNumber",
-    "shipmentTrackingNumber"
+    "shippingTrackingCode",
+    "shippingTrackingNo",
+    "shipmentTrackingNumber",
+    "shipmentTrackingCode",
+    "shipmentTrackingNo",
+    "parcelTrackingNumber",
+    "waybillNumber"
   ];
 
   for (const fieldName of candidateFields) {
@@ -356,10 +367,23 @@ function getOrderTrackingNumber(order) {
 }
 
 function getOrderShippingCarrierDisplay(order) {
-  const shippingCarrier = String(order?.shippingCarrier || "").trim();
-  const shippingCarrierCustom = String(order?.shippingCarrierCustom || "").trim();
+  const shippingCarrier = String(
+    order?.carrierName ||
+    order?.shippingCarrierName ||
+    order?.shipmentCarrierName ||
+    order?.carrier ||
+    order?.shippingCarrier ||
+    order?.shipmentCarrier ||
+    ""
+  ).trim();
+  const shippingCarrierCustom = String(
+    order?.shippingCarrierCustom ||
+    order?.carrierCustom ||
+    order?.customCarrier ||
+    ""
+  ).trim();
 
-  if (shippingCarrier === "Other" || shippingCarrier === "อื่นๆ") {
+  if (shippingCarrier === "Other" || shippingCarrier === "\u0E2D\u0E37\u0E48\u0E19\u0E46") {
     return shippingCarrierCustom || "";
   }
 
@@ -387,26 +411,136 @@ function normalizeLineUri(value, fallback = "https://customize.luckycolorstone.c
   const rawValue = String(value || "").trim();
   const candidate = rawValue || fallback;
 
+  if (!candidate) {
+    return null;
+  }
+
   try {
     const parsed = new URL(candidate);
-    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : fallback;
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
   } catch {
-    return fallback;
+    // Fall through to the normalized fallback below.
+  }
+
+  if (!fallback) {
+    return null;
+  }
+
+  try {
+    const parsedFallback = new URL(fallback);
+    return parsedFallback.protocol === "http:" || parsedFallback.protocol === "https:"
+      ? parsedFallback.toString()
+      : null;
+  } catch {
+    return null;
   }
 }
 
-function getOrderDetailUrl(order) {
-  return normalizeLineUri(
-    order?.orderDetailUrl || order?.detailUrl || order?.orderUrl,
-    "https://customize.luckycolorstone.com/"
+function getPublicCustomerOrigin() {
+  const configuredOrigin = normalizeLineUri(
+    process.env.PUBLIC_CUSTOMER_ORIGIN || process.env.CUSTOMER_APP_URL,
+    null
   );
+  if (configuredOrigin) {
+    return configuredOrigin.replace(/\/+$/, "");
+  }
+
+  return "https://customize.luckycolorstone.com";
+}
+
+function buildOrderDetailUrl(order) {
+  const providedUrl = normalizeLineUri(
+    order?.orderDetailUrl || order?.detailUrl || order?.orderUrl,
+    null
+  );
+  if (providedUrl) return providedUrl;
+
+  const orderId = getOrderId(order);
+  const url = new URL(getPublicCustomerOrigin());
+  if (orderId) {
+    url.searchParams.set("orderId", orderId);
+  }
+  return url.toString();
+}
+
+function getOrderDetailUrl(order) {
+  return buildOrderDetailUrl(order);
+}
+
+function normalizeCarrierKey(carrierName) {
+  return String(carrierName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[.\-_\s]+/g, "");
+}
+
+function buildCarrierTrackingUrl(carrierName, trackingNumber) {
+  const normalizedCarrier = normalizeCarrierKey(carrierName);
+  const encodedTrackingNumber = encodeURIComponent(String(trackingNumber || "").trim());
+  if (!encodedTrackingNumber) return null;
+
+  if (
+    normalizedCarrier.includes("shopeeexpress") ||
+    normalizedCarrier.includes("shopeexpress") ||
+    normalizedCarrier.includes("shopeex") ||
+    normalizedCarrier.includes("spx")
+  ) {
+    return `https://spx.co.th/m/track?tracking_number=${encodedTrackingNumber}`;
+  }
+
+  if (normalizedCarrier.includes("kerry")) {
+    return `https://th.kerryexpress.com/th/track/?track=${encodedTrackingNumber}`;
+  }
+
+  if (normalizedCarrier.includes("flash")) {
+    return `https://www.flashexpress.co.th/fle/tracking?se=${encodedTrackingNumber}`;
+  }
+
+  if (
+    normalizedCarrier.includes("jandt") ||
+    normalizedCarrier.includes("jtexpress") ||
+    normalizedCarrier.includes("jnt")
+  ) {
+    return `https://www.jtexpress.co.th/index/query/gzquery.html?bills=${encodedTrackingNumber}`;
+  }
+
+  if (
+    normalizedCarrier.includes("thailandpost") ||
+    normalizedCarrier.includes("thaipost") ||
+    normalizedCarrier.includes("\u0E44\u0E1B\u0E23\u0E29\u0E13\u0E35\u0E22\u0E4C\u0E44\u0E17\u0E22")
+  ) {
+    return `https://track.thailandpost.co.th/?trackNumber=${encodedTrackingNumber}`;
+  }
+
+  if (normalizedCarrier.includes("dhl")) {
+    return `https://www.dhl.com/th-en/home/tracking.html?tracking-id=${encodedTrackingNumber}`;
+  }
+
+  if (normalizedCarrier.includes("ninjavan") || normalizedCarrier.includes("ninja")) {
+    return `https://www.ninjavan.co/th-th/tracking?id=${encodedTrackingNumber}`;
+  }
+
+  return `https://www.google.com/search?q=${encodeURIComponent(`${carrierName || "tracking"} ${trackingNumber}`)}`;
+}
+
+function buildTrackingUrl(order) {
+  const providedUrl = normalizeLineUri(
+    order?.trackingUrl || order?.shipmentTrackingUrl || order?.shippingTrackingUrl,
+    null
+  );
+  if (providedUrl) return providedUrl;
+
+  const trackingNumber = getOrderTrackingNumber(order);
+  if (!trackingNumber) return null;
+
+  return buildCarrierTrackingUrl(getOrderShippingCarrierDisplay(order), trackingNumber);
 }
 
 function getOrderTrackingUrl(order) {
-  return normalizeLineUri(
-    order?.trackingUrl || order?.shipmentTrackingUrl || order?.shippingTrackingUrl,
-    getOrderDetailUrl(order)
-  );
+  return buildTrackingUrl(order);
 }
 
 function buildFlexField(label, value) {
@@ -446,7 +580,8 @@ function buildLuckyColorstoneStatusFlexMessage({
   buttonLabel,
   buttonUrl
 }) {
-  return {
+  const footerUri = normalizeLineUri(buttonUrl, null);
+  const bubble = {
     type: "flex",
     altText: String(altText || "LUCKY.COLORSTONE order update").slice(0, 400),
     contents: {
@@ -504,28 +639,33 @@ function buildLuckyColorstoneStatusFlexMessage({
             contents: fields
           }
         ]
-      },
-      footer: {
-        type: "box",
-        layout: "vertical",
-        paddingAll: "16px",
-        backgroundColor: "#FFFDF9",
-        contents: [
-          {
-            type: "button",
-            style: "primary",
-            height: "sm",
-            color: "#6B1D2F",
-            action: {
-              type: "uri",
-              label: String(buttonLabel || "View"),
-              uri: normalizeLineUri(buttonUrl)
-            }
-          }
-        ]
       }
     }
   };
+
+  if (footerUri) {
+    bubble.contents.footer = {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "16px",
+      backgroundColor: "#FFFDF9",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          height: "sm",
+          color: "#6B1D2F",
+          action: {
+            type: "uri",
+            label: String(buttonLabel || "View"),
+            uri: footerUri
+          }
+        }
+      ]
+    };
+  }
+
+  return bubble;
 }
 
 function buildPaymentSuccessFlexMessage(order) {
