@@ -43,7 +43,9 @@ const State = {
   orderDetailSnapshot: null, // Saved order currently shown from ?orderId=
   orderDetailMode: false,
   paymentCompletedView: false,
-  checkoutSummarySnapshot: null
+  checkoutSummarySnapshot: null,
+  braceletPreviewImage: '',
+  braceletPreviewKey: ''
 };
 
 // ==========================================
@@ -4245,6 +4247,18 @@ async function renderStep4() {
   const heroPreview = document.getElementById('exportHeroPreview');
   const heroLoading = document.getElementById('exportHeroLoading');
   const btnHero = document.getElementById('btnDownloadHero');
+  const savedPreviewImage = State.orderDetailMode && State.orderDetailSnapshot
+    ? getSavedOrderBraceletPreviewImage(State.orderDetailSnapshot)
+    : '';
+  if (savedPreviewImage && heroPreview) {
+    State.braceletPreviewImage = savedPreviewImage;
+    State.braceletPreviewKey = currentPreviewKey;
+    heroPreview.src = savedPreviewImage;
+    heroPreview.style.display = 'block';
+    heroPreview.dataset.previewKey = currentPreviewKey;
+    if (heroLoading) heroLoading.style.display = 'none';
+    if (btnHero) btnHero.disabled = false;
+  }
   const isPreviewReady = heroPreview && heroPreview.dataset.previewKey === currentPreviewKey && heroPreview.src;
 
   if (isPreviewReady) {
@@ -4450,12 +4464,125 @@ function buildDesignConfigurationCode() {
   return btoa(unescape(encodeURIComponent(JSON.stringify(designData))));
 }
 
+function getSavedOrderBraceletPreviewImage(order = {}) {
+  const candidates = [
+    order.braceletPreviewImage,
+    order.braceletPreviewDataUrl,
+    order.braceletPreviewSnapshot,
+    order.checkoutSummary?.braceletPreviewImage,
+    order.checkoutSummary?.braceletPreviewDataUrl,
+    order.checkoutSummary?.braceletPreviewSnapshot
+  ];
+  return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
+}
+
+function getCurrentBraceletPreviewImage() {
+  const currentPreviewKey = State.currentStep === 4 ? getBraceletShowcaseRenderKey() : '';
+  if (
+    typeof State.braceletPreviewImage === 'string' &&
+    State.braceletPreviewImage.startsWith('data:image/') &&
+    (!currentPreviewKey || State.braceletPreviewKey === currentPreviewKey)
+  ) {
+    return State.braceletPreviewImage;
+  }
+
+  const heroPreview = document.getElementById('exportHeroPreview');
+  const previewSrc = heroPreview?.src || '';
+  if (
+    previewSrc.startsWith('data:image/') &&
+    (!currentPreviewKey || heroPreview?.dataset.previewKey === currentPreviewKey)
+  ) {
+    State.braceletPreviewImage = previewSrc;
+    State.braceletPreviewKey = currentPreviewKey;
+    return previewSrc;
+  }
+
+  return '';
+}
+
+function createCompactBraceletPreviewDataUrl(sourceDataUrl, targetSize = 420) {
+  if (typeof sourceDataUrl !== 'string' || !sourceDataUrl.startsWith('data:image/')) {
+    return Promise.resolve('');
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const sourceWidth = img.naturalWidth || img.width || targetSize;
+      const sourceHeight = img.naturalHeight || img.height || targetSize;
+      const scale = Math.min(targetSize / sourceWidth, targetSize / sourceHeight, 1);
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(sourceDataUrl);
+        return;
+      }
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      const webpDataUrl = canvas.toDataURL('image/webp', 0.86);
+      resolve(webpDataUrl.startsWith('data:image/webp') ? webpDataUrl : canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve('');
+    img.src = sourceDataUrl;
+  });
+}
+
+async function rememberBraceletPreviewImage(sourceDataUrl) {
+  const compactPreview = await createCompactBraceletPreviewDataUrl(sourceDataUrl);
+  if (compactPreview) {
+    State.braceletPreviewImage = compactPreview;
+    State.braceletPreviewKey = getBraceletShowcaseRenderKey();
+  }
+  return compactPreview;
+}
+
+async function ensureBraceletPreviewImage(timeoutMs = 1800) {
+  const existingPreview = getCurrentBraceletPreviewImage();
+  if (existingPreview) return existingPreview;
+
+  if (State.currentStep === 4 && !braceletShowcaseGenerationInFlight) {
+    const summary = getEffectiveCheckoutSummary(buildCheckoutSummary());
+    const uniqueStoneIds = normalizeUniqueStoneIds(summary.uniqueStoneIds);
+    const previewKey = braceletShowcaseRenderKey || getBraceletShowcaseRenderKey();
+    braceletShowcaseRenderKey = previewKey;
+    braceletShowcaseGenerationInFlight = true;
+    try {
+      await generateImageExports(
+        summary.subtotal,
+        summary.discountAmount,
+        summary.finalPrice,
+        summary.aggregatedStones || {},
+        uniqueStoneIds,
+        previewKey
+      );
+    } catch (error) {
+      console.warn('Unable to generate bracelet preview snapshot before saving order', error);
+    } finally {
+      braceletShowcaseGenerationInFlight = false;
+    }
+  }
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const readyPreview = getCurrentBraceletPreviewImage();
+    if (readyPreview) return readyPreview;
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+
+  return '';
+}
+
 function buildCurrentOrderPayload(overrides = {}) {
   const pricing = getEffectiveCheckoutSummary(buildCheckoutSummary());
   const charmData = pricing.charmData || buildCharmOrderDataFromItems(pricing.itemizedBilling || pricing.braceletSequence || []);
   const spacerData = pricing.spacerData || buildSpacerOrderDataFromItems(pricing.itemizedBilling || pricing.braceletSequence || []);
   const shippingInfo = getShippingInfoSnapshot({ trimValues: true });
   const selectedStoneItems = Array.isArray(pricing.selectedStoneItems) ? pricing.selectedStoneItems : [];
+  const braceletPreviewImage = getCurrentBraceletPreviewImage();
 
   return {
     customerName: State.ownerName || "Khun Guest",
@@ -4488,6 +4615,7 @@ function buildCurrentOrderPayload(overrides = {}) {
       totalPrice: pricing.finalPrice,
       netPrice: pricing.finalPrice
     },
+    braceletPreviewImage,
     itemizedBilling: pricing.itemizedBilling,
     braceletSequence: pricing.braceletSequence,
     beadMap: pricing.beadMap,
@@ -4671,6 +4799,7 @@ async function handleStripeCheckout() {
   saveState();
 
   try {
+    await ensureBraceletPreviewImage();
     const orderPayload = buildCurrentOrderPayload({
       shippingInfo,
       recipientName: shippingInfo.recipientName,
@@ -5190,6 +5319,8 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     return;
   }
 
+  await rememberBraceletPreviewImage(heroDataUrl);
+
   if (heroPreview) {
     heroPreview.src = heroDataUrl;
     heroPreview.style.display = "block";
@@ -5498,6 +5629,8 @@ function renderBraceletShowcaseFallback(previewKey = '') {
   const heroLoading = document.getElementById('exportHeroLoading');
   const btnHero = document.getElementById('btnDownloadHero');
 
+  rememberBraceletPreviewImage(fallbackDataUrl);
+
   if (heroPreview) {
     heroPreview.src = fallbackDataUrl;
     heroPreview.style.display = 'block';
@@ -5519,6 +5652,7 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
     return null;
   }
 
+  await ensureBraceletPreviewImage();
   const nextOrderPayload = buildCurrentOrderPayload({
     configurationCode: buildDesignConfigurationCode(),
     ...overrides

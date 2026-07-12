@@ -2593,6 +2593,18 @@ function getOrderItemizedBilling(order = {}) {
   return Array.isArray(order.itemizedBilling) ? order.itemizedBilling : [];
 }
 
+function getOrderSavedBraceletPreviewImage(order = {}) {
+  const candidates = [
+    order.braceletPreviewImage,
+    order.braceletPreviewDataUrl,
+    order.braceletPreviewSnapshot,
+    order.checkoutSummary?.braceletPreviewImage,
+    order.checkoutSummary?.braceletPreviewDataUrl,
+    order.checkoutSummary?.braceletPreviewSnapshot
+  ];
+  return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
+}
+
 function getOrderBraceletSequence(order = {}) {
   if (Array.isArray(order.checkoutSummary?.braceletSequence) && order.checkoutSummary.braceletSequence.length > 0) {
     return order.checkoutSummary.braceletSequence;
@@ -2893,11 +2905,21 @@ function getOrderCharmOutwardOffsetPx(component = {}, scaleMmToPx = 0) {
 }
 
 function renderOrderBraceletPreview(order = {}, options = {}) {
+  const savedPreviewImage = getOrderSavedBraceletPreviewImage(order);
   const size = Number(options.size || 150);
-  const center = size / 2;
-  const radius = Math.max(42, size * 0.333);
   const className = options.className || '';
   const title = options.title || 'Bracelet layout preview';
+
+  if (savedPreviewImage) {
+    return `
+      <div class="order-bracelet-preview order-bracelet-preview-snapshot ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
+        <img class="order-bracelet-preview-img" src="${escapeHtml(savedPreviewImage)}" alt="${escapeHtml(title)}">
+      </div>
+    `;
+  }
+
+  const center = size / 2;
+  const radius = Math.max(42, size * 0.333);
   const resolvedLayout = createOrderPreviewResolvedLayout(order);
   const nodes = projectOrderLayoutToCircle(resolvedLayout, {
     centerX: center,

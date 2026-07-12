@@ -2022,6 +2022,18 @@ h1, h2, h3, h4, h5, h6 {
   padding: 12px;
 }
 
+.order-bracelet-preview-snapshot {
+  background-color: var(--color-card-bg);
+}
+
+.order-bracelet-preview-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+}
+
 .order-bracelet-preview-svg {
   display: block;
   width: 100%;
