@@ -41,6 +41,8 @@ const State = {
   newlyAddedIds: [],        // Track newly added bead unique IDs for pop animation
   orderDetailLoadError: '', // Friendly state for direct order summary links
   orderDetailSnapshot: null, // Saved order currently shown from ?orderId=
+  orderDetailMode: false,
+  paymentCompletedView: false,
   checkoutSummarySnapshot: null
 };
 
@@ -1087,6 +1089,9 @@ function hydrateStateFromOrder(order) {
   State.landingDismissed = true;
   State.orderDetailLoadError = '';
   State.orderDetailSnapshot = order;
+  State.orderDetailMode = true;
+  State.paymentCompletedView = isPaidOrder(order);
+  State.checkoutSummarySnapshot = buildOrderDetailCheckoutSummary(order);
 
   if (DOM.braceletOwnerName) {
     DOM.braceletOwnerName.value = State.ownerName;
@@ -1100,6 +1105,8 @@ async function loadOrderDetailFromUrlIfNeeded() {
   State.currentStep = 4;
   State.landingDismissed = true;
   State.orderDetailSnapshot = null;
+  State.orderDetailMode = true;
+  State.paymentCompletedView = false;
 
   try {
     const orders = await getSharedOrders();
@@ -1321,6 +1328,18 @@ function configureFooterNavigation() {
   }
 
   if (State.currentStep === 4) {
+    if (State.orderDetailMode) {
+      DOM.btnBack.style.display = State.paymentCompletedView ? 'none' : '';
+      DOM.btnBack.style.visibility = State.paymentCompletedView ? 'hidden' : 'visible';
+      DOM.btnNext.className = 'footer-btn btn-paid-complete';
+      DOM.btnNext.disabled = true;
+      DOM.btnNext.innerHTML = `${State.paymentCompletedView ? 'การชำระเงินเสร็จสิ้น' : 'รายละเอียดคำสั่งซื้อ'} &nbsp;
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5"/>
+        </svg>`;
+      return;
+    }
+
     DOM.btnBack.style.display = '';
     DOM.btnBack.style.visibility = 'visible';
     DOM.btnNext.className = 'footer-btn btn-order';
@@ -1341,6 +1360,7 @@ function setupNavigationEvents() {
   
   DOM.btnNext.addEventListener('click', async () => {
     if (State.currentStep === 4) {
+      if (State.orderDetailMode) return;
       await handleStripeCheckout();
     } else {
       if (State.currentStep === 3) {
@@ -2238,6 +2258,79 @@ function buildSpacerOrderDataFromItems(items = []) {
   };
 }
 
+function buildCharmOrderDataFromSavedCharms(charms = []) {
+  const normalizedCharms = charms
+    .map((charm, index) => {
+      const charmId = String(charm?.id || charm?.charmId || '').trim();
+      if (!charmId) return null;
+      const catalogCharm = getCharmCatalogEntry(charmId);
+      const charmMeta = catalogCharm ? getCharmDisplayMeta(catalogCharm) : {};
+      return {
+        id: charmId,
+        selectionIndex: Number.isFinite(Number(charm?.selectionIndex)) ? Number(charm.selectionIndex) : index,
+        charmInstanceKey: charm?.charmInstanceKey || `${charmId}_${index}`,
+        sku: charm?.sku || catalogCharm?.sku || null,
+        nameTh: charm?.nameTh || charmMeta.nameTh || catalogCharm?.nameTh || '',
+        nameEn: charm?.nameEn || charmMeta.nameEn || catalogCharm?.nameEn || '',
+        type: charm?.type || charm?.charmType || catalogCharm?.type || null,
+        sizeCm: Number(charm?.sizeCm || catalogCharm?.sizeCm || 0) || null,
+        price: Number(charm?.price ?? charm?.unitPrice ?? catalogCharm?.price ?? 0),
+        image: charm?.image || catalogCharm?.image || null,
+        meaningTh: charm?.meaningTh || catalogCharm?.meaningTh || '',
+        meaningEn: charm?.meaningEn || catalogCharm?.meaningEn || ''
+      };
+    })
+    .filter(Boolean);
+
+  if (normalizedCharms.length === 0) return buildSelectedCharmOrderData();
+
+  const primaryCharm = normalizedCharms[0];
+  return {
+    hasCharm: true,
+    charmCount: normalizedCharms.length,
+    charmIds: normalizedCharms.map((charm) => charm.id),
+    charms: normalizedCharms,
+    charmId: primaryCharm.id,
+    charmSku: primaryCharm.sku,
+    charmNameTh: primaryCharm.nameTh,
+    charmNameEn: primaryCharm.nameEn,
+    charmType: primaryCharm.type,
+    charmSizeCm: primaryCharm.sizeCm,
+    charmPrice: primaryCharm.price,
+    charmImage: primaryCharm.image
+  };
+}
+
+function buildSpacerOrderDataFromSavedSpacers(spacers = []) {
+  const normalizedSpacers = spacers
+    .map((spacer) => {
+      const spacerId = String(spacer?.spacerId || spacer?.id || '').trim();
+      if (!spacerId) return null;
+      return {
+        spacerId,
+        nameTh: spacer?.nameTh || '',
+        nameEn: spacer?.nameEn || '',
+        type: spacer?.type || null,
+        color: spacer?.color || '',
+        image: spacer?.image || '',
+        price: Number(spacer?.price ?? spacer?.unitPrice ?? 0),
+        displaySizeMm: spacer?.displaySizeMm || spacer?.size || null,
+        effectiveLengthMm: spacer?.effectiveLengthMm || spacer?.size || null,
+        thicknessMm: spacer?.thicknessMm || null
+      };
+    })
+    .filter(Boolean);
+
+  if (normalizedSpacers.length === 0) return buildSelectedSpacerOrderData();
+
+  return {
+    hasSpacer: true,
+    spacerCount: normalizedSpacers.length,
+    spacerIds: normalizedSpacers.map((spacer) => spacer.spacerId),
+    spacers: normalizedSpacers
+  };
+}
+
 function normalizeCheckoutSummaryForOrder(summary) {
   if (!summary || typeof summary !== 'object') return summary;
 
@@ -2269,6 +2362,152 @@ function normalizeCheckoutSummaryForOrder(summary) {
   }
 
   return nextSummary;
+}
+
+function getOrderCanonicalMoney(order = {}, key) {
+  const summary = order?.checkoutSummary && typeof order.checkoutSummary === 'object'
+    ? order.checkoutSummary
+    : {};
+  const candidates = key === 'finalPrice'
+    ? [summary.finalPrice, summary.totalPrice, summary.netPrice, order.finalPrice, order.totalPrice, order.netPrice]
+    : [summary[key], order[key]];
+  const value = candidates.find((candidate) => Number.isFinite(Number(candidate)));
+  return value == null ? null : Number(value);
+}
+
+function isPaidOrder(order = {}) {
+  const status = String(order.status || '').trim().toLowerCase();
+  const stripePaymentStatus = String(order.stripePaymentStatus || order.paymentStatus || '').trim().toLowerCase();
+  return status === 'payment received' ||
+    status === 'paid' ||
+    stripePaymentStatus === 'paid' ||
+    Boolean(order.paidAt || order.paymentReceivedAt || order.notifications?.paymentReceivedSentAt);
+}
+
+function buildAggregatedStonesFromBilling(itemizedBilling = []) {
+  return itemizedBilling
+    .filter((item) => String(item?.componentType || item?.type || 'stone').trim().toLowerCase() === 'stone')
+    .reduce((aggregated, item) => {
+      const stoneId = String(item?.stoneId || item?.id || '').trim();
+      if (!stoneId) return aggregated;
+      const stoneData = STONES.find((stone) => stone.id === stoneId);
+      const size = Number(item?.size || item?.sizeMm || State.beadSize || 6);
+      const key = `${stoneId}_${size}`;
+      const quantity = Math.max(1, Number.parseInt(item?.quantity ?? item?.count ?? 1, 10) || 1);
+      const totalPrice = Number(item?.totalPrice ?? 0);
+      const unitPrice = Number(item?.unitPrice ?? item?.price ?? item?.priceUnit ?? (quantity > 0 ? totalPrice / quantity : 0));
+
+      if (!aggregated[key]) {
+        aggregated[key] = {
+          type: 'stone',
+          stoneId,
+          name: item?.name || stoneData?.name || 'Unknown Stone',
+          nameTh: item?.nameTh || stoneData?.nameTh || '',
+          color: item?.color || stoneData?.color || '#E2E8F0',
+          image: item?.image || stoneData?.image || '',
+          size,
+          quantity: 0,
+          count: 0,
+          unitPrice,
+          priceUnit: unitPrice,
+          totalPrice: 0
+        };
+      }
+
+      aggregated[key].quantity += quantity;
+      aggregated[key].count += quantity;
+      aggregated[key].totalPrice += Number.isFinite(totalPrice) && totalPrice > 0
+        ? totalPrice
+        : unitPrice * quantity;
+      return aggregated;
+    }, {});
+}
+
+function getOrderStoneItemsFromSequence(order = {}, fallbackItems = []) {
+  const sequence = Array.isArray(order.braceletSequence)
+    ? order.braceletSequence
+    : Array.isArray(order.beadMap)
+      ? order.beadMap
+      : [];
+
+  const sequenceStones = sequence
+    .filter((item) => String(item?.componentType || item?.type || 'stone').trim().toLowerCase() === 'stone')
+    .map((item, index) => ({
+      componentType: 'stone',
+      stoneId: String(item?.stoneId || item?.id || '').trim(),
+      size: Number(item?.size || item?.sizeMm || order.beadSize || State.beadSize),
+      uniqueId: index + 1
+    }))
+    .filter((item) => item.stoneId);
+
+  if (sequenceStones.length > 0) return sequenceStones;
+  return Array.isArray(fallbackItems) ? fallbackItems : [];
+}
+
+function buildOrderDetailCheckoutSummary(order = {}) {
+  const liveSummary = normalizeCheckoutSummaryForOrder(buildCheckoutSummary());
+  const itemizedBilling = Array.isArray(order.itemizedBilling) && order.itemizedBilling.length > 0
+    ? order.itemizedBilling
+    : liveSummary.itemizedBilling;
+  const braceletSequence = Array.isArray(order.braceletSequence) && order.braceletSequence.length > 0
+    ? order.braceletSequence
+    : Array.isArray(order.beadMap) && order.beadMap.length > 0
+      ? order.beadMap
+      : liveSummary.braceletSequence;
+  const aggregatedStones = itemizedBilling?.length
+    ? buildAggregatedStonesFromBilling(itemizedBilling)
+    : liveSummary.aggregatedStones;
+  const uniqueStoneIds = normalizeUniqueStoneIds(
+    Object.values(aggregatedStones || {}).map((item) => item.stoneId)
+  );
+  const charmSource = Array.isArray(order.selectedCharms) && order.selectedCharms.length > 0
+    ? order.selectedCharms
+    : itemizedBilling?.some(isCheckoutCharmItem)
+      ? itemizedBilling
+      : braceletSequence;
+  const spacerSource = Array.isArray(order.selectedSpacers) && order.selectedSpacers.length > 0
+    ? order.selectedSpacers
+    : itemizedBilling?.some(isCheckoutSpacerItem)
+      ? itemizedBilling
+      : braceletSequence;
+  const charmData = Array.isArray(order.selectedCharms) && order.selectedCharms.length > 0
+    ? buildCharmOrderDataFromSavedCharms(order.selectedCharms)
+    : buildCharmOrderDataFromItems(charmSource);
+  const spacerData = Array.isArray(order.selectedSpacers) && order.selectedSpacers.length > 0
+    ? buildSpacerOrderDataFromSavedSpacers(order.selectedSpacers)
+    : buildSpacerOrderDataFromItems(spacerSource);
+  const itemizedSubtotal = Array.isArray(itemizedBilling)
+    ? itemizedBilling.reduce((sum, item) => {
+      const itemTotal = Number(item?.totalPrice);
+      if (Number.isFinite(itemTotal)) return sum + itemTotal;
+      const unitPrice = Number(item?.unitPrice ?? item?.price ?? item?.priceUnit ?? 0);
+      const quantity = Number(item?.quantity ?? item?.count ?? 1) || 1;
+      return sum + (unitPrice * quantity);
+    }, 0)
+    : 0;
+  const subtotal = getOrderCanonicalMoney(order, 'subtotal') ?? itemizedSubtotal ?? liveSummary.subtotal;
+  const discountPercent = getOrderCanonicalMoney(order, 'discountPercent') ?? liveSummary.discountPercent ?? 20;
+  const discountAmount = getOrderCanonicalMoney(order, 'discountAmount') ?? Math.round(subtotal * (discountPercent / 100));
+  const finalPrice = getOrderCanonicalMoney(order, 'finalPrice') ?? subtotal - discountAmount;
+
+  return normalizeCheckoutSummaryForOrder({
+    ...liveSummary,
+    selectedStoneItems: getOrderStoneItemsFromSequence(order, liveSummary.selectedStoneItems),
+    aggregatedStones,
+    uniqueStoneIds,
+    itemizedBilling,
+    braceletSequence,
+    beadMap: braceletSequence,
+    subtotal,
+    discountPercent,
+    discount: discountAmount,
+    discountAmount,
+    finalPrice,
+    totalPrice: finalPrice,
+    netPrice: finalPrice,
+    charmData,
+    spacerData
+  });
 }
 
 function summaryHasCharmRows(summary) {
@@ -4010,17 +4249,19 @@ async function renderStep4() {
   DOM.specLength.textContent = `${(State.wristSize + TOLERANCE_CM).toFixed(1)} cm`;
   
   DOM.specBeadSize.textContent = `${getCurrentBeadSizeMm()}mm`;
-  const checkoutSummary = rememberCheckoutSummary(buildCheckoutSummary());
-  const selectedStoneItems = checkoutSummary.selectedStoneItems;
-  const spacerData = checkoutSummary.spacerData;
+  const checkoutSummary = State.orderDetailMode && State.orderDetailSnapshot
+    ? buildOrderDetailCheckoutSummary(State.orderDetailSnapshot)
+    : rememberCheckoutSummary(buildCheckoutSummary());
+  const selectedStoneItems = Array.isArray(checkoutSummary.selectedStoneItems) ? checkoutSummary.selectedStoneItems : [];
+  const spacerData = checkoutSummary.spacerData || buildSelectedSpacerOrderData();
   DOM.specBeadsCount.textContent = `${selectedStoneItems.length} เม็ด`;
   renderShippingForm();
   
   // Aggregate stones selected for receipt and meanings
-  const aggregatedStones = checkoutSummary.aggregatedStones;
+  const aggregatedStones = checkoutSummary.aggregatedStones || {};
   const uniqueStoneIds = normalizeUniqueStoneIds(checkoutSummary.uniqueStoneIds);
-  const charmData = checkoutSummary.charmData;
-  const selectedCharms = charmData.charms;
+  const charmData = checkoutSummary.charmData || buildSelectedCharmOrderData();
+  const selectedCharms = Array.isArray(charmData.charms) ? charmData.charms : [];
   
   [].forEach((placedBead) => {
     const key = `${placedBead.stoneId}_${placedBead.size}`;
@@ -4363,6 +4604,11 @@ async function handleStripeReturnIfNeeded() {
 }
 
 async function handleStripeCheckout() {
+  if (State.orderDetailMode) {
+    showToast("This order has already been created.");
+    return;
+  }
+
   if (State.selectedStones.length === 0) {
     showToast("Bracelet is empty!");
     return;

@@ -2366,6 +2366,20 @@ button.stone-card {
   border-color: #05af4a;
 }
 
+.footer-btn.btn-paid-complete {
+  background: linear-gradient(135deg, #0891b2 0%, #2563eb 100%);
+  border: 1px solid #0891b2;
+  color: var(--color-white);
+  flex: 2;
+  box-shadow: 0 8px 18px rgba(8, 145, 178, 0.22);
+  cursor: default;
+}
+
+.footer-btn.btn-paid-complete:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 /* Modals & Backdrop */
 .modal-backdrop {
   position: absolute;
