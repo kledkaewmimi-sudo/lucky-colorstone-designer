@@ -27,12 +27,25 @@ import {
   SETTINGS,
   getStonePriceForSize,
   addSharedOrder,
-  withCatalogImageVersion
+  withCatalogImageVersion,
+  getComponentTypeLabel
 } from './data.js';
 
 // ==========================================
 // 1. CRM Application State
 // ==========================================
+const CRM_COMPONENT_LABELS = {
+  stone: getComponentTypeLabel('stone', 'th'),
+  charm: getComponentTypeLabel('charm', 'th'),
+  spacer: getComponentTypeLabel('spacer', 'th'),
+  stoneEn: getComponentTypeLabel('stone', 'en'),
+  charmEn: getComponentTypeLabel('charm', 'en'),
+  spacerEn: getComponentTypeLabel('spacer', 'en'),
+  stoneSingularEn: getComponentTypeLabel('stone', 'singularEn'),
+  charmSingularEn: getComponentTypeLabel('charm', 'singularEn'),
+  spacerSingularEn: getComponentTypeLabel('spacer', 'singularEn')
+};
+
 const CRMState = {
   sessionActive: false,
   activeTab: 'overview', // 'overview', 'inventory', 'simulator', 'categories', 'charms', 'orders', 'settings'
@@ -415,7 +428,8 @@ async function uploadImageToMediaService(kind) {
   const fileInput = kind === "Stone" ? DOM.crudStoneImageFile : DOM.crudCharmImageFile;
   if (fileInput) fileInput.value = "";
   setUploadStatus(statusEl, "Upload complete. Image URL updated.", "success");
-  showToast(`${kind} image uploaded.`);
+  const displayKind = kind === "Charm" ? CRM_COMPONENT_LABELS.charm : kind;
+  showToast(`${displayKind} image uploaded.`);
   return uploadedUrl;
 }
 
@@ -531,7 +545,7 @@ async function switchTab(tabName) {
     inventory: "Stone Inventory Manager (Module A)",
     simulator: "Catalog Layout Manager",
     categories: "Catalog Category Manager",
-    charms: "Shared Charm Catalog Management",
+    charms: "Shared Talisman Catalog Management",
     orders: "Order Management & OMS (Module B)",
     settings: "Global System Settings"
   };
@@ -835,9 +849,9 @@ function renderStoneInventoryCatalogLegacy(stones) {
 }
 
 function getInventoryTypeLabel(type) {
-  if (type === 'charm') return 'Charm';
-  if (type === 'spacer') return 'Spacer';
-  return 'Stone';
+  if (type === 'charm') return CRM_COMPONENT_LABELS.charm;
+  if (type === 'spacer') return CRM_COMPONENT_LABELS.spacer;
+  return CRM_COMPONENT_LABELS.stone;
 }
 
 function formatInventoryStonePrice(stone) {
@@ -898,7 +912,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       image: withCatalogImageVersion(charm.image?.primary || '', charm),
       nameTh,
       nameEn,
-      meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || 'Charm',
+      meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
       sizeText: sizeParts.join(' / ') || '&mdash;',
       isInStock: charm.availability?.inStock !== false,
@@ -936,7 +950,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       image: withCatalogImageVersion(spacer.image?.primary || '', spacer),
       nameTh,
       nameEn,
-      meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || 'Spacer',
+      meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
       sizeText: sizeParts.join(' / ') || '&mdash;',
       isInStock: spacer.availability?.inStock !== false,
@@ -991,8 +1005,8 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     const statusClass = item.isInStock ? 'badge-in-stock' : 'badge-out-of-stock';
     const visibilityText = item.isActive === false ? '<span class="inventory-muted-status">Hidden</span>' : '';
     const actionDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
-    const actionTitle = item.type === 'spacer' ? 'Spacer CRUD is not available yet' : `Edit ${item.typeLabel}`;
-    const deleteTitle = item.type === 'spacer' ? 'Spacer CRUD is not available yet' : `Delete ${item.typeLabel}`;
+    const actionTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} CRUD is not available yet` : `Edit ${item.typeLabel}`;
+    const deleteTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} CRUD is not available yet` : `Delete ${item.typeLabel}`;
 
     tr.innerHTML = `
       <td data-label="Item">
@@ -1058,9 +1072,9 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
 function renderBraceletLayoutSimulatorLegacy(stones = [], charms = [], spacers = []) {
   const activeCategory = CRMState.simulatorCategory || 'stones';
   const categoryLabelMap = {
-    stones: 'Stones',
-    charms: 'Charms',
-    spacers: 'Spacers'
+    stones: CRM_COMPONENT_LABELS.stone,
+    charms: CRM_COMPONENT_LABELS.charm,
+    spacers: CRM_COMPONENT_LABELS.spacer
   };
 
   DOM.simulatorCategoryTabs.forEach((tab) => {
@@ -1071,7 +1085,7 @@ function renderBraceletLayoutSimulatorLegacy(stones = [], charms = [], spacers =
 
   const allItems = buildInventoryItems(stones, charms, spacers);
   const filteredItems = allItems.filter((item) => item.type === activeCategory.slice(0, -1));
-  const categoryLabel = categoryLabelMap[activeCategory] || 'Stones';
+  const categoryLabel = categoryLabelMap[activeCategory] || CRM_COMPONENT_LABELS.stone;
 
   if (DOM.simulatorCategoryHint) {
     DOM.simulatorCategoryHint.textContent = `Showing ${categoryLabel.toLowerCase()} from the shared catalog.`;
@@ -1092,7 +1106,7 @@ function renderBraceletLayoutSimulatorLegacy(stones = [], charms = [], spacers =
   DOM.simulatorCatalogEmpty.hidden = true;
   DOM.simulatorItemGrid.hidden = false;
   DOM.simulatorItemGrid.innerHTML = filteredItems.map((item) => {
-    const typeLabel = item.typeLabel || (item.type === 'stone' ? 'Stone' : item.type === 'charm' ? 'Charm' : 'Spacer');
+    const typeLabel = item.typeLabel || getInventoryTypeLabel(item.type);
     const priceText = item.priceText || '—';
     return `
       <div class="simulator-item-card" data-simulator-item-type="${escapeHtml(item.type)}" data-simulator-item-id="${escapeHtml(item.id)}">
@@ -1164,7 +1178,7 @@ function normalizeSimulatorLayoutItem(item, fallbackIndex = 0) {
     uid: String(item.uid || item.instanceId || item.layoutId || `${typeValue}-${id}-${fallbackIndex}`),
     type: typeValue,
     id,
-    typeLabel: item.typeLabel || (typeValue === 'stone' ? 'Stone' : typeValue === 'charm' ? 'Charm' : 'Spacer'),
+    typeLabel: item.typeLabel || getInventoryTypeLabel(typeValue),
     nameTh: item.nameTh || item.labelTh || item.titleTh || '',
     nameEn: item.nameEn || item.labelEn || item.titleEn || '',
     image: item.image || '',
@@ -1317,9 +1331,9 @@ function renderSimulatorPreviewLayout() {
 function renderLegacyBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
   const activeCategory = normalizeSimulatorCategory(CRMState.simulatorCategory || 'stones');
   const categoryLabelMap = {
-    stones: 'Stones',
-    charms: 'Charms',
-    spacers: 'Spacers'
+    stones: CRM_COMPONENT_LABELS.stone,
+    charms: CRM_COMPONENT_LABELS.charm,
+    spacers: CRM_COMPONENT_LABELS.spacer
   };
   const allItems = buildInventoryItems(stones, charms, spacers);
   const filteredItems = allItems.filter((item) => item.type === activeCategory.slice(0, -1));
@@ -1357,7 +1371,7 @@ function renderLegacyBraceletLayoutSimulator(stones = [], charms = [], spacers =
   DOM.simulatorCatalogEmpty.hidden = true;
   DOM.simulatorItemGrid.hidden = false;
   DOM.simulatorItemGrid.innerHTML = filteredItems.map((item) => {
-    const typeLabel = item.typeLabel || (item.type === 'stone' ? 'Stone' : item.type === 'charm' ? 'Charm' : 'Spacer');
+    const typeLabel = item.typeLabel || getInventoryTypeLabel(item.type);
     const priceText = item.priceText || '—';
     const isPlaced = placedLookup.has(`${item.type}:${item.id}`);
     return `
@@ -1486,9 +1500,9 @@ function resetSimulatorLayout() {
 function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
   const activeCategory = getCatalogLayoutCategory();
   const categoryLabelMap = {
-    stones: 'Stones',
-    charms: 'Charms',
-    spacers: 'Spacers'
+    stones: CRM_COMPONENT_LABELS.stone,
+    charms: CRM_COMPONENT_LABELS.charm,
+    spacers: CRM_COMPONENT_LABELS.spacer
   };
   const categoryLabel = categoryLabelMap[activeCategory] || 'Stones';
   const items = getLayoutCatalogItems(stones, charms, spacers, activeCategory);
@@ -1565,7 +1579,7 @@ function renderBraceletLayoutSimulator(stones = [], charms = [], spacers = []) {
 }
 
 function getCategoryScopeLabel(entityType) {
-  return entityType === 'charm' ? 'Charm' : 'Stone';
+  return entityType === 'charm' ? CRM_COMPONENT_LABELS.charm : CRM_COMPONENT_LABELS.stone;
 }
 
 function buildCategoryDisplayLabel(category) {
@@ -1761,7 +1775,7 @@ function renderCategoryCatalog(categories, stones = [], charms = []) {
       <td data-label="Usage">
         <div class="category-usage-stack">
           <span>Stones: ${usage.stoneCount}</span>
-          <span>Charms: ${usage.charmCount}</span>
+          <span>${CRM_COMPONENT_LABELS.charm}: ${usage.charmCount}</span>
         </div>
       </td>
       <td data-label="Actions" class="text-right">
@@ -2087,7 +2101,7 @@ function renderCharmCatalog(charms, categories = []) {
 
   DOM.charmsTableBody.innerHTML = '';
   if (filtered.length === 0) {
-    DOM.charmsTableBody.innerHTML = '<tr><td colspan="7" class="empty-state">No matching charms found.</td></tr>';
+    DOM.charmsTableBody.innerHTML = '<tr><td colspan="7" class="empty-state">No matching talismans found.</td></tr>';
     return;
   }
 
@@ -2104,7 +2118,7 @@ function renderCharmCatalog(charms, categories = []) {
       <td data-label="Image">
         <img class="table-bead-img charm-admin-img" src="${imageSrc}" alt="${charm.name?.en || charm.id}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
       </td>
-      <td data-label="Charm">
+      <td data-label="${CRM_COMPONENT_LABELS.charm}">
         <div class="stone-title-th">${charm.name?.th || '-'}</div>
         <div class="stone-title-en">${charm.name?.en || '-'}</div>
         <div class="charm-meta-stack">
@@ -2155,13 +2169,13 @@ function renderCharmCatalog(charms, categories = []) {
       </td>
       <td data-label="Actions">
         <div class="action-btns charm-action-btns">
-          <button class="action-btn edit" data-id="${charm.id}" title="Edit Charm business fields">
+          <button class="action-btn edit" data-id="${charm.id}" title="Edit Talisman business fields">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
           </button>
-          <button class="action-btn delete" data-id="${charm.id}" title="Delete Charm">
+          <button class="action-btn delete" data-id="${charm.id}" title="Delete Talisman">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -2181,7 +2195,7 @@ function renderCharmCatalog(charms, categories = []) {
 
 async function openAddCharmForm() {
   CRMState.activeEditCharmId = null;
-  DOM.charmModalTitle.textContent = "Add New Charm";
+  DOM.charmModalTitle.textContent = "Add New Talisman";
   DOM.charmCrudForm.reset();
   DOM.crudCharmRecordId.value = "";
   DOM.crudCharmId.disabled = false;
@@ -2209,7 +2223,7 @@ async function openEditCharmForm(charmId) {
   syncCategoryAssignmentSelects(categories, '', charm.collection || charm.categoryId);
 
   CRMState.activeEditCharmId = charmId;
-  DOM.charmModalTitle.textContent = `Edit Charm: ${charm.name?.th || charm.id}`;
+  DOM.charmModalTitle.textContent = `Edit Talisman: ${charm.name?.th || charm.id}`;
   DOM.crudCharmRecordId.value = charm.id;
   DOM.crudCharmId.value = charm.id;
   DOM.crudCharmId.disabled = true;
@@ -2284,11 +2298,11 @@ async function handleSaveCharmType(e) {
   const saved = await saveSharedCharmCatalogEntry(normalizedRecord);
   if (saved) {
     if (CRMState.activeEditCharmId) {
-      addLog(`Edited charm ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
-      showToast("Charm details updated!");
+      addLog(`Edited talisman ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
+      showToast("Talisman details updated!");
     } else {
-      addLog(`Created new charm ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
-      showToast("New charm added to catalog!");
+      addLog(`Created new talisman ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
+      showToast("New talisman added to catalog!");
     }
   }
 
@@ -2303,15 +2317,15 @@ async function deleteCharmType(charmId) {
   if (!charm) return;
 
   const proceed = await showCustomConfirm(
-    `Are you sure you want to delete '${charm.name?.th || charm.id} (${charm.sku || charm.id})' from the charm catalog?`,
-    "Delete Charm"
+    `Are you sure you want to delete '${charm.name?.th || charm.id} (${charm.sku || charm.id})' from the talisman catalog?`,
+    "Delete Talisman"
   );
 
   if (proceed) {
     const success = await deleteSharedCharmCatalogEntry(charmId);
     if (success) {
-      addLog(`Deleted charm ID '${charmId}' (${charm.name?.th || charm.name?.en}).`, 'warn');
-      showToast("Charm deleted.");
+      addLog(`Deleted talisman ID '${charmId}' (${charm.name?.th || charm.name?.en}).`, 'warn');
+      showToast("Talisman deleted.");
       await loadDashboardData();
     }
   }
@@ -3080,7 +3094,7 @@ function getOrderCharmDetailEntries(order = {}) {
       (charm) => {
         const name = charm.nameTh && charm.nameEn
           ? `${charm.nameTh} (${charm.nameEn})`
-          : charm.nameEn || charm.nameTh || charm.sku || charm.id || 'Charm';
+          : charm.nameEn || charm.nameTh || charm.sku || charm.id || CRM_COMPONENT_LABELS.charm;
         const meta = [charm.sku, charm.sizeCm ? `${Number(charm.sizeCm).toFixed(1)} cm` : '']
           .filter(Boolean)
           .join(' • ');
@@ -3116,7 +3130,7 @@ function getOrderStoneDetailEntries(order = {}) {
   const stoneItems = getOrderItemizedBilling(order).filter((item) => String(item.type || '').toLowerCase() === 'stone');
   if (stoneItems.length > 0) {
     return stoneItems.map((item) => ({
-      label: `${item.nameTh || item.name || item.stoneId || 'Stone'}${item.size ? ` - ${item.size}mm` : ''}`,
+      label: `${item.nameTh || item.name || item.stoneId || CRM_COMPONENT_LABELS.stone}${item.size ? ` - ${item.size}mm` : ''}`,
       quantity: Number(item.quantity || item.count || 1) || 1
     }));
   }
@@ -3125,9 +3139,9 @@ function getOrderStoneDetailEntries(order = {}) {
     Array.isArray(order.beads) ? order.beads : [],
     (bead) => `${bead.stoneId || bead.name || bead.nameTh || 'stone'}_${bead.size || ''}`,
     (bead) => {
-      const name = bead.nameTh && bead.name
-        ? `${bead.nameTh} (${bead.name})`
-        : bead.name || bead.nameTh || bead.stoneId || 'Stone';
+        const name = bead.nameTh && bead.name
+          ? `${bead.nameTh} (${bead.name})`
+        : bead.name || bead.nameTh || bead.stoneId || CRM_COMPONENT_LABELS.stone;
       return `${name}${bead.size ? ` - ${bead.size}mm` : ''}`;
     }
   );
@@ -3141,7 +3155,7 @@ function getOrderSpacerDetailEntries(order = {}) {
     (spacer) => {
       const name = spacer.nameTh && spacer.nameEn
         ? `${spacer.nameTh} (${spacer.nameEn})`
-        : spacer.nameEn || spacer.nameTh || spacer.spacerId || 'Spacer';
+        : spacer.nameEn || spacer.nameTh || spacer.spacerId || CRM_COMPONENT_LABELS.spacer;
       return `${name}${spacer.displaySizeMm ? ` - ${spacer.displaySizeMm}mm` : ''}`;
     }
   );
@@ -3286,11 +3300,11 @@ function renderOrdersList(orders) {
     const orderCharmItems = getOrderCharmItems(order);
     const orderSpacerItems = getOrderSpacerItems(order);
     const charmText = orderCharmItems.length > 0
-      ? orderCharmItems.map((charm) => charm.nameEn || charm.nameTh || charm.sku || charm.id || charm.charmId || 'Charm').join(', ')
-      : (order.hasCharm ? `${order.charmNameEn || order.charmNameTh || 'Charm'} (${Number(order.charmSizeCm || 0).toFixed(1)} cm)` : 'No Charm');
+      ? orderCharmItems.map((charm) => charm.nameEn || charm.nameTh || charm.sku || charm.id || charm.charmId || CRM_COMPONENT_LABELS.charm).join(', ')
+      : (order.hasCharm ? `${order.charmNameEn || order.charmNameTh || CRM_COMPONENT_LABELS.charm} (${Number(order.charmSizeCm || 0).toFixed(1)} cm)` : `No ${CRM_COMPONENT_LABELS.charm}`);
     const spacerText = orderSpacerItems.length > 0
-      ? `${orderSpacerItems.length} spacers`
-      : (order.hasSpacer ? `${order.spacerCount} spacers` : 'No Spacer');
+      ? `${orderSpacerItems.length} ${CRM_COMPONENT_LABELS.spacer}`
+      : (order.hasSpacer ? `${order.spacerCount} ${CRM_COMPONENT_LABELS.spacer}` : `No ${CRM_COMPONENT_LABELS.spacer}`);
     
     const braceletPreviewHtml = renderOrderBraceletPreview(order, {
       className: 'order-bracelet-preview-compact',
@@ -3374,8 +3388,8 @@ function renderOrdersList(orders) {
       <td data-label="Specs">
         <div>Wrist: ${wristText}</div>
         <div style="font-size: 11px; color: var(--color-navy-muted);">Bead: ${beadText} &bull; ${beadCountText}</div>
-        <div style="font-size: 11px; color: var(--color-navy-muted);">Charm: ${charmText}</div>
-        <div style="font-size: 11px; color: var(--color-navy-muted);">Spacer: ${spacerText}</div>
+        <div style="font-size: 11px; color: var(--color-navy-muted);">${CRM_COMPONENT_LABELS.charm}: ${charmText}</div>
+        <div style="font-size: 11px; color: var(--color-navy-muted);">${CRM_COMPONENT_LABELS.spacer}: ${spacerText}</div>
       </td>
       <td data-label="Bracelet Layout">${braceletPreviewHtml}</td>
       <td data-label="Pricing">${priceText}</td>
@@ -3443,17 +3457,17 @@ function getOrderCharmDisplayText(order) {
     return charmItems.map((charm) => {
       const charmName = charm.nameTh && charm.nameEn
         ? `${charm.nameTh} (${charm.nameEn})`
-        : charm.nameEn || charm.nameTh || charm.sku || charm.id || charm.charmId || 'Charm';
+        : charm.nameEn || charm.nameTh || charm.sku || charm.id || charm.charmId || CRM_COMPONENT_LABELS.charm;
       const charmMeta = [];
       if (charm.sizeCm) charmMeta.push(`${Number(charm.sizeCm).toFixed(1)} cm`);
       if (charm.sku) charmMeta.push(charm.sku);
       return charmMeta.length > 0 ? `${charmName} โ€ข ${charmMeta.join(' โ€ข ')}` : charmName;
     }).join(', ');
   }
-  if (!order?.hasCharm) return 'No Charm';
+  if (!order?.hasCharm) return `No ${CRM_COMPONENT_LABELS.charm}`;
   const charmName = order.charmNameTh && order.charmNameEn
     ? `${order.charmNameTh} (${order.charmNameEn})`
-    : order.charmNameEn || order.charmNameTh || 'Charm';
+    : order.charmNameEn || order.charmNameTh || CRM_COMPONENT_LABELS.charm;
   const charmMeta = [];
   if (order.charmSizeCm) {
     charmMeta.push(`${Number(order.charmSizeCm).toFixed(1)} cm`);
@@ -3466,8 +3480,8 @@ function getOrderCharmDisplayText(order) {
 
 function getOrderSpacerDisplayText(order) {
   const spacerItems = getOrderSpacerItems(order);
-  if (!order?.hasSpacer && spacerItems.length === 0) return 'No Spacer';
-  if (spacerItems.length === 0) return 'No Spacer';
+  if (!order?.hasSpacer && spacerItems.length === 0) return `No ${CRM_COMPONENT_LABELS.spacer}`;
+  if (spacerItems.length === 0) return `No ${CRM_COMPONENT_LABELS.spacer}`;
   const spacerDetails = spacerItems.reduce((acc, spacer) => {
     const key = `${spacer.nameTh || spacer.nameEn} (${spacer.displaySizeMm || 6}mm)`;
     acc[key] = (acc[key] || 0) + 1;
@@ -3567,11 +3581,11 @@ async function openOrderDetailModal(orderId) {
           ${renderOrderDetailList(getOrderStoneDetailEntries(order))}
         </div>
         <div class="order-detail-subsection">
-          <h5>Charms</h5>
+          <h5>${CRM_COMPONENT_LABELS.charm}</h5>
           ${renderOrderDetailList(getOrderCharmDetailEntries(order))}
         </div>
         <div class="order-detail-subsection">
-          <h5>Spacers</h5>
+          <h5>${CRM_COMPONENT_LABELS.spacer}</h5>
           ${renderOrderDetailList(getOrderSpacerDetailEntries(order))}
         </div>
       </section>
@@ -3810,7 +3824,7 @@ function drawInvoicePricingTable(order) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <div style="font-weight:600; color:#1e293b;">${order.charmNameTh || 'Charm'}</div>
+        <div style="font-weight:600; color:#1e293b;">${order.charmNameTh || CRM_COMPONENT_LABELS.charm}</div>
         <div style="font-size:10px; color:#64748b;">${order.charmNameEn || order.charmSku || ''}</div>
       </td>
       <td>${order.charmSizeCm ? `${Number(order.charmSizeCm).toFixed(1)} cm` : '-'}</td>
@@ -3840,7 +3854,7 @@ function drawInvoicePricingTable(order) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>
-          <div style="font-weight:600; color:#1e293b;">${spacer.nameTh || 'Spacer'}</div>
+          <div style="font-weight:600; color:#1e293b;">${spacer.nameTh || CRM_COMPONENT_LABELS.spacer}</div>
           <div style="font-size:10px; color:#64748b;">${spacer.nameEn || ''}</div>
         </td>
         <td>${spacer.displaySizeMm || spacer.size || 6} mm</td>
@@ -3875,7 +3889,7 @@ function copyLINEInvoiceSummary() {
   lines.push(`📏 Wrist Specs: ${order.wristSize.toFixed(1)} cm`);
   lines.push(`💎 Bead size: ${order.beadSize === 'mixed' ? 'Mixed Sizes' : order.beadSize + 'mm'}`);
   lines.push(`📿 Total Beads: ${order.totalBeads} beads`);
-  lines.push(`✨ Charm: ${getOrderCharmDisplayText(order)}`);
+  lines.push(`✨ ${CRM_COMPONENT_LABELS.charm}: ${getOrderCharmDisplayText(order)}`);
   if (order.hasSpacer && Array.isArray(order.spacers) && order.spacers.length > 0) {
     const spacerDetails = order.spacers.reduce((acc, spacer) => {
       const key = `${spacer.nameTh || spacer.nameEn} (${spacer.displaySizeMm || 6}mm)`;
@@ -3883,7 +3897,7 @@ function copyLINEInvoiceSummary() {
       return acc;
     }, {});
     const spacerStrings = Object.entries(spacerDetails).map(([name, count]) => `${name} x ${count} ชิ้น`);
-    lines.push(`✨ Spacers: ${spacerStrings.join(', ')}`);
+    lines.push(`✨ ${CRM_COMPONENT_LABELS.spacer}: ${spacerStrings.join(', ')}`);
   }
   lines.push(``);
   lines.push(`💳 Price Details:`);
@@ -4117,15 +4131,15 @@ function setupFunctionalEvents() {
           await loadDashboardData();
           return;
         }
-        await saveCharmQuickField(charmId, { displayOrder: nextOrder }, 'Updated charm order');
+        await saveCharmQuickField(charmId, { displayOrder: nextOrder }, 'Updated talisman order');
       }
 
       if (target.classList.contains('charm-toggle-input')) {
         const field = target.dataset.field;
         if (field === 'isActive') {
-          await saveCharmQuickField(charmId, { availability: { isActive: target.checked } }, target.checked ? 'Marked charm visible' : 'Marked charm hidden');
+          await saveCharmQuickField(charmId, { availability: { isActive: target.checked } }, target.checked ? 'Marked talisman visible' : 'Marked talisman hidden');
         } else if (field === 'inStock') {
-          await saveCharmQuickField(charmId, { availability: { inStock: target.checked } }, target.checked ? 'Marked charm in stock' : 'Marked charm out of stock');
+          await saveCharmQuickField(charmId, { availability: { inStock: target.checked } }, target.checked ? 'Marked talisman in stock' : 'Marked talisman out of stock');
         }
       }
     });

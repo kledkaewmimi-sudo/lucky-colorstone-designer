@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion } from './data.js';
+import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -11,6 +11,11 @@ if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearSto
 const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
+const CUSTOMER_COMPONENT_LABELS = {
+  stone: getComponentTypeLabel('stone', 'th'),
+  charm: getComponentTypeLabel('charm', 'th'),
+  spacer: getComponentTypeLabel('spacer', 'th')
+};
 
 // ==========================================
 // 1. Global Application State
@@ -3060,7 +3065,7 @@ async function removeSelectedCharm(selectionIndex = null, showToastNotification 
   }
 
   if (showToastNotification) {
-    showToast("Charm removed.");
+    showToast(`${CUSTOMER_COMPONENT_LABELS.charm} removed.`);
   }
 }
 
@@ -3184,7 +3189,7 @@ function renderCharmOptions() {
   };
 
   if (visibleCharms.length === 0) {
-    appendCatalogEmptyState(grid, 'Charms coming soon');
+    appendCatalogEmptyState(grid, `${CUSTOMER_COMPONENT_LABELS.charm} coming soon`);
   }
 
   visibleCharms.forEach((charm) => {
@@ -3210,7 +3215,7 @@ function renderCharmOptions() {
       onInfoClick: () => openCharmInfoModal(charm),
       onActionClick: () => selectCharm(charm.id),
       actionText: '+',
-      actionTitle: isSelected ? 'Selected Charm' : 'Select Charm'
+      actionTitle: isSelected ? `Selected ${CUSTOMER_COMPONENT_LABELS.charm}` : `Select ${CUSTOMER_COMPONENT_LABELS.charm}`
     }));
   });
 
@@ -3235,7 +3240,7 @@ function renderSpacerOptions() {
   grid.className = 'stone-catalog-grid';
 
   if (SPACER_CATALOG.length === 0) {
-    appendCatalogEmptyState(grid, 'Spacers coming soon');
+    appendCatalogEmptyState(grid, `${CUSTOMER_COMPONENT_LABELS.spacer} coming soon`);
   }
 
   applyCatalogLayoutOrder(SPACER_CATALOG, 'spacers').forEach((spacer) => {
@@ -3258,7 +3263,7 @@ function renderSpacerOptions() {
       onCardClick: () => addSpacerToBracelet(spacer.id),
       onActionClick: () => addSpacerToBracelet(spacer.id),
       actionText: quantity > 0 ? String(quantity) : '+',
-      actionTitle: quantity > 0 ? 'Add Another Spacer' : 'Add Spacer'
+      actionTitle: quantity > 0 ? `Add Another ${CUSTOMER_COMPONENT_LABELS.spacer}` : `Add ${CUSTOMER_COMPONENT_LABELS.spacer}`
     }));
   });
 
@@ -3532,9 +3537,9 @@ function removeLoopItemFromBracelet(index, showToastNotification = true) {
   State.activeSlotIndex = null;
   if (showToastNotification) {
     if (isSelectedSpacerItem(removed)) {
-      showToast("Spacer removed.");
+      showToast(`${CUSTOMER_COMPONENT_LABELS.spacer} removed.`);
     } else if (isSelectedCharmItem(removed)) {
-      showToast("Charm removed.");
+      showToast(`${CUSTOMER_COMPONENT_LABELS.charm} removed.`);
     } else {
       showToast("Bead removed.");
     }
@@ -5972,8 +5977,8 @@ async function handleLineOrder() {
   const spacerData = buildSelectedSpacerOrderData();
   const selectedStoneItems = getSelectedStoneItems();
   lines.push(`- Total Beads: ${selectedStoneItems.length} beads`);
-  lines.push(`- Charm: ${charmData.hasCharm ? charmData.charms.map((charm) => `${charm.nameEn} (${Number(charm.sizeCm || 0).toFixed(1)} cm)`).join(' + ') : 'No Charm'}`);
-  lines.push(`- Spacer: ${spacerData.hasSpacer ? `${spacerData.spacerCount} selected` : 'No Spacer'}`);
+  lines.push(`- ${CUSTOMER_COMPONENT_LABELS.charm}: ${charmData.hasCharm ? charmData.charms.map((charm) => `${charm.nameEn} (${Number(charm.sizeCm || 0).toFixed(1)} cm)`).join(' + ') : `No ${CUSTOMER_COMPONENT_LABELS.charm}`}`);
+  lines.push(`- ${CUSTOMER_COMPONENT_LABELS.spacer}: ${spacerData.hasSpacer ? `${spacerData.spacerCount} selected` : `No ${CUSTOMER_COMPONENT_LABELS.spacer}`}`);
   lines.push(``);
   
   // Aggregate items
@@ -5988,7 +5993,7 @@ async function handleLineOrder() {
     lines.push(`- ${item} x ${count} beads`);
   });
   charmData.charms.forEach((charm) => {
-    lines.push(`- ${charm.nameEn} x 1 charm`);
+    lines.push(`- ${charm.nameEn} x 1 ${CUSTOMER_COMPONENT_LABELS.charm}`);
   });
   if (spacerData.hasSpacer) {
     const spacerCounts = spacerData.spacers.reduce((spacerMap, spacer) => {
@@ -5998,7 +6003,7 @@ async function handleLineOrder() {
     }, {});
 
     Object.entries(spacerCounts).forEach(([item, count]) => {
-      lines.push(`- ${item} x ${count} spacer`);
+      lines.push(`- ${item} x ${count} ${CUSTOMER_COMPONENT_LABELS.spacer}`);
     });
   }
   lines.push(``);
@@ -6129,7 +6134,7 @@ function openCharmInfoModal(charm) {
     : 'No additional charm details available.';
 
   configureInfoModal({
-    heading: 'Charm Information',
+    heading: `${CUSTOMER_COMPONENT_LABELS.charm} Information`,
     image: charm.image,
     titleTh: charmMeta.nameTh,
     titleEn: charmMeta.nameEn,

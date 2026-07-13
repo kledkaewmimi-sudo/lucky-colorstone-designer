@@ -180,6 +180,18 @@ const FIXED_CATEGORY_LABELS = {
   takrud: { en: "Takrud", th: "\u0E15\u0E30\u0E01\u0E23\u0E38\u0E14" }
 };
 
+export const COMPONENT_TYPE_LABELS = Object.freeze({
+  stone: { th: "\u0E2B\u0E34\u0E19", en: "Stones", singularEn: "Stone" },
+  charm: { th: "\u0E40\u0E04\u0E23\u0E37\u0E48\u0E2D\u0E07\u0E23\u0E32\u0E07", en: "Talismans", singularEn: "Talisman" },
+  spacer: { th: "\u0E0A\u0E32\u0E23\u0E4C\u0E21", en: "Charms", singularEn: "Charm" }
+});
+
+export function getComponentTypeLabel(type, locale = "th") {
+  const normalizedType = String(type || "").trim().toLowerCase();
+  const label = COMPONENT_TYPE_LABELS[normalizedType] || COMPONENT_TYPE_LABELS.stone;
+  return label[locale] || label.th;
+}
+
 export const CATEGORIES = {
   all: { en: "All", th: "ทั้งหมด" },
   wealth: { en: "Wealth & Luck", th: "โชคลาภ/การงาน" },
