@@ -1257,7 +1257,9 @@ async function loadOrderDetailFromUrlIfNeeded() {
   State.paymentCompletedView = false;
 
   try {
+    console.info(`[orders] direct detail requested ${orderId}`);
     const order = await findSavedOrderByRequestedId(orderId);
+    console.info(`[orders] direct detail found ${orderId}: ${Boolean(order)}`);
 
     if (!order) {
       State.orderDetailLoadError = `We could not find order ${orderId}. Please check the link or contact Lucky Colorstone.`;

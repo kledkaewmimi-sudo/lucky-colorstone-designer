@@ -1005,6 +1005,7 @@ async function trySendPaidOrderLineNotification(order) {
     return { sent: false, order };
   }
 
+  console.info(`[orders] sending paid LINE detail link for ${getOrderId(order)}: ${getOrderDetailUrl(order)}`);
   await sendLineFlexMessageWithTextFallback({
     userId: getOrderLineUserId(order),
     flexMessage: buildPaymentSuccessFlexMessage(order),
@@ -1373,7 +1374,7 @@ async function readSupabasePayloadTable(tableName, fallbackLabel, fallbackFn, pa
   try {
     const rows = await supabaseRequest(tableName, {
       params: {
-        select: "payload,display_order,created_at,date",
+        select: "payload,display_order,created_at",
         ...params
       }
     });
@@ -1518,21 +1519,38 @@ function sortOrdersForApi(orders) {
 }
 
 async function readOrdersForApi() {
-  return sortOrdersForApi(await readSupabasePayloadTable(
-    "orders",
-    "/api/orders",
-    () => readJsonArray("orders"),
-    { order: "date.desc.nullslast,created_at.desc" }
-  ));
+  if (!isSupabaseConfigured()) {
+    const jsonOrders = sortOrdersForApi(readJsonArray("orders"));
+    console.info(`[orders] GET /api/orders returned ${jsonOrders.length} records from json`);
+    return jsonOrders;
+  }
+
+  try {
+    const rows = await supabaseRequest("orders", {
+      params: {
+        select: "payload,created_at,date",
+        order: "date.desc.nullslast,created_at.desc"
+      }
+    });
+    const orders = sortOrdersForApi(Array.isArray(rows) ? rows.map((row) => row.payload).filter(Boolean) : []);
+    console.info(`[orders] GET /api/orders returned ${orders.length} records from supabase`);
+    return orders;
+  } catch (error) {
+    warnSupabaseReadFallback("/api/orders", error);
+    const fallbackOrders = sortOrdersForApi(readJsonArray("orders"));
+    console.warn(`[orders] GET /api/orders fallback returned ${fallbackOrders.length} records from json`);
+    return fallbackOrders;
+  }
 }
 
 async function saveOrderForApi(order) {
+  const orderId = getOrderId(order);
   if (isSupabaseConfigured()) {
     await upsertSupabaseRow("orders", buildOrderRow(order));
+    console.info(`[orders] saved ${orderId} to supabase`);
     return;
   }
 
-  const orderId = getOrderId(order);
   const orders = readJsonArray("orders");
   const existingIndex = orders.findIndex((entry) => getOrderId(entry) === orderId);
   if (existingIndex >= 0) {
@@ -1541,6 +1559,7 @@ async function saveOrderForApi(order) {
     orders.unshift(order);
   }
   writeJsonFile(dataFiles.orders, orders);
+  console.info(`[orders] saved ${orderId} to json`);
 }
 
 async function readSupabaseSettingsForApi() {
