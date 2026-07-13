@@ -5910,58 +5910,44 @@ function fallbackLineOrder(messageText) {
 // 10. Modals & Detail Popups
 // ==========================================
 let currentModalStone = null;
-let currentModalAddHandler = null;
-let currentModalFillHandler = null;
 
 function configureInfoModal({
   heading,
   image,
   titleTh,
   titleEn,
-  meaning,
-  priceText,
-  showAddButton = false,
-  showFillButton = false,
-  addButtonLabel = 'Replace Selected',
-  fillButtonLabel = 'Fill Entire Bracelet'
+  meaning
 }) {
   DOM.modalStoneName.textContent = heading;
   DOM.modalStoneImg.src = image;
   DOM.modalStoneTitleTh.textContent = titleTh;
   DOM.modalStoneTitleEn.textContent = titleEn;
   DOM.modalStoneMeaning.textContent = meaning;
-  DOM.modalStonePrice.textContent = priceText;
-  DOM.btnModalAdd.textContent = addButtonLabel;
-  DOM.btnModalFillAll.textContent = fillButtonLabel;
-  DOM.btnModalAdd.style.display = showAddButton ? '' : 'none';
-  DOM.btnModalFillAll.style.display = showFillButton ? '' : 'none';
+  DOM.modalStonePrice.textContent = '';
+  DOM.btnModalAdd.textContent = '';
+  DOM.btnModalFillAll.textContent = '';
+  DOM.modalStonePrice.style.display = 'none';
+  DOM.btnModalAdd.style.display = 'none';
+  DOM.btnModalFillAll.style.display = 'none';
 }
 
 function openStoneInfoModal(stone) {
   currentModalStone = stone;
-  currentModalAddHandler = () => addStoneToBracelet(stone.id);
-  currentModalFillHandler = () => fillEntireBracelet(stone.id);
-  const activeSize = getCurrentBeadSizeMm();
   configureInfoModal({
     heading: stone.name,
     image: stone.image,
     titleTh: stone.nameTh,
     titleEn: stone.name,
-    meaning: `${stone.meaningTh} / ${stone.meaning}`,
-    priceText: `฿${stone.p4 || 0} (4mm) / ฿${stone.p6 || 0} (6mm) / ฿${stone.p8 || 0} (8mm)`,
-    showAddButton: true,
-    showFillButton: true,
-    addButtonLabel: 'Replace Selected (+ ใส่แทนที่)',
-    fillButtonLabel: 'Fill Entire Bracelet (ใส่ทั้งวง)'
+    meaning: `${stone.meaningTh} / ${stone.meaning}`
   });
-  DOM.modalStonePrice.textContent = `Selected size price: ฿${getStonePriceForSize(stone, activeSize).toLocaleString()} (${activeSize}mm)`;
+  DOM.modalStonePrice.textContent = '';
+  DOM.btnModalAdd.textContent = '';
+  DOM.btnModalFillAll.textContent = '';
   DOM.stoneInfoModal.classList.add('show');
 }
 
 function openCharmInfoModal(charm) {
   currentModalStone = null;
-  currentModalAddHandler = null;
-  currentModalFillHandler = null;
   const charmMeta = getCharmDisplayMeta(charm);
 
   const meaning = charm.meaningTh || charm.meaningEn
@@ -5984,8 +5970,6 @@ function openCharmInfoModal(charm) {
 function closeStoneInfoModal() {
   DOM.stoneInfoModal.classList.remove('show');
   currentModalStone = null;
-  currentModalAddHandler = null;
-  currentModalFillHandler = null;
 }
 
 function setupModalEvents() {
@@ -5993,20 +5977,6 @@ function setupModalEvents() {
   
   DOM.stoneInfoModal.addEventListener('click', (e) => {
     if (e.target === DOM.stoneInfoModal) {
-      closeStoneInfoModal();
-    }
-  });
-  
-  DOM.btnModalAdd.addEventListener('click', () => {
-    if (currentModalAddHandler) {
-      currentModalAddHandler();
-      closeStoneInfoModal();
-    }
-  });
-  
-  DOM.btnModalFillAll.addEventListener('click', () => {
-    if (currentModalFillHandler) {
-      currentModalFillHandler();
       closeStoneInfoModal();
     }
   });

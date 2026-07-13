@@ -2518,6 +2518,10 @@ button.stone-card {
   margin-bottom: 16px;
 }
 
+#stoneInfoModal .modal-stone-meaning-box {
+  margin-bottom: 0;
+}
+
 .modal-stone-price {
   font-size: 16px;
   font-weight: 700;
