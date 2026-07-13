@@ -377,6 +377,14 @@ function getSelectedStoneItems() {
   return getSelectedLoopItems().filter((item) => isSelectedStoneItem(item));
 }
 
+function getSelectedStoneCountsById() {
+  return getSelectedStoneItems().reduce((counts, item) => {
+    if (!item.stoneId) return counts;
+    counts[item.stoneId] = (counts[item.stoneId] || 0) + 1;
+    return counts;
+  }, {});
+}
+
 function getSelectedSpacerItems() {
   return getSelectedLoopItems()
     .map((item, sourceIndex) => {
@@ -1830,14 +1838,16 @@ function buildStoneCard({
   nameEn,
   priceText,
   isSelected = false,
+  selectedClassName = 'selected',
   onCardClick = null,
   onInfoClick = null,
   onActionClick = null,
   actionText = '+',
-  actionTitle = ''
+  actionTitle = '',
+  actionAriaLabel = ''
 }) {
   const card = document.createElement(rootTag);
-  card.className = `stone-card${isSelected ? ' selected' : ''}`;
+  card.className = `stone-card${isSelected ? ` ${selectedClassName}` : ''}`;
 
   if (rootTag === 'button') {
     card.type = 'button';
@@ -1911,6 +1921,7 @@ function buildStoneCard({
     actionBtn.type = 'button';
     actionBtn.innerHTML = actionText;
     if (actionTitle) actionBtn.title = actionTitle;
+    if (actionAriaLabel) actionBtn.setAttribute('aria-label', actionAriaLabel);
     actionBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       onActionClick();
@@ -3380,6 +3391,7 @@ function initCatalogFilters() {
 
 function renderCatalogGrid() {
   DOM.stoneCatalogGrid.innerHTML = '';
+  const selectedStoneCounts = getSelectedStoneCountsById();
   
   // Filter out of stock items
   const availableStones = applyCatalogLayoutOrder(STONES.filter(s => s.inStock !== false), 'stones');
@@ -3391,6 +3403,7 @@ function renderCatalogGrid() {
   filtered.forEach(stone => {
     const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
     const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
+    const selectedCount = selectedStoneCounts[stone.id] || 0;
     DOM.stoneCatalogGrid.appendChild(buildStoneCard({
       dataAttributeName: 'stone-id',
       dataAttributeValue: stone.id,
@@ -3399,11 +3412,14 @@ function renderCatalogGrid() {
       nameTh: stone.nameTh,
       nameEn: stone.name,
       priceText: formatDisplayPrice(catalogPrice),
+      isSelected: selectedCount > 0,
+      selectedClassName: 'stone-card-selected',
       onCardClick: () => addStoneToBracelet(stone.id),
       onInfoClick: () => openStoneInfoModal(stone),
       onActionClick: () => addStoneToBracelet(stone.id),
-      actionText: '+',
-      actionTitle: 'Add Stone'
+      actionText: selectedCount > 0 ? String(selectedCount) : '+',
+      actionTitle: selectedCount > 0 ? `Add another stone (currently ${selectedCount} selected)` : 'Add Stone',
+      actionAriaLabel: selectedCount > 0 ? `Add another stone. ${selectedCount} selected in bracelet.` : 'Add Stone'
     }));
   });
 }

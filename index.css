@@ -1646,6 +1646,13 @@ button.stone-card {
   background: linear-gradient(180deg, rgba(255, 248, 229, 0.98), rgba(255, 255, 255, 0.98));
 }
 
+/* Selected state for Step 3 stone catalog cards only. */
+.stone-card.stone-card-selected {
+  border-color: #7c5ccf;
+  box-shadow: 0 0 0 1px rgba(124, 92, 207, 0.28), 0 6px 16px rgba(124, 92, 207, 0.16);
+  background: linear-gradient(180deg, rgba(247, 242, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
 .charm-component-section .stone-card {
   padding: 9px 8px 10px;
   border-radius: 16px;
@@ -1804,6 +1811,18 @@ button.stone-card {
   background-color: var(--color-gold);
   border-color: var(--color-gold);
   color: var(--color-white);
+}
+
+.stone-card-selected .stone-add-btn {
+  background-color: #7c5ccf;
+  border-color: #7c5ccf;
+  color: var(--color-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.stone-card-selected .stone-add-btn:hover {
+  background-color: #5b3ea6;
+  border-color: #5b3ea6;
 }
 
 .stone-add-btn:hover {
@@ -3165,7 +3184,8 @@ button.stone-card {
     border-radius: 0;
     border: 0;
     background: transparent;
-    color: var(--color-navy-muted);
+    color: var(--color-velvet-red);
+    font-weight: 700;
     animation: none;
     white-space: nowrap;
   }
