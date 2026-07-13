@@ -1299,6 +1299,333 @@ function deleteById(records, targetId) {
   return { deleted, nextRecords };
 }
 
+function getSupabaseConfig() {
+  const url = getEnvValue("SUPABASE_URL").replace(/\/+$/, "");
+  const serviceRoleKey = getEnvValue("SUPABASE_SERVICE_ROLE_KEY");
+  return { url, serviceRoleKey, configured: Boolean(url && serviceRoleKey) };
+}
+
+function isSupabaseConfigured() {
+  return getSupabaseConfig().configured;
+}
+
+function getStorageMode() {
+  return isSupabaseConfigured() ? "supabase" : "json";
+}
+
+function createSupabaseRestUrl(tableName, params = {}) {
+  const { url } = getSupabaseConfig();
+  const endpoint = new URL(`/rest/v1/${tableName}`, url);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      endpoint.searchParams.set(key, String(value));
+    }
+  });
+  return endpoint;
+}
+
+async function supabaseRequest(tableName, { method = "GET", params = {}, body = null, prefer = "" } = {}) {
+  const { serviceRoleKey } = getSupabaseConfig();
+  const headers = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`
+  };
+
+  if (body !== null) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (prefer) {
+    headers.Prefer = prefer;
+  }
+
+  const response = await fetch(createSupabaseRestUrl(tableName, params), {
+    method,
+    headers,
+    body: body === null ? undefined : JSON.stringify(body)
+  });
+
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(normalizeJsonText(text, "null"));
+    } catch (error) {
+      payload = { message: text };
+    }
+  }
+  if (!response.ok) {
+    const detail = payload?.message || payload?.error || text || `HTTP ${response.status}`;
+    throw new Error(`${tableName} ${method} failed: ${detail}`);
+  }
+
+  return payload;
+}
+
+function warnSupabaseReadFallback(label, error) {
+  console.warn(`Supabase read failed for ${label}; falling back to JSON data.`, error?.message || error);
+}
+
+async function readSupabasePayloadTable(tableName, fallbackLabel, fallbackFn, params = {}) {
+  if (!isSupabaseConfigured()) {
+    return fallbackFn();
+  }
+
+  try {
+    const rows = await supabaseRequest(tableName, {
+      params: {
+        select: "payload,display_order,created_at,date",
+        ...params
+      }
+    });
+    return Array.isArray(rows) ? rows.map((row) => row.payload).filter(Boolean) : [];
+  } catch (error) {
+    warnSupabaseReadFallback(fallbackLabel, error);
+    return fallbackFn();
+  }
+}
+
+function toInteger(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : fallback;
+}
+
+function toNumericOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function buildStoneRow(stone, index = 0) {
+  return {
+    id: String(stone?.id || "").trim(),
+    payload: stone,
+    category_id: String(stone?.categoryId || stone?.category || "").trim() || null,
+    display_order: toInteger(stone?.displayOrder, (index + 1) * 10),
+    in_stock: stone?.inStock !== false,
+    is_active: stone?.isActive !== false
+  };
+}
+
+function buildCharmRow(charm, index = 0) {
+  return {
+    id: String(charm?.id || "").trim(),
+    payload: charm,
+    category_id: String(charm?.categoryId || charm?.collection || "").trim() || null,
+    display_order: toInteger(charm?.displayOrder, (index + 1) * 10),
+    in_stock: charm?.availability?.inStock !== false && charm?.inStock !== false,
+    is_active: charm?.availability?.isActive !== false && charm?.isActive !== false
+  };
+}
+
+function buildCategoryRow(category, index = 0) {
+  const id = String(category?.id || category?.slug || "").trim();
+  return {
+    id,
+    entity_type: String(category?.entityType || category?.scope || category?.kind || "stone").trim().toLowerCase(),
+    slug: String(category?.slug || id).trim() || null,
+    name_en: String(category?.nameEn || category?.name?.en || "").trim() || null,
+    name_th: String(category?.nameTh || category?.name?.th || "").trim() || null,
+    display_order: toInteger(category?.displayOrder, (index + 1) * 10),
+    is_active: category?.isActive !== false,
+    payload: category
+  };
+}
+
+function buildOrderRow(order) {
+  return {
+    id: String(order?.id || order?.orderId || "").trim(),
+    status: order?.status ? String(order.status) : null,
+    customer_name: order?.customerName ? String(order.customerName) : null,
+    line_user_id: order?.lineUserId ? String(order.lineUserId) : null,
+    stripe_checkout_session_id: order?.stripeCheckoutSessionId ? String(order.stripeCheckoutSessionId) : null,
+    stripe_payment_status: order?.stripePaymentStatus ? String(order.stripePaymentStatus) : null,
+    net_price: toNumericOrNull(order?.netPrice),
+    final_price: toNumericOrNull(order?.finalPrice),
+    total_price: toNumericOrNull(order?.totalPrice),
+    payload: order,
+    date: order?.date || null
+  };
+}
+
+async function getSupabaseRecordById(tableName, id) {
+  const rows = await supabaseRequest(tableName, {
+    params: {
+      select: "payload",
+      id: `eq.${id}`,
+      limit: "1"
+    }
+  });
+  return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+}
+
+async function upsertSupabaseRow(tableName, row, conflictKey = "id") {
+  if (!row?.[conflictKey]) {
+    throw new Error(`Missing ${conflictKey} for ${tableName} upsert.`);
+  }
+  const rows = await supabaseRequest(tableName, {
+    method: "POST",
+    body: row,
+    prefer: `resolution=merge-duplicates,return=representation`,
+    params: { on_conflict: conflictKey }
+  });
+  return Array.isArray(rows) && rows[0] ? rows[0] : row;
+}
+
+async function deleteSupabaseRowById(tableName, id) {
+  const rows = await supabaseRequest(tableName, {
+    method: "DELETE",
+    params: {
+      id: `eq.${id}`,
+      select: "id"
+    },
+    prefer: "return=representation"
+  });
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+function readJsonArray(key) {
+  const records = readJsonFile(dataFiles[key], defaultFileText[key]);
+  return Array.isArray(records) ? records : [];
+}
+
+function readJsonSettings() {
+  return readJsonFile(dataFiles.settings, defaultFileText.settings) || { globalDiscountPercent: 20 };
+}
+
+async function readStonesForApi() {
+  return readSupabasePayloadTable(
+    "catalog_stones",
+    "/api/stones",
+    () => readJsonArray("stones"),
+    { order: "display_order.asc,id.asc" }
+  );
+}
+
+async function readCharmsForApi() {
+  return readSupabasePayloadTable(
+    "catalog_charms",
+    "/api/charms",
+    () => readJsonArray("charms"),
+    { order: "display_order.asc,id.asc" }
+  );
+}
+
+function sortOrdersForApi(orders) {
+  return orders.slice().sort((a, b) => {
+    const dateA = Date.parse(a?.date || a?.created_at || "") || 0;
+    const dateB = Date.parse(b?.date || b?.created_at || "") || 0;
+    return dateB - dateA;
+  });
+}
+
+async function readOrdersForApi() {
+  return sortOrdersForApi(await readSupabasePayloadTable(
+    "orders",
+    "/api/orders",
+    () => readJsonArray("orders"),
+    { order: "date.desc.nullslast,created_at.desc" }
+  ));
+}
+
+async function readSupabaseSettingsForApi() {
+  const settingRows = await supabaseRequest("app_settings", {
+    params: { select: "key,value" }
+  });
+  const settings = {};
+  (Array.isArray(settingRows) ? settingRows : []).forEach((row) => {
+    if (row?.key) {
+      settings[row.key] = row.value;
+    }
+  });
+
+  const categoryRows = await supabaseRequest("catalog_categories", {
+    params: {
+      select: "payload,entity_type,display_order",
+      order: "entity_type.asc,display_order.asc,id.asc"
+    }
+  });
+  const categories = Array.isArray(categoryRows) ? categoryRows.map((row) => row.payload).filter(Boolean) : [];
+  if (categories.length > 0) {
+    settings.catalogCategories = categories;
+  }
+
+  const layoutRows = await supabaseRequest("catalog_layout_order", {
+    params: {
+      select: "value",
+      key: "eq.default",
+      limit: "1"
+    }
+  });
+  const layout = Array.isArray(layoutRows) && layoutRows[0] ? layoutRows[0].value : null;
+  if (layout) {
+    settings.catalogLayoutOrder = layout;
+  }
+
+  return Object.keys(settings).length > 0 ? settings : { globalDiscountPercent: 20 };
+}
+
+async function readSettingsForApi() {
+  if (!isSupabaseConfigured()) {
+    return readJsonSettings();
+  }
+
+  try {
+    return await readSupabaseSettingsForApi();
+  } catch (error) {
+    warnSupabaseReadFallback("/api/settings", error);
+    return readJsonSettings();
+  }
+}
+
+async function saveSupabaseSettings(settings) {
+  const entries = Object.entries(settings || {})
+    .filter(([key]) => key !== "catalogCategories" && key !== "catalogLayoutOrder")
+    .map(([key, value]) => ({ key, value }));
+
+  if (entries.length > 0) {
+    await supabaseRequest("app_settings", {
+      method: "POST",
+      body: entries,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      params: { on_conflict: "key" }
+    });
+  }
+
+  if (Array.isArray(settings?.catalogCategories)) {
+    const categoryRows = settings.catalogCategories.map((category, index) => buildCategoryRow(category, index));
+    if (categoryRows.length > 0) {
+      await supabaseRequest("catalog_categories", {
+        method: "POST",
+        body: categoryRows,
+        prefer: "resolution=merge-duplicates,return=minimal",
+        params: { on_conflict: "id" }
+      });
+    }
+
+    const existingRows = await supabaseRequest("catalog_categories", {
+      params: { select: "id" }
+    });
+    const nextIds = new Set(categoryRows.map((row) => row.id));
+    const idsToDelete = (Array.isArray(existingRows) ? existingRows : [])
+      .map((row) => row.id)
+      .filter((id) => id && !nextIds.has(id));
+    await Promise.all(idsToDelete.map((id) => deleteSupabaseRowById("catalog_categories", id)));
+  }
+
+  if (settings?.catalogLayoutOrder && typeof settings.catalogLayoutOrder === "object") {
+    await supabaseRequest("catalog_layout_order", {
+      method: "POST",
+      body: {
+        key: "default",
+        value: settings.catalogLayoutOrder
+      },
+      prefer: "resolution=merge-duplicates,return=minimal",
+      params: { on_conflict: "key" }
+    });
+  }
+
+  return readSupabaseSettingsForApi();
+}
+
 async function handleApiRequest(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = req.method;
@@ -1329,17 +1656,6 @@ async function handleApiRequest(req, res, urlObj) {
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
-
-  const stones = Array.isArray(readJsonFile(dataFiles.stones, defaultFileText.stones))
-    ? readJsonFile(dataFiles.stones, defaultFileText.stones)
-    : [];
-  const charms = Array.isArray(readJsonFile(dataFiles.charms, defaultFileText.charms))
-    ? readJsonFile(dataFiles.charms, defaultFileText.charms)
-    : [];
-  const orders = Array.isArray(readJsonFile(dataFiles.orders, defaultFileText.orders))
-    ? readJsonFile(dataFiles.orders, defaultFileText.orders)
-    : [];
-  const settings = readJsonFile(dataFiles.settings, defaultFileText.settings) || { globalDiscountPercent: 20 };
 
   if (pathname === "/api/uploads/image" && method === "POST") {
     if (!bodyObj) {
@@ -1400,8 +1716,17 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/storage/status" && method === "GET") {
+    sendJson(res, 200, {
+      mode: getStorageMode(),
+      supabaseConfigured: isSupabaseConfigured(),
+      jsonDataDir: dataDir
+    });
+    return true;
+  }
+
   if (pathname === "/api/stones" && method === "GET") {
-    sendJsonString(res, 200, readJsonFileText(dataFiles.stones, defaultFileText.stones));
+    sendJson(res, 200, await readStonesForApi());
     return true;
   }
 
@@ -1411,7 +1736,12 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
-    writeJsonFile(dataFiles.stones, upsertById(stones, bodyObj));
+    if (isSupabaseConfigured()) {
+      await upsertSupabaseRow("catalog_stones", buildStoneRow(bodyObj));
+    } else {
+      const stones = readJsonArray("stones");
+      writeJsonFile(dataFiles.stones, upsertById(stones, bodyObj));
+    }
     sendJson(res, 200, bodyObj);
     return true;
   }
@@ -1422,6 +1752,18 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    if (isSupabaseConfigured()) {
+      const deleted = await deleteSupabaseRowById("catalog_stones", bodyObj.id);
+      if (!deleted) {
+        sendJson(res, 404, { success: false, error: "Stone not found", id: bodyObj.id });
+        return true;
+      }
+
+      sendJson(res, 200, { success: true, id: bodyObj.id });
+      return true;
+    }
+
+    const stones = readJsonArray("stones");
     const { deleted, nextRecords } = deleteById(stones, bodyObj.id);
     if (!deleted) {
       sendJson(res, 404, { success: false, error: "Stone not found", id: bodyObj.id });
@@ -1440,6 +1782,18 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    if (isSupabaseConfigured()) {
+      const deleted = await deleteSupabaseRowById("catalog_stones", stoneId);
+      if (!deleted) {
+        sendJson(res, 404, { error: "Stone not found" });
+        return true;
+      }
+
+      sendJson(res, 200, { success: true, id: stoneId });
+      return true;
+    }
+
+    const stones = readJsonArray("stones");
     const { deleted, nextRecords } = deleteById(stones, stoneId);
     if (!deleted) {
       sendJson(res, 404, { error: "Stone not found" });
@@ -1452,7 +1806,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/charms" && method === "GET") {
-    sendJsonString(res, 200, readJsonFileText(dataFiles.charms, defaultFileText.charms));
+    sendJson(res, 200, await readCharmsForApi());
     return true;
   }
 
@@ -1462,12 +1816,22 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
-    if (charms.some((entry) => entry && entry.id === bodyObj.id)) {
-      sendJson(res, 409, { error: "Charm already exists" });
-      return true;
+    if (isSupabaseConfigured()) {
+      const existingCharm = await getSupabaseRecordById("catalog_charms", bodyObj.id);
+      if (existingCharm) {
+        sendJson(res, 409, { error: "Charm already exists" });
+        return true;
+      }
+      await upsertSupabaseRow("catalog_charms", buildCharmRow(bodyObj));
+    } else {
+      const charms = readJsonArray("charms");
+      if (charms.some((entry) => entry && entry.id === bodyObj.id)) {
+        sendJson(res, 409, { error: "Charm already exists" });
+        return true;
+      }
+      writeJsonFile(dataFiles.charms, [...charms, bodyObj]);
     }
 
-    writeJsonFile(dataFiles.charms, [...charms, bodyObj]);
     sendJson(res, 201, bodyObj);
     return true;
   }
@@ -1478,6 +1842,18 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    if (isSupabaseConfigured()) {
+      const deleted = await deleteSupabaseRowById("catalog_charms", bodyObj.id);
+      if (!deleted) {
+        sendJson(res, 404, { error: "Charm not found" });
+        return true;
+      }
+
+      sendJson(res, 200, { success: true, id: bodyObj.id });
+      return true;
+    }
+
+    const charms = readJsonArray("charms");
     const { deleted, nextRecords } = deleteById(charms, bodyObj.id);
     if (!deleted) {
       sendJson(res, 404, { error: "Charm not found" });
@@ -1502,20 +1878,42 @@ async function handleApiRequest(req, res, urlObj) {
         return true;
       }
 
-      const existingIndex = charms.findIndex((entry) => entry && entry.id === charmId);
-      if (existingIndex < 0) {
-        sendJson(res, 404, { error: "Charm not found" });
-        return true;
+      const nextRecord = { ...bodyObj, id: charmId };
+      if (isSupabaseConfigured()) {
+        const existingCharm = await getSupabaseRecordById("catalog_charms", charmId);
+        if (!existingCharm) {
+          sendJson(res, 404, { error: "Charm not found" });
+          return true;
+        }
+        await upsertSupabaseRow("catalog_charms", buildCharmRow(nextRecord));
+      } else {
+        const charms = readJsonArray("charms");
+        const existingIndex = charms.findIndex((entry) => entry && entry.id === charmId);
+        if (existingIndex < 0) {
+          sendJson(res, 404, { error: "Charm not found" });
+          return true;
+        }
+        charms[existingIndex] = nextRecord;
+        writeJsonFile(dataFiles.charms, charms);
       }
 
-      const nextRecord = { ...bodyObj, id: charmId };
-      charms[existingIndex] = nextRecord;
-      writeJsonFile(dataFiles.charms, charms);
       sendJson(res, 200, nextRecord);
       return true;
     }
 
     if (method === "DELETE") {
+      if (isSupabaseConfigured()) {
+        const deleted = await deleteSupabaseRowById("catalog_charms", charmId);
+        if (!deleted) {
+          sendJson(res, 404, { error: "Charm not found" });
+          return true;
+        }
+
+        sendJson(res, 200, { success: true, id: charmId });
+        return true;
+      }
+
+      const charms = readJsonArray("charms");
       const { deleted, nextRecords } = deleteById(charms, charmId);
       if (!deleted) {
         sendJson(res, 404, { error: "Charm not found" });
@@ -1529,7 +1927,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/orders" && method === "GET") {
-    sendJsonString(res, 200, readJsonFileText(dataFiles.orders, defaultFileText.orders));
+    sendJson(res, 200, await readOrdersForApi());
     return true;
   }
 
@@ -1550,16 +1948,21 @@ async function handleApiRequest(req, res, urlObj) {
       nextOrder.status = "New Order";
     }
 
-    writeJsonFile(dataFiles.orders, [nextOrder, ...orders]);
     let responseOrder = nextOrder;
     try {
       const notificationResult = await trySendPaidOrderLineNotification(nextOrder);
       if (notificationResult.sent) {
         responseOrder = notificationResult.order;
-        writeJsonFile(dataFiles.orders, [responseOrder, ...orders]);
       }
     } catch (error) {
       console.error(`Failed to send paid-order LINE notification for ${nextOrder.id}:`, error);
+    }
+
+    if (isSupabaseConfigured()) {
+      await upsertSupabaseRow("orders", buildOrderRow(responseOrder));
+    } else {
+      const orders = readJsonArray("orders");
+      writeJsonFile(dataFiles.orders, [responseOrder, ...orders]);
     }
 
     sendJson(res, 200, responseOrder);
@@ -1572,6 +1975,28 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    if (isSupabaseConfigured()) {
+      const previousOrder = await getSupabaseRecordById("orders", bodyObj.id);
+      if (previousOrder) {
+        let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
+
+        try {
+          const notificationResult = await trySendShippedLineNotification(previousOrder, nextOrder);
+          if (notificationResult.sent) {
+            nextOrder = notificationResult.order;
+          }
+        } catch (error) {
+          console.error(`Failed to send shipped LINE notification for ${bodyObj.id}:`, error);
+        }
+
+        await upsertSupabaseRow("orders", buildOrderRow(nextOrder));
+      }
+
+      sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
+      return true;
+    }
+
+    const orders = readJsonArray("orders");
     const orderIndex = orders.findIndex((entry) => entry && entry.id === bodyObj.id);
     if (orderIndex >= 0) {
       const previousOrder = orders[orderIndex];
@@ -1599,7 +2024,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/settings" && method === "GET") {
-    sendJsonString(res, 200, readJsonFileText(dataFiles.settings, defaultFileText.settings));
+    sendJson(res, 200, await readSettingsForApi());
     return true;
   }
 
@@ -1609,8 +2034,12 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
-    writeJsonFile(dataFiles.settings, bodyObj);
-    sendJson(res, 200, bodyObj);
+    if (isSupabaseConfigured()) {
+      sendJson(res, 200, await saveSupabaseSettings(bodyObj));
+    } else {
+      writeJsonFile(dataFiles.settings, bodyObj);
+      sendJson(res, 200, bodyObj);
+    }
     return true;
   }
 
