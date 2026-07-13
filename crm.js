@@ -160,7 +160,7 @@ const DOM = {
   // Tab 5: Settings Controls
   globalSettingsForm: document.getElementById('globalSettingsForm'),
   globalDiscountPercent: document.getElementById('globalDiscountPercent'),
-  showDiscountBanner: document.getElementById('showDiscountBanner'),
+  discountEnabled: document.getElementById('discountEnabled'),
   btnResetDatabase: document.getElementById('btnResetDatabase'),
   btnSeedDemoOrders: document.getElementById('btnSeedDemoOrders'),
   
@@ -700,8 +700,10 @@ async function loadDashboardData(prefetched = {}) {
     renderOrdersList(orders);
   } else if (CRMState.activeTab === 'settings') {
     DOM.globalDiscountPercent.value = globalDiscountRateVal;
-    if (DOM.showDiscountBanner) {
-      DOM.showDiscountBanner.checked = settings.showDiscountBanner !== false;
+    if (DOM.discountEnabled) {
+      DOM.discountEnabled.checked = settings.discountEnabled === undefined
+        ? settings.showDiscountBanner !== false
+        : settings.discountEnabled !== false;
     }
   }
 }
@@ -4160,10 +4162,11 @@ function setupFunctionalEvents() {
     
     const settings = await getSharedSettings();
     settings.globalDiscountPercent = discountVal;
-    settings.showDiscountBanner = DOM.showDiscountBanner ? DOM.showDiscountBanner.checked : true;
+    settings.discountEnabled = DOM.discountEnabled ? DOM.discountEnabled.checked : true;
+    settings.showDiscountBanner = settings.discountEnabled;
     
     await saveSharedSettings(settings);
-    addLog(`Changed global discount rate to ${discountVal}% and Step 4 discount banner ${settings.showDiscountBanner ? 'shown' : 'hidden'}.`);
+    addLog(`Changed global discount rate to ${discountVal}% and discount ${settings.discountEnabled ? 'enabled' : 'disabled'}.`);
     showToast(`Global settings saved.`);
     await loadDashboardData();
   });

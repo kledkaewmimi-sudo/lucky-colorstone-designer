@@ -45,6 +45,8 @@ const State = {
   paymentCompletedView: false,
   checkoutSummarySnapshot: null,
   braceletPreviewImage: '',
+  discountEnabled: true,
+  globalDiscountPercent: 20,
   showDiscountBanner: true,
   braceletPreviewKey: ''
 };
@@ -634,7 +636,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshCatalogLayoutOrder(),
     getSharedSettings()
   ]);
-  State.showDiscountBanner = sharedSettings?.showDiscountBanner !== false;
+  State.discountEnabled = sharedSettings?.discountEnabled === undefined
+    ? sharedSettings?.showDiscountBanner !== false
+    : sharedSettings.discountEnabled !== false;
+  State.globalDiscountPercent = Number.isFinite(Number(sharedSettings?.globalDiscountPercent))
+    ? Math.max(0, Math.min(100, Number(sharedSettings.globalDiscountPercent)))
+    : 20;
+  State.showDiscountBanner = State.discountEnabled && sharedSettings?.showDiscountBanner !== false;
 
   await loadOrderDetailFromUrlIfNeeded();
   await handleStripeReturnIfNeeded();
@@ -2718,9 +2726,9 @@ function getEffectiveCheckoutSummary(currentSummary) {
   const normalizedCurrent = normalizeCheckoutSummaryForOrder(currentSummary);
   const storedSummary = normalizeCheckoutSummaryForOrder(readStoredCheckoutSummary());
   if (!summaryHasCharmRows(normalizedCurrent) && summaryHasCharmRows(storedSummary)) {
-    return storedSummary;
+    return applyEffectiveDiscountToCheckoutSummary(storedSummary);
   }
-  return normalizedCurrent;
+  return applyEffectiveDiscountToCheckoutSummary(normalizedCurrent);
 }
 
 function rememberStripeOrderPayload(sessionId, orderPayload) {
@@ -2787,6 +2795,29 @@ function buildOrderPricingFromSummary(summary) {
     itemizedBilling: summary.itemizedBilling,
     braceletSequence: summary.braceletSequence
   };
+}
+
+function getEffectiveDiscountPercent() {
+  if (State.discountEnabled === false) return 0;
+  const configuredPercent = Number(State.globalDiscountPercent);
+  if (!Number.isFinite(configuredPercent)) return 20;
+  return Math.max(0, Math.min(100, configuredPercent));
+}
+
+function applyEffectiveDiscountToCheckoutSummary(summary = {}) {
+  const nextSummary = { ...summary };
+  const subtotal = Number(nextSummary.subtotal || 0);
+  const discountPercent = getEffectiveDiscountPercent();
+  const discountAmount = Math.round(subtotal * (discountPercent / 100));
+  const finalPrice = subtotal - discountAmount;
+  nextSummary.discountEnabled = State.discountEnabled !== false;
+  nextSummary.discountPercent = discountPercent;
+  nextSummary.discount = discountAmount;
+  nextSummary.discountAmount = discountAmount;
+  nextSummary.netPrice = finalPrice;
+  nextSummary.finalPrice = finalPrice;
+  nextSummary.totalPrice = finalPrice;
+  return nextSummary;
 }
 
 function buildCheckoutSummary() {
@@ -2866,8 +2897,8 @@ function buildCheckoutSummary() {
   const charmSubtotal = charmBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
   const spacerSubtotal = spacerBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
   const subtotal = stonesSubtotal + spacerSubtotal + charmSubtotal;
-  const discountPercent = 20;
-  const discount = Math.round(subtotal * 0.2);
+  const discountPercent = getEffectiveDiscountPercent();
+  const discount = Math.round(subtotal * (discountPercent / 100));
   const finalPrice = subtotal - discount;
   const braceletSequence = createBraceletComponentList().map((component, index) => {
     if (component.type === 'charm') {
@@ -2928,7 +2959,7 @@ function buildCheckoutSummary() {
     };
   });
 
-  return {
+  return applyEffectiveDiscountToCheckoutSummary({
     selectedStoneItems,
     aggregatedStones,
     aggregatedSpacers,
@@ -2952,7 +2983,7 @@ function buildCheckoutSummary() {
     totalPrice: finalPrice,
     charmData,
     spacerData
-  };
+  });
 }
 
 function getResolvedNodeRotationRad(node) {
@@ -4554,7 +4585,7 @@ async function renderStep4() {
     DOM.billingItemsList.appendChild(div);
   });
   
-  // Hardcoded 20% LINE promotion discount logic
+  // Use saved order pricing in order-detail mode; otherwise use the current effective discount settings.
   const savedOrderSnapshot = State.orderDetailSnapshot;
   const savedSubtotal = Number(savedOrderSnapshot?.subtotal);
   const savedDiscountPercent = Number(savedOrderSnapshot?.discountPercent);
@@ -4570,6 +4601,7 @@ async function renderStep4() {
   const finalPrice = Number.isFinite(savedFinalPrice) ? savedFinalPrice : checkoutSummary.finalPrice;
   
   DOM.priceSubtotal.textContent = `฿${subtotal.toLocaleString()}`;
+  DOM.priceSubtotal.style.textDecoration = discount > 0 ? '' : 'none';
   DOM.priceDiscount.textContent = `-฿${discount.toLocaleString()}`;
   
   // Update discount badge text dynamically
@@ -4579,7 +4611,7 @@ async function renderStep4() {
   }
   const discountBox = discountBadge?.closest('.discount-box');
   if (discountBox) {
-    discountBox.style.display = State.showDiscountBanner === false ? 'none' : '';
+    discountBox.style.display = State.showDiscountBanner === false || discountPercent <= 0 || discount <= 0 ? 'none' : '';
   }
   
   DOM.priceTotal.textContent = `฿${finalPrice.toLocaleString()}`;
@@ -5362,6 +5394,7 @@ async function preloadRenderImages(urls) {
 
 // Draw the designed bracelet and invoice to canvas
 async function generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, previewKey = '') {
+  const receiptDiscountPercent = subtotal > 0 ? Math.round((discount / subtotal) * 100) : 0;
   const safeUniqueStoneIds = normalizeUniqueStoneIds(uniqueStoneIds);
   if (document.fonts?.load) {
     await Promise.all([
@@ -5633,7 +5666,9 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   rCtx.fillStyle = "#554466";
   rCtx.font = "400 15px 'Noto Sans Thai'";
   rCtx.fillText("Original Subtotal:", 70, 570);
-  rCtx.fillText("LINE Special Promotion (20% Discount):", 70, 605);
+  if (discount > 0) {
+    rCtx.fillText(`LINE Special Promotion (${receiptDiscountPercent}% Discount):`, 70, 605);
+  }
   
   rCtx.font = "700 20px 'Noto Sans Thai'";
   rCtx.fillStyle = "#40304D";
@@ -5644,7 +5679,9 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
   rCtx.fillStyle = "#554466";
   rCtx.fillText(`฿${subtotal.toLocaleString()}`, 730, 570);
   rCtx.fillStyle = "#8B0000";
-  rCtx.fillText(`-฿${discount.toLocaleString()}`, 730, 605);
+  if (discount > 0) {
+    rCtx.fillText(`-฿${discount.toLocaleString()}`, 730, 605);
+  }
 
   rCtx.font = "700 24px 'Noto Sans Thai'";
   rCtx.fillStyle = "#8B0000";
@@ -5974,7 +6011,9 @@ async function handleLineOrder() {
   
   lines.push(`💳 *Pricing Summary:*`);
   lines.push(`Subtotal: ฿${totalStonesPrice.toLocaleString()}`);
-  lines.push(`LINE Order 20% Discount: -฿${discount.toLocaleString()}`);
+  if (discount > 0) {
+    lines.push(`LINE Order ${pricing.discountPercent}% Discount: -฿${discount.toLocaleString()}`);
+  }
   lines.push(`*Net Total:* ฿${netPrice.toLocaleString()}`);
   lines.push(``);
   

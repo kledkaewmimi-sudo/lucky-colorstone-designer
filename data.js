@@ -1027,7 +1027,7 @@ export function adaptNormalizedCharmCatalogToLegacy(records = []) {
 
 // --- In-memory cache ---
 export let STONES = [];
-export let SETTINGS = { globalDiscountPercent: 20, showDiscountBanner: true };
+export let SETTINGS = { globalDiscountPercent: 20, discountEnabled: true, showDiscountBanner: true };
 export let ORDERS = [];
 export let CHARM_RECORDS = [];
 export let SPACER_RECORDS = [];

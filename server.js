@@ -33,7 +33,7 @@ const defaultFileText = {
   stones: "[]",
   charms: "[]",
   orders: "[]",
-  settings: "{\"globalDiscountPercent\":20}"
+  settings: "{\"globalDiscountPercent\":20,\"discountEnabled\":true,\"showDiscountBanner\":true}"
 };
 
 const resetSnapshots = new Map();
@@ -1489,7 +1489,7 @@ function readJsonArray(key) {
 }
 
 function readJsonSettings() {
-  return readJsonFile(dataFiles.settings, defaultFileText.settings) || { globalDiscountPercent: 20 };
+  return readJsonFile(dataFiles.settings, defaultFileText.settings) || { globalDiscountPercent: 20, discountEnabled: true, showDiscountBanner: true };
 }
 
 async function readStonesForApi() {
@@ -1596,7 +1596,7 @@ async function readSupabaseSettingsForApi() {
     settings.catalogLayoutOrder = layout;
   }
 
-  return Object.keys(settings).length > 0 ? settings : { globalDiscountPercent: 20 };
+  return Object.keys(settings).length > 0 ? settings : { globalDiscountPercent: 20, discountEnabled: true, showDiscountBanner: true };
 }
 
 async function readSettingsForApi() {
