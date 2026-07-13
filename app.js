@@ -681,6 +681,20 @@ function getLiffRedirectUri() {
   return `${window.location.origin}${window.location.pathname}`;
 }
 
+function isLiffInClient() {
+  return typeof liff !== 'undefined'
+    && State.liffInitialized
+    && typeof liff.isInClient === 'function'
+    && liff.isInClient();
+}
+
+function isLiffLoggedIn() {
+  return typeof liff !== 'undefined'
+    && State.liffInitialized
+    && typeof liff.isLoggedIn === 'function'
+    && liff.isLoggedIn();
+}
+
 // LIFF Initialization
 async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
@@ -738,13 +752,13 @@ function setupLandingEvents() {
     persistLandingDismissed();
     
     const loader = DOM.liffLoadingOverlay;
-    if (typeof liff !== 'undefined' && State.liffInitialized && liffLoginInProgress) {
+    if (isLiffInClient() && liffLoginInProgress) {
       console.warn("LIFF login already in progress.");
       return;
     }
-    if (loader) loader.style.display = 'flex';
     
-    if (typeof liff !== 'undefined' && State.liffInitialized) {
+    if (isLiffInClient() && !isLiffLoggedIn()) {
+      if (loader) loader.style.display = 'flex';
       liffLoginInProgress = true;
       console.log("LIFF login start");
       try {
@@ -756,12 +770,25 @@ function setupLandingEvents() {
         renderApp();
       }
     } else {
+      if (isLiffInClient() && isLiffLoggedIn()) {
+        renderApp();
+        return;
+      }
+
+      const isTestLoginFallback = window.navigator.webdriver || urlParams.has('webdriver') || urlParams.has('test') || urlParams.has('mock');
+      if (!isLiffInClient() && !isTestLoginFallback) {
+        if (loader) loader.style.display = 'none';
+        renderApp();
+        return;
+      }
+
+      if (loader) loader.style.display = 'flex';
       // Mock desktop login fallback
       setTimeout(() => {
         if (loader) loader.style.display = 'none';
         
         // Bypass native prompt in automated/headless testing or when query param is present
-        if (window.navigator.webdriver || urlParams.has('webdriver') || urlParams.has('test') || urlParams.has('mock')) {
+        if (isTestLoginFallback) {
           State.ownerName = "Somchai";
           DOM.braceletOwnerName.value = State.ownerName;
           showToast(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${State.ownerName}`);
@@ -868,7 +895,10 @@ function clearOAuthQueryParams() {
   const hasOauthParams = oauthKeys.some((key) => urlParams.has(key));
   if (!hasOauthParams) return;
 
-  const nextUrl = `${window.location.pathname}${window.location.hash || ''}`;
+  const cleanParams = new URLSearchParams(window.location.search);
+  oauthKeys.forEach((key) => cleanParams.delete(key));
+  const cleanSearch = cleanParams.toString();
+  const nextUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`;
   window.history.replaceState({}, document.title, nextUrl);
 }
 
