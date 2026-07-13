@@ -329,6 +329,19 @@ function updateImageThumbnail(imageEl, rawValue) {
   imageEl.src = value || IMAGE_THUMB_PLACEHOLDER;
 }
 
+function getSafeThumbnailSrc(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value || value.endsWith("/_placeholder.png") || value.endsWith("\\_placeholder.png")) {
+    return IMAGE_THUMB_PLACEHOLDER;
+  }
+  return value;
+}
+
+function renderInventoryFromCache() {
+  const cache = getSimulatorCatalogCache();
+  renderInventoryCatalog(cache.stones, cache.charms, cache.spacers);
+}
+
 function setUploadStatus(statusEl, message, tone = "info") {
   if (!statusEl) return;
   statusEl.textContent = message;
@@ -617,7 +630,7 @@ async function triggerSyncUpdate(keyName) {
   DOM.syncIndicator.className = 'sync-status text-gold';
   DOM.syncIndicator.innerHTML = '<span class="pulse-dot" style="background-color: var(--color-gold)"></span> Syncing updates...';
   
-  await Promise.all([
+  const [stones, categories, charms] = await Promise.all([
     refreshCatalog(),
     refreshCategoryCatalog(),
     refreshCharmCatalog()
@@ -628,18 +641,18 @@ async function triggerSyncUpdate(keyName) {
     DOM.syncIndicator.innerHTML = '<span class="pulse-dot"></span> Real-time Connected';
     
     addLog(`Database synchronized (${keyName}).`);
-    await loadDashboardData();
+    await loadDashboardData({ stones, categories, charms });
   }, 400);
 }
 
 // ==========================================
 // 7. Load / Calculate Dashboard Stats
 // ==========================================
-async function loadDashboardData() {
-  const stones = await getSharedCatalog();
-  const categories = await getSharedCategoryCatalog();
-  const charms = await getSharedCharmCatalog();
-  const spacers = await getSharedSpacerCatalog();
+async function loadDashboardData(prefetched = {}) {
+  const stones = Array.isArray(prefetched.stones) ? prefetched.stones : await getSharedCatalog();
+  const categories = Array.isArray(prefetched.categories) ? prefetched.categories : await getSharedCategoryCatalog();
+  const charms = Array.isArray(prefetched.charms) ? prefetched.charms : await getSharedCharmCatalog();
+  const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
   CRMState.simulatorCatalogCache = { stones, charms, spacers };
@@ -766,7 +779,7 @@ function renderStoneInventoryCatalogLegacy(stones) {
     
     tr.innerHTML = `
       <td data-label="Bead">
-        <img class="table-bead-img inventory-stone-img" src="${stone.image}" alt="${stone.name}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+        <img class="table-bead-img inventory-stone-img" src="${escapeHtml(getSafeThumbnailSrc(stone.image))}" alt="${escapeHtml(stone.name)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${IMAGE_THUMB_PLACEHOLDER}'">
       </td>
       <td data-label="Stone Name">
         <div class="stone-title-th">${stone.nameTh}</div>
@@ -977,7 +990,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     tr.innerHTML = `
       <td data-label="Item">
         <div class="inventory-item-cell">
-          <img class="table-bead-img inventory-item-img" src="${escapeHtml(item.image)}" alt="${escapeHtml(item.nameEn)}" onerror="this.src='${IMAGE_THUMB_PLACEHOLDER}'">
+          <img class="table-bead-img inventory-item-img" src="${escapeHtml(getSafeThumbnailSrc(item.image))}" alt="${escapeHtml(item.nameEn)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${IMAGE_THUMB_PLACEHOLDER}'">
           <div class="inventory-item-copy">
             <div class="stone-title-th">${escapeHtml(item.nameTh)}</div>
             <div class="stone-title-en">${escapeHtml(item.nameEn)}</div>
@@ -2180,7 +2193,8 @@ async function openAddCharmForm() {
 }
 
 async function openEditCharmForm(charmId) {
-  const charms = await getSharedCharmCatalog();
+  const cachedCharms = getSimulatorCatalogCache().charms;
+  const charms = cachedCharms.length > 0 ? cachedCharms : await getSharedCharmCatalog();
   const charm = charms.find((entry) => entry.id === charmId);
   if (!charm) return;
 
@@ -2276,7 +2290,8 @@ async function handleSaveCharmType(e) {
 }
 
 async function deleteCharmType(charmId) {
-  const charms = await getSharedCharmCatalog();
+  const cachedCharms = getSimulatorCatalogCache().charms;
+  const charms = cachedCharms.length > 0 ? cachedCharms : await getSharedCharmCatalog();
   const charm = charms.find((entry) => entry.id === charmId);
   if (!charm) return;
 
@@ -2320,7 +2335,8 @@ async function openAddStoneForm() {
 }
 
 async function openEditStoneForm(stoneId) {
-  const stones = await getSharedCatalog();
+  const cachedStones = getSimulatorCatalogCache().stones;
+  const stones = cachedStones.length > 0 ? cachedStones : await getSharedCatalog();
   const stone = stones.find(s => s.id === stoneId);
   if (!stone) return;
 
@@ -2420,7 +2436,8 @@ async function handleSaveStoneType(e) {
 }
 
 async function deleteStoneType(stoneId) {
-  const stones = await getSharedCatalog();
+  const cachedStones = getSimulatorCatalogCache().stones;
+  const stones = cachedStones.length > 0 ? cachedStones : await getSharedCatalog();
   const stone = stones.find(s => s.id === stoneId);
   if (!stone) return;
   
@@ -3930,13 +3947,12 @@ function setupFunctionalEvents() {
     });
   }
   DOM.inventorySearch.addEventListener('input', () => {
-    const query = DOM.inventorySearch.value.trim();
-    loadDashboardData();
+    renderInventoryFromCache();
   });
   DOM.inventoryTypeTabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       CRMState.inventoryTypeFilter = tab.dataset.inventoryType || 'all';
-      loadDashboardData();
+      renderInventoryFromCache();
     });
   });
   DOM.simulatorCategoryTabs.forEach((tab) => {

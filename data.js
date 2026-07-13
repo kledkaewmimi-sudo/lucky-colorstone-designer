@@ -363,7 +363,14 @@ export function getCategoryLabelById(categoryId, entityType = "all") {
   };
 }
 
-export const CHARM_PLACEHOLDER_IMAGE = "/assets/charms/_placeholder.png";
+export const CHARM_PLACEHOLDER_IMAGE = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Charm placeholder">
+    <rect width="96" height="96" rx="18" fill="#eef3f9" />
+    <circle cx="48" cy="48" r="29" fill="#d7e0ec" />
+    <circle cx="48" cy="48" r="17" fill="#bcc9da" />
+    <path d="M40 47c3-6 9-10 17-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.75" />
+  </svg>
+`.trim())}`;
 
 export const SPACER_CATALOG = Object.freeze([
   {
