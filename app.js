@@ -598,10 +598,7 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
-  if (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId')) {
-    State.currentStep = 4;
-    State.landingDismissed = true;
-  }
+  const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
 
   // Show loading overlay during LIFF boot
   const loader = document.getElementById('liffLoadingOverlay');
@@ -609,6 +606,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load persisted state if exists
   loadPersistedState();
+  if (shouldOpenStep4FromUrl) {
+    State.currentStep = 4;
+    State.landingDismissed = true;
+  }
   syncShellVisibility();
   
   // Auto-login/bypass for testing
@@ -906,6 +907,120 @@ function getRequestedOrderId() {
   return String(new URLSearchParams(window.location.search).get('orderId') || '').trim();
 }
 
+function getOrderPayloadObject(rawOrder) {
+  return rawOrder?.payload && typeof rawOrder.payload === 'object'
+    ? rawOrder.payload
+    : rawOrder;
+}
+
+function firstNonEmptyOrderValue(...values) {
+  const value = values.find((entry) => String(entry ?? '').trim());
+  return value == null ? '' : String(value).trim();
+}
+
+function getOrderIdCandidates(rawOrder) {
+  if (!rawOrder || typeof rawOrder !== 'object') return [];
+  const payload = rawOrder.payload && typeof rawOrder.payload === 'object'
+    ? rawOrder.payload
+    : {};
+  return [
+    rawOrder.id,
+    rawOrder.orderId,
+    rawOrder.order_id,
+    payload.id,
+    payload.orderId,
+    payload.order_id
+  ]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean);
+}
+
+function orderMatchesRequestedId(rawOrder, requestedOrderId) {
+  const normalizedId = String(requestedOrderId || '').trim();
+  if (!normalizedId) return false;
+  return getOrderIdCandidates(rawOrder).some((candidate) => candidate === normalizedId);
+}
+
+function normalizeSavedOrder(rawOrder) {
+  if (!rawOrder || typeof rawOrder !== 'object') return null;
+
+  const payload = rawOrder.payload && typeof rawOrder.payload === 'object'
+    ? rawOrder.payload
+    : null;
+  const canonical = payload ? { ...payload } : { ...rawOrder };
+  const id = firstNonEmptyOrderValue(
+    canonical.id,
+    canonical.orderId,
+    rawOrder.id,
+    rawOrder.orderId,
+    rawOrder.order_id
+  );
+  const orderId = firstNonEmptyOrderValue(
+    canonical.orderId,
+    canonical.id,
+    rawOrder.orderId,
+    rawOrder.id,
+    rawOrder.order_id
+  );
+
+  return {
+    ...canonical,
+    id: id || canonical.id,
+    orderId: orderId || id || canonical.orderId,
+    status: canonical.status || rawOrder.status || '',
+    date: canonical.date || rawOrder.date || rawOrder.createdAt || rawOrder.created_at || '',
+    customerName: canonical.customerName || rawOrder.customerName || rawOrder.customer_name || '',
+    lineUserId: canonical.lineUserId || rawOrder.lineUserId || rawOrder.line_user_id || '',
+    stripeCheckoutSessionId: canonical.stripeCheckoutSessionId || rawOrder.stripeCheckoutSessionId || rawOrder.stripe_checkout_session_id || '',
+    stripePaymentStatus: canonical.stripePaymentStatus || rawOrder.stripePaymentStatus || rawOrder.stripe_payment_status || '',
+    netPrice: canonical.netPrice ?? rawOrder.netPrice ?? rawOrder.net_price,
+    finalPrice: canonical.finalPrice ?? rawOrder.finalPrice ?? rawOrder.final_price,
+    totalPrice: canonical.totalPrice ?? rawOrder.totalPrice ?? rawOrder.total_price
+  };
+}
+
+async function fetchOrdersFromApiUrl(apiUrl) {
+  const response = await fetch(apiUrl);
+  if (!response.ok) {
+    throw new Error(`${apiUrl} returned HTTP ${response.status}`);
+  }
+  const orders = await response.json();
+  return Array.isArray(orders) ? orders : [];
+}
+
+function getOrderDetailFallbackApiUrls() {
+  const urls = [];
+  try {
+    const currentOrigin = window.location.origin;
+    if (currentOrigin !== 'https://crm.luckycolorstone.com') {
+      urls.push('https://crm.luckycolorstone.com/api/orders');
+    }
+  } catch {
+    urls.push('https://crm.luckycolorstone.com/api/orders');
+  }
+  return urls;
+}
+
+async function findSavedOrderByRequestedId(orderId) {
+  const primaryOrders = await getSharedOrders();
+  const primaryOrder = Array.isArray(primaryOrders)
+    ? primaryOrders.find((entry) => orderMatchesRequestedId(entry, orderId))
+    : null;
+  if (primaryOrder) return normalizeSavedOrder(primaryOrder);
+
+  for (const apiUrl of getOrderDetailFallbackApiUrls()) {
+    try {
+      const fallbackOrders = await fetchOrdersFromApiUrl(apiUrl);
+      const fallbackOrder = fallbackOrders.find((entry) => orderMatchesRequestedId(entry, orderId));
+      if (fallbackOrder) return normalizeSavedOrder(fallbackOrder);
+    } catch (error) {
+      console.warn('Unable to load order detail fallback API', error);
+    }
+  }
+
+  return null;
+}
+
 function decodeOrderConfiguration(configurationCode) {
   const rawCode = String(configurationCode || '').trim();
   if (!rawCode) return null;
@@ -1092,6 +1207,7 @@ function getOrderCharmIds(order, decodedConfig) {
 }
 
 function hydrateStateFromOrder(order) {
+  order = normalizeSavedOrder(order) || {};
   const decodedConfig = decodeOrderConfiguration(order?.configurationCode);
   const wristSize = Number(order?.wristSize ?? decodedConfig?.w);
 
@@ -1141,10 +1257,7 @@ async function loadOrderDetailFromUrlIfNeeded() {
   State.paymentCompletedView = false;
 
   try {
-    const orders = await getSharedOrders();
-    const order = Array.isArray(orders)
-      ? orders.find((entry) => String(entry?.id || entry?.orderId || '').trim() === orderId)
-      : null;
+    const order = await findSavedOrderByRequestedId(orderId);
 
     if (!order) {
       State.orderDetailLoadError = `We could not find order ${orderId}. Please check the link or contact Lucky Colorstone.`;
@@ -2420,12 +2533,20 @@ function getOrderCanonicalMoney(order = {}, key) {
 }
 
 function isPaidOrder(order = {}) {
-  const status = String(order.status || '').trim().toLowerCase();
-  const stripePaymentStatus = String(order.stripePaymentStatus || order.paymentStatus || '').trim().toLowerCase();
+  const normalizedOrder = getOrderPayloadObject(order) || {};
+  const status = String(normalizedOrder.status || order.status || '').trim().toLowerCase();
+  const stripePaymentStatus = String(
+    normalizedOrder.stripePaymentStatus ||
+    normalizedOrder.paymentStatus ||
+    order.stripe_payment_status ||
+    order.stripePaymentStatus ||
+    order.paymentStatus ||
+    ''
+  ).trim().toLowerCase();
   return status === 'payment received' ||
     status === 'paid' ||
     stripePaymentStatus === 'paid' ||
-    Boolean(order.paidAt || order.paymentReceivedAt || order.notifications?.paymentReceivedSentAt);
+    Boolean(normalizedOrder.paidAt || normalizedOrder.paymentReceivedAt || normalizedOrder.notifications?.paymentReceivedSentAt);
 }
 
 function buildAggregatedStonesFromBilling(itemizedBilling = []) {
@@ -2489,6 +2610,7 @@ function getOrderStoneItemsFromSequence(order = {}, fallbackItems = []) {
 }
 
 function buildOrderDetailCheckoutSummary(order = {}) {
+  order = normalizeSavedOrder(order) || {};
   const liveSummary = normalizeCheckoutSummaryForOrder(buildCheckoutSummary());
   const itemizedBilling = Array.isArray(order.itemizedBilling) && order.itemizedBilling.length > 0
     ? order.itemizedBilling
@@ -4495,6 +4617,7 @@ function buildDesignConfigurationCode() {
 }
 
 function getSavedOrderBraceletPreviewImage(order = {}) {
+  order = normalizeSavedOrder(order) || {};
   const candidates = [
     order.braceletPreviewImage,
     order.braceletPreviewDataUrl,
@@ -4679,6 +4802,7 @@ function activatePaymentCompletedView(savedOrder = null) {
   State.currentStep = 4;
   State.landingDismissed = true;
   State.paymentCompletedView = true;
+  savedOrder = normalizeSavedOrder(savedOrder);
 
   if (savedOrder && typeof savedOrder === 'object') {
     State.orderDetailSnapshot = savedOrder;
@@ -4724,7 +4848,7 @@ async function handleStripeReturnIfNeeded() {
   if (localStorage.getItem(processedKey) === 'true') {
     const existingOrders = await getSharedOrders();
     const processedOrder = Array.isArray(existingOrders)
-      ? existingOrders.find((order) => order?.stripeCheckoutSessionId === sessionId)
+      ? existingOrders.map((order) => normalizeSavedOrder(order)).find((order) => order?.stripeCheckoutSessionId === sessionId)
       : null;
     activatePaymentCompletedView(processedOrder || null);
     cleanupStripeReturnParams();
@@ -4745,7 +4869,7 @@ async function handleStripeReturnIfNeeded() {
 
     const existingOrders = await getSharedOrders();
     const existingOrder = Array.isArray(existingOrders)
-      ? existingOrders.find((order) => order?.stripeCheckoutSessionId === sessionId)
+      ? existingOrders.map((order) => normalizeSavedOrder(order)).find((order) => order?.stripeCheckoutSessionId === sessionId)
       : null;
     const shippingInfo = resolveShippingInfoFromCheckoutPayload(payload);
     const phoneNumber = typeof payload.phoneNumber === 'string' && payload.phoneNumber.trim()

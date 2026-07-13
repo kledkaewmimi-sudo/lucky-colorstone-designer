@@ -1526,6 +1526,23 @@ async function readOrdersForApi() {
   ));
 }
 
+async function saveOrderForApi(order) {
+  if (isSupabaseConfigured()) {
+    await upsertSupabaseRow("orders", buildOrderRow(order));
+    return;
+  }
+
+  const orderId = getOrderId(order);
+  const orders = readJsonArray("orders");
+  const existingIndex = orders.findIndex((entry) => getOrderId(entry) === orderId);
+  if (existingIndex >= 0) {
+    orders[existingIndex] = order;
+  } else {
+    orders.unshift(order);
+  }
+  writeJsonFile(dataFiles.orders, orders);
+}
+
 async function readSupabaseSettingsForApi() {
   const settingRows = await supabaseRequest("app_settings", {
     params: { select: "key,value" }
@@ -1948,21 +1965,17 @@ async function handleApiRequest(req, res, urlObj) {
       nextOrder.status = "New Order";
     }
 
+    await saveOrderForApi(nextOrder);
+
     let responseOrder = nextOrder;
     try {
       const notificationResult = await trySendPaidOrderLineNotification(nextOrder);
       if (notificationResult.sent) {
         responseOrder = notificationResult.order;
+        await saveOrderForApi(responseOrder);
       }
     } catch (error) {
       console.error(`Failed to send paid-order LINE notification for ${nextOrder.id}:`, error);
-    }
-
-    if (isSupabaseConfigured()) {
-      await upsertSupabaseRow("orders", buildOrderRow(responseOrder));
-    } else {
-      const orders = readJsonArray("orders");
-      writeJsonFile(dataFiles.orders, [responseOrder, ...orders]);
     }
 
     sendJson(res, 200, responseOrder);
