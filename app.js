@@ -45,6 +45,7 @@ const State = {
   paymentCompletedView: false,
   checkoutSummarySnapshot: null,
   braceletPreviewImage: '',
+  showDiscountBanner: true,
   braceletPreviewKey: ''
 };
 
@@ -627,11 +628,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   clearOAuthQueryParams();
   
   // Fetch initial catalog from shared persistence
-  await Promise.all([
+  const [, , , sharedSettings] = await Promise.all([
     refreshCatalog(),
     refreshCharmCatalog(),
-    refreshCatalogLayoutOrder()
+    refreshCatalogLayoutOrder(),
+    getSharedSettings()
   ]);
+  State.showDiscountBanner = sharedSettings?.showDiscountBanner !== false;
 
   await loadOrderDetailFromUrlIfNeeded();
   await handleStripeReturnIfNeeded();
@@ -4573,6 +4576,10 @@ async function renderStep4() {
   const discountBadge = document.getElementById('priceDiscountBadge');
   if (discountBadge) {
     discountBadge.textContent = `LINE SPECIAL DISCOUNT ${discountPercent}%`;
+  }
+  const discountBox = discountBadge?.closest('.discount-box');
+  if (discountBox) {
+    discountBox.style.display = State.showDiscountBanner === false ? 'none' : '';
   }
   
   DOM.priceTotal.textContent = `฿${finalPrice.toLocaleString()}`;

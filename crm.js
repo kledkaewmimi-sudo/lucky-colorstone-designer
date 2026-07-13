@@ -160,6 +160,7 @@ const DOM = {
   // Tab 5: Settings Controls
   globalSettingsForm: document.getElementById('globalSettingsForm'),
   globalDiscountPercent: document.getElementById('globalDiscountPercent'),
+  showDiscountBanner: document.getElementById('showDiscountBanner'),
   btnResetDatabase: document.getElementById('btnResetDatabase'),
   btnSeedDemoOrders: document.getElementById('btnSeedDemoOrders'),
   
@@ -699,6 +700,9 @@ async function loadDashboardData(prefetched = {}) {
     renderOrdersList(orders);
   } else if (CRMState.activeTab === 'settings') {
     DOM.globalDiscountPercent.value = globalDiscountRateVal;
+    if (DOM.showDiscountBanner) {
+      DOM.showDiscountBanner.checked = settings.showDiscountBanner !== false;
+    }
   }
 }
 
@@ -4156,10 +4160,11 @@ function setupFunctionalEvents() {
     
     const settings = await getSharedSettings();
     settings.globalDiscountPercent = discountVal;
+    settings.showDiscountBanner = DOM.showDiscountBanner ? DOM.showDiscountBanner.checked : true;
     
     await saveSharedSettings(settings);
-    addLog(`Changed global discount rate to ${discountVal}%.`);
-    showToast(`Global discount saved: ${discountVal}%`);
+    addLog(`Changed global discount rate to ${discountVal}% and Step 4 discount banner ${settings.showDiscountBanner ? 'shown' : 'hidden'}.`);
+    showToast(`Global settings saved.`);
     await loadDashboardData();
   });
   
