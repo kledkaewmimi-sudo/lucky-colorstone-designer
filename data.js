@@ -14,6 +14,44 @@ const CANONICAL_CATEGORY_LABELS = {
 
 export const CATALOG_LAYOUT_ORDER_STORAGE_KEY = "lucky_crm_catalog_layout_order";
 
+// Bump this when replacing catalog assets with the same filename so browsers/CDNs fetch the new file.
+export const ASSET_VERSION = "20260713-webp-2";
+
+function isLocalCatalogAssetUrl(imageUrl = "") {
+  const value = String(imageUrl || "").trim();
+  if (!value) return false;
+  if (/^(data|blob|https?):/i.test(value) || value.startsWith("//")) return false;
+  return value.startsWith("assets/") || value.startsWith("/assets/") || value.includes("/assets/");
+}
+
+function getCatalogImageVersion(item = {}) {
+  return String(
+    item?.imageVersion ||
+    item?.assetVersion ||
+    item?.updatedAt ||
+    item?.updated_at ||
+    item?.payload?.updatedAt ||
+    item?.payload?.updated_at ||
+    ASSET_VERSION
+  ).trim();
+}
+
+export function withCatalogImageVersion(imageUrl, item = {}) {
+  const value = String(imageUrl || "").trim();
+  if (!isLocalCatalogAssetUrl(value)) return value;
+
+  const version = getCatalogImageVersion(item);
+  if (!version) return value;
+
+  const [urlWithoutHash, hash = ""] = value.split("#");
+  if (/[?&]v=/.test(urlWithoutHash)) {
+    const updatedUrl = urlWithoutHash.replace(/([?&])v=[^&]*/, `$1v=${encodeURIComponent(version)}`);
+    return `${updatedUrl}${hash ? `#${hash}` : ""}`;
+  }
+  const separator = urlWithoutHash.includes("?") ? "&" : "?";
+  return `${urlWithoutHash}${separator}v=${encodeURIComponent(version)}${hash ? `#${hash}` : ""}`;
+}
+
 const CATALOG_LAYOUT_CATEGORIES = Object.freeze(["stones", "charms", "spacers"]);
 
 function normalizeCatalogLayoutCategory(category) {

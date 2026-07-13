@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder } from './data.js';
+import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -1850,7 +1850,7 @@ function buildStoneCard({
 
   if (image) {
     const img = document.createElement('img');
-    img.src = image;
+    img.src = withCatalogImageVersion(image);
     img.alt = imageAlt;
     img.className = imageClassName;
     if (imageStyle && typeof imageStyle === 'object') {
@@ -3095,7 +3095,7 @@ function createMeaningItemElement(entry) {
   placeholder.textContent = entry.thumbnailLabel;
 
   if (entry.image) {
-    image.src = entry.image;
+    image.src = withCatalogImageVersion(entry.image, entry);
     image.addEventListener('load', () => {
       thumbnail.classList.add('has-image');
     });
@@ -3156,14 +3156,15 @@ function renderCharmOptions() {
   visibleCharms.forEach((charm) => {
     const isSelected = selectedCharmIdSet.has(charm.id);
     const charmMeta = getCharmDisplayMeta(charm);
-    if (charm.image) {
-      scheduleCharmVisibleBoundsDetection(charm.image);
+    const charmImage = withCatalogImageVersion(charm.image, charm);
+    if (charmImage) {
+      scheduleCharmVisibleBoundsDetection(charmImage);
     }
     grid.appendChild(buildStoneCard({
       rootTag: 'div',
       dataAttributeName: 'charm-id',
       dataAttributeValue: charm.id,
-      image: charm.image,
+      image: charmImage,
       imageAlt: charmMeta.nameEn,
       imageClassName: 'stone-img charm-card-img',
       imageStyle: getCharmCardThumbnailStyle(charm, thumbnailTargetRatio),
@@ -3205,11 +3206,12 @@ function renderSpacerOptions() {
 
   applyCatalogLayoutOrder(SPACER_CATALOG, 'spacers').forEach((spacer) => {
     const quantity = spacerCounts[spacer.id] || 0;
+    const spacerImage = withCatalogImageVersion(spacer.image, spacer);
     grid.appendChild(buildStoneCard({
       rootTag: 'div',
       dataAttributeName: 'spacer-id',
       dataAttributeValue: spacer.id,
-      image: spacer.image,
+      image: spacerImage,
       imageAlt: spacer.nameEn,
       imageClassName: 'stone-img spacer-card-img',
       imageStyle: {
@@ -3353,7 +3355,7 @@ function renderCatalogGrid() {
     DOM.stoneCatalogGrid.appendChild(buildStoneCard({
       dataAttributeName: 'stone-id',
       dataAttributeValue: stone.id,
-      image: stone.image,
+      image: withCatalogImageVersion(stone.image, stone),
       imageAlt: stone.name,
       nameTh: stone.nameTh,
       nameEn: stone.name,
@@ -3944,7 +3946,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         const charmCenterY = by + (Math.sin(node.centerAngle) * charmOutwardOffsetPx);
         const halfCharmWidth = charmFrameWidthPx / 2;
         const halfCharmHeight = charmFrameHeightPx / 2;
-        const charmImageUrl = component.image || '';
+        const charmImageUrl = withCatalogImageVersion(component.image || '', component);
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
         const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
         let clipId = '';
@@ -4014,7 +4016,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       } else if (component.type === 'spacer') {
         const spacerSizePx = (component.renderSizeMm || component.sizeMm) * summary.scaleMmToPx;
         const halfSpacer = spacerSizePx / 2;
-        const spacerImageUrl = component.image || '';
+        const spacerImageUrl = withCatalogImageVersion(component.image || '', component);
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
 
         if (component.spacerShape === 'ball') {
@@ -4098,7 +4100,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
         
         const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
-        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", stoneData.image);
+        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", withCatalogImageVersion(stoneData.image, stoneData));
         const scaleFactor = 1.3;
         const imgSize = bRadiusPx * 2 * scaleFactor;
         img.setAttribute("x", bx - imgSize / 2);
@@ -4480,7 +4482,7 @@ async function renderStep4() {
     div.innerHTML = `
       <div class="billing-item-info">
         <div class="billing-item-thumbnail">
-          <img class="billing-thumbnail-img" src="${item.image}" alt="${item.name}">
+          <img class="billing-thumbnail-img" src="${withCatalogImageVersion(item.image, item)}" alt="${item.name}">
         </div>
         <div class="billing-item-name">
           <h5>${item.nameTh} (${item.name})</h5>
@@ -4501,7 +4503,7 @@ async function renderStep4() {
     div.innerHTML = `
       <div class="billing-item-info">
         <div class="billing-item-thumbnail">
-          <img class="billing-thumbnail-img" src="${selectedCharm.image}" alt="${selectedCharm.nameEn}">
+          <img class="billing-thumbnail-img" src="${withCatalogImageVersion(selectedCharm.image, selectedCharm)}" alt="${selectedCharm.nameEn}">
         </div>
         <div class="billing-item-name">
           <h5>${selectedCharm.nameTh} (${selectedCharm.nameEn})</h5>
@@ -4536,7 +4538,7 @@ async function renderStep4() {
     div.innerHTML = `
       <div class="billing-item-info">
         <div class="billing-item-thumbnail">
-          <img class="billing-thumbnail-img" src="${spacer.image}" alt="${spacer.nameEn}">
+          <img class="billing-thumbnail-img" src="${withCatalogImageVersion(spacer.image, spacer)}" alt="${spacer.nameEn}">
         </div>
         <div class="billing-item-name">
           <h5>${spacer.nameTh} (${spacer.nameEn})</h5>
@@ -5024,14 +5026,14 @@ function getBraceletShowcaseRenderKey() {
 function getComponentRenderImageUrl(component) {
   if (!component) return '';
   if (component.type === 'charm') {
-    return component.image || '';
+    return withCatalogImageVersion(component.image || '', component);
   }
   if (component.type === 'spacer') {
-    return component.image || '';
+    return withCatalogImageVersion(component.image || '', component);
   }
   if (component.type === 'stone') {
     const stoneData = STONES.find((stone) => stone.id === component.stoneId) || STONES[0];
-    return stoneData?.image || '';
+    return withCatalogImageVersion(stoneData?.image || '', stoneData);
   }
   return '';
 }
@@ -6045,7 +6047,7 @@ function configureInfoModal({
   meaning
 }) {
   DOM.modalStoneName.textContent = heading;
-  DOM.modalStoneImg.src = image;
+  DOM.modalStoneImg.src = withCatalogImageVersion(image);
   DOM.modalStoneTitleTh.textContent = titleTh;
   DOM.modalStoneTitleEn.textContent = titleEn;
   DOM.modalStoneMeaning.textContent = meaning;

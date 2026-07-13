@@ -26,7 +26,8 @@ import {
   ORDERS,
   SETTINGS,
   getStonePriceForSize,
-  addSharedOrder
+  addSharedOrder,
+  withCatalogImageVersion
 } from './data.js';
 
 // ==========================================
@@ -312,7 +313,7 @@ function updateImagePreview(imageEl, rawValue) {
     imageEl.dataset.fallbackApplied = "1";
     imageEl.src = IMAGE_PREVIEW_PLACEHOLDER;
   };
-  imageEl.src = value || IMAGE_PREVIEW_PLACEHOLDER;
+  imageEl.src = value ? withCatalogImageVersion(value) : IMAGE_PREVIEW_PLACEHOLDER;
   imageEl.alt = value ? "Preview image" : "Image preview placeholder";
 }
 
@@ -326,7 +327,7 @@ function updateImageThumbnail(imageEl, rawValue) {
     imageEl.dataset.fallbackApplied = "1";
     imageEl.src = IMAGE_THUMB_PLACEHOLDER;
   };
-  imageEl.src = value || IMAGE_THUMB_PLACEHOLDER;
+  imageEl.src = value ? withCatalogImageVersion(value) : IMAGE_THUMB_PLACEHOLDER;
 }
 
 function getSafeThumbnailSrc(rawValue) {
@@ -334,7 +335,7 @@ function getSafeThumbnailSrc(rawValue) {
   if (!value || value.endsWith("/_placeholder.png") || value.endsWith("\\_placeholder.png")) {
     return IMAGE_THUMB_PLACEHOLDER;
   }
-  return value;
+  return withCatalogImageVersion(value);
 }
 
 function renderInventoryFromCache() {
@@ -852,7 +853,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       id: stone.id,
       type: 'stone',
       typeLabel: getInventoryTypeLabel('stone'),
-      image: stone.image || '',
+      image: withCatalogImageVersion(stone.image || '', stone),
       nameTh,
       nameEn,
       meta: categoryLabel.th || stone.categoryTh || stone.category || categoryKey || 'Uncategorized',
@@ -888,7 +889,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       id: charm.id,
       type: 'charm',
       typeLabel: getInventoryTypeLabel('charm'),
-      image: charm.image?.primary || '',
+      image: withCatalogImageVersion(charm.image?.primary || '', charm),
       nameTh,
       nameEn,
       meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || 'Charm',
@@ -926,7 +927,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       id: spacer.id,
       type: 'spacer',
       typeLabel: getInventoryTypeLabel('spacer'),
-      image: spacer.image?.primary || '',
+      image: withCatalogImageVersion(spacer.image?.primary || '', spacer),
       nameTh,
       nameEn,
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || 'Spacer',
@@ -2085,7 +2086,7 @@ function renderCharmCatalog(charms, categories = []) {
   }
 
   filtered.forEach((charm) => {
-    const imageSrc = charm.image?.primary || '';
+    const imageSrc = withCatalogImageVersion(charm.image?.primary || '', charm);
     const sizeCm = Number(charm.business?.sizeCm || 0);
     const price = Number(charm.pricing?.base || 0);
     const isInStock = charm.availability?.inStock !== false;
