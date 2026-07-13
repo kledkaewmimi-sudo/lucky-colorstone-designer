@@ -282,7 +282,7 @@ function getCurrentBeadSizeMm() {
 function normalizeSelectedStoneSizes() {
   const normalizedBeadSize = getCurrentBeadSizeMm();
   State.selectedStones.forEach((item) => {
-    if (isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
+    if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
     item.size = normalizedBeadSize;
   });
 }
@@ -303,11 +303,29 @@ function isAnchoredCharmType(charmType) {
   return !isSlotPlaceableCharmType(charmType);
 }
 
+function isEmptyLoopSlot(item) {
+  return String(item?.componentType || item?.type || '').trim().toLowerCase() === 'empty';
+}
+
+function createEmptyLoopSlot(size, uniqueId = null) {
+  const normalizedSize = Number(size);
+  return {
+    componentType: 'empty',
+    size: Number.isFinite(normalizedSize) && normalizedSize > 0 ? normalizedSize : getCurrentBeadSizeMm(),
+    uniqueId
+  };
+}
+
 function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSizeMm()) {
+  if (item === null) return createEmptyLoopSlot(normalizedBeadSize);
   if (!item || typeof item !== 'object') return null;
 
   const componentType = String(item.componentType || 'stone').trim().toLowerCase();
   const uniqueId = Number.isFinite(Number(item.uniqueId)) ? Number(item.uniqueId) : null;
+
+  if (componentType === 'empty') {
+    return createEmptyLoopSlot(item.size, uniqueId);
+  }
 
   if (componentType === 'spacer') {
     const spacerId = String(item.spacerId || item.id || '').trim();
@@ -354,7 +372,7 @@ function normalizeSelectedLoopItems(source = []) {
 
   return source
     .map((item) => normalizeSelectedLoopItem(item, normalizedBeadSize))
-    .filter(Boolean);
+    .filter((item) => item !== null);
 }
 
 function getSelectedLoopItems() {
@@ -370,7 +388,7 @@ function isSelectedCharmItem(item) {
 }
 
 function isSelectedStoneItem(item) {
-  return !isSelectedSpacerItem(item) && !isSelectedCharmItem(item);
+  return Boolean(item) && !isEmptyLoopSlot(item) && !isSelectedSpacerItem(item) && !isSelectedCharmItem(item);
 }
 
 function getSelectedStoneItems() {
@@ -420,6 +438,9 @@ function getSelectedLoopCharmItems() {
 }
 
 function getLoopItemLengthMm(item) {
+  if (isEmptyLoopSlot(item)) {
+    return Number(item?.size || 0);
+  }
   if (isSelectedSpacerItem(item)) {
     const spacer = getSpacerCatalogEntry(item.spacerId);
     return spacer ? spacer.effectiveLengthMm : 0;
@@ -432,6 +453,9 @@ function getLoopItemLengthMm(item) {
 }
 
 function serializeSelectedLoopItem(item) {
+  if (isEmptyLoopSlot(item)) {
+    return { t: 'empty', z: getLoopItemLengthMm(item) };
+  }
   if (isSelectedSpacerItem(item)) {
     return { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) };
   }
@@ -442,6 +466,9 @@ function serializeSelectedLoopItem(item) {
 }
 
 function getSelectedLoopItemRenderKey(item) {
+  if (isEmptyLoopSlot(item)) {
+    return `empty:${getLoopItemLengthMm(item)}`;
+  }
   if (isSelectedSpacerItem(item)) {
     return `spacer:${item.spacerId}:${getLoopItemLengthMm(item)}`;
   }
@@ -549,7 +576,7 @@ function migrateSlotPlaceableCharmSelectionsIntoLoop() {
 
   State.selectedCharmIds = anchoredCharmIds;
   syncSelectedCharmState();
-  State.selectedStones.push(...migratedLoopItems);
+  migratedLoopItems.forEach((loopItem) => placeLoopItemInFirstAvailableSlot(loopItem));
 }
 
 function getShippingInfoSnapshot({ trimValues = false } = {}) {
@@ -1067,6 +1094,9 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
   if (savedSequence?.length) {
     return normalizeSelectedLoopItems(savedSequence.map((item, index) => {
       const itemType = String(item?.componentType || item?.type || 'stone').trim().toLowerCase();
+      if (itemType === 'empty') {
+        return createEmptyLoopSlot(Number(item?.size || item?.sizeMm || order?.beadSize || State.beadSize), index + 1);
+      }
       if (itemType === 'spacer') {
         return {
           componentType: 'spacer',
@@ -1101,6 +1131,9 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
   const loopItems = Array.isArray(decodedConfig?.l)
     ? decodedConfig.l.map((item, index) => {
       const itemType = String(item?.t || 'stone').trim().toLowerCase();
+      if (itemType === 'empty') {
+        return createEmptyLoopSlot(Number(item?.z || item?.l || order?.beadSize || State.beadSize), index + 1);
+      }
       if (itemType === 'spacer') {
         return {
           componentType: 'spacer',
@@ -1355,7 +1388,7 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
   const numPlaceholders = resolvedLayout.summary.numPlaceholders;
   const capacity = State.beadSize === 'mixed' ? null : uniformCapacity;
   const isOverflow = spaceLeftRaw < 0;
-  const isFull = State.selectedStones.length > 0 && numPlaceholders === 0 && !isOverflow;
+  const isFull = resolvedLayout.summary.placedCount > 0 && numPlaceholders === 0 && !isOverflow;
 
   return {
     braceletLengthMm,
@@ -1752,7 +1785,7 @@ function initBeadSizeOptions() {
       if (State.selectedStones.length > 0) {
         const newSize = getCurrentBeadSizeMm();
         State.selectedStones.forEach((item) => {
-          if (isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
+          if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
           item.size = newSize;
         });
         adjustBeadsToNewCapacity();
@@ -2173,7 +2206,11 @@ function applySelectedCharm(charmId) {
   if (!nextCharmId) {
     if (currentCharmIds.length === 0 && currentLoopCharms.length === 0) return;
     State.selectedCharmIds = [];
-    State.selectedStones = State.selectedStones.filter((item) => !isSelectedCharmItem(item));
+    State.selectedStones = State.selectedStones.map((item) => (
+      isSelectedCharmItem(item)
+        ? createEmptyLoopSlot(getLoopItemLengthMm(item), item?.uniqueId || null)
+        : item
+    ));
     syncSelectedCharmState();
     State.activeSlotIndex = null;
     adjustBeadsToNewCapacity();
@@ -2917,6 +2954,16 @@ function buildCheckoutSummary() {
   const discount = Math.round(subtotal * (discountPercent / 100));
   const finalPrice = subtotal - discount;
   const braceletSequence = createBraceletComponentList().map((component, index) => {
+    if (component.type === 'empty') {
+      return {
+        type: 'empty',
+        componentType: 'empty',
+        sequenceIndex: index,
+        size: component.sizeMm,
+        uniqueId: component.uniqueId || component.id
+      };
+    }
+
     if (component.type === 'charm') {
       const charm = getCharmCatalogEntry(component.charmId);
       const charmMeta = charm ? getCharmDisplayMeta(charm) : {};
@@ -3424,24 +3471,51 @@ function renderCatalogGrid() {
   });
 }
 
-// Fill entire loop with one stone type
+function getFirstEmptyLoopSlotIndex() {
+  return State.selectedStones.findIndex((item) => isEmptyLoopSlot(item));
+}
+
+function getAvailableLengthForNewLoopItem() {
+  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
+  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
+  const emptySlotIndex = getFirstEmptyLoopSlotIndex();
+  const reservedSlotLengthMm = emptySlotIndex >= 0
+    ? getLoopItemLengthMm(State.selectedStones[emptySlotIndex])
+    : 0;
+
+  return {
+    emptySlotIndex,
+    availableLengthMm: usableBeadLengthMm - currentTotalDiameter + reservedSlotLengthMm
+  };
+}
+
+function placeLoopItemInFirstAvailableSlot(loopItem) {
+  const emptySlotIndex = getFirstEmptyLoopSlotIndex();
+  State.activeSlotIndex = null;
+
+  if (emptySlotIndex >= 0) {
+    State.selectedStones[emptySlotIndex] = loopItem;
+    return true;
+  }
+
+  State.selectedStones.push(loopItem);
+  return false;
+}
+
+// Fill all currently available slots with one stone type.
 function fillEntireBracelet(stoneId) {
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
-  
-  // Fill the entire capacity with this stone
-  State.selectedStones = [];
+  let { availableLengthMm } = getAvailableLengthForNewLoopItem();
   State.newlyAddedIds = [];
-  let currentTotalDiameter = 0;
   
-  while (currentTotalDiameter + placedSize <= usableBeadLengthMm + 1.0) {
+  while (availableLengthMm + 1.0 >= placedSize) {
     State.uniqueCounter++;
-    State.selectedStones.push(createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter));
+    placeLoopItemInFirstAvailableSlot(createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter));
     State.newlyAddedIds.push(State.uniqueCounter);
-    currentTotalDiameter += placedSize;
+    availableLengthMm = getAvailableLengthForNewLoopItem().availableLengthMm;
   }
   
   State.activeSlotIndex = null;
@@ -3451,9 +3525,7 @@ function fillEntireBracelet(stoneId) {
 }
 
 function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
-  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
-  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
-  const remainingMm = usableBeadLengthMm - currentTotalDiameter;
+  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
 
   if (remainingMm < lengthMm) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${lengthMm}mm)`);
@@ -3461,9 +3533,10 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
   }
 
   State.newlyAddedIds = [loopItem.uniqueId];
+  State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
-    State.selectedStones.splice(State.activeSlotIndex, 0, loopItem);
+    State.selectedStones[State.activeSlotIndex] = loopItem;
     State.activeSlotIndex = null;
     showToast(`Added ${itemLabel} in chosen position.`);
   } else {
@@ -3482,13 +3555,7 @@ function addStoneToBracelet(stoneId) {
   if (!stoneData) return;
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
-  
-  // Calculate total diameter of current beads
-  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
-  
-  // Dynamic remainingMm Calculation to prevent over-filling
-  const remainingMm = usableBeadLengthMm - currentTotalDiameter;
+  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
   
   // Check if there is enough space left for this bead
   if (remainingMm < placedSize) {
@@ -3499,10 +3566,11 @@ function addStoneToBracelet(stoneId) {
   State.uniqueCounter++;
   const newBead = createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter);
   State.newlyAddedIds = [newBead.uniqueId];
+  State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
   
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
-    // Insert at active slot
-    State.selectedStones.splice(State.activeSlotIndex, 0, newBead);
+    // Fill the first retained empty slot before extending the sequence.
+    State.selectedStones[State.activeSlotIndex] = newBead;
     State.activeSlotIndex = null; // Reset selection
     showToast(`Added ${stoneData.nameTh} in chosen position.`);
   } else {
@@ -3520,9 +3588,7 @@ function addSpacerToBracelet(spacerId) {
   const spacer = getSpacerCatalogEntry(spacerId);
   if (!spacer) return;
 
-  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
-  const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
-  const remainingMm = usableBeadLengthMm - currentTotalDiameter;
+  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
 
   if (remainingMm < spacer.effectiveLengthMm) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${spacer.effectiveLengthMm}mm)`);
@@ -3533,9 +3599,10 @@ function addSpacerToBracelet(spacerId) {
   const newSpacer = createSpacerSelectionItem(spacer.id, State.uniqueCounter);
   if (!newSpacer) return;
   State.newlyAddedIds = [newSpacer.uniqueId];
+  State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
-    State.selectedStones.splice(State.activeSlotIndex, 0, newSpacer);
+    State.selectedStones[State.activeSlotIndex] = newSpacer;
     State.activeSlotIndex = null;
     showToast(`Added ${spacer.nameEn} in chosen position.`);
   } else {
@@ -3549,7 +3616,9 @@ function addSpacerToBracelet(spacerId) {
 
 function removeLoopItemFromBracelet(index, showToastNotification = true) {
   if (index < 0 || index >= State.selectedStones.length) return;
-  const [removed] = State.selectedStones.splice(index, 1);
+  const removed = State.selectedStones[index];
+  if (isEmptyLoopSlot(removed)) return;
+  State.selectedStones[index] = createEmptyLoopSlot(getLoopItemLengthMm(removed), removed?.uniqueId || null);
   State.activeSlotIndex = null;
   if (showToastNotification) {
     if (isSelectedSpacerItem(removed)) {
@@ -3593,6 +3662,17 @@ function createBraceletConfig() {
 function createBraceletComponentList() {
   const loopComponents = State.selectedStones
     .map((item, index) => {
+      if (isEmptyLoopSlot(item)) {
+        return {
+          id: item.uniqueId || `empty-${index}`,
+          type: 'empty',
+          layoutRole: 'loop',
+          sourceIndex: index,
+          sizeMm: getLoopItemLengthMm(item),
+          uniqueId: item.uniqueId || `empty-${index}`
+        };
+      }
+
       if (isSelectedSpacerItem(item)) {
         const spacer = getSpacerCatalogEntry(item.spacerId);
         if (!spacer) return null;
@@ -3705,18 +3785,26 @@ function createBraceletComponentList() {
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
   const loopComponents = capacityMetrics.loopComponents;
-  const placedCount = loopComponents.length;
+  const placedCount = loopComponents.filter((component) => component.type !== 'empty').length;
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
-  const numPlaceholders = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
+  const trailingPlaceholderCount = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
+  const emptySlotCount = loopComponents.filter((component) => component.type === 'empty').length;
+  const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
 
   const loopItems = [
-    ...loopComponents.map((component) => ({
-      kind: 'component',
-      component,
-      sizeMm: component.sizeMm
-    })),
-    ...Array.from({ length: numPlaceholders }, (_, index) => ({
+    ...loopComponents.map((component) => component.type === 'empty'
+      ? {
+        kind: 'placeholder',
+        sourceIndex: component.sourceIndex,
+        sizeMm: component.sizeMm
+      }
+      : {
+        kind: 'component',
+        component,
+        sizeMm: component.sizeMm
+      }),
+    ...Array.from({ length: trailingPlaceholderCount }, (_, index) => ({
       kind: 'placeholder',
       placeholderIndex: index,
       sizeMm: braceletConfig.placingSizeMm
@@ -3746,12 +3834,18 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       isFirstPlaceholder
     };
 
+    const sourceIndex = item.kind === 'component'
+      ? item.component.sourceIndex
+      : item.sourceIndex;
+    if (Number.isInteger(sourceIndex)) {
+      resolvedNode.sourceIndex = sourceIndex;
+      resolvedNode.isActiveSlot = sourceIndex === braceletConfig.activeSlotIndex;
+    }
+
     if (item.kind === 'component') {
       resolvedNode.component = item.component;
-      resolvedNode.sourceIndex = Number.isInteger(item.component.sourceIndex) ? item.component.sourceIndex : null;
       resolvedNode.uniqueClipId = `clip-${item.component.uniqueId}`;
       resolvedNode.isNewlyAdded = braceletConfig.newlyAddedIds.includes(item.component.uniqueId);
-      resolvedNode.isActiveSlot = Number.isInteger(item.component.sourceIndex) && item.component.sourceIndex === braceletConfig.activeSlotIndex;
     }
 
     return resolvedNode;
@@ -3763,12 +3857,18 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     const fillerItems = [
       ...loopComponents
         .filter((component) => component.type !== 'charm' || isSlotPlaceableCharmType(component.charmType))
-        .map((component) => ({
-          kind: 'component',
-          component,
-          sizeMm: component.sizeMm
-        })),
-      ...Array.from({ length: numPlaceholders }, (_, index) => ({
+        .map((component) => component.type === 'empty'
+          ? {
+            kind: 'placeholder',
+            sourceIndex: component.sourceIndex,
+            sizeMm: component.sizeMm
+          }
+          : {
+            kind: 'component',
+            component,
+            sizeMm: component.sizeMm
+          }),
+      ...Array.from({ length: trailingPlaceholderCount }, (_, index) => ({
         kind: 'placeholder',
         placeholderIndex: index,
         sizeMm: braceletConfig.placingSizeMm
@@ -3867,10 +3967,13 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     const firstItemAngleWidth = (loopItems[0].sizeMm / loopCircumferenceMm) * 2 * Math.PI;
     accumulatedAngle -= firstItemAngleWidth / 2;
   }
+  let firstPlaceholderAssigned = false;
   const nodes = loopItems.map((item, index) => {
     const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
     const centerAngle = accumulatedAngle + itemAngleWidth / 2;
-    const resolvedNode = buildResolvedNode(item, index, itemAngleWidth, centerAngle, item.kind === 'placeholder' && index === placedCount);
+    const isFirstPlaceholder = item.kind === 'placeholder' && !firstPlaceholderAssigned;
+    if (isFirstPlaceholder) firstPlaceholderAssigned = true;
+    const resolvedNode = buildResolvedNode(item, index, itemAngleWidth, centerAngle, isFirstPlaceholder);
     accumulatedAngle += itemAngleWidth;
     return resolvedNode;
   });
@@ -3969,7 +4072,6 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
     summary
   } = resolvedLayout;
   const { centerX: cx, centerY: cy, radiusPx: rCanvas } = braceletConfig.svg;
-  const placedCount = summary.placedCount;
   
   // Draw subtle Cream-to-White gradient placeholder rail ring
   const bgRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -4253,7 +4355,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       
       // Add active index slot choice
       group.addEventListener('click', () => {
-        State.activeSlotIndex = placedCount; // Click placeholders defaults to append
+        State.activeSlotIndex = Number.isInteger(node.sourceIndex) ? node.sourceIndex : null;
         showToast("Select a stone or spacer from the catalog below to add!");
       });
     }
@@ -4997,7 +5099,7 @@ async function handleStripeCheckout() {
     return;
   }
 
-  if (State.selectedStones.length === 0) {
+  if (getSelectedStoneItems().length === 0) {
     showToast("Bracelet is empty!");
     return;
   }
@@ -5870,7 +5972,7 @@ function renderBraceletShowcaseFallback(previewKey = '') {
 
 // Submit Order to CRM backend database
 async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
-  if (State.selectedStones.length === 0) {
+  if (getSelectedStoneItems().length === 0) {
     if (showToastNotification) showToast("Bracelet is empty!");
     return null;
   }
