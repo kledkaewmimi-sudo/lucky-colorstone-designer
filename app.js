@@ -3992,7 +3992,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         sheenCircle.setAttribute("cy", by);
         sheenCircle.setAttribute("r", bRadiusPx);
         sheenCircle.setAttribute("fill", "url(#sphericalShading)");
-        sheenCircle.setAttribute("opacity", "0.75");
+        sheenCircle.setAttribute("opacity", "0.38");
         sheenCircle.setAttribute("pointer-events", "none");
         group.appendChild(sheenCircle);
         
@@ -4105,12 +4105,12 @@ function createSvgDefs() {
   const stop3 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
   stop3.setAttribute("offset", "85%");
   stop3.setAttribute("stop-color", "#000000");
-  stop3.setAttribute("stop-opacity", "0.35");
+  stop3.setAttribute("stop-opacity", "0.16");
   
   const stop4 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
   stop4.setAttribute("offset", "100%");
   stop4.setAttribute("stop-color", "#000000");
-  stop4.setAttribute("stop-opacity", "0.75");
+  stop4.setAttribute("stop-opacity", "0.28");
   
   radGrad.appendChild(stop1);
   radGrad.appendChild(stop2);
