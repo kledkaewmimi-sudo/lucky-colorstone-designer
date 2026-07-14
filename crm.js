@@ -2790,7 +2790,7 @@ function normalizeOrderBraceletPreviewItems(order = {}) {
           : (item.renderSizeMm || spacer?.renderSizeMm || displaySizeMm),
         renderWidthMm: renderTuning.renderWidthMm || item.renderWidthMm || (isSlotCharm ? 12.5 : 0),
         renderHeightMm: renderTuning.renderHeightMm || item.renderHeightMm || (isSlotCharm ? 18 : 0),
-        visualScale: isSlotCharm ? 1.15 : renderTuning.visualScale,
+        visualScale: isSlotCharm ? 1.3225 : renderTuning.visualScale,
         visualOffsetX: renderTuning.visualOffsetX,
         visualOffsetY: renderTuning.visualOffsetY,
         maxWidthRatio: renderTuning.maxWidthRatio,

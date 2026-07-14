@@ -3723,7 +3723,7 @@ function createBraceletComponentList() {
           renderWidthMm: 12.5,
           renderHeightMm: 18,
           ...renderTuning,
-          visualScale: 1.15,
+          visualScale: 1.3225,
           outwardOffsetMm: 7.2,
           uniqueId: item.uniqueId
         };
@@ -5361,7 +5361,7 @@ function getFixedBeeHeartPlacement(frameWidth, frameHeight, sourceWidth, sourceH
   const safeTuning = resolveCharmRenderTuning(tuning);
   const rawVisualScale = Number(tuning?.visualScale);
   const safeVisualScale = Number.isFinite(rawVisualScale)
-    ? Math.min(1.2, Math.max(0.1, rawVisualScale))
+    ? Math.min(1.4, Math.max(0.1, rawVisualScale))
     : safeTuning.visualScale;
   const maxFrameWidth = frameWidth * safeTuning.maxWidthRatio;
   const maxFrameHeight = frameHeight * safeTuning.maxHeightRatio;
