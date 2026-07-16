@@ -11,6 +11,7 @@ if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearSto
 const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
+const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const CUSTOMER_COMPONENT_LABELS = {
   stone: getComponentTypeLabel('stone', 'th'),
   charm: getComponentTypeLabel('charm', 'th'),
@@ -668,6 +669,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup LIFF (LINE Front-end Framework)
   await initLIFF();
   clearOAuthQueryParams();
+  restoreCustomizationIntentAfterLogin();
   
   // Fetch initial catalog from shared persistence
   const [, , , sharedSettings] = await Promise.all([
@@ -747,6 +749,109 @@ function isLiffLoggedIn() {
     && liff.isLoggedIn();
 }
 
+function isLineIdentityAvailable() {
+  const hasLineUserId = Boolean(State.lineUserId && State.lineUserId.trim());
+  if (!hasLineUserId) return false;
+  if (State.liffInitialized && typeof liff !== 'undefined' && typeof liff.isLoggedIn === 'function') {
+    return isLiffLoggedIn();
+  }
+  return true;
+}
+
+async function syncLineProfileFromLiff() {
+  if (!isLiffLoggedIn()) return false;
+
+  try {
+    const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
+    State.lineUserId = String(profile.userId || '').trim();
+    if (profile.displayName) {
+      State.ownerName = profile.displayName;
+      DOM.braceletOwnerName.value = profile.displayName;
+    }
+    saveState();
+    return isLineIdentityAvailable();
+  } catch (profileErr) {
+    console.warn("LIFF profile fetch failed. LINE identity is unavailable.", profileErr);
+    return false;
+  }
+}
+
+function rememberCustomizationLoginIntent() {
+  localStorage.setItem(CUSTOMIZATION_LOGIN_INTENT_KEY, JSON.stringify({
+    ts: Date.now(),
+    step: State.currentStep || 1
+  }));
+}
+
+function clearCustomizationLoginIntent() {
+  localStorage.removeItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+}
+
+function restoreCustomizationIntentAfterLogin() {
+  if (getRequestedOrderId() || !localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY)) return;
+  if (!isLineIdentityAvailable()) return;
+
+  clearCustomizationLoginIntent();
+  State.landingDismissed = true;
+  persistLandingDismissed();
+  syncShellVisibility();
+}
+
+function startLiffLoginForCustomization() {
+  if (getRequestedOrderId()) return true;
+  if (liffLoginInProgress) {
+    console.warn("LIFF login already in progress.");
+    return false;
+  }
+  if (typeof liff === 'undefined' || !State.liffInitialized || typeof liff.login !== 'function') {
+    return false;
+  }
+
+  const loader = DOM.liffLoadingOverlay;
+  rememberCustomizationLoginIntent();
+  saveState();
+  if (loader) loader.style.display = 'flex';
+  liffLoginInProgress = true;
+  console.log("LIFF customization login start");
+
+  try {
+    liff.login({ redirectUri: getLiffRedirectUri() });
+    return false;
+  } catch (loginErr) {
+    liffLoginInProgress = false;
+    clearCustomizationLoginIntent();
+    if (loader) loader.style.display = 'none';
+    console.warn("LIFF customization login failed to start.", loginErr);
+    showToast("ไม่สามารถเปิด LINE Login ได้ กรุณาลองใหม่อีกครั้ง");
+    return false;
+  }
+}
+
+async function requireLineLoginForCustomization(options = {}) {
+  const { allowPreviewFallback = false } = options;
+  if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
+  if (isLineIdentityAvailable()) return true;
+  if (isLiffLoggedIn()) {
+    const profileReady = await syncLineProfileFromLiff();
+    if (profileReady) return true;
+    showToast("ไม่สามารถอ่านข้อมูล LINE ได้ กรุณาลองใหม่อีกครั้ง");
+    return false;
+  }
+
+  if (State.liffInitialized && typeof liff !== 'undefined' && typeof liff.login === 'function') {
+    showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
+    return startLiffLoginForCustomization();
+  }
+
+  if (allowPreviewFallback) {
+    showToast("ใช้ LINE เพื่อรับสถานะคำสั่งซื้อและการแจ้งเตือนจากร้าน");
+    return true;
+  }
+
+  showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
+  return false;
+}
+
 // LIFF Initialization
 async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
@@ -788,6 +893,18 @@ async function initLIFF() {
 }
 
 function setupLandingEvents() {
+  DOM.btnLandingLogin.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const canContinue = await requireLineLoginForCustomization({ allowPreviewFallback: true });
+    if (!canContinue) return;
+
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    await renderApp();
+  });
+
   DOM.btnLandingLogin.addEventListener('click', () => {
     // ซ่อน Landing Page
     const landingView = document.getElementById('landingView');
@@ -5104,6 +5221,11 @@ async function handleStripeCheckout() {
     return;
   }
 
+  const hasLineLogin = await requireLineLoginForCustomization();
+  if (!hasLineLogin) {
+    return;
+  }
+
   const shippingInfo = validateShippingInfo();
   if (!shippingInfo) {
     return;
@@ -5977,6 +6099,11 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
     return null;
   }
 
+  const hasLineLogin = await requireLineLoginForCustomization();
+  if (!hasLineLogin) {
+    return null;
+  }
+
   await ensureBraceletPreviewImage();
   const nextOrderPayload = buildCurrentOrderPayload({
     configurationCode: buildDesignConfigurationCode(),
@@ -6071,7 +6198,8 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
 // Generate Formatted LINE Order Message & Redirection
 async function handleLineOrder() {
   // First, submit order to CRM database so it syncs immediately
-  await submitOrderToCRM(false);
+  const savedOrder = await submitOrderToCRM(false);
+  if (!savedOrder) return;
   
   const dateFormatted = DOM.summaryDateText.textContent.replace('Date: ', '');
   const ownerLabel = State.ownerName ? State.ownerName : "Khun Guest";
