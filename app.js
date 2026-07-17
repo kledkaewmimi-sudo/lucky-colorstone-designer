@@ -12,6 +12,8 @@ const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
+const LIFF_ID = '2010525799-qImIuhla';
+const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const CUSTOMER_COMPONENT_LABELS = {
   stone: getComponentTypeLabel('stone', 'th'),
   charm: getComponentTypeLabel('charm', 'th'),
@@ -180,6 +182,7 @@ const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
 let liffLoginInProgress = false;
 let landingStartInProgress = false;
+let landingConnectPromptVisible = false;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -739,7 +742,7 @@ function setLandingButtonState(state, message = '') {
   const isLoading = state === 'starting' || state === 'line';
   const text = button.querySelector('.btn-text');
   if (text) {
-    text.textContent = isLoading ? message : 'Start Customize';
+    text.textContent = isLoading ? message : (message || 'Start Customize');
   }
   button.disabled = isLoading;
   button.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
@@ -749,11 +752,55 @@ function setLandingButtonState(state, message = '') {
 
 function resetLandingStartState() {
   landingStartInProgress = false;
-  setLandingButtonState('idle');
+  setLandingButtonState('idle', landingConnectPromptVisible ? 'เข้าสู่ระบบด้วย LINE' : '');
+}
+
+function setLandingSubtitleMessage(message = '') {
+  const subtitle = document.querySelector('.landing-hero-subtitle');
+  if (!subtitle) return;
+
+  if (!subtitle.dataset.defaultHtml) {
+    subtitle.dataset.defaultHtml = subtitle.innerHTML;
+  }
+
+  if (message) {
+    subtitle.textContent = message;
+  } else {
+    subtitle.innerHTML = subtitle.dataset.defaultHtml;
+  }
+}
+
+function showLineConnectPrompt(message = '') {
+  landingConnectPromptVisible = true;
+  setLandingSubtitleMessage('ใช้ LINE เพื่อรับสถานะคำสั่งซื้อและแจ้งเตือนจากร้าน');
+  setLandingButtonState('idle', 'เข้าสู่ระบบด้วย LINE');
+  if (message) {
+    showToast(message);
+  }
+}
+
+function clearLineConnectPrompt() {
+  landingConnectPromptVisible = false;
+  setLandingSubtitleMessage('');
 }
 
 function getLiffRedirectUri() {
   return `${window.location.origin}${window.location.pathname}`;
+}
+
+function getLiffEntryUrl() {
+  return `https://liff.line.me/${LIFF_ID}`;
+}
+
+function isLikelyMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || '');
+}
+
+function canUseLiffLoginFromCurrentBrowser() {
+  return typeof liff !== 'undefined'
+    && State.liffInitialized
+    && typeof liff.login === 'function'
+    && (isLiffInClient() || isLikelyMobileBrowser());
 }
 
 function isLiffInClient() {
@@ -800,7 +847,7 @@ async function syncLineProfileFromLiff() {
 function rememberCustomizationLoginIntent() {
   localStorage.setItem(CUSTOMIZATION_LOGIN_INTENT_KEY, JSON.stringify({
     ts: Date.now(),
-    step: State.currentStep || 1
+    step: 1
   }));
 }
 
@@ -813,6 +860,7 @@ function restoreCustomizationIntentAfterLogin() {
   if (!isLineIdentityAvailable()) return;
 
   clearCustomizationLoginIntent();
+  State.currentStep = 1;
   State.landingDismissed = true;
   persistLandingDismissed();
   syncShellVisibility();
@@ -844,34 +892,64 @@ function startLiffLoginForCustomization() {
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LIFF customization login failed to start.", loginErr);
+    if (!State.landingDismissed) {
+      showLineConnectPrompt(LINE_CONNECT_RETRY_MESSAGE);
+      resetLandingStartState();
+    } else {
+      resetLandingStartState();
+      showToast(LINE_CONNECT_RETRY_MESSAGE);
+    }
+    return false;
+  }
+}
+
+function openLineConnectEntryForCustomization() {
+  if (getRequestedOrderId()) return true;
+  if (liffLoginInProgress) return false;
+
+  const loader = DOM.liffLoadingOverlay;
+  rememberCustomizationLoginIntent();
+  saveState();
+  setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
+  if (loader) loader.style.display = 'flex';
+  liffLoginInProgress = true;
+
+  try {
+    window.location.assign(getLiffEntryUrl());
+    return false;
+  } catch (entryErr) {
+    liffLoginInProgress = false;
+    clearCustomizationLoginIntent();
+    if (loader) loader.style.display = 'none';
+    console.warn("LINE connect entry failed to open.", entryErr);
     resetLandingStartState();
-    showToast("ไม่สามารถเข้าสู่ระบบ LINE ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
+    showToast(LINE_CONNECT_RETRY_MESSAGE);
     return false;
   }
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { allowPreviewFallback = false } = options;
+  const { showLandingPrompt = false } = options;
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   if (isLineIdentityAvailable()) return true;
   if (isLiffLoggedIn()) {
     const profileReady = await syncLineProfileFromLiff();
     if (profileReady) return true;
-    showToast("ไม่สามารถอ่านข้อมูล LINE ได้ กรุณาลองใหม่อีกครั้ง");
+    showToast(LINE_CONNECT_RETRY_MESSAGE);
     return false;
   }
 
-  if (isLiffInClient() && typeof liff.login === 'function') {
+  if (canUseLiffLoginFromCurrentBrowser()) {
     showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
     return startLiffLoginForCustomization();
   }
 
-  if (allowPreviewFallback) {
-    showToast("ใช้ LINE เพื่อรับสถานะคำสั่งซื้อและการแจ้งเตือนจากร้าน");
-    return true;
+  if (showLandingPrompt) {
+    showLineConnectPrompt();
+  } else {
+    showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
   }
 
-  showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
   return false;
 }
 
@@ -887,7 +965,7 @@ async function initLIFF() {
 
   try {
     console.log("LIFF init start");
-    await withTimeout(liff.init({ liffId: "2010525799-qImIuhla" }), 6000, "LIFF init");
+    await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
 
@@ -922,30 +1000,41 @@ function setupLandingEvents() {
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+
+    if (landingConnectPromptVisible) {
+      if (canUseLiffLoginFromCurrentBrowser()) {
+        startLiffLoginForCustomization();
+      } else {
+        openLineConnectEntryForCustomization();
+      }
+      return;
+    }
+
     setLandingButtonState('starting', 'กำลังเริ่มต้น...');
 
     let canContinue = false;
     try {
       canContinue = await withTimeout(
-        requireLineLoginForCustomization({ allowPreviewFallback: true }),
+        requireLineLoginForCustomization({ showLandingPrompt: true }),
         8000,
         "Start customization"
       );
     } catch (startErr) {
       console.warn("Start customization check failed or timed out.", startErr);
-      showToast("ไม่สามารถเข้าสู่ระบบ LINE ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
+      showLineConnectPrompt(LINE_CONNECT_RETRY_MESSAGE);
       resetLandingStartState();
       return;
     }
 
     if (!canContinue) {
       if (!liffLoginInProgress) {
-        showToast("ไม่สามารถเข้าสู่ระบบ LINE ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
         resetLandingStartState();
       }
       return;
     }
 
+    clearLineConnectPrompt();
+    State.currentStep = 1;
     State.landingDismissed = true;
     persistLandingDismissed();
     await renderApp();
