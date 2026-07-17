@@ -14,6 +14,9 @@ const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload'
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const LIFF_ID = '2010525799-qImIuhla';
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
+const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
+  Array.from({ length: 7 }, (_, index) => `/assets/sample/s${index + 1}.webp`)
+);
 const CUSTOMER_COMPONENT_LABELS = {
   stone: getComponentTypeLabel('stone', 'th'),
   charm: getComponentTypeLabel('charm', 'th'),
@@ -110,6 +113,7 @@ const DOM = {
   canvasCenterSub: document.getElementById('canvasCenterSub'),
   btnBackToSteps: document.getElementById('btnBackToSteps'),
   btnResetBracelet: document.getElementById('btnResetBracelet'),
+  btnInspirationGallery: document.getElementById('btnInspirationGallery'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
   mixedToggleBtns: document.querySelectorAll('.mixed-toggle-btn'),
   catalogTypeFilter: document.getElementById('catalogTypeFilter'),
@@ -154,6 +158,10 @@ const DOM = {
   btnConfirmClose: document.getElementById('btnConfirmClose'),
   btnConfirmCancel: document.getElementById('btnConfirmCancel'),
   btnConfirmOK: document.getElementById('btnConfirmOK'),
+  inspirationGalleryModal: document.getElementById('inspirationGalleryModal'),
+  inspirationGalleryGrid: document.getElementById('inspirationGalleryGrid'),
+  btnInspirationGalleryClose: document.getElementById('btnInspirationGalleryClose'),
+  btnInspirationGalleryBottomClose: document.getElementById('btnInspirationGalleryBottomClose'),
   toastMessage: document.getElementById('toastMessage'),
   
   // Landing Page & Loading selectors
@@ -6533,12 +6541,65 @@ function closeStoneInfoModal() {
   currentModalStone = null;
 }
 
+function renderInspirationGallery() {
+  if (!DOM.inspirationGalleryGrid || DOM.inspirationGalleryGrid.dataset.rendered === 'true') return;
+
+  INSPIRATION_SAMPLE_IMAGES.forEach((src, index) => {
+    const card = document.createElement('figure');
+    card.className = 'inspiration-gallery-item';
+
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = `Bracelet inspiration ${index + 1}`;
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.addEventListener('error', () => {
+      card.classList.add('is-missing');
+      img.remove();
+    }, { once: true });
+
+    const fallback = document.createElement('figcaption');
+    fallback.textContent = 'Image unavailable';
+
+    card.appendChild(img);
+    card.appendChild(fallback);
+    DOM.inspirationGalleryGrid.appendChild(card);
+  });
+
+  DOM.inspirationGalleryGrid.dataset.rendered = 'true';
+}
+
+function openInspirationGallery() {
+  renderInspirationGallery();
+  DOM.inspirationGalleryModal?.classList.add('show');
+  DOM.inspirationGalleryModal?.setAttribute('aria-hidden', 'false');
+}
+
+function closeInspirationGallery() {
+  DOM.inspirationGalleryModal?.classList.remove('show');
+  DOM.inspirationGalleryModal?.setAttribute('aria-hidden', 'true');
+}
+
 function setupModalEvents() {
   DOM.btnModalClose.addEventListener('click', closeStoneInfoModal);
   
   DOM.stoneInfoModal.addEventListener('click', (e) => {
     if (e.target === DOM.stoneInfoModal) {
       closeStoneInfoModal();
+    }
+  });
+
+  DOM.btnInspirationGallery?.addEventListener('click', openInspirationGallery);
+  DOM.btnInspirationGalleryClose?.addEventListener('click', closeInspirationGallery);
+  DOM.btnInspirationGalleryBottomClose?.addEventListener('click', closeInspirationGallery);
+  DOM.inspirationGalleryModal?.addEventListener('click', (e) => {
+    if (e.target === DOM.inspirationGalleryModal) {
+      closeInspirationGallery();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && DOM.inspirationGalleryModal?.classList.contains('show')) {
+      closeInspirationGallery();
     }
   });
 }

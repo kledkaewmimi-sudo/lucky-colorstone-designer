@@ -1241,6 +1241,37 @@ option {
   overflow: visible;
 }
 
+.inspiration-trigger-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 8px 0 0;
+}
+
+.inspiration-gallery-btn {
+  min-height: 38px;
+  padding: 9px 18px;
+  border: 1px solid rgba(139, 0, 0, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fff 0%, #f8f2ff 100%);
+  color: var(--color-velvet-red);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(181, 169, 219, 0.18);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.inspiration-gallery-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139, 0, 0, 0.32);
+  box-shadow: 0 8px 22px rgba(181, 169, 219, 0.24);
+}
+
+.inspiration-gallery-btn:active {
+  transform: translateY(0);
+}
+
 #braceletSvg {
   overflow: visible;
 }
@@ -2552,6 +2583,85 @@ button.stone-card {
 
 #stoneInfoModal .modal-stone-meaning-box {
   margin-bottom: 0;
+}
+
+.inspiration-gallery-modal {
+  backdrop-filter: blur(5px);
+}
+
+.inspiration-gallery-card {
+  width: min(92vw, 420px);
+  max-height: min(82vh, 720px);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.inspiration-gallery-header {
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--color-gray-border);
+}
+
+.inspiration-gallery-body {
+  padding: 14px 14px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.inspiration-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+.inspiration-gallery-item {
+  min-width: 0;
+  margin: 0;
+  aspect-ratio: 1 / 1.15;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--color-card-cream), var(--color-lavender-light));
+  border: 1px solid var(--color-gray-border);
+  box-shadow: 0 8px 20px rgba(181, 169, 219, 0.18);
+  position: relative;
+}
+
+.inspiration-gallery-item img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.inspiration-gallery-item figcaption {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: var(--color-navy-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.inspiration-gallery-item.is-missing figcaption {
+  display: flex;
+}
+
+.inspiration-gallery-footer {
+  padding: 12px 14px 16px;
+  border-top: 1px solid var(--color-gray-border);
+  background: var(--color-card-cream);
+}
+
+.inspiration-gallery-close-btn {
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
 }
 
 .modal-stone-price {
