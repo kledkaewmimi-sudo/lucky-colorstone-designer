@@ -179,6 +179,7 @@ const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
 let liffLoginInProgress = false;
+let landingStartInProgress = false;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -731,6 +732,26 @@ function withTimeout(promise, ms, label) {
     });
 }
 
+function setLandingButtonState(state, message = '') {
+  const button = DOM.btnLandingLogin;
+  if (!button) return;
+
+  const isLoading = state === 'starting' || state === 'line';
+  const text = button.querySelector('.btn-text');
+  if (text) {
+    text.textContent = isLoading ? message : 'Start Customize';
+  }
+  button.disabled = isLoading;
+  button.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
+  button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  button.classList.toggle('is-loading', isLoading);
+}
+
+function resetLandingStartState() {
+  landingStartInProgress = false;
+  setLandingButtonState('idle');
+}
+
 function getLiffRedirectUri() {
   return `${window.location.origin}${window.location.pathname}`;
 }
@@ -810,6 +831,7 @@ function startLiffLoginForCustomization() {
   const loader = DOM.liffLoadingOverlay;
   rememberCustomizationLoginIntent();
   saveState();
+  setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
@@ -822,7 +844,8 @@ function startLiffLoginForCustomization() {
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LIFF customization login failed to start.", loginErr);
-    showToast("ไม่สามารถเปิด LINE Login ได้ กรุณาลองใหม่อีกครั้ง");
+    resetLandingStartState();
+    showToast("ไม่สามารถเข้าสู่ระบบ LINE ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
     return false;
   }
 }
@@ -838,7 +861,7 @@ async function requireLineLoginForCustomization(options = {}) {
     return false;
   }
 
-  if (State.liffInitialized && typeof liff !== 'undefined' && typeof liff.login === 'function') {
+  if (isLiffInClient() && typeof liff.login === 'function') {
     showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
     return startLiffLoginForCustomization();
   }
@@ -897,12 +920,36 @@ function setupLandingEvents() {
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    const canContinue = await requireLineLoginForCustomization({ allowPreviewFallback: true });
-    if (!canContinue) return;
+    if (landingStartInProgress) return;
+    landingStartInProgress = true;
+    setLandingButtonState('starting', 'กำลังเริ่มต้น...');
+
+    let canContinue = false;
+    try {
+      canContinue = await withTimeout(
+        requireLineLoginForCustomization({ allowPreviewFallback: true }),
+        8000,
+        "Start customization"
+      );
+    } catch (startErr) {
+      console.warn("Start customization check failed or timed out.", startErr);
+      showToast("ไม่สามารถเข้าสู่ระบบ LINE ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
+      resetLandingStartState();
+      return;
+    }
+
+    if (!canContinue) {
+      if (!liffLoginInProgress) {
+        showToast("ไม่สามารถเข้าสู่ระบบ LINE ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
+        resetLandingStartState();
+      }
+      return;
+    }
 
     State.landingDismissed = true;
     persistLandingDismissed();
     await renderApp();
+    resetLandingStartState();
   });
 
   DOM.btnLandingLogin.addEventListener('click', () => {
