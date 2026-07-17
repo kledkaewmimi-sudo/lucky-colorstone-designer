@@ -240,6 +240,12 @@
               <span class="helper-tooltip">แตะที่หินเพื่อลบ</span>
             </div>
 
+            <div class="inspiration-trigger-row">
+              <button class="inspiration-gallery-btn" id="btnInspirationGallery" type="button">
+                ดูตัวอย่างกำไล
+              </button>
+            </div>
+
             <!-- Canvas Container -->
             <div class="canvas-container">
               <svg width="250" height="250" viewBox="0 0 250 250" id="braceletSvg">
@@ -540,6 +546,24 @@
             <button class="modal-action-btn" id="btnModalFillAll" style="margin-top: 10px;">Fill Entire Bracelet
               (ใส่ทั้งวง)</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inspiration Gallery Modal -->
+    <div class="modal-backdrop inspiration-gallery-modal" id="inspirationGalleryModal" aria-hidden="true">
+      <div class="modal-content-card inspiration-gallery-card" role="dialog" aria-modal="true"
+        aria-labelledby="inspirationGalleryTitle">
+        <div class="modal-header inspiration-gallery-header">
+          <h3 id="inspirationGalleryTitle">ตัวอย่างกำไล</h3>
+          <button class="modal-close-btn" id="btnInspirationGalleryClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body inspiration-gallery-body">
+          <div class="inspiration-gallery-grid" id="inspirationGalleryGrid"></div>
+        </div>
+        <div class="inspiration-gallery-footer">
+          <button class="modal-action-btn inspiration-gallery-close-btn" id="btnInspirationGalleryBottomClose"
+            type="button">ปิด</button>
         </div>
       </div>
     </div>
