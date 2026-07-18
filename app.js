@@ -6625,7 +6625,7 @@ function closeStoneInfoModal() {
 function renderInspirationGallery() {
   if (!DOM.inspirationGalleryGrid || DOM.inspirationGalleryGrid.dataset.rendered === 'true') return;
 
-  INSPIRATION_SAMPLE_IMAGES.forEach((src, index) => {
+  INSPIRATION_SAMPLE_IMAGES.slice(0, 4).forEach((src, index) => {
     const card = document.createElement('figure');
     card.className = 'inspiration-gallery-item';
 
