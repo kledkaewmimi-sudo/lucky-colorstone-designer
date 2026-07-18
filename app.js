@@ -12,6 +12,7 @@ const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
+const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const LIFF_ID = '2010525799-qImIuhla';
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
@@ -192,6 +193,7 @@ let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 let customizationResumeInProgress = false;
 let inspirationGalleryCloseTimer = null;
+let wristPickerHintTimer = null;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -1958,6 +1960,7 @@ function setupShippingFormEvents() {
 function initWristSizeGrid() {
   document.querySelectorAll('[data-wrist-offset]').forEach((button) => {
     button.addEventListener('click', () => {
+      dismissWristPickerHint();
       const offset = Number(button.getAttribute('data-wrist-offset'));
       const nextSize = getWristSizeByOffset(offset);
       if (nextSize != null) {
@@ -1967,6 +1970,7 @@ function initWristSizeGrid() {
   });
 
   document.getElementById('wristSizePrev')?.addEventListener('click', () => {
+    dismissWristPickerHint();
     const nextSize = getWristSizeByOffset(-1);
     if (nextSize != null) {
       setWristSize(nextSize);
@@ -1974,6 +1978,7 @@ function initWristSizeGrid() {
   });
 
   document.getElementById('wristSizeNext')?.addEventListener('click', () => {
+    dismissWristPickerHint();
     const nextSize = getWristSizeByOffset(1);
     if (nextSize != null) {
       setWristSize(nextSize);
@@ -2041,6 +2046,7 @@ function setupWristWheelDrag() {
 
   wheel.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    dismissWristPickerHint();
     isDragging = true;
     lastY = event.clientY;
     wheel.classList.add('is-dragging');
@@ -2064,6 +2070,7 @@ function setupWristWheelDrag() {
   wheel.addEventListener('pointercancel', stopDrag);
   wheel.addEventListener('wheel', (event) => {
     if (Math.abs(event.deltaY) < 10) return;
+    dismissWristPickerHint();
     event.preventDefault();
     moveWristSizeByOffset(event.deltaY > 0 ? 1 : -1);
   }, { passive: false });
@@ -2074,6 +2081,26 @@ function setupWristWheelDrag() {
 function renderStep1() {
   syncWristSizeDisplay();
   DOM.braceletOwnerName.value = State.ownerName;
+  showWristPickerHint();
+}
+
+function showWristPickerHint() {
+  const wheel = document.getElementById('wristWheelDisplay');
+  if (!wheel || sessionStorage.getItem(WRIST_PICKER_HINT_DISMISSED_KEY) === 'true') return;
+
+  window.clearTimeout(wristPickerHintTimer);
+  wheel.classList.add('show-swipe-hint');
+  wristPickerHintTimer = window.setTimeout(() => {
+    dismissWristPickerHint();
+  }, 2500);
+}
+
+function dismissWristPickerHint() {
+  const wheel = document.getElementById('wristWheelDisplay');
+  window.clearTimeout(wristPickerHintTimer);
+  wristPickerHintTimer = null;
+  wheel?.classList.remove('show-swipe-hint');
+  sessionStorage.setItem(WRIST_PICKER_HINT_DISMISSED_KEY, 'true');
 }
 
 function syncWristSizeDisplay() {

@@ -3870,7 +3870,7 @@ button.stone-card {
 /* Step 1 modern minimal wrist measurement layout */
 #stepView1 {
   color: #40304D;
-  margin-top: -8px;
+  margin-top: 4px;
 }
 
 #stepView1.active {
@@ -3880,7 +3880,7 @@ button.stone-card {
 #stepView1 .step1-measure-card {
   width: 100%;
   min-height: 0;
-  padding: 4px 6px 0;
+  padding: 10px 6px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3889,7 +3889,7 @@ button.stone-card {
 
 #stepView1 .step1-heading-block {
   text-align: left;
-  margin-bottom: 10px;
+  margin-bottom: 9px;
 }
 
 #stepView1 .step1-kicker {
@@ -3924,7 +3924,7 @@ button.stone-card {
 
 #stepView1 .wrist-visual-card {
   position: relative;
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   padding: 0;
   overflow: hidden;
   border: 0;
@@ -3944,7 +3944,7 @@ button.stone-card {
 
 #stepView1 .wrist-measuring-tape-image {
   width: 100%;
-  height: clamp(142px, 38vw, 178px);
+  height: clamp(158px, 42vw, 196px);
   max-width: none;
   max-height: none;
   display: block;
@@ -3963,7 +3963,7 @@ button.stone-card {
   justify-items: center;
   gap: 2px;
   margin: 0 auto;
-  padding: 8px 0 0;
+  padding: 5px 0 0;
   border: 0;
   border-top: 0;
   border-radius: 0;
@@ -4064,6 +4064,7 @@ button.stone-card {
 
 #stepView1 .selected-size-display-card {
   display: inline-flex;
+  position: relative;
   align-items: baseline;
   justify-content: center;
   gap: 7px;
@@ -4075,6 +4076,29 @@ button.stone-card {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+#stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::before,
+#stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, rgba(181, 169, 219, 0.82), transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: wristPickerSwipeHint 1.15s ease-in-out 0s 2;
+}
+
+#stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::before {
+  left: -18px;
+}
+
+#stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::after {
+  right: -18px;
+  animation-delay: 0.12s;
 }
 
 #stepView1 .display-size-value {
@@ -4096,11 +4120,11 @@ button.stone-card {
 
 @media (max-width: 640px) {
   #stepView1 {
-    margin-top: -12px;
+    margin-top: 4px;
   }
 
   #stepView1 .step1-measure-card {
-    padding: 2px 4px 0;
+    padding: 10px 4px 0;
     border-radius: 0;
   }
 
@@ -4115,22 +4139,22 @@ button.stone-card {
   }
 
   #stepView1 .step1-heading-block {
-    margin-bottom: 8px;
+    margin-bottom: 7px;
   }
 
   #stepView1 .wrist-visual-card {
-    margin-bottom: 5px;
+    margin-bottom: 3px;
     border-radius: 0;
   }
 
   #stepView1 .wrist-measuring-tape-image {
-    height: clamp(132px, 35vw, 158px);
+    height: clamp(156px, 41vw, 184px);
     padding: 0;
     border-radius: 16px;
   }
 
   #stepView1 .wrist-picker-card {
-    padding: 7px 0 0;
+    padding: 4px 0 0;
     margin-bottom: 0;
     border-radius: 0;
   }
@@ -4161,4 +4185,38 @@ button.stone-card {
     right: auto;
   }
 
+}
+
+@keyframes wristPickerSwipeHint {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) translateY(10px);
+  }
+
+  22% {
+    opacity: 0.7;
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: translateY(-50%) translateY(-10px);
+  }
+
+  78% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::before,
+  #stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::after {
+    opacity: 0.45;
+    animation: none;
+    transform: translateY(-50%);
+  }
 }
