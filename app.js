@@ -191,6 +191,7 @@ let legacyCharmCatalogCache = [];
 let liffLoginInProgress = false;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
+let customizationResumeInProgress = false;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -655,6 +656,7 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
 document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
+  const shouldResumeCustomizationStart = !returnParams.has('orderId') && hasCustomizationLoginIntent();
 
   // Show loading overlay during LIFF boot
   const loader = document.getElementById('liffLoadingOverlay');
@@ -663,8 +665,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load persisted state if exists
   loadPersistedState();
   if (shouldOpenStep4FromUrl) {
+    if (returnParams.has('orderId')) {
+      clearCustomizationLoginIntent();
+    }
     State.currentStep = 4;
     State.landingDismissed = true;
+  } else if (shouldResumeCustomizationStart) {
+    customizationResumeInProgress = true;
+    State.currentStep = 1;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    setLiffLoadingMessage('เข้าสู่ระบบสำเร็จ กำลังพาไปเริ่มออกแบบ...');
   }
   syncShellVisibility();
   
@@ -727,6 +738,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Perform first render
   await renderApp();
+  if (customizationResumeInProgress) {
+    await completeCustomizationStartResume();
+  }
 });
 
 function withTimeout(promise, ms, label) {
@@ -756,11 +770,19 @@ function setLandingButtonState(state, message = '') {
   button.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
   button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
   button.classList.toggle('is-loading', isLoading);
+  button.classList.toggle('is-pressed', state === 'starting');
+  button.classList.toggle('is-line-login', state === 'line');
 }
 
 function resetLandingStartState() {
   landingStartInProgress = false;
   setLandingButtonState('idle', landingConnectPromptVisible ? 'เข้าสู่ระบบด้วย LINE' : '');
+}
+
+function setLiffLoadingMessage(message = '') {
+  const loadingText = DOM.liffLoadingOverlay?.querySelector('.loading-text');
+  if (!loadingText) return;
+  loadingText.textContent = message || 'กำลังเชื่อมต่อกับ LINE...';
 }
 
 function setLandingSubtitleMessage(message = '') {
@@ -859,19 +881,57 @@ function rememberCustomizationLoginIntent() {
   }));
 }
 
+function hasCustomizationLoginIntent() {
+  const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  if (!rawIntent) return false;
+
+  try {
+    const intent = JSON.parse(rawIntent);
+    const intentAgeMs = Date.now() - Number(intent?.ts || 0);
+    if (intentAgeMs >= 0 && intentAgeMs <= 10 * 60 * 1000) {
+      return true;
+    }
+  } catch (intentErr) {
+    console.warn("Invalid customization login intent. Clearing stale state.", intentErr);
+  }
+
+  clearCustomizationLoginIntent();
+  return false;
+}
+
 function clearCustomizationLoginIntent() {
   localStorage.removeItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
 }
 
 function restoreCustomizationIntentAfterLogin() {
-  if (getRequestedOrderId() || !localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY)) return;
+  if (getRequestedOrderId() || !hasCustomizationLoginIntent()) return;
   if (!isLineIdentityAvailable()) return;
 
-  clearCustomizationLoginIntent();
   State.currentStep = 1;
   State.landingDismissed = true;
   persistLandingDismissed();
   syncShellVisibility();
+}
+
+async function completeCustomizationStartResume() {
+  const loader = DOM.liffLoadingOverlay;
+
+  if (hasCustomizationLoginIntent() && isLineIdentityAvailable() && State.currentStep === 1 && State.landingDismissed) {
+    clearCustomizationLoginIntent();
+    saveState();
+    if (loader) loader.style.display = 'none';
+    customizationResumeInProgress = false;
+    return;
+  }
+
+  customizationResumeInProgress = false;
+  clearCustomizationLoginIntent();
+  State.landingDismissed = false;
+  persistLandingDismissed();
+  syncShellVisibility();
+  showLineConnectPrompt(LINE_CONNECT_RETRY_MESSAGE);
+  resetLandingStartState();
+  if (loader) loader.style.display = 'none';
 }
 
 function startLiffLoginForCustomization() {
@@ -888,6 +948,7 @@ function startLiffLoginForCustomization() {
   rememberCustomizationLoginIntent();
   saveState();
   setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
+  setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
@@ -919,6 +980,7 @@ function openLineConnectEntryForCustomization() {
   rememberCustomizationLoginIntent();
   saveState();
   setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
+  setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
 
@@ -966,7 +1028,7 @@ async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
-    if (loader) loader.style.display = 'none';
+    if (loader && !customizationResumeInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
     return;
   }
@@ -997,7 +1059,7 @@ async function initLIFF() {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
   } finally {
-    if (loader) loader.style.display = 'none';
+    if (loader && !customizationResumeInProgress) loader.style.display = 'none';
   }
 }
 
@@ -1008,6 +1070,7 @@ function setupLandingEvents() {
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+    setLandingButtonState('starting', 'กำลังเริ่มต้น...');
 
     if (landingConnectPromptVisible) {
       if (canUseLiffLoginFromCurrentBrowser()) {
@@ -1017,8 +1080,6 @@ function setupLandingEvents() {
       }
       return;
     }
-
-    setLandingButtonState('starting', 'กำลังเริ่มต้น...');
 
     let canContinue = false;
     try {
@@ -1046,81 +1107,10 @@ function setupLandingEvents() {
     State.landingDismissed = true;
     persistLandingDismissed();
     await renderApp();
+    if (State.currentStep === 1) {
+      clearCustomizationLoginIntent();
+    }
     resetLandingStartState();
-  });
-
-  DOM.btnLandingLogin.addEventListener('click', () => {
-    // ซ่อน Landing Page
-    const landingView = document.getElementById('landingView');
-    if (landingView) {
-      landingView.style.display = 'none';
-    }
-    
-    // แสดง App Container (Stepper & Steps)
-    const appContainer = document.querySelector('.app-container');
-    if (appContainer) {
-      appContainer.style.display = 'flex';
-    }
-    State.landingDismissed = true;
-    persistLandingDismissed();
-    
-    const loader = DOM.liffLoadingOverlay;
-    if (isLiffInClient() && liffLoginInProgress) {
-      console.warn("LIFF login already in progress.");
-      return;
-    }
-    
-    if (isLiffInClient() && !isLiffLoggedIn()) {
-      if (loader) loader.style.display = 'flex';
-      liffLoginInProgress = true;
-      console.log("LIFF login start");
-      try {
-        liff.login({ redirectUri: getLiffRedirectUri() });
-      } catch (loginErr) {
-        liffLoginInProgress = false;
-        if (loader) loader.style.display = 'none';
-        console.warn("LIFF login failed to start. Continuing without LINE login.", loginErr);
-        renderApp();
-      }
-    } else {
-      if (isLiffInClient() && isLiffLoggedIn()) {
-        renderApp();
-        return;
-      }
-
-      const isTestLoginFallback = window.navigator.webdriver || urlParams.has('webdriver') || urlParams.has('test') || urlParams.has('mock');
-      if (!isLiffInClient() && !isTestLoginFallback) {
-        if (loader) loader.style.display = 'none';
-        renderApp();
-        return;
-      }
-
-      if (loader) loader.style.display = 'flex';
-      // Mock desktop login fallback
-      setTimeout(() => {
-        if (loader) loader.style.display = 'none';
-        
-        // Bypass native prompt in automated/headless testing or when query param is present
-        if (isTestLoginFallback) {
-          State.ownerName = "Somchai";
-          DOM.braceletOwnerName.value = State.ownerName;
-          showToast(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${State.ownerName}`);
-          renderApp();
-          return;
-        }
-        
-        const testName = prompt("กรุณากรอกชื่อของคุณเพื่อเข้าสู่ระบบ (จำลอง LINE Login):", State.ownerName || "Aou");
-        if (testName && testName.trim()) {
-          State.ownerName = testName.trim();
-          DOM.braceletOwnerName.value = State.ownerName;
-          showToast(`เข้าสู่ระบบสำเร็จ! ยินดีต้อนรับคุณ ${State.ownerName}`);
-          renderApp();
-        } else {
-          // If prompt cancelled/dismissed, hide spinner
-          if (loader) loader.style.display = 'none';
-        }
-      }, 600);
-    }
   });
 }
 

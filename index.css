@@ -245,6 +245,8 @@ option {
   align-items: center;
   justify-content: center;
   gap: 12px;
+  position: relative;
+  overflow: hidden;
   padding: 16px 48px;
   background: linear-gradient(135deg, #8b1538 0%, #c41e3a 100%);
   color: white;
@@ -279,6 +281,33 @@ option {
 
 .btn-start-customize.is-loading .btn-sparkle {
   animation-duration: 1s;
+}
+
+.btn-start-customize.is-pressed,
+.btn-start-customize.is-pressed:disabled {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 4px 14px rgba(196, 30, 58, 0.22);
+}
+
+.btn-start-customize.is-line-login,
+.btn-start-customize.is-line-login:disabled {
+  opacity: 1;
+  color: #FFFFFF;
+  background: linear-gradient(110deg, #06A84F 0%, #19C463 42%, #0F9F4B 68%, #06A84F 100%);
+  background-size: 200% 100%;
+  animation: lineLoginShimmer 1.3s ease-in-out infinite;
+  box-shadow: 0 8px 24px rgba(0, 184, 83, 0.28);
+}
+
+.btn-start-customize.is-line-login::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 12px 0 0 rgba(255, 255, 255, 0.58), 24px 0 0 rgba(255, 255, 255, 0.32);
+  animation: lineLoginDots 0.9s ease-in-out infinite;
 }
 
 .btn-sparkle {
@@ -341,6 +370,34 @@ option {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes lineLoginShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes lineLoginDots {
+  0%, 100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-start-customize,
+  .btn-start-customize.is-line-login,
+  .btn-start-customize.is-line-login::after {
+    animation: none;
   }
 }
 
