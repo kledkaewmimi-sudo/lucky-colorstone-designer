@@ -3975,8 +3975,8 @@ button.stone-card {
   color: #9E8DAE;
   font-size: 11px;
   font-weight: 750;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 #stepView1 .wrist-wheel-control {
@@ -4076,6 +4076,11 @@ button.stone-card {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+#stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card {
+  animation: wristPickerNumberNudge 1.15s ease-in-out 0s 2;
+  will-change: transform;
 }
 
 #stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::before,
@@ -4187,6 +4192,25 @@ button.stone-card {
 
 }
 
+@keyframes wristPickerNumberNudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  28% {
+    transform: translateY(-5px);
+  }
+
+  58% {
+    transform: translateY(6px);
+  }
+
+  82% {
+    transform: translateY(-2px);
+  }
+}
+
 @keyframes wristPickerSwipeHint {
   0% {
     opacity: 0;
@@ -4213,6 +4237,11 @@ button.stone-card {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  #stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card {
+    animation: none;
+    transform: none;
+  }
+
   #stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::before,
   #stepView1 .wrist-wheel-window.show-swipe-hint .selected-size-display-card::after {
     opacity: 0.45;
