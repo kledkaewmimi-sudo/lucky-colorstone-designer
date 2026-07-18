@@ -91,35 +91,67 @@
 
       <!-- STEP 1: WRIST MEASUREMENT -->
       <section class="step-view active" id="stepView1">
-        <h2 class="step-title">วัดขนาดข้อมือ</h2>
-        <p class="step-subtitle">วัดรอบข้อมือแบบพอดี (หน่วยเซนติเมตร)</p>
-
-        <!-- Premium Visual Aid - Hand with Measuring Tape -->
-        <div class="wrist-visual-card">
-          <img class="wrist-measuring-tape-image" src="/assets/wrist-measuring-tape.jpg"
-            alt="Measure wrist circumference with measuring tape">
-
-          <div class="wrist-visual-caption">
-            วัดรอบข้อมือบริเวณข้อมือ — สายวัดแนบพอดี ไม่หลวมไม่แน่น
+        <div class="step1-measure-card">
+          <div class="step1-heading-block">
+            <span class="step1-kicker">Lucky Colorstone Fit</span>
+            <h2 class="step-title">วัดขนาดข้อมือ</h2>
+            <p class="step-subtitle">วัดรอบข้อมือแบบพอดี (หน่วยเซนติเมตร)</p>
           </div>
-        </div>
 
-        <!-- Large Selected Size Display Card -->
-        <div class="selected-size-display-card">
-          <span class="display-size-value" id="displaySizeValue">16.0</span>
-          <span class="display-size-unit">cm</span>
-        </div>
+          <!-- Premium Visual Aid - Hand with Measuring Tape -->
+          <div class="wrist-visual-card">
+            <picture>
+              <source srcset="/assets/wrist-measuring-tape.webp" type="image/webp">
+              <img class="wrist-measuring-tape-image" src="/assets/wrist-measuring-tape.jpg"
+                alt="Measure wrist circumference with measuring tape">
+            </picture>
 
-        <!-- Wrist Size Buttons (14.0 to 20.0 cm) -->
-        <div class="size-selection-grid" id="wristSizeGrid">
-          <!-- Dynamically populated in app.js -->
-        </div>
+            <div class="wrist-visual-caption">
+              วัดรอบข้อมือบริเวณข้อมือ — สายวัดแนบพอดี ไม่หลวมไม่แน่น
+            </div>
+          </div>
 
-        <!-- Personalization Field -->
-        <div class="name-input-group">
-          <label class="name-label" for="braceletOwnerName">ชื่อเจ้าของกำไล (ไม่บังคับ)</label>
-          <input type="text" id="braceletOwnerName" class="name-input" placeholder="ใส่ชื่อเจ้าของกำไล เช่น เอ็ม, นัท"
-            maxlength="20">
+          <div class="wrist-picker-card" aria-label="เลือกขนาดข้อมือ">
+            <span class="wrist-picker-label">ขนาดที่แนะนำ</span>
+            <button class="wrist-wheel-control wrist-wheel-prev" id="wristSizePrev" type="button"
+              aria-label="ลดขนาดข้อมือ">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m18 15-6-6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <div class="wrist-wheel-window" id="wristWheelDisplay" role="listbox" aria-label="ขนาดข้อมือ">
+              <button class="wrist-wheel-value is-far" type="button" data-wrist-offset="-2" tabindex="-1"></button>
+              <button class="wrist-wheel-value" type="button" data-wrist-offset="-1"></button>
+              <div class="selected-size-display-card" role="option" aria-selected="true">
+                <span class="display-size-value" id="displaySizeValue">16.0</span>
+                <span class="display-size-unit">cm</span>
+              </div>
+              <button class="wrist-wheel-value" type="button" data-wrist-offset="1"></button>
+              <button class="wrist-wheel-value is-far" type="button" data-wrist-offset="2" tabindex="-1"></button>
+            </div>
+
+            <button class="wrist-wheel-control wrist-wheel-next" id="wristSizeNext" type="button"
+              aria-label="เพิ่มขนาดข้อมือ">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Wrist Size Buttons (14.0 to 20.0 cm) -->
+          <div class="size-selection-grid" id="wristSizeGrid" aria-label="เลือกขนาดข้อมือแบบเร็ว">
+            <!-- Dynamically populated in app.js -->
+          </div>
+
+          <!-- Personalization Field -->
+          <div class="name-input-group">
+            <label class="name-label" for="braceletOwnerName">ชื่อเจ้าของกำไล (ไม่บังคับ)</label>
+            <input type="text" id="braceletOwnerName" class="name-input" placeholder="ใส่ชื่อเจ้าของกำไล เช่น เอ็ม, นัท"
+              maxlength="20">
+          </div>
         </div>
       </section>
 

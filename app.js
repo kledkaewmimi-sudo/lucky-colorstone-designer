@@ -1965,32 +1965,68 @@ function initWristSizeGrid() {
     btn.innerHTML = `${size.toFixed(1)} <span>cm</span>`;
     
     btn.addEventListener('click', () => {
-      // Set active button
-      document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      
-      State.wristSize = size;
-      syncWristSizeDisplay();
-      
-      // Save owner name
-      State.ownerName = DOM.braceletOwnerName.value.trim();
-      
-      saveState();
-      updateEstimationText();
-      
-      // If uniform bead size was set, we might need to adjust selectedStones loop capacity
-      if (State.beadSize !== 'mixed') {
-        adjustBeadsToNewCapacity();
-      }
+      setWristSize(size);
     });
     
     DOM.wristSizeGrid.appendChild(btn);
+  });
+
+  document.querySelectorAll('[data-wrist-offset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const offset = Number(button.getAttribute('data-wrist-offset'));
+      const nextSize = getWristSizeByOffset(offset);
+      if (nextSize != null) {
+        setWristSize(nextSize);
+      }
+    });
+  });
+
+  document.getElementById('wristSizePrev')?.addEventListener('click', () => {
+    const nextSize = getWristSizeByOffset(-1);
+    if (nextSize != null) {
+      setWristSize(nextSize);
+    }
+  });
+
+  document.getElementById('wristSizeNext')?.addEventListener('click', () => {
+    const nextSize = getWristSizeByOffset(1);
+    if (nextSize != null) {
+      setWristSize(nextSize);
+    }
   });
   
   DOM.braceletOwnerName.addEventListener('input', (e) => {
     State.ownerName = e.target.value.trim();
     saveState();
   });
+}
+
+function getCurrentWristSizeIndex() {
+  return WRIST_SIZES.findIndex((size) => size === State.wristSize);
+}
+
+function getWristSizeByOffset(offset) {
+  const currentIndex = getCurrentWristSizeIndex();
+  if (currentIndex < 0) return null;
+  return WRIST_SIZES[currentIndex + offset] ?? null;
+}
+
+function setWristSize(size) {
+  if (!WRIST_SIZES.includes(size) || State.wristSize === size) return;
+
+  State.wristSize = size;
+  syncWristSizeDisplay();
+
+  // Save owner name
+  State.ownerName = DOM.braceletOwnerName.value.trim();
+
+  saveState();
+  updateEstimationText();
+
+  // If uniform bead size was set, we might need to adjust selectedStones loop capacity
+  if (State.beadSize !== 'mixed') {
+    adjustBeadsToNewCapacity();
+  }
 }
 
 function renderStep1() {
@@ -2009,6 +2045,22 @@ function syncWristSizeDisplay() {
     const buttonSize = Number(button.getAttribute('data-size'));
     button.classList.toggle('active', buttonSize === State.wristSize);
   });
+  document.querySelectorAll('[data-wrist-offset]').forEach((button) => {
+    const offset = Number(button.getAttribute('data-wrist-offset'));
+    const nextSize = getWristSizeByOffset(offset);
+    button.textContent = nextSize == null ? '' : nextSize.toFixed(1);
+    button.disabled = nextSize == null;
+    button.setAttribute('aria-hidden', nextSize == null ? 'true' : 'false');
+  });
+
+  const prevButton = document.getElementById('wristSizePrev');
+  const nextButton = document.getElementById('wristSizeNext');
+  if (prevButton) {
+    prevButton.disabled = getWristSizeByOffset(-1) == null;
+  }
+  if (nextButton) {
+    nextButton.disabled = getWristSizeByOffset(1) == null;
+  }
 }
 
 // ==========================================

@@ -3917,3 +3917,355 @@ button.stone-card {
 .landing-bracelet-image {
   display: none !important;
 }
+
+/* Step 1 modern minimal wrist measurement layout */
+#stepView1 {
+  color: #40304D;
+}
+
+#stepView1.active {
+  justify-content: flex-start;
+}
+
+#stepView1 .step1-measure-card {
+  width: 100%;
+  min-height: 0;
+  padding: 18px 16px 16px;
+  border: 1px solid rgba(232, 223, 245, 0.72);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(246, 242, 255, 0.86), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 251, 255, 0.94));
+  box-shadow: 0 8px 24px rgba(181, 169, 219, 0.12);
+}
+
+#stepView1 .step1-heading-block {
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+#stepView1 .step1-kicker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  color: #9E8DAE;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+#stepView1 .step-title {
+  margin: 0;
+  color: #40304D;
+  font-family: var(--font-ui-thai);
+  font-size: 27px;
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.02em;
+}
+
+#stepView1 .step-subtitle {
+  margin: 7px 0 0;
+  color: #8E7FA1;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+#stepView1 .wrist-visual-card {
+  position: relative;
+  margin: 0 0 16px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(232, 223, 245, 0.72);
+  border-radius: 24px;
+  background: #F8F6FC;
+  box-shadow: none;
+}
+
+#stepView1 .wrist-visual-card::before,
+#stepView1 .wrist-visual-card::after {
+  content: '✦';
+  position: absolute;
+  z-index: 1;
+  color: rgba(181, 169, 219, 0.66);
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+#stepView1 .wrist-visual-card::before {
+  top: 14px;
+  right: 16px;
+}
+
+#stepView1 .wrist-visual-card::after {
+  left: 18px;
+  bottom: 16px;
+  color: rgba(176, 124, 107, 0.42);
+  font-size: 10px;
+}
+
+#stepView1 .wrist-visual-card picture {
+  display: block;
+}
+
+#stepView1 .wrist-measuring-tape-image {
+  width: 100%;
+  height: clamp(168px, 45vw, 218px);
+  max-width: none;
+  max-height: none;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: #F8F6FC;
+  box-shadow: none;
+  object-fit: cover;
+  object-position: 47% 54%;
+}
+
+#stepView1 .wrist-picker-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  justify-items: center;
+  gap: 4px;
+  margin: 0 auto 14px;
+  padding: 14px 16px 16px;
+  border: 1px solid rgba(232, 223, 245, 0.76);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+#stepView1 .wrist-picker-label {
+  color: #9E8DAE;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+#stepView1 .wrist-wheel-control {
+  width: 34px;
+  height: 25px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8B0000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+#stepView1 .wrist-wheel-control:hover {
+  background: rgba(246, 242, 255, 0.92);
+  color: #660000;
+}
+
+#stepView1 .wrist-wheel-control:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+#stepView1 .wrist-wheel-window {
+  position: relative;
+  width: min(100%, 210px);
+  display: grid;
+  grid-template-rows: 24px 30px 70px 30px 24px;
+  align-items: center;
+  justify-items: center;
+  overflow: hidden;
+}
+
+#stepView1 .wrist-wheel-window::before,
+#stepView1 .wrist-wheel-window::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(232, 223, 245, 0.95), transparent);
+  pointer-events: none;
+}
+
+#stepView1 .wrist-wheel-window::before {
+  top: 54px;
+}
+
+#stepView1 .wrist-wheel-window::after {
+  bottom: 54px;
+}
+
+#stepView1 .wrist-wheel-value {
+  min-width: 84px;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: #9E8DAE;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  opacity: 0.58;
+}
+
+#stepView1 .wrist-wheel-value.is-far {
+  font-size: 14px;
+  opacity: 0.28;
+}
+
+#stepView1 .wrist-wheel-value:disabled {
+  cursor: default;
+  opacity: 0;
+}
+
+#stepView1 .selected-size-display-card {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  width: 150px;
+  height: 66px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#stepView1 .display-size-value {
+  color: #40304D;
+  font-family: "Playfair Display", var(--font-ui-thai);
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+#stepView1 .display-size-unit {
+  position: static;
+  color: #8E7FA1;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#stepView1 #wristSizeGrid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0 2px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#stepView1 #wristSizeGrid::-webkit-scrollbar {
+  display: none;
+}
+
+#stepView1 #wristSizeGrid .size-btn {
+  flex: 0 0 auto;
+  min-width: 42px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(232, 223, 245, 0.9);
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.62);
+  color: #8E7FA1;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+#stepView1 #wristSizeGrid .size-btn span {
+  display: none;
+}
+
+#stepView1 #wristSizeGrid .size-btn:hover {
+  border-color: rgba(181, 169, 219, 0.9);
+  color: #554466;
+  transform: none;
+}
+
+#stepView1 #wristSizeGrid .size-btn.active {
+  border-color: rgba(139, 0, 0, 0.18);
+  background: rgba(255, 234, 234, 0.68);
+  color: #8B0000;
+  box-shadow: none;
+}
+
+@media (max-width: 640px) {
+  #stepView1 .step1-measure-card {
+    padding: 16px 14px 14px;
+    border-radius: 26px;
+  }
+
+  #stepView1 .step-title {
+    font-size: 25px;
+    margin: 0;
+  }
+
+  #stepView1 .step-subtitle {
+    font-size: 12.5px;
+    margin: 6px 0 0;
+  }
+
+  #stepView1 .wrist-visual-card {
+    margin-bottom: 14px;
+    border-radius: 22px;
+  }
+
+  #stepView1 .wrist-measuring-tape-image {
+    height: clamp(158px, 43vw, 190px);
+    padding: 0;
+    border-radius: 0;
+  }
+
+  #stepView1 .wrist-picker-card {
+    padding: 12px 14px 14px;
+    margin-bottom: 12px;
+  }
+
+  #stepView1 .wrist-wheel-window {
+    grid-template-rows: 20px 27px 64px 27px 20px;
+  }
+
+  #stepView1 .wrist-wheel-window::before {
+    top: 48px;
+  }
+
+  #stepView1 .wrist-wheel-window::after {
+    bottom: 48px;
+  }
+
+  #stepView1 .selected-size-display-card {
+    height: 62px;
+    padding: 0;
+    margin: 0;
+  }
+
+  #stepView1 .display-size-value {
+    font-size: 44px;
+  }
+
+  #stepView1 .display-size-unit {
+    right: auto;
+  }
+
+  #stepView1 #wristSizeGrid {
+    gap: 5px;
+    margin: 0;
+  }
+
+  #stepView1 #wristSizeGrid .size-btn {
+    min-width: 40px;
+    height: 29px;
+    font-size: 10.5px;
+  }
+}
