@@ -14,6 +14,7 @@ const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload'
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
+const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1');
 const LIFF_ID = '2010525799-qImIuhla';
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
@@ -197,6 +198,7 @@ let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
 let step3CategoryHintTimer = null;
 let step3CategoryHintSequenceTimers = [];
+let step3CategoryHintPlayedThisPage = false;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -4928,14 +4930,26 @@ function renderStep3() {
 function showStep3CategoryHint() {
   const step3View = document.getElementById('stepView3');
   if (!step3View || !step3View.classList.contains('active')) return;
-  if (sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') return;
-  if (step3View.classList.contains('step3-tab-hinting')) return;
+  if (step3CategoryHintPlayedThisPage) return;
+  if (!FORCE_STEP3_CATEGORY_HINT && sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') return;
+  if (step3View.classList.contains('step3-tab-hinting') || step3View.classList.contains('step3-tab-hint-pending')) return;
 
   State.activeCatalogSection = 'stones';
   syncCatalogSectionFilter();
   renderCatalogGrid();
 
   clearStep3CategoryHintTimers();
+  step3View.classList.add('step3-tab-hint-pending');
+  step3CategoryHintTimer = window.setTimeout(() => {
+    startStep3CategoryHintSequence();
+  }, 850);
+}
+
+function startStep3CategoryHintSequence() {
+  const step3View = document.getElementById('stepView3');
+  if (!step3View || !step3View.classList.contains('active')) return;
+
+  step3View.classList.remove('step3-tab-hint-pending');
   step3View.classList.add('step3-tab-hinting');
   setStep3CategoryHintTab('stones');
 
@@ -4943,14 +4957,14 @@ function showStep3CategoryHint() {
   if (prefersReducedMotion) {
     step3CategoryHintTimer = window.setTimeout(() => {
       completeStep3CategoryHint();
-    }, 1800);
+    }, 2200);
     return;
   }
 
   [
-    ['charms', 850],
-    ['spacer', 1700],
-    ['stones', 2550]
+    ['charms', 1100],
+    ['spacer', 2200],
+    ['stones', 3300]
   ].forEach(([section, delay]) => {
     step3CategoryHintSequenceTimers.push(window.setTimeout(() => {
       setStep3CategoryHintTab(section);
@@ -4959,14 +4973,15 @@ function showStep3CategoryHint() {
 
   step3CategoryHintTimer = window.setTimeout(() => {
     completeStep3CategoryHint();
-  }, 3300);
+  }, 4300);
 }
 
 function dismissStep3CategoryHint() {
   const step3View = document.getElementById('stepView3');
   clearStep3CategoryHintTimers();
-  step3View?.classList.remove('step3-tab-hinting');
+  step3View?.classList.remove('step3-tab-hinting', 'step3-tab-hint-pending');
   clearStep3CategoryHintTab();
+  step3CategoryHintPlayedThisPage = true;
   sessionStorage.setItem(STEP3_CATEGORY_HINT_SEEN_KEY, 'true');
 }
 
