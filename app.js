@@ -196,6 +196,7 @@ let customizationResumeInProgress = false;
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
 let step3CategoryHintTimer = null;
+let step3CategoryHintSequenceTimers = [];
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -4928,20 +4929,72 @@ function showStep3CategoryHint() {
   const step3View = document.getElementById('stepView3');
   if (!step3View || !step3View.classList.contains('active')) return;
   if (sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') return;
+  if (step3View.classList.contains('step3-tab-hinting')) return;
 
-  window.clearTimeout(step3CategoryHintTimer);
-  step3View.classList.add('show-category-hint');
+  State.activeCatalogSection = 'stones';
+  syncCatalogSectionFilter();
+  renderCatalogGrid();
+
+  clearStep3CategoryHintTimers();
+  step3View.classList.add('step3-tab-hinting');
+  setStep3CategoryHintTab('stones');
+
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReducedMotion) {
+    step3CategoryHintTimer = window.setTimeout(() => {
+      completeStep3CategoryHint();
+    }, 1800);
+    return;
+  }
+
+  [
+    ['charms', 850],
+    ['spacer', 1700],
+    ['stones', 2550]
+  ].forEach(([section, delay]) => {
+    step3CategoryHintSequenceTimers.push(window.setTimeout(() => {
+      setStep3CategoryHintTab(section);
+    }, delay));
+  });
+
   step3CategoryHintTimer = window.setTimeout(() => {
-    dismissStep3CategoryHint();
-  }, 4200);
+    completeStep3CategoryHint();
+  }, 3300);
 }
 
 function dismissStep3CategoryHint() {
   const step3View = document.getElementById('stepView3');
+  clearStep3CategoryHintTimers();
+  step3View?.classList.remove('step3-tab-hinting');
+  clearStep3CategoryHintTab();
+  sessionStorage.setItem(STEP3_CATEGORY_HINT_SEEN_KEY, 'true');
+}
+
+function completeStep3CategoryHint() {
+  State.activeCatalogSection = 'stones';
+  syncCatalogSectionFilter();
+  renderCatalogGrid();
+  dismissStep3CategoryHint();
+}
+
+function clearStep3CategoryHintTimers() {
   window.clearTimeout(step3CategoryHintTimer);
   step3CategoryHintTimer = null;
-  step3View?.classList.remove('show-category-hint');
-  sessionStorage.setItem(STEP3_CATEGORY_HINT_SEEN_KEY, 'true');
+  step3CategoryHintSequenceTimers.forEach((timerId) => window.clearTimeout(timerId));
+  step3CategoryHintSequenceTimers = [];
+}
+
+function setStep3CategoryHintTab(section) {
+  clearStep3CategoryHintTab();
+  document
+    .querySelector(`#stepView3 .catalog-type-tab[data-catalog-section="${section}"]`)
+    ?.classList.add('step3-tab-hint-active');
+}
+
+function clearStep3CategoryHintTab() {
+  document
+    .querySelectorAll('#stepView3 .catalog-type-tab.step3-tab-hint-active')
+    .forEach((tab) => tab.classList.remove('step3-tab-hint-active'));
 }
 
 // ==========================================

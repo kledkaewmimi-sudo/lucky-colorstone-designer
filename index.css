@@ -1462,39 +1462,6 @@ option {
 }
 
 /* Step 3 catalog type segmented control */
-.step3-category-hint {
-  display: none;
-  justify-content: center;
-  width: 100%;
-  margin: -2px 0 6px;
-  pointer-events: none;
-}
-
-.step3-category-hint span {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 100%;
-  padding: 5px 12px;
-  border: 1px solid rgba(232, 223, 245, 0.86);
-  border-radius: 999px;
-  background: rgba(252, 251, 255, 0.78);
-  color: #7E6C90;
-  font-size: 11.5px;
-  font-weight: 650;
-  line-height: 1.35;
-  box-shadow: 0 4px 14px rgba(181, 169, 219, 0.12);
-  overflow: hidden;
-}
-
-.step3-category-hint span::before {
-  content: '✦';
-  color: rgba(255, 255, 255, 0.96);
-  font-size: 10px;
-  text-shadow: 0 0 8px rgba(181, 169, 219, 0.82);
-}
-
 .catalog-type-filter {
   position: relative;
   display: grid;
@@ -1544,52 +1511,7 @@ option {
   transition: var(--transition-fast);
 }
 
-#stepView3.show-category-hint .step3-category-hint {
-  display: flex;
-  animation: step3HintCaptionIn 0.28s ease-out both;
-}
-
-#stepView3.show-category-hint .step3-category-hint span::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 32px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.92), transparent);
-  opacity: 0.8;
-  transform: translateX(-48px);
-  animation: step3HintTextShimmer 1.45s ease-in-out 0.2s 2;
-}
-
-#stepView3.show-category-hint .catalog-type-filter {
-  box-shadow:
-    0 8px 20px rgba(98, 80, 145, 0.08),
-    0 0 0 1px rgba(255, 255, 255, 0.68),
-    0 0 22px rgba(255, 255, 255, 0.42);
-}
-
-#stepView3.show-category-hint .catalog-type-filter::before {
-  animation: step3CategoryShimmer 2.7s ease-in-out 0.2s 1;
-}
-
-#stepView3.show-category-hint .catalog-type-tab {
-  animation: step3CategoryTabFocus 1.8s ease-in-out 0s 1;
-}
-
-#stepView3.show-category-hint .catalog-type-tab:nth-child(2) {
-  animation-delay: 0.42s;
-}
-
-#stepView3.show-category-hint .catalog-type-tab:nth-child(3) {
-  animation-delay: 0.84s;
-}
-
-#stepView3.show-category-hint .catalog-container,
-#stepView3.show-category-hint #charmSectionMount {
-  animation: step3CatalogContentCue 1.4s ease-in-out 0.35s 2;
-}
-
-#stepView3.show-category-hint .catalog-type-tab::before {
+#stepView3 .catalog-type-tab.step3-tab-hint-active::before {
   content: '✦';
   position: absolute;
   top: 4px;
@@ -1598,16 +1520,46 @@ option {
   font-size: 8px;
   opacity: 0;
   text-shadow: 0 0 8px rgba(181, 169, 219, 0.95);
-  animation: step3CategorySparkle 1.5s ease-in-out 0.2s 2;
+  animation: step3CategorySparkle 0.78s ease-in-out 0s 1;
   pointer-events: none;
 }
 
-#stepView3.show-category-hint .catalog-type-tab:nth-child(2)::before {
-  animation-delay: 0.48s;
+#stepView3.step3-tab-hinting .catalog-type-filter {
+  box-shadow:
+    0 8px 20px rgba(98, 80, 145, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.68),
+    0 0 22px rgba(255, 255, 255, 0.42);
 }
 
-#stepView3.show-category-hint .catalog-type-tab:nth-child(3)::before {
-  animation-delay: 0.76s;
+#stepView3.step3-tab-hinting .catalog-type-tab.step3-tab-hint-active {
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.82) 46%, rgba(255, 255, 255, 0) 62%),
+    linear-gradient(180deg, #EFE8FF 0%, #F7F2FF 100%);
+  background-size: 220% 100%, 100% 100%;
+  animation:
+    step3CategoryTabFocus 0.78s ease-in-out both,
+    step3TabWhiteShimmer 0.78s ease-in-out both;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 0 18px rgba(255, 255, 255, 0.52);
+}
+
+#stepView3.step3-tab-hinting .catalog-type-tab.step3-tab-hint-active::before {
+  content: '✦';
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 8px;
+  opacity: 0;
+  text-shadow: 0 0 8px rgba(181, 169, 219, 0.95);
+  animation: step3CategorySparkle 0.78s ease-in-out 0s 1;
+  pointer-events: none;
+}
+
+#stepView3.step3-tab-hinting .catalog-type-tab.step3-tab-hint-active::after {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.72);
 }
 
 .catalog-type-tab:focus-visible {
@@ -1646,45 +1598,6 @@ option {
   color: currentColor;
 }
 
-@keyframes step3HintCaptionIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes step3HintTextShimmer {
-  0% {
-    transform: translateX(-48px);
-  }
-
-  100% {
-    transform: translateX(220px);
-  }
-}
-
-@keyframes step3CategoryShimmer {
-  0% {
-    opacity: 0;
-    transform: translateX(-120%);
-  }
-
-  18%,
-  58% {
-    opacity: 0.82;
-  }
-
-  100% {
-    opacity: 0;
-    transform: translateX(120%);
-  }
-}
-
 @keyframes step3CategoryTabFocus {
   0%,
   100% {
@@ -1697,6 +1610,16 @@ option {
 
   68% {
     transform: translateY(0);
+  }
+}
+
+@keyframes step3TabWhiteShimmer {
+  0% {
+    background-position: 140% 0, 0 0;
+  }
+
+  100% {
+    background-position: -80% 0, 0 0;
   }
 }
 
@@ -1713,29 +1636,13 @@ option {
   }
 }
 
-@keyframes step3CatalogContentCue {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  45% {
-    opacity: 0.72;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  #stepView3.show-category-hint .step3-category-hint,
-  #stepView3.show-category-hint .step3-category-hint span::after,
-  #stepView3.show-category-hint .catalog-type-filter::before,
-  #stepView3.show-category-hint .catalog-type-tab,
-  #stepView3.show-category-hint .catalog-type-tab::before,
-  #stepView3.show-category-hint .catalog-container,
-  #stepView3.show-category-hint #charmSectionMount {
+  #stepView3.step3-tab-hinting .catalog-type-tab.step3-tab-hint-active,
+  #stepView3.step3-tab-hinting .catalog-type-tab.step3-tab-hint-active::before {
     animation: none;
   }
 
-  #stepView3.show-category-hint .catalog-type-filter {
+  #stepView3.step3-tab-hinting .catalog-type-filter {
     box-shadow:
       0 8px 20px rgba(98, 80, 145, 0.08),
       0 0 0 1px rgba(255, 255, 255, 0.72);
