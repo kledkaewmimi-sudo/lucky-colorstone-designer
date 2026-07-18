@@ -3921,6 +3921,7 @@ button.stone-card {
 /* Step 1 modern minimal wrist measurement layout */
 #stepView1 {
   color: #40304D;
+  margin-top: -8px;
 }
 
 #stepView1.active {
@@ -3930,7 +3931,7 @@ button.stone-card {
 #stepView1 .step1-measure-card {
   width: 100%;
   min-height: 0;
-  padding: 18px 16px 16px;
+  padding: 14px 14px 12px;
   border: 1px solid rgba(232, 223, 245, 0.72);
   border-radius: 28px;
   background:
@@ -3940,12 +3941,12 @@ button.stone-card {
 }
 
 #stepView1 .step1-heading-block {
-  text-align: center;
-  margin-bottom: 14px;
+  text-align: left;
+  margin-bottom: 10px;
 }
 
 #stepView1 .step1-kicker {
-  display: inline-flex;
+  display: none;
   align-items: center;
   justify-content: center;
   margin-bottom: 6px;
@@ -3960,23 +3961,23 @@ button.stone-card {
   margin: 0;
   color: #40304D;
   font-family: var(--font-ui-thai);
-  font-size: 27px;
+  font-size: 24px;
   font-weight: 800;
   line-height: 1.16;
   letter-spacing: -0.02em;
 }
 
 #stepView1 .step-subtitle {
-  margin: 7px 0 0;
+  margin: 5px 0 0;
   color: #8E7FA1;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   line-height: 1.45;
 }
 
 #stepView1 .wrist-visual-card {
   position: relative;
-  margin: 0 0 16px;
+  margin: 0 0 10px;
   padding: 0;
   overflow: hidden;
   border: 1px solid rgba(232, 223, 245, 0.72);
@@ -4014,7 +4015,7 @@ button.stone-card {
 
 #stepView1 .wrist-measuring-tape-image {
   width: 100%;
-  height: clamp(168px, 45vw, 218px);
+  height: clamp(142px, 38vw, 178px);
   max-width: none;
   max-height: none;
   display: block;
@@ -4031,9 +4032,9 @@ button.stone-card {
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   justify-items: center;
-  gap: 4px;
-  margin: 0 auto 14px;
-  padding: 14px 16px 16px;
+  gap: 2px;
+  margin: 0 auto 9px;
+  padding: 9px 14px 10px;
   border: 1px solid rgba(232, 223, 245, 0.76);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.78);
@@ -4049,7 +4050,7 @@ button.stone-card {
 
 #stepView1 .wrist-wheel-control {
   width: 34px;
-  height: 25px;
+  height: 22px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -4075,10 +4076,17 @@ button.stone-card {
   position: relative;
   width: min(100%, 210px);
   display: grid;
-  grid-template-rows: 24px 30px 70px 30px 24px;
+  grid-template-rows: 18px 26px 58px 26px 18px;
   align-items: center;
   justify-items: center;
   overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+#stepView1 .wrist-wheel-window.is-dragging {
+  cursor: grabbing;
 }
 
 #stepView1 .wrist-wheel-window::before,
@@ -4093,11 +4101,11 @@ button.stone-card {
 }
 
 #stepView1 .wrist-wheel-window::before {
-  top: 54px;
+  top: 44px;
 }
 
 #stepView1 .wrist-wheel-window::after {
-  bottom: 54px;
+  bottom: 44px;
 }
 
 #stepView1 .wrist-wheel-value {
@@ -4129,7 +4137,7 @@ button.stone-card {
   justify-content: center;
   gap: 7px;
   width: 150px;
-  height: 66px;
+  height: 58px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -4140,9 +4148,9 @@ button.stone-card {
 
 #stepView1 .display-size-value {
   color: #40304D;
-  font-family: "Playfair Display", var(--font-ui-thai);
-  font-size: 48px;
-  font-weight: 700;
+  font-family: var(--font-ui-thai);
+  font-size: 42px;
+  font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;
 }
@@ -4160,7 +4168,7 @@ button.stone-card {
   flex-wrap: nowrap;
   gap: 6px;
   margin: 0;
-  padding: 0 2px 2px;
+  padding: 0 2px 1px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -4201,57 +4209,66 @@ button.stone-card {
 }
 
 @media (max-width: 640px) {
+  #stepView1 {
+    margin-top: -12px;
+  }
+
   #stepView1 .step1-measure-card {
-    padding: 16px 14px 14px;
-    border-radius: 26px;
+    padding: 12px 12px 10px;
+    border-radius: 24px;
   }
 
   #stepView1 .step-title {
-    font-size: 25px;
+    font-size: 22px;
     margin: 0;
   }
 
   #stepView1 .step-subtitle {
-    font-size: 12.5px;
-    margin: 6px 0 0;
+    font-size: 12px;
+    margin: 4px 0 0;
+  }
+
+  #stepView1 .step1-heading-block {
+    margin-bottom: 8px;
   }
 
   #stepView1 .wrist-visual-card {
-    margin-bottom: 14px;
-    border-radius: 22px;
+    margin-bottom: 8px;
+    border-radius: 20px;
   }
 
   #stepView1 .wrist-measuring-tape-image {
-    height: clamp(158px, 43vw, 190px);
+    height: clamp(132px, 35vw, 158px);
     padding: 0;
     border-radius: 0;
   }
 
   #stepView1 .wrist-picker-card {
-    padding: 12px 14px 14px;
-    margin-bottom: 12px;
+    padding: 8px 12px 9px;
+    margin-bottom: 8px;
+    border-radius: 22px;
   }
 
   #stepView1 .wrist-wheel-window {
-    grid-template-rows: 20px 27px 64px 27px 20px;
+    grid-template-rows: 17px 24px 56px 24px 17px;
   }
 
   #stepView1 .wrist-wheel-window::before {
-    top: 48px;
+    top: 41px;
   }
 
   #stepView1 .wrist-wheel-window::after {
-    bottom: 48px;
+    bottom: 41px;
   }
 
   #stepView1 .selected-size-display-card {
-    height: 62px;
+    height: 56px;
     padding: 0;
     margin: 0;
   }
 
   #stepView1 .display-size-value {
-    font-size: 44px;
+    font-size: 40px;
   }
 
   #stepView1 .display-size-unit {

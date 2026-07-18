@@ -1994,6 +1994,8 @@ function initWristSizeGrid() {
       setWristSize(nextSize);
     }
   });
+
+  setupWristWheelDrag();
   
   DOM.braceletOwnerName.addEventListener('input', (e) => {
     State.ownerName = e.target.value.trim();
@@ -2027,6 +2029,61 @@ function setWristSize(size) {
   if (State.beadSize !== 'mixed') {
     adjustBeadsToNewCapacity();
   }
+}
+
+function moveWristSizeByOffset(offset) {
+  const nextSize = getWristSizeByOffset(offset);
+  if (nextSize != null) {
+    setWristSize(nextSize);
+  }
+}
+
+function setupWristWheelDrag() {
+  const wheel = document.getElementById('wristWheelDisplay');
+  if (!wheel || wheel.dataset.dragReady === 'true') return;
+
+  const swipeThresholdPx = 24;
+  let isDragging = false;
+  let lastY = 0;
+
+  const applyDragDelta = (currentY) => {
+    const deltaY = currentY - lastY;
+    if (Math.abs(deltaY) < swipeThresholdPx) return;
+
+    moveWristSizeByOffset(deltaY < 0 ? 1 : -1);
+    lastY = currentY;
+  };
+
+  wheel.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    isDragging = true;
+    lastY = event.clientY;
+    wheel.classList.add('is-dragging');
+    wheel.setPointerCapture?.(event.pointerId);
+  });
+
+  wheel.addEventListener('pointermove', (event) => {
+    if (!isDragging) return;
+    event.preventDefault();
+    applyDragDelta(event.clientY);
+  });
+
+  const stopDrag = (event) => {
+    if (!isDragging) return;
+    isDragging = false;
+    wheel.classList.remove('is-dragging');
+    wheel.releasePointerCapture?.(event.pointerId);
+  };
+
+  wheel.addEventListener('pointerup', stopDrag);
+  wheel.addEventListener('pointercancel', stopDrag);
+  wheel.addEventListener('wheel', (event) => {
+    if (Math.abs(event.deltaY) < 10) return;
+    event.preventDefault();
+    moveWristSizeByOffset(event.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+
+  wheel.dataset.dragReady = 'true';
 }
 
 function renderStep1() {
