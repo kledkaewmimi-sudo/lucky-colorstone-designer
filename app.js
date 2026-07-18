@@ -92,7 +92,6 @@ const DOM = {
   headerLogo: document.getElementById('headerLogo'),
   
   // Step 1: Wrist Size
-  wristSizeGrid: document.getElementById('wristSizeGrid'),
   braceletOwnerName: document.getElementById('braceletOwnerName'),
   visualWristSizeText: document.getElementById('visualWristSizeText'),
   displaySizeValue: document.getElementById('displaySizeValue'),
@@ -1957,20 +1956,6 @@ function setupShippingFormEvents() {
 // 6. Step 1: Wrist Size Logic
 // ==========================================
 function initWristSizeGrid() {
-  DOM.wristSizeGrid.innerHTML = '';
-  WRIST_SIZES.forEach(size => {
-    const btn = document.createElement('button');
-    btn.className = `size-btn ${State.wristSize === size ? 'active' : ''}`;
-    btn.setAttribute('data-size', size);
-    btn.innerHTML = `${size.toFixed(1)} <span>cm</span>`;
-    
-    btn.addEventListener('click', () => {
-      setWristSize(size);
-    });
-    
-    DOM.wristSizeGrid.appendChild(btn);
-  });
-
   document.querySelectorAll('[data-wrist-offset]').forEach((button) => {
     button.addEventListener('click', () => {
       const offset = Number(button.getAttribute('data-wrist-offset'));
@@ -2098,10 +2083,6 @@ function syncWristSizeDisplay() {
   if (DOM.displaySizeValue) {
     DOM.displaySizeValue.textContent = State.wristSize.toFixed(1);
   }
-  document.querySelectorAll('.size-btn').forEach((button) => {
-    const buttonSize = Number(button.getAttribute('data-size'));
-    button.classList.toggle('active', buttonSize === State.wristSize);
-  });
   document.querySelectorAll('[data-wrist-offset]').forEach((button) => {
     const offset = Number(button.getAttribute('data-wrist-offset'));
     const nextSize = getWristSizeByOffset(offset);

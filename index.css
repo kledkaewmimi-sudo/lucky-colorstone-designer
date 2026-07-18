@@ -714,49 +714,6 @@ option {
   border-left: 3px solid var(--color-gold);
 }
 
-.size-selection-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-bottom: 24px;
-}
-
-.size-btn {
-  background-color: var(--color-white);
-  border: 1px solid var(--color-gray-border);
-  color: var(--color-navy);
-  border-radius: 12px;
-  padding: 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition-fast);
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.size-btn:hover {
-  border-color: var(--color-gold);
-  background-color: rgba(212, 175, 55, 0.05);
-}
-
-.size-btn.active {
-  background-color: var(--color-navy);
-  border-color: var(--color-gold);
-  color: var(--color-gold);
-  box-shadow: var(--shadow-gold);
-  transform: translateY(-2px);
-}
-
-.size-btn span {
-  font-size: 10px;
-  opacity: 0.8;
-  font-weight: 400;
-}
-
 /* Personalization Input */
 .name-input-group {
   background-color: var(--color-white);
@@ -3043,7 +3000,6 @@ button.stone-card {
 
 /* Rounded items standardisation */
 .footer-btn,
-.size-btn,
 .bead-size-card,
 .ctrl-btn {
   border-radius: 14px !important;
@@ -3243,51 +3199,6 @@ button.stone-card {
   font-size: 14px;
   font-weight: 600;
   color: #64748B;
-}
-
-/* Redesign Wrist Size Selection Grid to match reference circular/oval pills */
-#wristSizeGrid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin: 16px 0;
-}
-
-#wristSizeGrid .size-btn {
-  flex: 0 0 calc(20% - 7px);
-  min-width: 52px;
-  height: 38px;
-  padding: 0;
-  background-color: #F8F9FA;
-  border: 1px solid #E2E8F0;
-  border-radius: 9999px !important;
-  /* Force pill shape */
-  color: #475569;
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  transition: all 0.2s ease;
-}
-
-#wristSizeGrid .size-btn span {
-  display: none;
-  /* Hide cm unit inside buttons just like the design */
-}
-
-#wristSizeGrid .size-btn:hover {
-  background-color: #EDF2F7;
-  border-color: #CBD5E0;
-}
-
-#wristSizeGrid .size-btn.active {
-  background-color: #1E293B !important;
-  border-color: #1E293B !important;
-  color: #FFFFFF !important;
 }
 
 /* Customize personal name input group & field background */
@@ -3643,17 +3554,6 @@ button.stone-card {
     right: 16px;
   }
 
-  #stepView1 #wristSizeGrid {
-    gap: 6px;
-    margin: 8px 0 4px;
-  }
-
-  #stepView1 #wristSizeGrid .size-btn {
-    min-width: 48px;
-    height: 32px;
-    font-size: 12px;
-  }
-
   #stepView1 .name-input-group {
     margin-top: 10px;
   }
@@ -3931,12 +3831,12 @@ button.stone-card {
 #stepView1 .step1-measure-card {
   width: 100%;
   min-height: 0;
-  padding: 14px 14px 12px;
-  border: 1px solid rgba(232, 223, 245, 0.72);
+  padding: 14px 14px 14px;
+  border: 1px solid rgba(232, 223, 245, 0.82);
   border-radius: 28px;
   background:
     radial-gradient(circle at 16% 0%, rgba(246, 242, 255, 0.86), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 251, 255, 0.94));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 251, 255, 0.97));
   box-shadow: 0 8px 24px rgba(181, 169, 219, 0.12);
 }
 
@@ -3977,11 +3877,11 @@ button.stone-card {
 
 #stepView1 .wrist-visual-card {
   position: relative;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   padding: 0;
   overflow: hidden;
-  border: 1px solid rgba(232, 223, 245, 0.72);
-  border-radius: 24px;
+  border: 0;
+  border-radius: 22px;
   background: #F8F6FC;
   box-shadow: none;
 }
@@ -4033,11 +3933,12 @@ button.stone-card {
   grid-template-rows: auto auto 1fr auto;
   justify-items: center;
   gap: 2px;
-  margin: 0 auto 9px;
-  padding: 9px 14px 10px;
-  border: 1px solid rgba(232, 223, 245, 0.76);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.78);
+  margin: 0 auto;
+  padding: 8px 12px 0;
+  border: 0;
+  border-top: 1px solid rgba(232, 223, 245, 0.76);
+  border-radius: 0;
+  background: transparent;
 }
 
 #stepView1 .wrist-picker-label {
@@ -4163,58 +4064,13 @@ button.stone-card {
   letter-spacing: 0.02em;
 }
 
-#stepView1 #wristSizeGrid {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0 2px 1px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-#stepView1 #wristSizeGrid::-webkit-scrollbar {
-  display: none;
-}
-
-#stepView1 #wristSizeGrid .size-btn {
-  flex: 0 0 auto;
-  min-width: 42px;
-  height: 30px;
-  padding: 0 9px;
-  border: 1px solid rgba(232, 223, 245, 0.9);
-  border-radius: 999px !important;
-  background: rgba(255, 255, 255, 0.62);
-  color: #8E7FA1;
-  font-size: 11px;
-  font-weight: 700;
-  box-shadow: none;
-}
-
-#stepView1 #wristSizeGrid .size-btn span {
-  display: none;
-}
-
-#stepView1 #wristSizeGrid .size-btn:hover {
-  border-color: rgba(181, 169, 219, 0.9);
-  color: #554466;
-  transform: none;
-}
-
-#stepView1 #wristSizeGrid .size-btn.active {
-  border-color: rgba(139, 0, 0, 0.18);
-  background: rgba(255, 234, 234, 0.68);
-  color: #8B0000;
-  box-shadow: none;
-}
-
 @media (max-width: 640px) {
   #stepView1 {
     margin-top: -12px;
   }
 
   #stepView1 .step1-measure-card {
-    padding: 12px 12px 10px;
+    padding: 12px;
     border-radius: 24px;
   }
 
@@ -4233,7 +4089,7 @@ button.stone-card {
   }
 
   #stepView1 .wrist-visual-card {
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     border-radius: 20px;
   }
 
@@ -4244,9 +4100,9 @@ button.stone-card {
   }
 
   #stepView1 .wrist-picker-card {
-    padding: 8px 12px 9px;
-    margin-bottom: 8px;
-    border-radius: 22px;
+    padding: 7px 10px 0;
+    margin-bottom: 0;
+    border-radius: 0;
   }
 
   #stepView1 .wrist-wheel-window {
@@ -4275,14 +4131,4 @@ button.stone-card {
     right: auto;
   }
 
-  #stepView1 #wristSizeGrid {
-    gap: 5px;
-    margin: 0;
-  }
-
-  #stepView1 #wristSizeGrid .size-btn {
-    min-width: 40px;
-    height: 29px;
-    font-size: 10.5px;
-  }
 }
