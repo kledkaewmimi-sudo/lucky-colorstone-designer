@@ -240,14 +240,20 @@
               <span class="helper-tooltip">แตะที่หินเพื่อลบ</span>
             </div>
 
-            <div class="inspiration-trigger-row">
-              <button class="inspiration-gallery-btn" id="btnInspirationGallery" type="button">
-                ดูตัวอย่างกำไล
-              </button>
-            </div>
-
             <!-- Canvas Container -->
             <div class="canvas-container">
+              <div class="inspiration-trigger-row">
+                <button class="inspiration-gallery-btn" id="btnInspirationGallery" type="button">
+                  <svg class="inspiration-gallery-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    aria-hidden="true">
+                    <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.7" />
+                    <path d="M8 15l2.4-2.7 2 2L15.2 11 19 15" stroke="currentColor" stroke-width="1.7"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                    <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+                  </svg>
+                  <span>Lookbook</span>
+                </button>
+              </div>
               <svg width="250" height="250" viewBox="0 0 250 250" id="braceletSvg">
                 <!-- SVG content rendered dynamically -->
               </svg>
@@ -555,8 +561,10 @@
       <div class="modal-content-card inspiration-gallery-card" role="dialog" aria-modal="true"
         aria-labelledby="inspirationGalleryTitle">
         <div class="modal-header inspiration-gallery-header">
-          <h3 id="inspirationGalleryTitle">ตัวอย่างกำไล</h3>
-          <button class="modal-close-btn" id="btnInspirationGalleryClose" type="button" aria-label="Close">&times;</button>
+          <button class="modal-close-btn inspiration-gallery-close-icon" id="btnInspirationGalleryClose" type="button"
+            aria-label="Close">×</button>
+          <h3 id="inspirationGalleryTitle">Lookbook</h3>
+          <span class="inspiration-gallery-header-spacer" aria-hidden="true"></span>
         </div>
         <div class="modal-body inspiration-gallery-body">
           <div class="inspiration-gallery-grid" id="inspirationGalleryGrid"></div>

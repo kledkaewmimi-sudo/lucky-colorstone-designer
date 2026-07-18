@@ -192,6 +192,7 @@ let liffLoginInProgress = false;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 let customizationResumeInProgress = false;
+let inspirationGalleryCloseTimer = null;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -6548,10 +6549,30 @@ function renderInspirationGallery() {
       img.remove();
     }, { once: true });
 
+    const captionWrap = document.createElement('figcaption');
+    captionWrap.className = 'inspiration-gallery-caption';
+
+    const styleName = document.createElement('span');
+    styleName.className = 'inspiration-gallery-style-name';
+    styleName.textContent = `Style ${String(index + 1).padStart(2, '0')}`;
+
+    const actionText = document.createElement('button');
+    actionText.className = 'inspiration-gallery-style-action';
+    actionText.type = 'button';
+    actionText.textContent = 'ใช้สไตล์นี้';
+    actionText.addEventListener('click', () => {
+      closeInspirationGallery();
+      showToast('เลือกหินจากแคตตาล็อกเพื่อใช้สไตล์นี้');
+    });
+
     const fallback = document.createElement('figcaption');
+    fallback.className = 'inspiration-gallery-fallback';
     fallback.textContent = 'Image unavailable';
 
     card.appendChild(img);
+    captionWrap.appendChild(styleName);
+    captionWrap.appendChild(actionText);
+    card.appendChild(captionWrap);
     card.appendChild(fallback);
     DOM.inspirationGalleryGrid.appendChild(card);
   });
@@ -6561,13 +6582,24 @@ function renderInspirationGallery() {
 
 function openInspirationGallery() {
   renderInspirationGallery();
+  if (inspirationGalleryCloseTimer) {
+    window.clearTimeout(inspirationGalleryCloseTimer);
+    inspirationGalleryCloseTimer = null;
+  }
+  DOM.inspirationGalleryModal?.classList.remove('is-closing');
   DOM.inspirationGalleryModal?.classList.add('show');
   DOM.inspirationGalleryModal?.setAttribute('aria-hidden', 'false');
 }
 
 function closeInspirationGallery() {
-  DOM.inspirationGalleryModal?.classList.remove('show');
+  if (!DOM.inspirationGalleryModal?.classList.contains('show')) return;
   DOM.inspirationGalleryModal?.setAttribute('aria-hidden', 'true');
+  DOM.inspirationGalleryModal?.classList.add('is-closing');
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  inspirationGalleryCloseTimer = window.setTimeout(() => {
+    DOM.inspirationGalleryModal?.classList.remove('show', 'is-closing');
+    inspirationGalleryCloseTimer = null;
+  }, prefersReducedMotion ? 0 : 220);
 }
 
 function setupModalEvents() {
