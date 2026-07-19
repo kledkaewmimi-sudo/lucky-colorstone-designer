@@ -4702,7 +4702,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           }
         });
       } else if (component.type === 'spacer') {
-        const spacerSizePx = (component.renderSizeMm || component.sizeMm) * summary.scaleMmToPx;
+        const spacerSizePx = getSpacerRenderFrameSizePx(component, summary.scaleMmToPx);
         const halfSpacer = spacerSizePx / 2;
         const spacerImageUrl = withCatalogImageVersion(component.image || '', component);
         const angleDeg = getResolvedNodeRotationRad(node) * 180 / Math.PI;
@@ -6109,6 +6109,39 @@ function getVisibleBoundsPlacement(frameWidth, frameHeight, image = null, bounds
   };
 }
 
+function getContainImagePlacement(frameWidth, frameHeight, image = null) {
+  const sourceWidth = image?.naturalWidth || image?.width || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || 0;
+
+  if (!sourceWidth || !sourceHeight) {
+    return {
+      width: frameWidth,
+      height: frameHeight,
+      x: 0,
+      y: 0
+    };
+  }
+
+  const scale = Math.min(frameWidth / sourceWidth, frameHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+
+  return {
+    width,
+    height,
+    x: (frameWidth - width) / 2,
+    y: (frameHeight - height) / 2
+  };
+}
+
+function getSpacerRenderFrameSizePx(component, scaleMmToPx, fallbackSizePx = 0) {
+  const renderSizeMm = Number(component?.renderSizeMm ?? component?.sizeMm);
+  const frameSizePx = Number.isFinite(renderSizeMm) && renderSizeMm > 0
+    ? renderSizeMm * scaleMmToPx
+    : fallbackSizePx;
+  return Math.max(0, frameSizePx);
+}
+
 // Asynchronously pre-load render texture images
 async function preloadRenderImages(urls) {
   const cache = {};
@@ -6213,25 +6246,32 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
         ctx.restore();
       }
     } else if (component.type === 'spacer' && imgObj) {
+      const spacerSizePx = getSpacerRenderFrameSizePx(component, node.renderScalePxPerMm || 0, bRadiusPx * 2);
+      const halfSpacer = spacerSizePx / 2;
       if (component.spacerShape === 'ball') {
-        const spacerSizePx = bRadiusPx * 2;
         const spacerBounds = getVisibleImageBounds(imgObj, imgUrl);
         const placement = getVisibleBoundsPlacement(spacerSizePx, spacerSizePx, imgObj, spacerBounds);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
+        ctx.arc(0, 0, halfSpacer, 0, 2 * Math.PI);
         ctx.clip();
         ctx.drawImage(
           imgObj,
-          -bRadiusPx + placement.x,
-          -bRadiusPx + placement.y,
+          -halfSpacer + placement.x,
+          -halfSpacer + placement.y,
           placement.width,
           placement.height
         );
         ctx.restore();
       } else {
-        const spacerSizePx = bRadiusPx * 2;
-        ctx.drawImage(imgObj, -spacerSizePx / 2, -spacerSizePx / 2, spacerSizePx, spacerSizePx);
+        const placement = getContainImagePlacement(spacerSizePx, spacerSizePx, imgObj);
+        ctx.drawImage(
+          imgObj,
+          -halfSpacer + placement.x,
+          -halfSpacer + placement.y,
+          placement.width,
+          placement.height
+        );
       }
     } else if (imgObj) {
       ctx.save();
