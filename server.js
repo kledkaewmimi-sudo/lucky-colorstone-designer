@@ -316,6 +316,13 @@ async function sendLinePushMessages({ userId, messages }) {
   throw new Error(`LINE push API returned HTTP ${response.status}: ${responseText}`);
 }
 
+async function sendLinePushMessage(to, messages) {
+  return await sendLinePushMessages({
+    userId: to,
+    messages
+  });
+}
+
 async function sendLinePushTextMessage({ userId, text }) {
   const normalizedText = String(text || "").trim();
   if (!normalizedText) {
@@ -339,6 +346,26 @@ function getOrderLineUserId(order) {
 
 function getOrderId(order) {
   return String(order?.id || order?.orderId || "").trim();
+}
+
+function getAdminLineTargets() {
+  const targets = [];
+  const seenTargets = new Set();
+  const addTarget = (type, rawValue) => {
+    const to = String(rawValue || "").trim();
+    if (!to || seenTargets.has(to)) return;
+    seenTargets.add(to);
+    targets.push({ type, to });
+  };
+
+  String(process.env.ADMIN_LINE_USER_IDS || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .forEach((userId) => addTarget("user", userId));
+
+  addTarget("group", process.env.ADMIN_LINE_GROUP_ID);
+  return targets;
 }
 
 function parseMoneyValue(value) {
@@ -861,6 +888,186 @@ async function sendLineFlexMessageWithTextFallback({ userId, flexMessage, fallba
       text: fallbackText
     });
   }
+}
+
+function getPublicCrmOrigin() {
+  const configuredOrigin = normalizeLineUri(
+    process.env.PUBLIC_CRM_ORIGIN || process.env.CRM_URL,
+    null
+  );
+  if (configuredOrigin) {
+    return configuredOrigin.replace(/\/+$/, "");
+  }
+
+  return "https://crm.luckycolorstone.com";
+}
+
+function buildCrmOrderUrl(order) {
+  const providedUrl = normalizeLineUri(order?.crmOrderUrl || order?.adminOrderUrl, null);
+  return providedUrl || getPublicCrmOrigin();
+}
+
+function getOrderCustomerPhone(order) {
+  const shippingInfo = order?.shippingInfo && typeof order.shippingInfo === "object"
+    ? order.shippingInfo
+    : {};
+  return String(
+    order?.phoneNumber ||
+    order?.customerPhone ||
+    shippingInfo.phoneNumber ||
+    ""
+  ).trim();
+}
+
+function getOrderPaymentStatusText(order) {
+  const status = String(order?.status || "").trim();
+  const stripePaymentStatus = String(order?.stripePaymentStatus || order?.paymentStatus || "").trim();
+  if (status && stripePaymentStatus) return `${status} / ${stripePaymentStatus}`;
+  return status || stripePaymentStatus || "-";
+}
+
+function getOrderBraceletLengthCm(order) {
+  const candidates = [
+    order?.braceletLengthCm,
+    order?.checkoutSummary?.braceletLengthCm,
+    order?.lengthCm
+  ];
+  const directLength = candidates.find((candidate) => Number.isFinite(Number(candidate)));
+  if (directLength != null) return Number(directLength);
+
+  const wristSize = Number(order?.wristSize ?? order?.checkoutSummary?.wristSize);
+  return Number.isFinite(wristSize) && wristSize > 0 ? wristSize + 1.5 : null;
+}
+
+function getAdminOrderItemName(item) {
+  return String(
+    item?.nameTh ||
+    item?.name ||
+    item?.nameEn ||
+    item?.itemName ||
+    item?.stoneName ||
+    item?.charmName ||
+    item?.spacerName ||
+    item?.stoneId ||
+    item?.charmId ||
+    item?.spacerId ||
+    item?.id ||
+    "item"
+  ).trim();
+}
+
+function buildAdminOrderItemSummary(order) {
+  const itemizedBilling = Array.isArray(order?.itemizedBilling)
+    ? order.itemizedBilling
+    : Array.isArray(order?.checkoutSummary?.itemizedBilling)
+      ? order.checkoutSummary.itemizedBilling
+      : [];
+
+  const counts = new Map();
+  itemizedBilling.forEach((item) => {
+    const name = getAdminOrderItemName(item);
+    if (!name) return;
+    const quantity = Number(item?.quantity ?? item?.count ?? item?.qty ?? 1);
+    const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+    counts.set(name, (counts.get(name) || 0) + safeQuantity);
+  });
+
+  if (counts.size === 0 && Array.isArray(order?.braceletSequence)) {
+    order.braceletSequence.forEach((item) => {
+      if (item?.isEmpty || item?.empty) return;
+      const name = getAdminOrderItemName(item);
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  }
+
+  if (counts.size === 0 && Array.isArray(order?.beads)) {
+    order.beads.forEach((item) => {
+      const name = getAdminOrderItemName(item);
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  }
+
+  const parts = Array.from(counts.entries()).map(([name, count]) => `${name} x ${count}`);
+  if (parts.length === 0) return "-";
+  const visibleParts = parts.slice(0, 8);
+  const remainder = parts.length - visibleParts.length;
+  return remainder > 0 ? `${visibleParts.join(", ")} +${remainder} more` : visibleParts.join(", ");
+}
+
+function buildAdminOrderNotification(order) {
+  const orderId = getOrderId(order) || "-";
+  const totalPrice = getOrderTotalPrice(order);
+  const customerName = String(order?.customerName || order?.recipientName || "").trim() || "-";
+  const customerPhone = getOrderCustomerPhone(order) || "-";
+  const wristSize = Number(order?.wristSize ?? order?.checkoutSummary?.wristSize);
+  const braceletLengthCm = getOrderBraceletLengthCm(order);
+  const beadSize = String(order?.beadSize || order?.checkoutSummary?.beadSize || "").trim() || "-";
+  const createdTime = String(order?.paidAt || order?.paymentReceivedAt || order?.date || new Date().toISOString());
+
+  const text = [
+    "มีออเดอร์ใหม่ 🎉",
+    `เลขออเดอร์: ${orderId}`,
+    `ยอดชำระ: ${totalPrice == null ? "-" : formatLineCurrency(totalPrice)}`,
+    `สถานะ: ${getOrderPaymentStatusText(order)}`,
+    `ลูกค้า: ${customerName}`,
+    `เบอร์: ${customerPhone}`,
+    `ข้อมือ: ${Number.isFinite(wristSize) ? `${wristSize.toFixed(1)} cm` : "-"}`,
+    `ความยาวกำไล: ${braceletLengthCm == null ? "-" : `${braceletLengthCm.toFixed(1)} cm`}`,
+    `ขนาดเม็ด: ${beadSize === "mixed" ? "mixed" : `${beadSize} mm`}`,
+    `รายการ: ${buildAdminOrderItemSummary(order)}`,
+    `เวลา: ${createdTime}`,
+    "",
+    `CRM: ${buildCrmOrderUrl(order)}`,
+    `รายละเอียดลูกค้า: ${getOrderDetailUrl(order)}`
+  ].join("\n");
+
+  return [
+    {
+      type: "text",
+      text: text.slice(0, 4900)
+    }
+  ];
+}
+
+function isAdminOrderNotificationEligible(order) {
+  const notifications = getOrderNotifications(order);
+  if (notifications.adminOrderCreatedSentAt) {
+    return false;
+  }
+
+  const status = String(order?.status || "").trim().toLowerCase();
+  const stripePaymentStatus = String(order?.stripePaymentStatus || order?.paymentStatus || "").trim().toLowerCase();
+  return status === "payment received" || status === "paid" || stripePaymentStatus === "paid";
+}
+
+async function notifyAdminOrderCreated(order) {
+  if (!isAdminOrderNotificationEligible(order)) {
+    return { sent: false, skipped: "not-paid" };
+  }
+
+  const targets = getAdminLineTargets();
+  if (targets.length === 0) {
+    console.info("[admin-notify] skipped: no admin target configured");
+    return { sent: false, skipped: "no-target" };
+  }
+
+  const messages = buildAdminOrderNotification(order);
+  const results = [];
+  for (const target of targets) {
+    try {
+      await sendLinePushMessage(target.to, messages);
+      console.info(`[admin-notify] sent ${getOrderId(order)} to ${target.type}:${target.to}`);
+      results.push({ ...target, sent: true });
+    } catch (error) {
+      console.warn(`[admin-notify] failed ${getOrderId(order)} to ${target.type}:${target.to}:`, error?.message || error);
+      results.push({ ...target, sent: false, error: error?.message || String(error) });
+    }
+  }
+
+  return {
+    sent: results.some((result) => result.sent),
+    results
+  };
 }
 
 function getOrderNotifications(order) {
@@ -1681,6 +1888,15 @@ async function handleApiRequest(req, res, urlObj) {
 
     const payload = parseJsonText(rawBodyBuffer.toString("utf8")) || {};
     const eventsReceived = Array.isArray(payload.events) ? payload.events.length : 0;
+    (Array.isArray(payload.events) ? payload.events : []).forEach((event) => {
+      const messageText = String(event?.message?.text || "").trim().toLowerCase();
+      if (messageText !== "admin-id") return;
+
+      const source = event?.source || {};
+      const userId = source.userId ? String(source.userId) : "";
+      const groupId = source.groupId ? String(source.groupId) : "";
+      console.info(`[line-admin-id] userId=${userId || "-"} groupId=${groupId || "-"}`);
+    });
 
     sendJson(res, 200, {
       ok: true,
@@ -1987,6 +2203,12 @@ async function handleApiRequest(req, res, urlObj) {
     await saveOrderForApi(nextOrder);
 
     let responseOrder = nextOrder;
+    try {
+      await notifyAdminOrderCreated(nextOrder);
+    } catch (error) {
+      console.warn(`[admin-notify] unexpected failure for ${nextOrder.id}:`, error?.message || error);
+    }
+
     try {
       const notificationResult = await trySendPaidOrderLineNotification(nextOrder);
       if (notificationResult.sent) {
