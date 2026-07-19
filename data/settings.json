@@ -1,1 +1,70 @@
-{"globalDiscountPercent":20,"discountEnabled":true,"showDiscountBanner":true}
+{
+  "globalDiscountPercent": 20,
+  "discountEnabled": true,
+  "showDiscountBanner": true,
+  "catalogCategories": [
+    {
+      "id": "wealth",
+      "entityType": "stone",
+      "slug": "wealth",
+      "nameEn": "Wealth & Luck",
+      "nameTh": "โชคลาภ/การงาน",
+      "displayOrder": 10,
+      "isActive": true
+    },
+    {
+      "id": "love",
+      "entityType": "stone",
+      "slug": "love",
+      "nameEn": "Love & Healing",
+      "nameTh": "ความรัก/เมตตา",
+      "displayOrder": 20,
+      "isActive": true
+    },
+    {
+      "id": "calm",
+      "entityType": "stone",
+      "slug": "calm",
+      "nameEn": "Calm & Wisdom",
+      "nameTh": "สงบ/สติปัญญา",
+      "displayOrder": 30,
+      "isActive": true
+    },
+    {
+      "id": "protection",
+      "entityType": "stone",
+      "slug": "protection",
+      "nameEn": "Protection",
+      "nameTh": "ปกป้อง/คุ้มครอง",
+      "displayOrder": 40,
+      "isActive": true
+    },
+    {
+      "id": "pixiu",
+      "entityType": "charm",
+      "slug": "pixiu",
+      "nameEn": "Pi Xiu",
+      "nameTh": "ปี่เซียะ",
+      "displayOrder": 10,
+      "isActive": true
+    },
+    {
+      "id": "takrud",
+      "entityType": "charm",
+      "slug": "takrud",
+      "nameEn": "Takrud",
+      "nameTh": "ตะกรุด",
+      "displayOrder": 20,
+      "isActive": true
+    },
+    {
+      "id": "bee-heart",
+      "entityType": "charm",
+      "slug": "bee-heart",
+      "nameEn": "Bee Heart",
+      "nameTh": "สีผึ้ง / บีฮาร์ท",
+      "displayOrder": 30,
+      "isActive": true
+    }
+  ]
+}

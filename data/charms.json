@@ -22,8 +22,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -63,8 +63,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -104,8 +104,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -145,8 +145,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -186,8 +186,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -227,8 +227,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -268,8 +268,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -309,8 +309,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -350,8 +350,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes removing obstacles, opening paths, and success.",
+      "th": "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค"
     },
     "availability": {
       "inStock": true,
@@ -374,7 +374,7 @@
     "sku": "TG03",
     "slug": "tg03",
     "name": {
-      "en": "Ganesha Takrud Silver",
+      "en": "Takrud Ganesha Silver",
       "th": "ตะกรุดพระพิฆเนศ สีเงิน"
     },
     "categoryId": "takrud",
@@ -391,8 +391,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes removing obstacles, opening paths, and success.",
+      "th": "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค"
     },
     "availability": {
       "inStock": true,
@@ -432,8 +432,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
+      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": false,
@@ -457,7 +457,7 @@
     "slug": "tg02",
     "name": {
       "en": "Takrud Ganesha Gold",
-      "th": "ตะกรุดพระลักษมี ทอง"
+      "th": "ตะกรุดพระพิฆเนศ ทอง"
     },
     "categoryId": "takrud",
     "type": "takrud_ganesha",
@@ -473,8 +473,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes removing obstacles, opening paths, and success.",
+      "th": "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค"
     },
     "availability": {
       "inStock": true,
@@ -498,7 +498,7 @@
     "slug": "tl01",
     "name": {
       "en": "Takrud Lakshmi Gold",
-      "th": "ตะกรุดพระพิฆเนศ ทอง"
+      "th": "ตะกรุดพระลักษมี ทอง"
     },
     "categoryId": "takrud",
     "type": "takrud_lakshmi",
@@ -514,8 +514,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes abundance, prosperity, and financial blessings.",
+      "th": "สื่อถึงความมั่งคั่ง ความอุดมสมบูรณ์ และโชคลาภด้านการเงิน"
     },
     "availability": {
       "inStock": false,
@@ -539,11 +539,11 @@
     "slug": "bh01",
     "name": {
       "en": "Bee Heart Blue",
-      "th": "บีฮาร์ต สีน้ำเงิน"
+      "th": "บีฮาร์ท สีน้ำเงิน"
     },
-    "categoryId": "takrud",
+    "categoryId": "bee-heart",
     "type": "bee_heart",
-    "collection": "takrud",
+    "collection": "bee-heart",
     "image": {
       "primary": "/assets/charms/takrud/bee=blue.webp"
     },
@@ -555,8 +555,8 @@
       "footprintMm": 2
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes charm, affection, kindness, and gentle attraction.",
+      "th": "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน"
     },
     "availability": {
       "inStock": true,
@@ -584,11 +584,11 @@
     "slug": "bh02",
     "name": {
       "en": "Bee Heart Orange",
-      "th": "บีฮาร์ต สีส้ม"
+      "th": "บีฮาร์ท สีส้ม"
     },
-    "categoryId": "takrud",
+    "categoryId": "bee-heart",
     "type": "bee_heart",
-    "collection": "takrud",
+    "collection": "bee-heart",
     "image": {
       "primary": "/assets/charms/takrud/bee-orange.webp"
     },
@@ -600,8 +600,8 @@
       "footprintMm": 2
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes charm, affection, kindness, and gentle attraction.",
+      "th": "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน"
     },
     "availability": {
       "inStock": true,
@@ -629,11 +629,11 @@
     "slug": "bh03",
     "name": {
       "en": "Bee Heart Purple",
-      "th": "บีฮาร์ต สีม่วง"
+      "th": "บีฮาร์ท สีม่วง"
     },
-    "categoryId": "takrud",
+    "categoryId": "bee-heart",
     "type": "bee_heart",
-    "collection": "takrud",
+    "collection": "bee-heart",
     "image": {
       "primary": "/assets/charms/takrud/bee-purple.webp"
     },
@@ -645,8 +645,8 @@
       "footprintMm": 2
     },
     "meaning": {
-      "en": "",
-      "th": ""
+      "en": "Symbolizes charm, affection, kindness, and gentle attraction.",
+      "th": "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน"
     },
     "availability": {
       "inStock": true,
