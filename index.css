@@ -133,20 +133,20 @@ option {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 18px;
+  padding: 0;
   background: radial-gradient(circle at top, rgba(246, 242, 255, 0.85), rgba(10, 17, 40, 0.15));
 }
 
 .landing-hero-panel {
   position: relative;
-  width: min(100%, 1120px);
-  height: min(100vh - 36px, 960px);
+  width: 100%;
+  height: 100vh;
   min-height: 640px;
-  border-radius: 32px;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(18, 16, 40, 0.34);
+  box-shadow: none;
   isolation: isolate;
-  background: #f8f2ff;
+  background: transparent;
 }
 
 .landing-background {
@@ -420,12 +420,12 @@ option {
 }
 
 @media (max-width: 768px) {
-  .landing-page { padding: 12px; }
+  .landing-page { padding: 0; }
   .landing-hero-panel {
     width: 100%;
-    height: calc(100vh - 24px);
+    height: 100vh;
     min-height: 720px;
-    border-radius: 26px;
+    border-radius: 0;
   }
   .landing-container { padding: 28px 18px 22px; }
   .landing-header { margin-bottom: 14px; }
@@ -442,11 +442,11 @@ option {
 }
 
 @media (max-width: 480px) {
-  .landing-page { padding: 10px; }
+  .landing-page { padding: 0; }
   .landing-hero-panel {
-    height: calc(100vh - 20px);
+    height: 100vh;
     min-height: 680px;
-    border-radius: 22px;
+    border-radius: 0;
   }
   .landing-container { padding: 24px 14px 18px; }
   .landing-header { margin-bottom: 10px; }
@@ -3796,15 +3796,17 @@ button.stone-card {
 
 /* Mobile-first landing frame override */
 .landing-page {
-  padding: 12px;
+  padding: 0;
   background: radial-gradient(circle at top, rgba(246, 242, 255, 0.92), rgba(10, 17, 40, 0.18));
 }
 
 .landing-page .landing-hero-panel {
-  width: min(100%, 480px);
-  height: min(calc(100dvh - 24px), 860px);
+  width: 100%;
+  height: 100dvh;
   min-height: 0;
-  border-radius: 28px;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 .landing-page .landing-background {
@@ -3987,7 +3989,7 @@ button.stone-card {
 }
 
 .landing-page .landing-header {
-  margin: 0 0 6px;
+  margin: 0 0 18px;
   flex: 0 0 auto;
 }
 
@@ -4014,13 +4016,17 @@ button.stone-card {
 }
 
 .landing-page .landing-hero-title {
-  font-size: clamp(30px, 8vw, 40px);
-  margin-bottom: 10px;
+  font-family: var(--font-thai-primary);
+  font-size: clamp(30px, 8vw, 42px);
+  line-height: 1.18;
+  margin-bottom: 12px;
+  letter-spacing: 0;
 }
 
 .landing-page .landing-hero-subtitle {
-  font-size: 14px;
-  margin-bottom: 14px;
+  font-size: 15px;
+  line-height: 1.65;
+  margin-bottom: 18px;
 }
 
 .landing-page .btn-start-customize {

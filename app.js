@@ -810,7 +810,7 @@ function setLandingButtonState(state, message = '') {
   const isLoading = state === 'starting' || state === 'line';
   const text = button.querySelector('.btn-text');
   if (text) {
-    text.textContent = isLoading ? message : (message || 'Start Customize');
+    text.textContent = isLoading ? message : (message || 'เริ่มออกแบบ');
   }
   button.disabled = isLoading;
   button.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
