@@ -427,6 +427,10 @@ function writeJson(filePath, value) {
   writeText(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function jsonEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function isPlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
@@ -716,25 +720,37 @@ async function main() {
     ...settings,
     catalogCategories: CATEGORY_CATALOG
   };
+  const settingsChanged = !jsonEqual(settings.catalogCategories || null, CATEGORY_CATALOG);
 
   summarizeChanges("stones", stoneResults);
   summarizeChanges("charms", charmResults);
   summarizeChanges("data.js CHARM_CATALOG", fallbackResults);
-  console.log(`settings: catalogCategories ${JSON.stringify(settings.catalogCategories || null) === JSON.stringify(CATEGORY_CATALOG) ? "unchanged" : "updated"}`);
+  console.log(`settings: catalogCategories ${settingsChanged ? "updated" : "unchanged"}`);
 
   if (!isDryRun) {
-    writeJson(paths.stones, updatedStones);
-    writeJson(paths.charms, updatedCharms);
-    writeJson(paths.settings, updatedSettings);
+    if (!jsonEqual(stones, updatedStones)) {
+      writeJson(paths.stones, updatedStones);
+    }
+    if (!jsonEqual(charms, updatedCharms)) {
+      writeJson(paths.charms, updatedCharms);
+    }
+    if (settingsChanged) {
+      writeJson(paths.settings, updatedSettings);
+    }
     let nextDataJs = replaceArrayConst(dataJs, "DEFAULT_CATEGORY_CATALOG", CATEGORY_CATALOG);
     nextDataJs = replaceArrayConst(nextDataJs, "CHARM_CATALOG", updatedFallbackCharms);
-    writeText(paths.dataJs, nextDataJs);
+    if (nextDataJs !== dataJs) {
+      writeText(paths.dataJs, nextDataJs);
+    }
   }
 
   await upsertRows("catalog_stones", updatedStones.map(buildStoneRow));
   await upsertRows("catalog_charms", updatedCharms.map(buildCharmRow));
-  await upsertRows("catalog_categories", CATEGORY_CATALOG.map(buildCategoryRow));
-  await upsertRows("app_settings", Object.entries(updatedSettings).map(([key, value]) => ({ key, value })), "key");
+  if (settingsChanged) {
+    await upsertRows("catalog_categories", CATEGORY_CATALOG.map(buildCategoryRow));
+  } else {
+    console.log("catalog_categories: skipped; category data unchanged.");
+  }
 
   const unmatchedStones = stones.map((stone) => stone.id).filter((id) => !STONE_UPDATES[id]);
   const unmatchedCharms = charms.map((charm) => charm.id).filter((id) => !CHARM_UPDATES[id]);
