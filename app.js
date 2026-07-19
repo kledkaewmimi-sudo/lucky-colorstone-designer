@@ -320,6 +320,25 @@ function isSlotPlaceableCharmType(charmType) {
   return String(charmType || '').trim().toLowerCase() === 'bee_heart';
 }
 
+function normalizeCatalogToken(value) {
+  return String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-');
+}
+
+function isBeeHeartCharm(charm = {}) {
+  const tokens = [
+    charm.type,
+    charm.categoryId,
+    charm.category,
+    charm.collection,
+    charm.slug
+  ].map(normalizeCatalogToken);
+  const id = normalizeCatalogToken(charm.id);
+
+  return tokens.some((token) => ['bee-heart', 'beeswax'].includes(token))
+    || id === 'bee-heart'
+    || /^bh\d+/.test(id);
+}
+
 function isAnchoredCharmType(charmType) {
   return !isSlotPlaceableCharmType(charmType);
 }
@@ -406,6 +425,21 @@ function isSelectedSpacerItem(item) {
 
 function isSelectedCharmItem(item) {
   return (item?.componentType || 'stone') === 'charm';
+}
+
+function isBeeHeartLoopItem(item) {
+  if (!isSelectedCharmItem(item)) return false;
+  const charm = getCharmCatalogEntry(item.charmId);
+  return charm
+    ? isBeeHeartCharm(charm)
+    : isBeeHeartCharm({
+      id: item.charmId || item.id,
+      type: item.charmType || item.type,
+      categoryId: item.categoryId,
+      category: item.category,
+      collection: item.collection,
+      slug: item.slug
+    });
 }
 
 function isSelectedStoneItem(item) {
@@ -4084,7 +4118,11 @@ function removeLoopItemFromBracelet(index, showToastNotification = true) {
   if (index < 0 || index >= State.selectedStones.length) return;
   const removed = State.selectedStones[index];
   if (isEmptyLoopSlot(removed)) return;
-  State.selectedStones[index] = createEmptyLoopSlot(getLoopItemLengthMm(removed), removed?.uniqueId || null);
+  if (isBeeHeartLoopItem(removed)) {
+    State.selectedStones.splice(index, 1);
+  } else {
+    State.selectedStones[index] = createEmptyLoopSlot(getLoopItemLengthMm(removed), removed?.uniqueId || null);
+  }
   State.activeSlotIndex = null;
   if (showToastNotification) {
     if (isSelectedSpacerItem(removed)) {
