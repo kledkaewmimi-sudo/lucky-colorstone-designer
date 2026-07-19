@@ -14,7 +14,7 @@ const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload'
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
-const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1');
+const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
 const LIFF_ID = '2010525799-qImIuhla';
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
@@ -1753,6 +1753,9 @@ async function renderStepViews() {
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
+  if (State.currentStep === 3 && step !== 3) {
+    dismissStep3CategoryHint();
+  }
   State.currentStep = step;
   await renderApp();
 }
@@ -3748,9 +3751,7 @@ function setupDesignerEvents() {
     tab.addEventListener('click', () => {
       dismissStep3CategoryHint();
       const section = tab.getAttribute('data-catalog-section');
-      if (!['stones', 'charms', 'spacer'].includes(section)) return;
-      State.activeCatalogSection = section;
-      syncCatalogSectionFilter();
+      setActiveCatalogSection(section);
     });
   });
 
@@ -3768,6 +3769,12 @@ function setupStep3CategoryHintDismissEvents() {
       dismissStep3CategoryHint();
     }
   });
+
+  step3View.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.canvas-card')) {
+      dismissStep3CategoryHint();
+    }
+  }, { passive: true });
 
   const scrollTargets = [
     document.getElementById('catalogTypeFilter'),
@@ -3828,6 +3835,13 @@ function syncCatalogSectionFilter() {
         section.style.display = shouldHide ? 'none' : '';
       });
   }
+}
+
+function setActiveCatalogSection(section) {
+  if (!['stones', 'charms', 'spacer'].includes(section)) return;
+  State.activeCatalogSection = section;
+  syncCatalogSectionFilter();
+  renderCatalogGrid();
 }
 
 function initCatalogFilters() {
@@ -4934,9 +4948,7 @@ function showStep3CategoryHint() {
   if (!FORCE_STEP3_CATEGORY_HINT && sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') return;
   if (step3View.classList.contains('step3-tab-hinting') || step3View.classList.contains('step3-tab-hint-pending')) return;
 
-  State.activeCatalogSection = 'stones';
-  syncCatalogSectionFilter();
-  renderCatalogGrid();
+  setActiveCatalogSection('stones');
 
   clearStep3CategoryHintTimers();
   step3View.classList.add('step3-tab-hint-pending');
@@ -4951,15 +4963,7 @@ function startStep3CategoryHintSequence() {
 
   step3View.classList.remove('step3-tab-hint-pending');
   step3View.classList.add('step3-tab-hinting');
-  setStep3CategoryHintTab('stones');
-
-  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if (prefersReducedMotion) {
-    step3CategoryHintTimer = window.setTimeout(() => {
-      completeStep3CategoryHint();
-    }, 2200);
-    return;
-  }
+  setStep3CategoryHintSection('stones');
 
   [
     ['charms', 1100],
@@ -4967,7 +4971,7 @@ function startStep3CategoryHintSequence() {
     ['stones', 3300]
   ].forEach(([section, delay]) => {
     step3CategoryHintSequenceTimers.push(window.setTimeout(() => {
-      setStep3CategoryHintTab(section);
+      setStep3CategoryHintSection(section);
     }, delay));
   });
 
@@ -4986,9 +4990,7 @@ function dismissStep3CategoryHint() {
 }
 
 function completeStep3CategoryHint() {
-  State.activeCatalogSection = 'stones';
-  syncCatalogSectionFilter();
-  renderCatalogGrid();
+  setActiveCatalogSection('stones');
   dismissStep3CategoryHint();
 }
 
@@ -5004,6 +5006,11 @@ function setStep3CategoryHintTab(section) {
   document
     .querySelector(`#stepView3 .catalog-type-tab[data-catalog-section="${section}"]`)
     ?.classList.add('step3-tab-hint-active');
+}
+
+function setStep3CategoryHintSection(section) {
+  setActiveCatalogSection(section);
+  setStep3CategoryHintTab(section);
 }
 
 function clearStep3CategoryHintTab() {
