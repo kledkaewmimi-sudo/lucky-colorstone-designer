@@ -682,7 +682,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     State.currentStep = 1;
     State.landingDismissed = true;
     persistLandingDismissed();
+    resetStep3DesignState('customization-login-resume');
     setLiffLoadingMessage('เข้าสู่ระบบสำเร็จ กำลังพาไปเริ่มออกแบบ...');
+  } else {
+    resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
   syncShellVisibility();
   
@@ -1077,6 +1080,7 @@ function setupLandingEvents() {
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+    resetStep3DesignState('landing-start');
     setLandingButtonState('starting', 'กำลังเริ่มต้น...');
 
     if (landingConnectPromptVisible) {
@@ -1163,6 +1167,38 @@ function loadPersistedState() {
   }
 
   State.landingDismissed = sessionStorage.getItem(LANDING_DISMISSED_KEY) === '1';
+}
+
+function resetStep3DesignState(reason = '', options = {}) {
+  const params = new URLSearchParams(window.location.search);
+  if (getRequestedOrderId() || State.orderDetailMode || params.has('stripe')) return false;
+
+  State.selectedStones = [];
+  State.selectedCharmIds = [];
+  syncSelectedCharmState();
+  State.activeSlotIndex = null;
+  State.newlyAddedIds = [];
+  State.uniqueCounter = 0;
+  State.activeCategory = 'all';
+  State.activeCatalogSection = 'stones';
+  State.braceletPreviewImage = '';
+  State.braceletPreviewKey = '';
+  State.checkoutSummarySnapshot = null;
+  document.querySelectorAll('.filter-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.getAttribute('data-category') === State.activeCategory);
+  });
+
+  if (options.resetToStep1WhenPastDesign && State.currentStep > 2) {
+    State.currentStep = 1;
+  }
+
+  try {
+    localStorage.removeItem(CHECKOUT_SUMMARY_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear checkout summary snapshot', error);
+  }
+
+  return true;
 }
 
 // Persist State to LocalStorage
@@ -1755,6 +1791,9 @@ async function goToStep(step) {
   if (step < 1 || step > 4) return;
   if (State.currentStep === 3 && step !== 3) {
     dismissStep3CategoryHint();
+  }
+  if (State.currentStep === 3 && step < 3) {
+    resetStep3DesignState(`step3-back-to-${step}`);
   }
   State.currentStep = step;
   await renderApp();
