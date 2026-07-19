@@ -2511,6 +2511,10 @@ button.stone-card {
   flex-wrap: wrap;
 }
 
+.app-footer.step3-next-floating {
+  will-change: transform, opacity;
+}
+
 .footer-btn {
   border-radius: 12px;
   padding: 14px 20px;
@@ -2545,6 +2549,25 @@ button.stone-card {
   box-shadow: var(--shadow-sm);
 }
 
+.footer-btn.btn-next.is-entering {
+  position: relative;
+  overflow: hidden;
+  animation: step3NextButtonEnter 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  box-shadow:
+    0 12px 26px rgba(139, 0, 0, 0.28),
+    0 0 18px rgba(139, 0, 0, 0.16);
+}
+
+.footer-btn.btn-next.is-entering::after {
+  content: '';
+  position: absolute;
+  inset: -35% -45%;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.42) 50%, transparent 65%);
+  transform: translateX(-65%);
+  animation: step3NextButtonSweep 460ms ease-out 80ms both;
+  pointer-events: none;
+}
+
 .footer-btn.btn-next:hover {
   background-color: var(--color-velvet-red-dark) !important;
   border-color: var(--color-velvet-red-dark) !important;
@@ -2568,6 +2591,35 @@ button.stone-card {
   line-height: 1.4;
   color: var(--color-velvet-red);
   text-align: center;
+}
+
+@keyframes step3NextButtonEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes step3NextButtonSweep {
+  from {
+    transform: translateX(-65%);
+  }
+
+  to {
+    transform: translateX(65%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-btn.btn-next.is-entering,
+  .footer-btn.btn-next.is-entering::after {
+    animation: none;
+  }
 }
 
 /* Checkout Button (high contrast green) */

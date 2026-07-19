@@ -199,6 +199,8 @@ let wristPickerHintTimer = null;
 let step3CategoryHintTimer = null;
 let step3CategoryHintSequenceTimers = [];
 let step3CategoryHintPlayedThisPage = false;
+let step3NextWasComplete = false;
+let step3NextEnterTimer = null;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -1754,9 +1756,15 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 
   if (DOM.appFooter) {
     DOM.appFooter.classList.toggle('step3-validation-active', isStep3 && !validationState.isFull);
+    DOM.appFooter.classList.toggle('step3-next-floating', isStep3);
   }
 
   if (!isStep3) {
+    step3NextWasComplete = false;
+    window.clearTimeout(step3NextEnterTimer);
+    step3NextEnterTimer = null;
+    DOM.btnNext?.classList.remove('is-entering');
+    DOM.appFooter?.classList.remove('step3-next-floating');
     if (warningEl) {
       warningEl.textContent = '';
       warningEl.style.display = 'none';
@@ -1764,7 +1772,26 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
     return validationState;
   }
 
+  if (DOM.appFooter) {
+    DOM.appFooter.style.display = validationState.isFull ? 'flex' : 'none';
+  }
+
   DOM.btnNext.disabled = !validationState.isFull;
+  if (validationState.isFull && !step3NextWasComplete) {
+    window.clearTimeout(step3NextEnterTimer);
+    DOM.btnNext.classList.remove('is-entering');
+    void DOM.btnNext.offsetWidth;
+    DOM.btnNext.classList.add('is-entering');
+    step3NextEnterTimer = window.setTimeout(() => {
+      DOM.btnNext?.classList.remove('is-entering');
+      step3NextEnterTimer = null;
+    }, 520);
+  } else if (!validationState.isFull) {
+    window.clearTimeout(step3NextEnterTimer);
+    step3NextEnterTimer = null;
+    DOM.btnNext.classList.remove('is-entering');
+  }
+  step3NextWasComplete = validationState.isFull;
 
   if (warningEl) {
     warningEl.textContent = validationState.warningText;
@@ -4938,6 +4965,7 @@ function renderStep3() {
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);
   const pricing = calculateLiveBraceletPricing();
+  syncStep3NextValidationUI(validationState);
   
   const braceletLengthMm = validationState.braceletLengthMm;
   const totalDiameter = validationState.totalDiameter;
