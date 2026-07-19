@@ -23,7 +23,7 @@
     },
     "meaning": {
       "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "th": "สื่อถึงการเรียกทรัพย์ โชคลาภ และการปกป้องทรัพย์ให้มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -63,8 +63,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes prosperity, financial opportunity, and protective energy.",
+      "th": "สื่อถึงโชคลาภ การเปิดรับโอกาสทางการเงิน และพลังคุ้มครอง"
     },
     "availability": {
       "inStock": true,
@@ -104,8 +104,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes wealth calling, stability, and success energy.",
+      "th": "สื่อถึงการเรียกทรัพย์ ความมั่นคง และพลังเสริมความสำเร็จ"
     },
     "availability": {
       "inStock": true,
@@ -145,8 +145,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes wealth protection, energetic shielding, and stable abundance.",
+      "th": "สื่อถึงการปกป้องทรัพย์ การกันพลังลบ และความมั่งคั่งที่มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -186,8 +186,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes charm, luck, new opportunity, and financial support.",
+      "th": "สื่อถึงเสน่ห์แห่งโชคลาภ โอกาสใหม่ และพลังสนับสนุนด้านการเงิน"
     },
     "availability": {
       "inStock": true,
@@ -227,8 +227,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes protection, prosperity, and empowered career presence.",
+      "th": "สื่อถึงพลังคุ้มครอง ความมั่งคั่ง และการเสริมบารมีในการทำงาน"
     },
     "availability": {
       "inStock": true,
@@ -268,8 +268,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes premium fortune, wealth keeping, and stable success.",
+      "th": "สื่อถึงโชคลาภระดับพรีเมียม การเก็บทรัพย์ และความสำเร็จที่มั่นคง"
     },
     "availability": {
       "inStock": true,
@@ -309,8 +309,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes wealth attraction, abundance, and protection of good opportunities.",
+      "th": "สื่อถึงพลังเรียกทรัพย์ ความมั่งคั่ง และการปกป้องโอกาสดี"
     },
     "availability": {
       "inStock": true,
@@ -350,8 +350,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "Symbolizes removing obstacles, opening paths, and success.",
-      "th": "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค"
+      "en": "Symbolizes removing obstacles, opening paths, success, and confident beginnings.",
+      "th": "สื่อถึงการเปิดทาง ความสำเร็จ การขจัดอุปสรรค และความมั่นใจในการเริ่มต้น"
     },
     "availability": {
       "inStock": true,
@@ -374,7 +374,7 @@
     "sku": "TG03",
     "slug": "tg03",
     "name": {
-      "en": "Takrud Ganesha Silver",
+      "en": "Ganesha Takrud Silver",
       "th": "ตะกรุดพระพิฆเนศ สีเงิน"
     },
     "categoryId": "takrud",
@@ -391,8 +391,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "Symbolizes removing obstacles, opening paths, and success.",
-      "th": "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค"
+      "en": "Symbolizes protection, career path opening, and support toward goals.",
+      "th": "สื่อถึงการคุ้มครอง การเปิดทางเรื่องงาน และการสนับสนุนให้เดินหน้าสู่เป้าหมาย"
     },
     "availability": {
       "inStock": true,
@@ -432,8 +432,8 @@
       "footprintMm": 24
     },
     "meaning": {
-      "en": "Symbolizes wealth attraction, prosperity, and guarding good fortune.",
-      "th": "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง"
+      "en": "Symbolizes wealth attraction, prosperity, and steady financial opportunity.",
+      "th": "สื่อถึงการเรียกทรัพย์ โชคลาภ และการรักษาโอกาสทางการเงินให้มั่นคง"
     },
     "availability": {
       "inStock": false,
@@ -473,8 +473,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "Symbolizes removing obstacles, opening paths, and success.",
-      "th": "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค"
+      "en": "Symbolizes success, prestige, prosperity, and opening better opportunities.",
+      "th": "สื่อถึงความสำเร็จ บารมี โชคลาภ และการเปิดทางสู่โอกาสที่ดีกว่า"
     },
     "availability": {
       "inStock": true,
@@ -514,8 +514,8 @@
       "footprintMm": 30
     },
     "meaning": {
-      "en": "Symbolizes abundance, prosperity, and financial blessings.",
-      "th": "สื่อถึงความมั่งคั่ง ความอุดมสมบูรณ์ และโชคลาภด้านการเงิน"
+      "en": "Symbolizes abundance, prosperity, financial luck, and supportive wealth energy.",
+      "th": "สื่อถึงความมั่งคั่ง ความอุดมสมบูรณ์ โชคลาภ และพลังสนับสนุนด้านการเงิน"
     },
     "availability": {
       "inStock": false,
@@ -555,8 +555,8 @@
       "footprintMm": 2
     },
     "meaning": {
-      "en": "Symbolizes charm, affection, kindness, and gentle attraction.",
-      "th": "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน"
+      "en": "Symbolizes charm, kindness, gentle attraction, and soft communication.",
+      "th": "สื่อถึงเสน่ห์ เมตตา ความน่ารักน่าเอ็นดู และการสื่อสารที่อ่อนโยน"
     },
     "availability": {
       "inStock": true,
@@ -600,8 +600,8 @@
       "footprintMm": 2
     },
     "meaning": {
-      "en": "Symbolizes charm, affection, kindness, and gentle attraction.",
-      "th": "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน"
+      "en": "Symbolizes charm, brightness, confidence, and warm attraction.",
+      "th": "สื่อถึงเสน่ห์ ความสดใส ความมั่นใจ และพลังดึงดูดแบบอบอุ่น"
     },
     "availability": {
       "inStock": true,
@@ -645,8 +645,8 @@
       "footprintMm": 2
     },
     "meaning": {
-      "en": "Symbolizes charm, affection, kindness, and gentle attraction.",
-      "th": "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน"
+      "en": "Symbolizes mysterious charm, kindness, attraction, and gentle energy.",
+      "th": "สื่อถึงเสน่ห์ลึกลับ ความเมตตา ความน่าดึงดูด และพลังแห่งความอ่อนโยน"
     },
     "availability": {
       "inStock": true,

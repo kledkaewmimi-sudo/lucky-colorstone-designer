@@ -29,285 +29,383 @@ const CATEGORY_CATALOG = [
 const STONE_UPDATES = {
   golden_rutile: {
     nameEn: "Golden Rutile Quartz",
+    nameTh: "ไหมทอง",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงโชคลาภ ความสำเร็จ และการดึงดูดโอกาสทางการเงิน",
-    meaning: "Symbolizes prosperity, success, and attracting new opportunities.",
-    tier: "D"
+    targetPrice: 150,
+    meaningTh: "สื่อถึงโชคลาภ ความมั่งคั่ง ความสำเร็จ และการดึงดูดโอกาสทางการเงิน",
+    meaningEn: "Symbolizes prosperity, success, wealth energy, and attracting new opportunities."
   },
   rutilated_quartz: {
     nameEn: "Rutilated Quartz",
+    nameTh: "ไหมทอง",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงพลังในการเดินหน้า ความชัดเจน และความสำเร็จ",
-    meaning: "Supports clarity, confidence, and forward-moving success.",
-    tier: "D"
+    targetPrice: 150,
+    meaningTh: "สื่อถึงพลังในการเดินหน้า ความชัดเจน การตัดสินใจ และความสำเร็จในงาน",
+    meaningEn: "Symbolizes clarity, confidence, direction, and forward-moving success."
   },
   amethyst: {
     nameEn: "Amethyst",
+    nameTh: "อเมทิสต์",
     categoryId: "calm",
-    meaningTh: "สื่อถึงความสงบ สติ และการพักใจจากความวุ่นวาย",
-    meaning: "Symbolizes calm, intuition, and emotional balance.",
-    tier: "B"
+    targetPrice: 120,
+    meaningTh: "สื่อถึงความสงบ สติ สมาธิ และการพักใจจากความวุ่นวาย",
+    meaningEn: "Symbolizes calm, intuition, focus, and emotional balance."
   },
   rose_quartz: {
     nameEn: "Rose Quartz",
+    nameTh: "โรสควอตซ์",
     categoryId: "love",
-    meaningTh: "สื่อถึงความรัก ความเมตตา และความอ่อนโยนต่อใจ",
-    meaning: "Symbolizes love, compassion, and gentle emotional healing.",
-    tier: "A"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงความรัก ความเมตตา ความอ่อนโยน และการเปิดใจรับพลังดี",
+    meaningEn: "Symbolizes love, compassion, tenderness, and gentle emotional healing."
   },
   lapis_lazuli: {
     nameEn: "Lapis Lazuli",
+    nameTh: "ลาพิส ลาซูลี",
     categoryId: "calm",
-    meaningTh: "สื่อถึงปัญญา ความจริง และการสื่อสารอย่างมั่นใจ",
-    meaning: "Symbolizes wisdom, truth, and confident communication.",
-    tier: "A"
+    targetPrice: 110,
+    meaningTh: "สื่อถึงปัญญา ความจริง การสื่อสารที่ชัดเจน และความมั่นใจภายใน",
+    meaningEn: "Symbolizes wisdom, truth, clear communication, and inner confidence."
   },
   tigers_eye: {
     nameEn: "Tiger's Eye",
+    nameTh: "ไทเกอร์อาย",
     categoryId: "protection",
-    meaningTh: "สื่อถึงความกล้าหาญ การปกป้อง และการตัดสินใจอย่างมั่นคง",
-    meaning: "Symbolizes courage, protection, and grounded decision-making.",
-    tier: "C"
+    targetPrice: 130,
+    meaningTh: "สื่อถึงความกล้าหาญ การปกป้อง ความมั่นคง และการตัดสินใจอย่างมีพลัง",
+    meaningEn: "Symbolizes courage, protection, grounded confidence, and strong decision-making."
   },
   pink_tiger_eye: {
     nameEn: "Pink Tiger Eye",
-    categoryId: "protection",
-    meaningTh: "สื่อถึงความมั่นใจที่อ่อนโยน เสน่ห์ และพลังใจที่สมดุล",
-    meaning: "Symbolizes gentle confidence, charm, and balanced inner strength.",
-    tier: "C"
+    nameTh: "ไทเกอร์อายชมพู",
+    categoryId: "love",
+    targetPrice: 130,
+    meaningTh: "สื่อถึงเสน่ห์ ความมั่นใจที่อ่อนโยน พลังใจ และความสมดุลในความสัมพันธ์",
+    meaningEn: "Symbolizes gentle confidence, charm, balanced emotions, and relationship harmony."
   },
   malachite: {
     nameEn: "Malachite",
+    nameTh: "มาลาไคท์",
     categoryId: "protection",
-    meaningTh: "สื่อถึงการเปลี่ยนผ่าน การปกป้อง และพลังในการเริ่มต้นใหม่",
-    meaning: "Symbolizes transformation, protection, and renewed strength.",
-    tier: "D"
+    targetPrice: 180,
+    meaningTh: "สื่อถึงการเปลี่ยนผ่าน การปกป้อง การเริ่มต้นใหม่ และพลังในการเติบโต",
+    meaningEn: "Symbolizes transformation, protection, renewal, and personal growth."
   },
   citrine: {
     nameEn: "Citrine",
+    nameTh: "ซิทริน",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงความมั่งคั่ง ความสดใส และพลังแห่งความสำเร็จ",
-    meaning: "Symbolizes abundance, optimism, and success energy.",
-    tier: "D"
+    targetPrice: 140,
+    meaningTh: "สื่อถึงความมั่งคั่ง ความสดใส โอกาสใหม่ และพลังแห่งความสำเร็จ",
+    meaningEn: "Symbolizes abundance, optimism, opportunity, and success energy."
   },
   ice_quartz: {
     nameEn: "Ice Quartz",
+    nameTh: "ไอซ์ควอตซ์",
     categoryId: "calm",
-    meaningTh: "สื่อถึงความเย็นใจ ความชัดเจน และสมาธิที่นิ่งสงบ",
-    meaning: "Symbolizes cool clarity, calm focus, and emotional ease.",
-    tier: "B"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงความใสสะอาด ความสงบ ความชัดเจน และการเริ่มต้นด้วยใจที่เบา",
+    meaningEn: "Symbolizes purity, calmness, clarity, and a refreshed state of mind."
   },
   beryl: {
     nameEn: "Beryl",
+    nameTh: "เบริล",
     categoryId: "calm",
-    meaningTh: "สื่อถึงความสดชื่นทางความคิด ความสมดุล และการสื่อสารอย่างนุ่มนวล",
-    meaning: "Symbolizes mental freshness, balance, and graceful communication.",
-    tier: "C"
+    targetPrice: 110,
+    meaningTh: "สื่อถึงความสมดุล ความนิ่ง ความเข้าใจ และการมองสถานการณ์อย่างอ่อนโยน",
+    meaningEn: "Symbolizes balance, serenity, understanding, and gentle clarity."
   },
   howlite: {
     nameEn: "Howlite",
+    nameTh: "ฮาวไลต์",
     categoryId: "calm",
-    meaningTh: "สื่อถึงความอดทน ความสงบ และการปล่อยวางความฟุ้งซ่าน",
-    meaning: "Symbolizes patience, serenity, and a quietly grounded mind.",
-    tier: "A"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงความผ่อนคลาย ความอดทน การปล่อยวาง และการนอนหลับอย่างสงบ",
+    meaningEn: "Symbolizes relaxation, patience, release, and peaceful rest."
   },
   sodalite: {
     nameEn: "Sodalite",
+    nameTh: "โซดาไลต์",
     categoryId: "calm",
-    meaningTh: "สื่อถึงตรรกะ ปัญญา และความมั่นใจในการสื่อสาร",
-    meaning: "Symbolizes logic, wisdom, and confident self-expression.",
-    tier: "B"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงเหตุผล สติปัญญา ความมั่นใจในการสื่อสาร และการคิดอย่างเป็นระบบ",
+    meaningEn: "Symbolizes logic, wisdom, communication confidence, and clear thinking."
   },
   clear_quartz: {
     nameEn: "Clear Quartz",
+    nameTh: "เคลียร์ควอตซ์",
     categoryId: "calm",
-    meaningTh: "สื่อถึงความชัดเจน การขยายพลัง และการตั้งเจตนา",
-    meaning: "Symbolizes clarity, amplification, and focused intention.",
-    tier: "A"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงความชัดเจน การขยายพลัง การตั้งเจตนา และการเริ่มต้นใหม่",
+    meaningEn: "Symbolizes clarity, energy amplification, focused intention, and new beginnings."
   },
   white_jade: {
     nameEn: "White Jade",
-    categoryId: "calm",
-    meaningTh: "สื่อถึงความสงบ ความอ่อนโยน และการปกป้องอย่างนุ่มนวล",
-    meaning: "Symbolizes peace, gentleness, and quiet protection.",
-    tier: "B"
+    nameTh: "ไวท์เจด",
+    categoryId: "love",
+    targetPrice: 90,
+    meaningTh: "สื่อถึงความสงบ ความอ่อนโยน ความเมตตา และการปกป้องอย่างนุ่มนวล",
+    meaningEn: "Symbolizes peace, gentleness, compassion, and soft protection."
   },
   white_cat_eye: {
     nameEn: "White Cat Eye",
+    nameTh: "แคทอายขาว",
     categoryId: "protection",
-    meaningTh: "สื่อถึงการคุ้มครอง การมองเห็นโอกาส และความมั่นคง",
-    meaning: "Symbolizes protection, awareness, and steady confidence.",
-    tier: "A"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงการคุ้มครอง การมองเห็นโอกาส ความมั่นคง และการป้องกันพลังลบ",
+    meaningEn: "Symbolizes protection, awareness, steady confidence, and energetic boundaries."
   },
   opal: {
     nameEn: "Opal",
+    nameTh: "โอปอล",
     categoryId: "love",
-    meaningTh: "สื่อถึงแรงบันดาลใจ เสน่ห์ และความงดงามจากภายใน",
-    meaning: "Symbolizes inspiration, charm, and inner radiance.",
-    tier: "D"
+    targetPrice: 140,
+    meaningTh: "สื่อถึงแรงบันดาลใจ เสน่ห์ ความคิดสร้างสรรค์ และประกายความงามจากภายใน",
+    meaningEn: "Symbolizes inspiration, charm, creativity, and inner radiance."
   },
   red_tiger_eye: {
     nameEn: "Red Tiger Eye",
+    nameTh: "เรดไทเกอร์อาย",
     categoryId: "protection",
-    meaningTh: "สื่อถึงแรงผลักดัน ความกล้า และพลังในการลงมืออย่างมั่นคง",
-    meaning: "Symbolizes motivation, courage, and grounded action.",
-    tier: "C"
+    targetPrice: 130,
+    meaningTh: "สื่อถึงพลังใจ ความกล้า ความมุ่งมั่น และการลงมือทำอย่างมั่นใจ",
+    meaningEn: "Symbolizes vitality, courage, determination, and confident action."
   },
   lavender_quartz: {
     nameEn: "Lavender Quartz",
+    nameTh: "ลาเวนเดอร์ควอตซ์",
     categoryId: "love",
-    meaningTh: "สื่อถึงความรักที่อ่อนโยน ความละมุนใจ และความสงบจากภายใน",
-    meaning: "Symbolizes gentle love, emotional softness, and inner peace.",
-    tier: "B"
+    targetPrice: 110,
+    meaningTh: "สื่อถึงความรักที่นุ่มนวล ความสบายใจ ความเมตตา และการเยียวยาใจอย่างอ่อนโยน",
+    meaningEn: "Symbolizes soft love, comfort, compassion, and gentle emotional healing."
   },
   black_tourmaline: {
     nameEn: "Black Tourmaline",
+    nameTh: "แบล็กทัวร์มาลีน",
     categoryId: "protection",
-    meaningTh: "สื่อถึงการปกป้อง ขอบเขตที่มั่นคง และการปล่อยพลังลบ",
-    meaning: "Symbolizes protection, firm boundaries, and grounded release.",
-    tier: "C"
+    targetPrice: 160,
+    meaningTh: "สื่อถึงการปกป้อง การกราวด์พลัง ความมั่นคง และการกันพลังลบ",
+    meaningEn: "Symbolizes protection, grounding, stability, and shielding from negativity."
   },
   labradorite: {
     nameEn: "Labradorite",
-    categoryId: "calm",
-    meaningTh: "สื่อถึงสัญชาตญาณ การเปลี่ยนผ่าน และพลังภายในที่ลึกซึ้ง",
-    meaning: "Symbolizes intuition, transformation, and inner strength.",
-    tier: "C"
+    nameTh: "ลาบราโดไรต์",
+    categoryId: "protection",
+    targetPrice: 160,
+    meaningTh: "สื่อถึงสัญชาตญาณ การเปลี่ยนแปลง การปกป้อง และการค้นพบศักยภาพใหม่",
+    meaningEn: "Symbolizes intuition, transformation, protection, and hidden potential."
   },
   carnelian: {
     nameEn: "Carnelian",
+    nameTh: "คาร์เนเลียน",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงพลังชีวิต ความมั่นใจ และแรงบันดาลใจในการสร้างสรรค์",
-    meaning: "Symbolizes vitality, confidence, and creative momentum.",
-    tier: "B"
+    targetPrice: 100,
+    meaningTh: "สื่อถึงพลังสร้างสรรค์ ความมั่นใจ ความกระตือรือร้น และแรงผลักดันในการลงมือทำ",
+    meaningEn: "Symbolizes creativity, confidence, motivation, and bold action."
   },
   moss_agate: {
     nameEn: "Moss Agate",
-    categoryId: "wealth",
-    meaningTh: "สื่อถึงการเติบโต ความอุดมสมบูรณ์ และความมั่นคงจากธรรมชาติ",
-    meaning: "Symbolizes growth, abundance, and grounded stability.",
-    tier: "B"
+    nameTh: "มอสอาเกต",
+    categoryId: "calm",
+    targetPrice: 110,
+    meaningTh: "สื่อถึงการเติบโต ความอุดมสมบูรณ์ ความสมดุล และการเชื่อมโยงกับธรรมชาติ",
+    meaningEn: "Symbolizes growth, abundance, balance, and connection with nature."
   },
   rhodonite: {
     nameEn: "Rhodonite",
+    nameTh: "โรโดไนต์",
     categoryId: "love",
-    meaningTh: "สื่อถึงเมตตา การเยียวยาใจ และความสมดุลในความสัมพันธ์",
-    meaning: "Symbolizes compassion, emotional healing, and heart balance.",
-    tier: "B"
+    targetPrice: 120,
+    meaningTh: "สื่อถึงการเยียวยาความสัมพันธ์ ความเข้าใจ การให้อภัย และความรักที่มั่นคง",
+    meaningEn: "Symbolizes relationship healing, understanding, forgiveness, and steady love."
   },
   sunstone: {
     nameEn: "Sunstone",
+    nameTh: "ซันสโตน",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงความสดใส โอกาส และความมั่นใจในการก้าวสู่ความสำเร็จ",
-    meaning: "Symbolizes optimism, opportunity, and confident success.",
-    tier: "C"
+    targetPrice: 120,
+    meaningTh: "สื่อถึงความสดใส โชคดี ความมั่นใจ และพลังบวกในการเริ่มต้นวันใหม่",
+    meaningEn: "Symbolizes joy, luck, confidence, and uplifting positive energy."
   },
   pearls: {
     nameEn: "Pearls",
+    nameTh: "ไข่มุก",
     categoryId: "love",
-    meaningTh: "สื่อถึงความสง่างาม ความอ่อนโยน และเสน่ห์ที่สุขุม",
-    meaning: "Symbolizes elegance, tenderness, and graceful charm.",
-    tier: "B"
+    targetPrice: 120,
+    meaningTh: "สื่อถึงความบริสุทธิ์ ความอ่อนโยน ความสง่างาม และเสน่ห์แบบละมุน",
+    meaningEn: "Symbolizes purity, softness, elegance, and graceful charm."
   },
   aquamarine: {
     nameEn: "Aquamarine",
+    nameTh: "อะความารีน",
     categoryId: "calm",
-    meaningTh: "สื่อถึงความสงบ ความชัดเจน และการสื่อสารอย่างอ่อนโยน",
-    meaning: "Symbolizes calm, clarity, and soothing communication.",
-    tier: "C"
+    targetPrice: 140,
+    meaningTh: "สื่อถึงความสงบ การสื่อสารอย่างอ่อนโยน ความกล้า และความสบายใจ",
+    meaningEn: "Symbolizes calmness, gentle communication, courage, and emotional ease."
   },
   moonstone: {
     nameEn: "Moonstone",
+    nameTh: "มูนสโตน",
     categoryId: "love",
-    meaningTh: "สื่อถึงเสน่ห์ สัญชาตญาณ และความสมดุลของอารมณ์",
-    meaning: "Symbolizes charm, intuition, and emotional flow.",
-    tier: "C"
+    targetPrice: 140,
+    meaningTh: "สื่อถึงพลังแห่งความอ่อนโยน สัญชาตญาณ ความรัก และการเริ่มต้นใหม่",
+    meaningEn: "Symbolizes feminine energy, intuition, love, and new beginnings."
   },
   pyrite: {
     nameEn: "Pyrite",
+    nameTh: "ไพไรต์",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงความมั่งคั่ง ความเด็ดเดี่ยว และการปกป้องโอกาสที่ดี",
-    meaning: "Symbolizes prosperity, strong will, and protected opportunity.",
-    tier: "C"
+    targetPrice: 160,
+    meaningTh: "สื่อถึงทรัพย์ ความมั่งคั่ง ความกล้าลงมือ และการดึงดูดโอกาสทางการเงิน",
+    meaningEn: "Symbolizes wealth, prosperity, bold action, and financial opportunity."
   },
   honey_jade: {
     nameEn: "Honey Jade",
+    nameTh: "ฮันนี่เจด",
     categoryId: "wealth",
-    meaningTh: "สื่อถึงความอุดมสมบูรณ์ที่อบอุ่น มุมมองบวก และความสำเร็จที่มั่นคง",
-    meaning: "Symbolizes warm abundance, optimism, and steady success.",
-    tier: "B"
+    targetPrice: 100,
+    meaningTh: "สื่อถึงความอบอุ่น โชคลาภ ความอุดมสมบูรณ์ และพลังสนับสนุนที่นุ่มนวล",
+    meaningEn: "Symbolizes warmth, luck, abundance, and gentle supportive energy."
   },
   cherry_quartz: {
     nameEn: "Cherry Quartz",
+    nameTh: "เชอร์รี่ควอตซ์",
     categoryId: "love",
-    meaningTh: "สื่อถึงความสดใส ความรัก และพลังบวกในความสัมพันธ์",
-    meaning: "Symbolizes joy, affection, and positive emotional energy.",
-    tier: "A"
+    targetPrice: 90,
+    meaningTh: "สื่อถึงความสดใส ความรัก พลังบวก และความสุขในความสัมพันธ์",
+    meaningEn: "Symbolizes joy, affection, positivity, and happiness in relationships."
   }
 };
 
-const STONE_PRICE_TIERS = {
-  A: { p4: 70, p6: 110, p8: 150 },
-  B: { p4: 80, p6: 120, p8: 160 },
-  C: { p4: 90, p6: 130, p8: 170 },
-  D: { p4: 100, p6: 150, p8: 200 }
-};
-
-const CHARM_MEANINGS = {
-  pixiu: {
-    th: "สื่อถึงโชคลาภ การเรียกทรัพย์ และการปกป้องทรัพย์ให้มั่นคง",
-    en: "Symbolizes wealth attraction, prosperity, and guarding good fortune."
+const CHARM_UPDATES = {
+  px01: {
+    nameEn: "Pi Xiu PX01",
+    nameTh: "ปี่เซียะ PX01",
+    categoryId: "pixiu",
+    price: 490,
+    meaningTh: "สื่อถึงการเรียกทรัพย์ โชคลาภ และการปกป้องทรัพย์ให้มั่นคง",
+    meaningEn: "Symbolizes wealth attraction, prosperity, and guarding good fortune."
   },
-  takrud_ganesha: {
-    th: "สื่อถึงการเปิดทาง ความสำเร็จ และการขจัดอุปสรรค",
-    en: "Symbolizes removing obstacles, opening paths, and success."
+  px02: {
+    nameEn: "Pi Xiu PX02",
+    nameTh: "ปี่เซียะ PX02",
+    categoryId: "pixiu",
+    price: 490,
+    meaningTh: "สื่อถึงโชคลาภ การเปิดรับโอกาสทางการเงิน และพลังคุ้มครอง",
+    meaningEn: "Symbolizes prosperity, financial opportunity, and protective energy."
   },
-  takrud_lakshmi: {
-    th: "สื่อถึงความมั่งคั่ง ความอุดมสมบูรณ์ และโชคลาภด้านการเงิน",
-    en: "Symbolizes abundance, prosperity, and financial blessings."
+  px03: {
+    nameEn: "Pi Xiu PX03",
+    nameTh: "ปี่เซียะ PX03",
+    categoryId: "pixiu",
+    price: 590,
+    meaningTh: "สื่อถึงการเรียกทรัพย์ ความมั่นคง และพลังเสริมความสำเร็จ",
+    meaningEn: "Symbolizes wealth calling, stability, and success energy."
   },
-  bee_heart: {
-    th: "สื่อถึงเสน่ห์ เมตตา ความรัก และความน่าดึงดูดอย่างอ่อนโยน",
-    en: "Symbolizes charm, affection, kindness, and gentle attraction."
+  px04: {
+    nameEn: "Pi Xiu PX04",
+    nameTh: "ปี่เซียะ PX04",
+    categoryId: "pixiu",
+    price: 590,
+    meaningTh: "สื่อถึงการปกป้องทรัพย์ การกันพลังลบ และความมั่งคั่งที่มั่นคง",
+    meaningEn: "Symbolizes wealth protection, energetic shielding, and stable abundance."
+  },
+  px05: {
+    nameEn: "Pi Xiu PX05",
+    nameTh: "ปี่เซียะ PX05",
+    categoryId: "pixiu",
+    price: 690,
+    meaningTh: "สื่อถึงเสน่ห์แห่งโชคลาภ โอกาสใหม่ และพลังสนับสนุนด้านการเงิน",
+    meaningEn: "Symbolizes charm, luck, new opportunity, and financial support."
+  },
+  px06: {
+    nameEn: "Pi Xiu PX06",
+    nameTh: "ปี่เซียะ PX06",
+    categoryId: "pixiu",
+    price: 690,
+    meaningTh: "สื่อถึงพลังคุ้มครอง ความมั่งคั่ง และการเสริมบารมีในการทำงาน",
+    meaningEn: "Symbolizes protection, prosperity, and empowered career presence."
+  },
+  px07: {
+    nameEn: "Pi Xiu PX07",
+    nameTh: "ปี่เซียะ PX07",
+    categoryId: "pixiu",
+    price: 790,
+    meaningTh: "สื่อถึงโชคลาภระดับพรีเมียม การเก็บทรัพย์ และความสำเร็จที่มั่นคง",
+    meaningEn: "Symbolizes premium fortune, wealth keeping, and stable success."
+  },
+  px08: {
+    nameEn: "Pi Xiu PX08",
+    nameTh: "ปี่เซียะ PX08",
+    categoryId: "pixiu",
+    price: 790,
+    meaningTh: "สื่อถึงพลังเรียกทรัพย์ ความมั่งคั่ง และการปกป้องโอกาสดี",
+    meaningEn: "Symbolizes wealth attraction, abundance, and protection of good opportunities."
+  },
+  px09: {
+    nameEn: "Pi Xiu PX09",
+    nameTh: "ปี่เซียะ PX09",
+    categoryId: "pixiu",
+    price: 890,
+    meaningTh: "สื่อถึงการเรียกทรัพย์ โชคลาภ และการรักษาโอกาสทางการเงินให้มั่นคง",
+    meaningEn: "Symbolizes wealth attraction, prosperity, and steady financial opportunity."
+  },
+  tg01: {
+    nameEn: "Takrud Ganesha Silver TG01",
+    nameTh: "ตะกรุดพระพิฆเนศ เงิน TG01",
+    categoryId: "takrud",
+    price: 990,
+    meaningTh: "สื่อถึงการเปิดทาง ความสำเร็จ การขจัดอุปสรรค และความมั่นใจในการเริ่มต้น",
+    meaningEn: "Symbolizes removing obstacles, opening paths, success, and confident beginnings."
+  },
+  tg03: {
+    nameEn: "Ganesha Takrud Silver",
+    nameTh: "ตะกรุดพระพิฆเนศ สีเงิน",
+    categoryId: "takrud",
+    price: 990,
+    meaningTh: "สื่อถึงการคุ้มครอง การเปิดทางเรื่องงาน และการสนับสนุนให้เดินหน้าสู่เป้าหมาย",
+    meaningEn: "Symbolizes protection, career path opening, and support toward goals."
+  },
+  tg02: {
+    nameEn: "Takrud Ganesha Gold",
+    nameTh: "ตะกรุดพระพิฆเนศ ทอง",
+    categoryId: "takrud",
+    price: 1290,
+    meaningTh: "สื่อถึงความสำเร็จ บารมี โชคลาภ และการเปิดทางสู่โอกาสที่ดีกว่า",
+    meaningEn: "Symbolizes success, prestige, prosperity, and opening better opportunities."
+  },
+  tl01: {
+    nameEn: "Takrud Lakshmi Gold",
+    nameTh: "ตะกรุดพระลักษมี ทอง",
+    categoryId: "takrud",
+    price: 1190,
+    meaningTh: "สื่อถึงความมั่งคั่ง ความอุดมสมบูรณ์ โชคลาภ และพลังสนับสนุนด้านการเงิน",
+    meaningEn: "Symbolizes abundance, prosperity, financial luck, and supportive wealth energy."
+  },
+  bh01: {
+    nameEn: "Bee Heart Blue",
+    nameTh: "บีฮาร์ท สีน้ำเงิน",
+    categoryId: "bee-heart",
+    price: 990,
+    meaningTh: "สื่อถึงเสน่ห์ เมตตา ความน่ารักน่าเอ็นดู และการสื่อสารที่อ่อนโยน",
+    meaningEn: "Symbolizes charm, kindness, gentle attraction, and soft communication."
+  },
+  bh02: {
+    nameEn: "Bee Heart Orange",
+    nameTh: "บีฮาร์ท สีส้ม",
+    categoryId: "bee-heart",
+    price: 990,
+    meaningTh: "สื่อถึงเสน่ห์ ความสดใส ความมั่นใจ และพลังดึงดูดแบบอบอุ่น",
+    meaningEn: "Symbolizes charm, brightness, confidence, and warm attraction."
+  },
+  bh03: {
+    nameEn: "Bee Heart Purple",
+    nameTh: "บีฮาร์ท สีม่วง",
+    categoryId: "bee-heart",
+    price: 990,
+    meaningTh: "สื่อถึงเสน่ห์ลึกลับ ความเมตตา ความน่าดึงดูด และพลังแห่งความอ่อนโยน",
+    meaningEn: "Symbolizes mysterious charm, kindness, attraction, and gentle energy."
   }
-};
-
-const CHARM_NAME_TH = {
-  px01: "ปี่เซียะ PX01",
-  px02: "ปี่เซียะ PX02",
-  px03: "ปี่เซียะ PX03",
-  px04: "ปี่เซียะ PX04",
-  px05: "ปี่เซียะ PX05",
-  px06: "ปี่เซียะ PX06",
-  px07: "ปี่เซียะ PX07",
-  px08: "ปี่เซียะ PX08",
-  px09: "ปี่เซียะ PX09",
-  tg01: "ตะกรุดพระพิฆเนศ เงิน TG01",
-  tg02: "ตะกรุดพระพิฆเนศ ทอง",
-  tg03: "ตะกรุดพระพิฆเนศ สีเงิน",
-  tl01: "ตะกรุดพระลักษมี ทอง",
-  bh01: "บีฮาร์ท สีน้ำเงิน",
-  bh02: "บีฮาร์ท สีส้ม",
-  bh03: "บีฮาร์ท สีม่วง"
-};
-
-const CHARM_NAME_EN = {
-  px01: "Pi Xiu PX01",
-  px02: "Pi Xiu PX02",
-  px03: "Pi Xiu PX03",
-  px04: "Pi Xiu PX04",
-  px05: "Pi Xiu PX05",
-  px06: "Pi Xiu PX06",
-  px07: "Pi Xiu PX07",
-  px08: "Pi Xiu PX08",
-  px09: "Pi Xiu PX09",
-  tg01: "Takrud Ganesha Silver TG01",
-  tg02: "Takrud Ganesha Gold",
-  tg03: "Takrud Ganesha Silver",
-  tl01: "Takrud Lakshmi Gold",
-  bh01: "Bee Heart Blue",
-  bh02: "Bee Heart Orange",
-  bh03: "Bee Heart Purple"
 };
 
 function readText(filePath) {
@@ -329,9 +427,21 @@ function writeJson(filePath, value) {
   writeText(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function isPlainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
 function finitePositive(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0;
+}
+
+function stonePrices(targetPrice) {
+  return {
+    p4: Math.max(1, Math.round(Number(targetPrice) * 0.6)),
+    p6: Math.max(1, Math.round(Number(targetPrice) * 0.8)),
+    p8: Math.max(1, Math.round(Number(targetPrice)))
+  };
 }
 
 function setIfChanged(target, key, value, changes, label) {
@@ -347,67 +457,56 @@ function updateStone(stone) {
   if (!curated) return { record: stone, changes };
 
   const next = { ...stone };
-  setIfChanged(next, "nameEn", curated.nameEn || next.name || "", changes, "nameEn");
+  setIfChanged(next, "name", curated.nameEn, changes, "name");
+  setIfChanged(next, "nameEn", curated.nameEn, changes, "nameEn");
+  setIfChanged(next, "nameTh", curated.nameTh, changes, "nameTh");
   setIfChanged(next, "category", curated.categoryId, changes, "category");
   setIfChanged(next, "categoryId", curated.categoryId, changes, "categoryId");
   setIfChanged(next, "meaningTh", curated.meaningTh, changes, "meaningTh");
-  setIfChanged(next, "meaning", curated.meaning, changes, "meaning");
+  setIfChanged(next, "meaning", curated.meaningEn, changes, "meaning");
 
-  const tierPrices = STONE_PRICE_TIERS[curated.tier] || STONE_PRICE_TIERS.B;
+  const prices = stonePrices(curated.targetPrice);
   ["p4", "p6", "p8"].forEach((priceKey) => {
-    if (!finitePositive(next[priceKey])) {
-      setIfChanged(next, priceKey, tierPrices[priceKey], changes, priceKey);
-    }
+    setIfChanged(next, priceKey, prices[priceKey], changes, priceKey);
   });
 
   return { record: next, changes };
 }
 
-function getCharmMeaning(charm) {
-  const type = String(charm.type || "").trim();
-  if (type === "bee_heart") return CHARM_MEANINGS.bee_heart;
-  if (type === "takrud_lakshmi") return CHARM_MEANINGS.takrud_lakshmi;
-  if (type === "takrud_ganesha" || String(charm.id || "").startsWith("tg")) return CHARM_MEANINGS.takrud_ganesha;
-  return CHARM_MEANINGS.pixiu;
-}
-
-function getCharmCategory(charm) {
-  return charm.type === "bee_heart" ? "bee-heart" : (charm.categoryId || charm.collection || "pixiu");
-}
-
 function updateCharm(charm) {
-  const next = { ...charm };
+  const curated = CHARM_UPDATES[charm.id];
   const changes = [];
-  const id = String(next.id || "");
-  const meaning = getCharmMeaning(next);
-  const categoryId = getCharmCategory(next);
-  const isNormalized = next.name && typeof next.name === "object";
+  if (!curated) return { record: charm, changes };
 
-  if (isNormalized) {
+  const next = { ...charm };
+  const categoryId = curated.categoryId;
+
+  if (isPlainObject(next.name)) {
     next.name = { ...next.name };
-    next.meaning = { ...(next.meaning || {}) };
-    next.pricing = { ...(next.pricing || {}) };
-    next.availability = { ...(next.availability || {}) };
-
-    setIfChanged(next.name, "th", CHARM_NAME_TH[id] || next.name.th || "", changes, "name.th");
-    setIfChanged(next.name, "en", CHARM_NAME_EN[id] || next.name.en || "", changes, "name.en");
-    setIfChanged(next, "categoryId", categoryId, changes, "categoryId");
-    setIfChanged(next, "collection", categoryId, changes, "collection");
-    setIfChanged(next.meaning, "th", meaning.th, changes, "meaning.th");
-    setIfChanged(next.meaning, "en", meaning.en, changes, "meaning.en");
-    if (!finitePositive(next.pricing.base)) {
-      setIfChanged(next.pricing, "base", 990, changes, "pricing.base");
-    }
+    setIfChanged(next.name, "en", curated.nameEn, changes, "name.en");
+    setIfChanged(next.name, "th", curated.nameTh, changes, "name.th");
   } else {
-    setIfChanged(next, "nameTh", CHARM_NAME_TH[id] || next.nameTh || "", changes, "nameTh");
-    setIfChanged(next, "nameEn", CHARM_NAME_EN[id] || next.nameEn || "", changes, "nameEn");
-    setIfChanged(next, "categoryId", categoryId, changes, "categoryId");
-    setIfChanged(next, "collection", categoryId, changes, "collection");
-    setIfChanged(next, "meaningTh", meaning.th, changes, "meaningTh");
-    setIfChanged(next, "meaningEn", meaning.en, changes, "meaningEn");
-    if (!finitePositive(next.price)) {
-      setIfChanged(next, "price", 990, changes, "price");
-    }
+    setIfChanged(next, "nameEn", curated.nameEn, changes, "nameEn");
+    setIfChanged(next, "nameTh", curated.nameTh, changes, "nameTh");
+  }
+
+  setIfChanged(next, "categoryId", categoryId, changes, "categoryId");
+  setIfChanged(next, "collection", categoryId, changes, "collection");
+
+  if (isPlainObject(next.meaning)) {
+    next.meaning = { ...next.meaning };
+    setIfChanged(next.meaning, "en", curated.meaningEn, changes, "meaning.en");
+    setIfChanged(next.meaning, "th", curated.meaningTh, changes, "meaning.th");
+  } else {
+    setIfChanged(next, "meaningEn", curated.meaningEn, changes, "meaningEn");
+    setIfChanged(next, "meaningTh", curated.meaningTh, changes, "meaningTh");
+  }
+
+  if (isPlainObject(next.pricing)) {
+    next.pricing = { ...next.pricing };
+    setIfChanged(next.pricing, "base", curated.price, changes, "pricing.base");
+  } else {
+    setIfChanged(next, "price", curated.price, changes, "price");
   }
 
   return { record: next, changes };
@@ -464,30 +563,30 @@ function toLegacyCharm(charm) {
   return {
     id: charm.id,
     sku: charm.sku,
-    nameTh: charm.name?.th || "",
-    nameEn: charm.name?.en || "",
+    nameTh: charm.name?.th || charm.nameTh || "",
+    nameEn: charm.name?.en || charm.nameEn || "",
     type: charm.type,
     collection: charm.collection,
     categoryId: charm.categoryId,
-    image: charm.image?.primary || "",
-    sizeCm: charm.business?.sizeCm || 0,
-    footprintMm: charm.business?.footprintMm || 0,
-    visualScale: charm.renderTuning?.visualScale,
-    visualOffsetX: charm.renderTuning?.visualOffsetX,
-    visualOffsetY: charm.renderTuning?.visualOffsetY,
-    maxWidthRatio: charm.renderTuning?.maxWidthRatio,
-    maxHeightRatio: charm.renderTuning?.maxHeightRatio,
-    edgeFitMode: charm.renderTuning?.edgeFitMode,
-    targetWidthFillRatio: charm.renderTuning?.targetWidthFillRatio,
-    contactInsetLeft: charm.renderTuning?.contactInsetLeft,
-    contactInsetRight: charm.renderTuning?.contactInsetRight,
-    rotation: charm.renderTuning?.rotation,
-    anchor: charm.renderTuning?.anchor,
-    price: charm.pricing?.base || 0,
-    meaningTh: charm.meaning?.th || "",
-    meaningEn: charm.meaning?.en || "",
-    inStock: charm.availability?.inStock !== false,
-    isActive: charm.availability?.isActive !== false,
+    image: charm.image?.primary || charm.image || "",
+    sizeCm: charm.business?.sizeCm || charm.sizeCm || 0,
+    footprintMm: charm.business?.footprintMm || charm.footprintMm || 0,
+    visualScale: charm.renderTuning?.visualScale ?? charm.visualScale,
+    visualOffsetX: charm.renderTuning?.visualOffsetX ?? charm.visualOffsetX,
+    visualOffsetY: charm.renderTuning?.visualOffsetY ?? charm.visualOffsetY,
+    maxWidthRatio: charm.renderTuning?.maxWidthRatio ?? charm.maxWidthRatio,
+    maxHeightRatio: charm.renderTuning?.maxHeightRatio ?? charm.maxHeightRatio,
+    edgeFitMode: charm.renderTuning?.edgeFitMode ?? charm.edgeFitMode,
+    targetWidthFillRatio: charm.renderTuning?.targetWidthFillRatio ?? charm.targetWidthFillRatio,
+    contactInsetLeft: charm.renderTuning?.contactInsetLeft ?? charm.contactInsetLeft,
+    contactInsetRight: charm.renderTuning?.contactInsetRight ?? charm.contactInsetRight,
+    rotation: charm.renderTuning?.rotation ?? charm.rotation,
+    anchor: charm.renderTuning?.anchor ?? charm.anchor,
+    price: charm.pricing?.base || charm.price || 0,
+    meaningTh: charm.meaning?.th || charm.meaningTh || "",
+    meaningEn: charm.meaning?.en || charm.meaningEn || "",
+    inStock: charm.availability?.inStock !== false && charm.inStock !== false,
+    isActive: charm.availability?.isActive !== false && charm.isActive !== false,
     displayOrder: charm.displayOrder
   };
 }
@@ -546,11 +645,11 @@ function validateSupabaseUrl(rawUrl) {
 async function upsertRows(tableName, rows, conflictKey = "id") {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.log(`${tableName}: skipped Supabase upsert; SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not provided.`);
-    return;
+    return { skipped: true, count: rows.length };
   }
   if (isDryRun) {
     console.log(`[dry-run] ${tableName}: ${rows.length} rows ready for Supabase upsert.`);
-    return;
+    return { dryRun: true, count: rows.length };
   }
 
   const endpoint = `${validateSupabaseUrl(process.env.SUPABASE_URL)}/rest/v1/${tableName}?on_conflict=${encodeURIComponent(conflictKey)}`;
@@ -568,6 +667,23 @@ async function upsertRows(tableName, rows, conflictKey = "id") {
     throw new Error(`${tableName} Supabase upsert failed: ${response.status} ${await response.text()}`);
   }
   console.log(`${tableName}: upserted ${rows.length} rows to Supabase.`);
+  return { updated: true, count: rows.length };
+}
+
+function validateCatalog({ stones, charms }) {
+  const missingStones = Object.keys(STONE_UPDATES).filter((id) => !stones.some((stone) => stone.id === id));
+  const missingCharms = Object.keys(CHARM_UPDATES).filter((id) => !charms.some((charm) => charm.id === id));
+  const invalidStones = stones.filter((stone) => STONE_UPDATES[stone.id] && (!finitePositive(stone.p4) || !finitePositive(stone.p6) || !finitePositive(stone.p8)));
+  const invalidCharms = charms.filter((charm) => CHARM_UPDATES[charm.id] && !finitePositive(charm.pricing?.base || charm.price));
+
+  if (missingStones.length || missingCharms.length || invalidStones.length || invalidCharms.length) {
+    throw new Error([
+      missingStones.length ? `Missing stone records: ${missingStones.join(", ")}` : "",
+      missingCharms.length ? `Missing charm records: ${missingCharms.join(", ")}` : "",
+      invalidStones.length ? `Invalid stone prices: ${invalidStones.map((stone) => stone.id).join(", ")}` : "",
+      invalidCharms.length ? `Invalid charm prices: ${invalidCharms.map((charm) => charm.id).join(", ")}` : ""
+    ].filter(Boolean).join("\n"));
+  }
 }
 
 async function main() {
@@ -577,17 +693,13 @@ async function main() {
   const dataJs = readText(paths.dataJs);
   const fallbackCharms = extractArrayConst(dataJs, "CHARM_CATALOG");
 
-  const stoneResults = stones.map((stone) => {
-    const result = updateStone(stone);
-    return { id: stone.id, ...result };
-  });
+  const stoneResults = stones.map((stone) => ({ id: stone.id, ...updateStone(stone) }));
   const updatedStones = stoneResults.map((entry) => entry.record);
 
-  const charmResults = charms.map((charm) => {
-    const result = updateCharm(charm);
-    return { id: charm.id, ...result };
-  });
+  const charmResults = charms.map((charm) => ({ id: charm.id, ...updateCharm(charm) }));
   const updatedCharms = charmResults.map((entry) => entry.record);
+
+  validateCatalog({ stones: updatedStones, charms: updatedCharms });
 
   const fallbackById = new Map(fallbackCharms.map((charm) => [charm.id, charm]));
   updatedCharms.map(toLegacyCharm).forEach((charm) => {
@@ -624,6 +736,10 @@ async function main() {
   await upsertRows("catalog_categories", CATEGORY_CATALOG.map(buildCategoryRow));
   await upsertRows("app_settings", Object.entries(updatedSettings).map(([key, value]) => ({ key, value })), "key");
 
+  const unmatchedStones = stones.map((stone) => stone.id).filter((id) => !STONE_UPDATES[id]);
+  const unmatchedCharms = charms.map((charm) => charm.id).filter((id) => !CHARM_UPDATES[id]);
+  console.log(`unmatched stones: ${unmatchedStones.length ? unmatchedStones.join(", ") : "none"}`);
+  console.log(`unmatched charms: ${unmatchedCharms.length ? unmatchedCharms.join(", ") : "none"}`);
   console.log(`Catalog update ${isDryRun ? "dry-run" : "completed"}.`);
 }
 
