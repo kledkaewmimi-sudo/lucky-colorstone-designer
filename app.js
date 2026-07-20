@@ -2269,14 +2269,29 @@ function syncWristSizeDisplay() {
 // 7. Step 2: Bead Size Logic
 // ==========================================
 function getStep2SupportThumbnailSources(kind) {
-  const fallbackSources = kind === 'charm'
-    ? ['/assets/charms/takrud/bee=blue.webp', '/assets/charms/takrud/bee-orange.webp', '/assets/charms/takrud/bee-purple.webp']
-    : ['/assets/charms/pixiu/px01.webp', '/assets/charms/pixiu/px02.webp', '/assets/charms/takrud/tg01.webp'];
+  if (kind === 'charm') {
+    const spacerSources = applyCatalogLayoutOrder(
+      SPACER_CATALOG.filter((spacer) => spacer.inStock !== false),
+      'spacers'
+    )
+      .map((spacer) => withCatalogImageVersion(spacer.image, spacer))
+      .filter((image) => image && !image.includes('_placeholder'));
+
+    return spacerSources.length > 0 ? spacerSources : [
+      '/assets/spacers/diamond-ball-orange-9mm.png',
+      '/assets/spacers/diamond-ball-pink-9mm.png',
+      '/assets/spacers/diamond-ball-purple-9mm.png',
+      '/assets/spacers/diamond-ball-white-9mm.png',
+      '/assets/spacers/golden-ball-7mm.png',
+      '/assets/spacers/flower-gold-6mm.png',
+      '/assets/spacers/flower-silver-6mm.png'
+    ];
+  }
+
+  const fallbackSources = ['/assets/charms/pixiu/px01.webp', '/assets/charms/pixiu/px02.webp', '/assets/charms/takrud/tg01.webp'];
   const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
   const filteredSources = visibleCharms
     .filter((charm) => {
-      if (kind === 'charm') return isBeeHeartCharm(charm);
-
       const categoryTokens = [
         charm.categoryId,
         charm.category,
