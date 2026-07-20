@@ -909,12 +909,15 @@ option {
 }
 
 .bead-size-support-banner {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 8px;
-  padding: 4px;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 4px 5px;
   border-radius: 999px;
   background: rgba(245, 239, 255, 0.9);
   border: 1px solid rgba(181, 169, 219, 0.24);
@@ -923,9 +926,10 @@ option {
 .bead-size-support-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 5px;
   min-height: 24px;
-  padding: 3px 8px 3px 4px;
+  padding: 3px 4px 3px 9px;
   border-radius: 999px;
   color: #67537b;
   font-size: 10px;
@@ -1116,7 +1120,7 @@ option {
 
   .bead-size-support-item {
     gap: 3px;
-    padding-right: 6px;
+    padding: 3px 3px 3px 7px;
     font-size: 9px;
   }
 
