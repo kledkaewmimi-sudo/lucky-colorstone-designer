@@ -920,7 +920,7 @@ option {
   width: fit-content;
   max-width: 100%;
   margin-top: 6px;
-  margin-left: -34px;
+  margin-left: -18px;
   padding: 4px 14px 5px 11px;
   border-radius: 999px;
   background: rgba(245, 239, 255, 0.86);
@@ -1127,7 +1127,7 @@ option {
 
   .bead-size-support-banner {
     gap: 8px;
-    margin-left: -30px;
+    margin-left: -16px;
     padding: 4px 12px 5px 10px;
   }
 
