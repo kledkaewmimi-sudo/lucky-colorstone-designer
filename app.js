@@ -194,6 +194,8 @@ let legacyCharmCatalogCache = [];
 let liffLoginInProgress = false;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
+let landingPressTimer = null;
+let landingRippleTimer = null;
 let customizationResumeInProgress = false;
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
@@ -806,6 +808,24 @@ function withTimeout(promise, ms, label) {
     });
 }
 
+function triggerLandingStartFeedback() {
+  const button = DOM.btnLandingLogin;
+  if (!button) return;
+
+  window.clearTimeout(landingPressTimer);
+  window.clearTimeout(landingRippleTimer);
+  button.classList.remove('is-pressed', 'is-rippling');
+  void button.offsetWidth;
+  button.classList.add('is-pressed', 'is-rippling');
+
+  landingPressTimer = window.setTimeout(() => {
+    button.classList.remove('is-pressed');
+  }, 140);
+  landingRippleTimer = window.setTimeout(() => {
+    button.classList.remove('is-rippling');
+  }, 620);
+}
+
 function setLandingButtonState(state, message = '') {
   const button = DOM.btnLandingLogin;
   if (!button) return;
@@ -819,13 +839,26 @@ function setLandingButtonState(state, message = '') {
   button.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
   button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
   button.classList.toggle('is-loading', isLoading);
-  button.classList.toggle('is-pressed', state === 'starting');
   button.classList.toggle('is-line-login', state === 'line');
+  if (!isLoading) {
+    window.clearTimeout(landingPressTimer);
+    window.clearTimeout(landingRippleTimer);
+    button.classList.remove('is-pressed', 'is-rippling');
+  }
 }
 
 function resetLandingStartState() {
   landingStartInProgress = false;
   setLandingButtonState('idle', landingConnectPromptVisible ? 'เข้าสู่ระบบด้วย LINE' : '');
+}
+
+function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
+  landingConnectPromptVisible = false;
+  setLandingSubtitleMessage('');
+  resetLandingStartState();
+  if (message) {
+    showToast(message);
+  }
 }
 
 function setLiffLoadingMessage(message = '') {
@@ -978,8 +1011,7 @@ async function completeCustomizationStartResume() {
   State.landingDismissed = false;
   persistLandingDismissed();
   syncShellVisibility();
-  showLineConnectPrompt(LINE_CONNECT_RETRY_MESSAGE);
-  resetLandingStartState();
+  resetLandingStartAfterFailure();
   if (loader) loader.style.display = 'none';
 }
 
@@ -1010,13 +1042,7 @@ function startLiffLoginForCustomization() {
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LIFF customization login failed to start.", loginErr);
-    if (!State.landingDismissed) {
-      showLineConnectPrompt(LINE_CONNECT_RETRY_MESSAGE);
-      resetLandingStartState();
-    } else {
-      resetLandingStartState();
-      showToast(LINE_CONNECT_RETRY_MESSAGE);
-    }
+    resetLandingStartAfterFailure();
     return false;
   }
 }
@@ -1041,8 +1067,7 @@ function openLineConnectEntryForCustomization() {
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LINE connect entry failed to open.", entryErr);
-    resetLandingStartState();
-    showToast(LINE_CONNECT_RETRY_MESSAGE);
+    resetLandingStartAfterFailure();
     return false;
   }
 }
@@ -1120,7 +1145,9 @@ function setupLandingEvents() {
     if (landingStartInProgress) return;
     landingStartInProgress = true;
     resetStep3DesignState('landing-start');
-    setLandingButtonState('starting', 'กำลังเริ่มต้น...');
+    triggerLandingStartFeedback();
+    setLandingButtonState('starting', 'กำลังเริ่มออกแบบ...');
+    await new Promise(resolve => window.setTimeout(resolve, 650));
 
     if (landingConnectPromptVisible) {
       if (canUseLiffLoginFromCurrentBrowser()) {
@@ -1140,8 +1167,7 @@ function setupLandingEvents() {
       );
     } catch (startErr) {
       console.warn("Start customization check failed or timed out.", startErr);
-      showLineConnectPrompt(LINE_CONNECT_RETRY_MESSAGE);
-      resetLandingStartState();
+      resetLandingStartAfterFailure();
       return;
     }
 

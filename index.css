@@ -248,6 +248,7 @@ option {
   position: relative;
   overflow: hidden;
   padding: 16px 48px;
+  width: min(100%, 260px);
   background: linear-gradient(135deg, #8b1538 0%, #c41e3a 100%);
   color: white;
   border: none;
@@ -256,9 +257,36 @@ option {
   font-weight: 600;
   letter-spacing: 0.5px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.22s ease, opacity 0.2s ease, background 0.24s ease;
   box-shadow: 0 8px 24px rgba(196, 30, 58, 0.3);
   animation: slideUp 0.8s ease-out 0.5s both;
+}
+
+.btn-start-customize::before,
+.btn-start-customize::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.btn-start-customize::before {
+  inset: -30% auto -30% -55%;
+  width: 42%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.18) 20%, rgba(255, 238, 246, 0.78) 50%, rgba(255, 255, 255, 0.18) 80%, transparent 100%);
+  opacity: 0;
+  filter: blur(0.2px);
+}
+
+.btn-start-customize::after {
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.82) 0%, rgba(255, 226, 238, 0.55) 38%, rgba(255, 226, 238, 0) 72%);
+  opacity: 0;
 }
 
 .btn-start-customize:hover {
@@ -273,41 +301,60 @@ option {
 .btn-start-customize:disabled,
 .btn-start-customize.is-loading {
   cursor: wait;
-  opacity: 0.88;
+  opacity: 1;
   pointer-events: none;
+  animation: none;
   transform: none;
-  box-shadow: 0 6px 18px rgba(196, 30, 58, 0.24);
+  box-shadow: 0 10px 30px rgba(196, 30, 58, 0.38), 0 0 0 4px rgba(255, 228, 238, 0.36);
+}
+
+.btn-start-customize.is-loading::before {
+  opacity: 1;
+  animation: landingButtonShimmer 1.45s ease-in-out infinite;
+}
+
+.btn-start-customize.is-rippling::after {
+  animation: landingButtonRipple 560ms ease-out;
+}
+
+.btn-start-customize .btn-text,
+.btn-start-customize .btn-sparkle {
+  position: relative;
+  z-index: 1;
 }
 
 .btn-start-customize.is-loading .btn-sparkle {
-  animation-duration: 1s;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: rgba(255, 255, 255, 0.98);
+  border-radius: 999px;
+  color: transparent;
+  line-height: 1;
+  animation: landingButtonSpinner 0.8s linear infinite;
+}
+
+.btn-start-customize.is-loading .btn-sparkle:last-child {
+  width: 0;
+  height: 0;
+  border: 0;
+  opacity: 0;
+  animation: none;
 }
 
 .btn-start-customize.is-pressed,
 .btn-start-customize.is-pressed:disabled {
-  transform: translateY(1px) scale(0.98);
-  box-shadow: 0 4px 14px rgba(196, 30, 58, 0.22);
+  animation: none;
+  transform: scale(0.96);
+  box-shadow: 0 4px 14px rgba(139, 21, 56, 0.36), 0 0 0 6px rgba(255, 226, 238, 0.48);
 }
 
 .btn-start-customize.is-line-login,
 .btn-start-customize.is-line-login:disabled {
   opacity: 1;
   color: #FFFFFF;
-  background: linear-gradient(110deg, #06A84F 0%, #19C463 42%, #0F9F4B 68%, #06A84F 100%);
+  background: linear-gradient(135deg, #8b1538 0%, #c41e3a 100%);
   background-size: 200% 100%;
-  animation: lineLoginShimmer 1.3s ease-in-out infinite;
-  box-shadow: 0 8px 24px rgba(0, 184, 83, 0.28);
-}
-
-.btn-start-customize.is-line-login::after {
-  content: '';
-  width: 7px;
-  height: 7px;
-  margin-left: 2px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 12px 0 0 rgba(255, 255, 255, 0.58), 24px 0 0 rgba(255, 255, 255, 0.32);
-  animation: lineLoginDots 0.9s ease-in-out infinite;
 }
 
 .btn-sparkle {
@@ -395,6 +442,9 @@ option {
 
 @media (prefers-reduced-motion: reduce) {
   .btn-start-customize,
+  .btn-start-customize::before,
+  .btn-start-customize::after,
+  .btn-start-customize.is-loading .btn-sparkle,
   .btn-start-customize.is-line-login,
   .btn-start-customize.is-line-login::after {
     animation: none;
@@ -419,6 +469,35 @@ option {
   }
 }
 
+@keyframes landingButtonRipple {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0);
+  }
+  72% {
+    opacity: 0.32;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(18);
+  }
+}
+
+@keyframes landingButtonShimmer {
+  0% {
+    transform: translateX(0) skewX(-18deg);
+  }
+  48%, 100% {
+    transform: translateX(390%) skewX(-18deg);
+  }
+}
+
+@keyframes landingButtonSpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 768px) {
   .landing-page { padding: 0; }
   .landing-hero-panel {
@@ -433,7 +512,7 @@ option {
   .landing-hero { width: min(100%, 540px); padding: 12px 10px 0; }
   .landing-hero-title { font-size: 36px; }
   .landing-hero-subtitle { font-size: 15px; }
-  .btn-start-customize { padding: 14px 40px; font-size: 15px; }
+  .btn-start-customize { padding: 14px 40px; font-size: 15px; width: min(100%, 252px); }
   .landing-bracelet-container {
     width: min(94%, 600px);
     bottom: 34px;
@@ -458,7 +537,7 @@ option {
   }
   .landing-hero-title { font-size: 28px; margin-bottom: 18px; }
   .landing-hero-subtitle { font-size: 14px; margin-bottom: 22px; }
-  .btn-start-customize { padding: 12px 32px; font-size: 14px; gap: 10px; }
+  .btn-start-customize { padding: 12px 32px; font-size: 14px; gap: 10px; width: min(100%, 244px); }
   .landing-bracelet-container {
     width: min(100%, 420px);
     bottom: 28px;
