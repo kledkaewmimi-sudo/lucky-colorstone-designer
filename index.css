@@ -911,37 +911,34 @@ option {
 .bead-size-support-banner {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 12px;
   width: fit-content;
   max-width: 100%;
-  margin-top: 10px;
-  padding: 4px 5px;
+  margin-top: 9px;
+  padding: 5px 11px 5px 13px;
   border-radius: 999px;
-  background: rgba(245, 239, 255, 0.9);
-  border: 1px solid rgba(181, 169, 219, 0.24);
+  background: rgba(245, 239, 255, 0.86);
+  border: 1px solid rgba(181, 169, 219, 0.28);
 }
 
 .bead-size-support-item {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 24px;
-  padding: 3px 4px 3px 9px;
-  border-radius: 999px;
+  flex: 0 0 auto;
+  gap: 4px;
   color: #67537b;
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.62);
 }
 
 .bead-size-support-thumb {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
@@ -1114,19 +1111,18 @@ option {
   }
 
   .bead-size-support-banner {
-    gap: 4px;
-    padding: 3px;
+    gap: 9px;
+    padding: 5px 9px 5px 11px;
   }
 
   .bead-size-support-item {
     gap: 3px;
-    padding: 3px 3px 3px 7px;
     font-size: 9px;
   }
 
   .bead-size-support-thumb {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
   }
 
   .bead-size-hand-panel {
