@@ -753,9 +753,11 @@ option {
 
 /* Step 2: Bead Size elements */
 .bead-size-options {
+  --step2-card-gap: 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--step2-card-gap);
+  padding-block: var(--step2-card-gap);
 }
 
 .bead-size-card {
