@@ -782,15 +782,15 @@ option {
 }
 
 .bead-size-card-recommended {
-  border-color: rgba(207, 171, 86, 0.44);
-  box-shadow: 0 0 0 1px rgba(207, 171, 86, 0.12), 0 6px 16px rgba(181, 169, 219, 0.08);
-  background: linear-gradient(180deg, #fff, rgba(255, 252, 244, 0.72));
+  border-color: rgba(181, 169, 219, 0.16);
+  box-shadow: 0 5px 14px rgba(181, 169, 219, 0.07);
+  background: var(--color-white);
 }
 
 .bead-size-card-recommended.active {
-  border-color: rgba(188, 146, 55, 0.58);
-  box-shadow: 0 0 0 1px rgba(188, 146, 55, 0.18), 0 8px 18px rgba(181, 169, 219, 0.1);
-  background: linear-gradient(180deg, rgba(255, 254, 250, 1), rgba(251, 248, 255, 0.98));
+  border-color: rgba(139, 0, 0, 0.18);
+  box-shadow: 0 8px 18px rgba(181, 169, 219, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(251, 248, 255, 0.98));
 }
 
 .bead-size-content {
@@ -877,10 +877,10 @@ option {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #9b7626;
+  color: #7e6c90;
   font-size: 9px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.35;
   white-space: nowrap;
 }
 
@@ -889,8 +889,8 @@ option {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #d9b65f;
-  box-shadow: 0 0 8px rgba(217, 182, 95, 0.34);
+  background: var(--color-lavender-dark);
+  box-shadow: 0 0 8px rgba(181, 169, 219, 0.32);
 }
 
 .bead-size-details h4 {
@@ -916,8 +916,8 @@ option {
   gap: 12px;
   width: fit-content;
   max-width: 100%;
-  margin-top: 9px;
-  padding: 5px 11px 5px 13px;
+  margin-top: 8px;
+  padding: 4px 11px 5px 13px;
   border-radius: 999px;
   background: rgba(245, 239, 255, 0.86);
   border: 1px solid rgba(181, 169, 219, 0.28);
@@ -930,10 +930,17 @@ option {
   flex: 0 0 auto;
   gap: 4px;
   color: #67537b;
+  font-family: var(--font-body), "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-serif;
   font-size: 10px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.45;
   white-space: nowrap;
+}
+
+.bead-size-support-item > span:not(.bead-size-support-thumb) {
+  display: inline-block;
+  line-height: 1.45;
+  padding-top: 1px;
 }
 
 .bead-size-support-thumb {
