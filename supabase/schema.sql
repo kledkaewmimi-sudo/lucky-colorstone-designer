@@ -2,6 +2,8 @@
 -- JSONB-first tables preserve the current app payload shapes while allowing
 -- selected fields to be indexed for common CRM/customer queries.
 
+create extension if not exists pgcrypto;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -87,6 +89,48 @@ create table if not exists public.orders (
   updated_at timestamptz default now()
 );
 
+create table if not exists public.analytics_sessions (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null unique,
+  line_user_id text,
+  first_source text,
+  first_medium text,
+  first_campaign text,
+  referrer text,
+  landing_url text,
+  platform_guess text,
+  started_at timestamptz default now(),
+  last_seen_at timestamptz default now(),
+  current_step int,
+  order_id text,
+  converted boolean default false,
+  revenue numeric default 0,
+  user_agent text
+);
+
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  event_name text not null,
+  step int,
+  properties jsonb default '{}'::jsonb,
+  url text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.analytics_errors (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  error_type text,
+  message text,
+  stack text,
+  source text,
+  step int,
+  url text,
+  properties jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
 -- Catalog lookup and ordering indexes.
 create index if not exists idx_catalog_stones_category_order
   on public.catalog_stones (category_id, display_order);
@@ -125,6 +169,26 @@ create index if not exists idx_orders_created_at
   on public.orders (created_at desc);
 create index if not exists idx_orders_payload_gin
   on public.orders using gin (payload);
+
+-- Analytics indexes for CRM source, funnel, conversion, timing, and error summaries.
+create index if not exists idx_analytics_sessions_last_seen
+  on public.analytics_sessions (last_seen_at desc);
+create index if not exists idx_analytics_sessions_source
+  on public.analytics_sessions (first_source);
+create index if not exists idx_analytics_sessions_converted
+  on public.analytics_sessions (converted, order_id);
+create index if not exists idx_analytics_events_name_created
+  on public.analytics_events (event_name, created_at desc);
+create index if not exists idx_analytics_events_session
+  on public.analytics_events (session_id);
+create index if not exists idx_analytics_events_properties_gin
+  on public.analytics_events using gin (properties);
+create index if not exists idx_analytics_errors_created
+  on public.analytics_errors (created_at desc);
+create index if not exists idx_analytics_errors_session
+  on public.analytics_errors (session_id);
+create index if not exists idx_analytics_errors_properties_gin
+  on public.analytics_errors using gin (properties);
 
 -- Settings tables are small, but payload/value GIN indexes help future JSON filters.
 create index if not exists idx_app_settings_value_gin
@@ -177,6 +241,9 @@ alter table public.catalog_categories enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.catalog_layout_order enable row level security;
 alter table public.orders enable row level security;
+alter table public.analytics_sessions enable row level security;
+alter table public.analytics_events enable row level security;
+alter table public.analytics_errors enable row level security;
 
 comment on table public.catalog_stones is 'Stone catalog records. payload preserves the current JSON shape used by the customer app and CRM.';
 comment on table public.catalog_charms is 'Charm catalog records. payload preserves business fields and render tuning for later backend migration.';
@@ -185,6 +252,9 @@ comment on table public.catalog_categories is 'Managed catalog category records 
 comment on table public.app_settings is 'Application settings stored as JSONB key/value records.';
 comment on table public.catalog_layout_order is 'Catalog layout ordering for CRM/customer display surfaces.';
 comment on table public.orders is 'Customer order records. payload preserves the full current order object for compatibility.';
+comment on table public.analytics_sessions is 'First-party anonymous customer analytics sessions with attribution and conversion linkage.';
+comment on table public.analytics_events is 'First-party customer journey events for source, funnel, timing, and order analytics.';
+comment on table public.analytics_errors is 'Captured frontend/API/image analytics errors for launch monitoring.';
 
 comment on column public.orders.stripe_checkout_session_id is 'Unique Stripe Checkout session id used for idempotent order creation.';
 comment on column public.orders.payload is 'Full order payload from the existing JSON-backed API contract.';

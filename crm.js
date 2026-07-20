@@ -48,7 +48,7 @@ const CRM_COMPONENT_LABELS = {
 
 const CRMState = {
   sessionActive: false,
-  activeTab: 'overview', // 'overview', 'inventory', 'simulator', 'categories', 'charms', 'orders', 'settings'
+  activeTab: 'overview', // 'overview', 'analytics', 'inventory', 'simulator', 'categories', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditStoneColor: '#E2C974',
   activeEditCharmId: null,
@@ -94,6 +94,7 @@ const DOM = {
   // Tab Navigation Buttons
   navButtons: {
     overview: document.getElementById('btnTabOverview'),
+    analytics: document.getElementById('btnTabAnalytics'),
     inventory: document.getElementById('btnTabInventory'),
     simulator: document.getElementById('btnTabSimulator'),
     categories: document.getElementById('btnTabCategories'),
@@ -103,6 +104,7 @@ const DOM = {
   },
   mobileNavButtons: {
     overview: document.getElementById('btnMobTabOverview'),
+    analytics: document.getElementById('btnMobTabAnalytics'),
     inventory: document.getElementById('btnMobTabInventory'),
     categories: document.getElementById('btnMobTabCategories'),
     simulator: document.getElementById('btnMobTabSimulator'),
@@ -113,6 +115,7 @@ const DOM = {
   // Tab Content Views
   tabViews: {
     overview: document.getElementById('tabOverview'),
+    analytics: document.getElementById('tabAnalytics'),
     inventory: document.getElementById('tabInventory'),
     simulator: document.getElementById('tabSimulator'),
     categories: document.getElementById('tabCategories'),
@@ -132,6 +135,14 @@ const DOM = {
   quickBtnSettings: document.getElementById('quickBtnSettings'),
   quickBtnInventory: document.getElementById('quickBtnInventory'),
   crmSystemLogs: document.getElementById('crmSystemLogs'),
+  analyticsTotalSessions: document.getElementById('analyticsTotalSessions'),
+  analyticsTotalOrders: document.getElementById('analyticsTotalOrders'),
+  analyticsConversionRate: document.getElementById('analyticsConversionRate'),
+  analyticsTotalRevenue: document.getElementById('analyticsTotalRevenue'),
+  analyticsSourceTableBody: document.getElementById('analyticsSourceTableBody'),
+  analyticsFunnelTableBody: document.getElementById('analyticsFunnelTableBody'),
+  analyticsTimeTableBody: document.getElementById('analyticsTimeTableBody'),
+  analyticsErrorsTableBody: document.getElementById('analyticsErrorsTableBody'),
   
   // Tab 2: Inventory CRUD
   inventorySearch: document.getElementById('inventorySearch'),
@@ -542,6 +553,7 @@ async function switchTab(tabName) {
   // Update header text title
   const titles = {
     overview: "CRM Overview",
+    analytics: "Customer Analytics",
     inventory: "Stone Inventory Manager (Module A)",
     simulator: "Catalog Layout Manager",
     categories: "Catalog Category Manager",
@@ -703,6 +715,8 @@ async function loadDashboardData(prefetched = {}) {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
     renderInventoryCatalog(stones, charms, spacers);
+  } else if (CRMState.activeTab === 'analytics') {
+    renderAnalyticsSummary(await fetchAnalyticsSummary());
   } else if (CRMState.activeTab === 'simulator') {
     await loadSimulatorPresetFromStorage();
     renderBraceletLayoutSimulator(stones, charms, spacers);
@@ -719,6 +733,123 @@ async function loadDashboardData(prefetched = {}) {
         ? settings.showDiscountBanner !== false
         : settings.discountEnabled !== false;
     }
+  }
+}
+
+async function fetchAnalyticsSummary() {
+  try {
+    const response = await fetch('/api/analytics/summary', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || 'Analytics summary failed.');
+    }
+    return payload;
+  } catch (error) {
+    addLog(`Analytics summary unavailable: ${error.message}`, 'warn');
+    return {
+      totalSessions: 0,
+      totalOrders: 0,
+      conversionRate: 0,
+      totalRevenue: 0,
+      bySource: [],
+      funnel: {},
+      averageTimePerStep: [],
+      recentErrors: []
+    };
+  }
+}
+
+function formatAnalyticsPercent(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '0%';
+  return `${(amount * 100).toFixed(1)}%`;
+}
+
+function formatAnalyticsDuration(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  if (value < 1000) return `${Math.round(value)}ms`;
+  const seconds = value / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return `${minutes}m ${remainder}s`;
+}
+
+function formatAnalyticsMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 'THB 0';
+  return `THB ${amount.toLocaleString()}`;
+}
+
+function renderAnalyticsTableEmpty(tbody, colspan, message) {
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="${colspan}" class="empty-state">${escapeHtml(message)}</td></tr>`;
+}
+
+function renderAnalyticsSummary(summary = {}) {
+  if (DOM.analyticsTotalSessions) DOM.analyticsTotalSessions.textContent = Number(summary.totalSessions || 0).toLocaleString();
+  if (DOM.analyticsTotalOrders) DOM.analyticsTotalOrders.textContent = Number(summary.totalOrders || 0).toLocaleString();
+  if (DOM.analyticsConversionRate) DOM.analyticsConversionRate.textContent = formatAnalyticsPercent(summary.conversionRate);
+  if (DOM.analyticsTotalRevenue) DOM.analyticsTotalRevenue.textContent = formatAnalyticsMoney(summary.totalRevenue || 0);
+
+  const bySource = Array.isArray(summary.bySource) ? summary.bySource : [];
+  if (bySource.length > 0 && DOM.analyticsSourceTableBody) {
+    DOM.analyticsSourceTableBody.innerHTML = bySource.map((row) => `
+      <tr>
+        <td data-label="Source">${escapeHtml(row.source || 'unknown')}</td>
+        <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
+        <td data-label="Orders">${Number(row.orders || 0).toLocaleString()}</td>
+        <td data-label="Revenue">${formatAnalyticsMoney(row.revenue || 0)}</td>
+      </tr>
+    `).join('');
+  } else {
+    renderAnalyticsTableEmpty(DOM.analyticsSourceTableBody, 4, 'No analytics sessions yet.');
+  }
+
+  const funnelLabels = [
+    ['landing_view', 'Landing view'],
+    ['start_customize_click', 'Start customize click'],
+    ['step_1_view', 'Step 1 view'],
+    ['step_2_view', 'Step 2 view'],
+    ['step_3_view', 'Step 3 view'],
+    ['bracelet_completed', 'Bracelet completed'],
+    ['step_4_view', 'Step 4 view'],
+    ['payment_click', 'Payment click'],
+    ['order_created', 'Order created']
+  ];
+  if (DOM.analyticsFunnelTableBody) {
+    DOM.analyticsFunnelTableBody.innerHTML = funnelLabels.map(([eventName, label]) => `
+      <tr>
+        <td data-label="Event">${escapeHtml(label)}</td>
+        <td data-label="Count">${Number(summary.funnel?.[eventName] || 0).toLocaleString()}</td>
+      </tr>
+    `).join('');
+  }
+
+  const timeRows = Array.isArray(summary.averageTimePerStep) ? summary.averageTimePerStep : [];
+  if (timeRows.length > 0 && DOM.analyticsTimeTableBody) {
+    DOM.analyticsTimeTableBody.innerHTML = timeRows.map((row) => `
+      <tr>
+        <td data-label="Step">Step ${escapeHtml(row.step)}</td>
+        <td data-label="Average Time">${formatAnalyticsDuration(row.average_ms)}</td>
+      </tr>
+    `).join('');
+  } else {
+    renderAnalyticsTableEmpty(DOM.analyticsTimeTableBody, 2, 'No step timing data yet.');
+  }
+
+  const errors = Array.isArray(summary.recentErrors) ? summary.recentErrors : [];
+  if (errors.length > 0 && DOM.analyticsErrorsTableBody) {
+    DOM.analyticsErrorsTableBody.innerHTML = errors.slice(0, 12).map((error) => `
+      <tr>
+        <td data-label="Type">${escapeHtml(error.error_type || error.event_name || 'error')}</td>
+        <td data-label="Message">${escapeHtml(error.message || '-')}</td>
+        <td data-label="Step">${escapeHtml(error.step ?? '-')}</td>
+      </tr>
+    `).join('');
+  } else {
+    renderAnalyticsTableEmpty(DOM.analyticsErrorsTableBody, 3, 'No recent analytics errors.');
   }
 }
 

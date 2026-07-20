@@ -20,7 +20,10 @@ const dataFileNames = {
   stones: "stones.json",
   charms: "charms.json",
   orders: "orders.json",
-  settings: "settings.json"
+  settings: "settings.json",
+  analyticsSessions: "analytics_sessions.json",
+  analyticsEvents: "analytics_events.json",
+  analyticsErrors: "analytics_errors.json"
 };
 const dataFiles = Object.fromEntries(
   Object.entries(dataFileNames).map(([key, fileName]) => [key, path.join(dataDir, fileName)])
@@ -33,7 +36,10 @@ const defaultFileText = {
   stones: "[]",
   charms: "[]",
   orders: "[]",
-  settings: "{\"globalDiscountPercent\":20,\"discountEnabled\":true,\"showDiscountBanner\":true}"
+  settings: "{\"globalDiscountPercent\":20,\"discountEnabled\":true,\"showDiscountBanner\":true}",
+  analyticsSessions: "[]",
+  analyticsEvents: "[]",
+  analyticsErrors: "[]"
 };
 
 const resetSnapshots = new Map();
@@ -1654,6 +1660,325 @@ function buildOrderRow(order) {
   };
 }
 
+function truncateText(value, maxLength = 500) {
+  return String(value || "").slice(0, maxLength);
+}
+
+function sanitizeAnalyticsProperties(value, maxBytes = 12000) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const redactedKeys = new Set(["password", "token", "secret", "authorization", "card", "cookie"]);
+  const clean = {};
+  Object.entries(value).slice(0, 80).forEach(([key, entryValue]) => {
+    const normalizedKey = String(key || "").trim().slice(0, 80);
+    if (!normalizedKey || redactedKeys.has(normalizedKey.toLowerCase())) return;
+    if (entryValue == null) {
+      clean[normalizedKey] = entryValue;
+    } else if (typeof entryValue === "string") {
+      clean[normalizedKey] = truncateText(entryValue, 1000);
+    } else if (typeof entryValue === "number" || typeof entryValue === "boolean") {
+      clean[normalizedKey] = entryValue;
+    } else {
+      clean[normalizedKey] = JSON.parse(JSON.stringify(entryValue));
+    }
+  });
+
+  const serialized = JSON.stringify(clean);
+  if (Buffer.byteLength(serialized, "utf8") <= maxBytes) return clean;
+  return { truncated: true };
+}
+
+function normalizeAnalyticsSource(source = {}) {
+  const safeSource = source && typeof source === "object" ? source : {};
+  return {
+    utm_source: truncateText(safeSource.utm_source, 120),
+    utm_medium: truncateText(safeSource.utm_medium, 120),
+    utm_campaign: truncateText(safeSource.utm_campaign, 160),
+    utm_content: truncateText(safeSource.utm_content, 160),
+    utm_term: truncateText(safeSource.utm_term, 160),
+    referrer: truncateText(safeSource.referrer, 1000),
+    landing_url: truncateText(safeSource.landing_url, 1200),
+    platform_guess: truncateText(safeSource.platform_guess, 80) || "unknown"
+  };
+}
+
+function normalizeAnalyticsEventPayload(payload = {}, req = null) {
+  const source = normalizeAnalyticsSource(payload.source || {});
+  const eventName = truncateText(payload.eventName || payload.event_name || "", 120);
+  const sessionId = truncateText(payload.sessionId || payload.session_id || "", 120);
+  const stepValue = Number(payload.step);
+  return {
+    sessionId,
+    eventName,
+    step: Number.isFinite(stepValue) ? stepValue : null,
+    source,
+    properties: sanitizeAnalyticsProperties(payload.properties || {}),
+    timestamp: payload.timestamp ? truncateText(payload.timestamp, 80) : new Date().toISOString(),
+    url: truncateText(payload.url, 1200),
+    orderId: truncateText(payload.orderId || payload.order_id || "", 120),
+    lineUserId: truncateText(payload.lineUserId || payload.line_user_id || "", 180),
+    userAgent: truncateText(payload.userAgent || payload.user_agent || req?.headers?.["user-agent"] || "", 800)
+  };
+}
+
+async function upsertAnalyticsSession(payload) {
+  const nowIso = new Date().toISOString();
+  const source = payload.source || normalizeAnalyticsSource();
+  const sessionRow = {
+    session_id: payload.sessionId,
+    line_user_id: payload.lineUserId || null,
+    first_source: source.utm_source || source.platform_guess || "unknown",
+    first_medium: source.utm_medium || null,
+    first_campaign: source.utm_campaign || null,
+    referrer: source.referrer || null,
+    landing_url: source.landing_url || null,
+    platform_guess: source.platform_guess || "unknown",
+    started_at: payload.properties?.started_at || payload.timestamp || nowIso,
+    last_seen_at: nowIso,
+    current_step: payload.step,
+    order_id: payload.orderId || null,
+    converted: Boolean(payload.properties?.converted || payload.eventName === "order_created"),
+    revenue: toNumericOrNull(payload.properties?.revenue ?? payload.properties?.finalPrice ?? payload.properties?.totalPrice),
+    user_agent: payload.userAgent || null
+  };
+
+  if (isSupabaseConfigured()) {
+    const existingRows = await supabaseRequest("analytics_sessions", {
+      params: {
+        select: "*",
+        session_id: `eq.${payload.sessionId}`,
+        limit: "1"
+      }
+    });
+    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    if (existing) {
+      sessionRow.line_user_id = sessionRow.line_user_id || existing.line_user_id || null;
+      sessionRow.first_source = existing.first_source || sessionRow.first_source;
+      sessionRow.first_medium = existing.first_medium || sessionRow.first_medium;
+      sessionRow.first_campaign = existing.first_campaign || sessionRow.first_campaign;
+      sessionRow.referrer = existing.referrer || sessionRow.referrer;
+      sessionRow.landing_url = existing.landing_url || sessionRow.landing_url;
+      sessionRow.platform_guess = existing.platform_guess || sessionRow.platform_guess;
+      sessionRow.started_at = existing.started_at || sessionRow.started_at;
+      sessionRow.order_id = sessionRow.order_id || existing.order_id || null;
+      sessionRow.converted = Boolean(existing.converted || sessionRow.converted);
+      sessionRow.revenue = sessionRow.revenue ?? existing.revenue ?? null;
+      sessionRow.user_agent = sessionRow.user_agent || existing.user_agent || null;
+    }
+    await supabaseRequest("analytics_sessions", {
+      method: "POST",
+      body: sessionRow,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      params: { on_conflict: "session_id" }
+    });
+    return;
+  }
+
+  const sessions = readJsonArray("analyticsSessions");
+  const existingIndex = sessions.findIndex((entry) => entry.session_id === payload.sessionId);
+  if (existingIndex >= 0) {
+    sessions[existingIndex] = {
+      ...sessions[existingIndex],
+      line_user_id: sessionRow.line_user_id || sessions[existingIndex].line_user_id || null,
+      last_seen_at: sessionRow.last_seen_at,
+      current_step: sessionRow.current_step ?? sessions[existingIndex].current_step ?? null,
+      order_id: sessionRow.order_id || sessions[existingIndex].order_id || null,
+      converted: sessions[existingIndex].converted || sessionRow.converted,
+      revenue: sessionRow.revenue ?? sessions[existingIndex].revenue ?? null
+    };
+  } else {
+    sessions.push(sessionRow);
+  }
+  writeJsonFile(dataFiles.analyticsSessions, sessions);
+}
+
+async function saveAnalyticsEvent(payload) {
+  const eventRow = {
+    session_id: payload.sessionId,
+    event_name: payload.eventName,
+    step: payload.step,
+    properties: payload.properties || {},
+    url: payload.url || null,
+    created_at: payload.timestamp || new Date().toISOString()
+  };
+
+  if (isSupabaseConfigured()) {
+    await supabaseRequest("analytics_events", {
+      method: "POST",
+      body: eventRow,
+      prefer: "return=minimal"
+    });
+    return;
+  }
+
+  const events = readJsonArray("analyticsEvents");
+  events.push({ id: crypto.randomUUID(), ...eventRow });
+  writeJsonFile(dataFiles.analyticsEvents, events.slice(-5000));
+}
+
+async function saveAnalyticsError(payload) {
+  const errorRow = {
+    session_id: payload.sessionId,
+    error_type: truncateText(payload.properties?.error_type || payload.eventName, 120),
+    message: truncateText(payload.properties?.message, 1000),
+    stack: truncateText(payload.properties?.stack, 4000),
+    source: truncateText(payload.properties?.source, 500),
+    step: payload.step,
+    url: payload.url || null,
+    properties: payload.properties || {},
+    created_at: payload.timestamp || new Date().toISOString()
+  };
+
+  if (isSupabaseConfigured()) {
+    await supabaseRequest("analytics_errors", {
+      method: "POST",
+      body: errorRow,
+      prefer: "return=minimal"
+    });
+    return;
+  }
+
+  const errors = readJsonArray("analyticsErrors");
+  errors.push({ id: crypto.randomUUID(), ...errorRow });
+  writeJsonFile(dataFiles.analyticsErrors, errors.slice(-1000));
+}
+
+async function saveAnalyticsPayload(payload) {
+  if (!payload.sessionId || !payload.eventName) {
+    throw new Error("Missing sessionId or eventName.");
+  }
+  await upsertAnalyticsSession(payload);
+  if (payload.eventName === "javascript_error" || payload.eventName === "unhandled_promise_rejection" || payload.eventName === "api_error" || payload.eventName === "image_load_error" || payload.eventName.includes("error")) {
+    await saveAnalyticsError(payload);
+  } else {
+    await saveAnalyticsEvent(payload);
+  }
+}
+
+async function linkAnalyticsOrderConversion(order = {}) {
+  const sessionId = truncateText(order.analyticsSessionId || order.analytics_session_id || "", 120);
+  if (!sessionId) return;
+
+  const source = normalizeAnalyticsSource(order.analyticsSource || {});
+  const revenue = toNumericOrNull(order.finalPrice ?? order.totalPrice ?? order.netPrice ?? order.checkoutSummary?.finalPrice) || 0;
+  const payload = normalizeAnalyticsEventPayload({
+    sessionId,
+    eventName: "order_created",
+    step: 4,
+    source,
+    properties: {
+      converted: true,
+      revenue,
+      paymentMethod: order.paymentMethod || ""
+    },
+    timestamp: new Date().toISOString(),
+    url: "",
+    orderId: getOrderId(order),
+    lineUserId: order.lineUserId || "",
+    userAgent: order.analyticsSource?.user_agent || ""
+  });
+
+  await upsertAnalyticsSession(payload);
+}
+
+async function readAnalyticsRowsForSummary() {
+  if (isSupabaseConfigured()) {
+    try {
+      const [sessions, events, errors] = await Promise.all([
+        supabaseRequest("analytics_sessions", {
+          params: { select: "*", order: "last_seen_at.desc", limit: "5000" }
+        }),
+        supabaseRequest("analytics_events", {
+          params: { select: "*", order: "created_at.desc", limit: "10000" }
+        }),
+        supabaseRequest("analytics_errors", {
+          params: { select: "*", order: "created_at.desc", limit: "100" }
+        })
+      ]);
+      return {
+        sessions: Array.isArray(sessions) ? sessions : [],
+        events: Array.isArray(events) ? events : [],
+        errors: Array.isArray(errors) ? errors : []
+      };
+    } catch (error) {
+      warnSupabaseReadFallback("/api/analytics/summary", error);
+    }
+  }
+
+  return {
+    sessions: readJsonArray("analyticsSessions"),
+    events: readJsonArray("analyticsEvents"),
+    errors: readJsonArray("analyticsErrors")
+  };
+}
+
+function incrementCount(map, key, amount = 1) {
+  const safeKey = String(key || "unknown").trim() || "unknown";
+  map[safeKey] = (map[safeKey] || 0) + amount;
+}
+
+async function buildAnalyticsSummary() {
+  const { sessions, events, errors } = await readAnalyticsRowsForSummary();
+  const sourceStats = {};
+  const funnelEvents = [
+    "landing_view",
+    "start_customize_click",
+    "step_1_view",
+    "step_2_view",
+    "step_3_view",
+    "bracelet_completed",
+    "step_4_view",
+    "payment_click",
+    "order_created"
+  ];
+  const funnel = Object.fromEntries(funnelEvents.map((eventName) => [eventName, 0]));
+  const timeStepTotals = {};
+  const timeStepCounts = {};
+
+  sessions.forEach((session) => {
+    const source = session.first_source || session.platform_guess || "unknown";
+    if (!sourceStats[source]) {
+      sourceStats[source] = { source, sessions: 0, orders: 0, revenue: 0 };
+    }
+    sourceStats[source].sessions += 1;
+    if (session.converted || session.order_id) {
+      sourceStats[source].orders += 1;
+      sourceStats[source].revenue += Number(session.revenue || 0);
+    }
+  });
+
+  events.forEach((event) => {
+    if (Object.prototype.hasOwnProperty.call(funnel, event.event_name)) {
+      funnel[event.event_name] += 1;
+    }
+    if (event.event_name === "step_duration") {
+      const fromStep = event.properties?.from_step || event.properties?.fromStep || event.step || "unknown";
+      const durationMs = Number(event.properties?.duration_ms || event.properties?.durationMs || 0);
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        incrementCount(timeStepTotals, fromStep, durationMs);
+        incrementCount(timeStepCounts, fromStep, 1);
+      }
+    }
+  });
+
+  const averageTimePerStep = Object.entries(timeStepTotals).map(([step, totalMs]) => ({
+    step,
+    average_ms: Math.round(totalMs / Math.max(1, timeStepCounts[step] || 1))
+  }));
+
+  const totalOrders = sessions.filter((session) => session.converted || session.order_id).length;
+  const totalSessions = sessions.length;
+  return {
+    totalSessions,
+    totalOrders,
+    conversionRate: totalSessions ? totalOrders / totalSessions : 0,
+    totalRevenue: sessions.reduce((sum, session) => sum + Number(session.revenue || 0), 0),
+    bySource: Object.values(sourceStats).sort((a, b) => b.sessions - a.sessions),
+    funnel,
+    averageTimePerStep,
+    recentErrors: errors.slice(0, 20)
+  };
+}
+
 async function getSupabaseRecordById(tableName, id) {
   const rows = await supabaseRequest(tableName, {
     params: {
@@ -1977,6 +2302,47 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/analytics/event" && method === "POST") {
+    if (!bodyObj) {
+      sendJson(res, 400, { success: false, error: "Empty body" });
+      return true;
+    }
+
+    const bodySize = Buffer.byteLength(JSON.stringify(bodyObj), "utf8");
+    if (bodySize > 64 * 1024) {
+      sendJson(res, 413, { success: false, error: "Analytics payload too large" });
+      return true;
+    }
+
+    try {
+      await saveAnalyticsPayload(normalizeAnalyticsEventPayload(bodyObj, req));
+      sendJson(res, 202, { success: true });
+    } catch (error) {
+      console.warn("[analytics] event rejected:", error?.message || error);
+      sendJson(res, 202, { success: false });
+    }
+    return true;
+  }
+
+  if (pathname === "/api/analytics/summary" && method === "GET") {
+    try {
+      sendJson(res, 200, await buildAnalyticsSummary());
+    } catch (error) {
+      console.warn("[analytics] summary failed:", error?.message || error);
+      sendJson(res, 200, {
+        totalSessions: 0,
+        totalOrders: 0,
+        conversionRate: 0,
+        totalRevenue: 0,
+        bySource: [],
+        funnel: {},
+        averageTimePerStep: [],
+        recentErrors: []
+      });
+    }
+    return true;
+  }
+
   if (pathname === "/api/stones" && method === "GET") {
     sendJson(res, 200, await readStonesForApi());
     return true;
@@ -2201,6 +2567,9 @@ async function handleApiRequest(req, res, urlObj) {
     }
 
     await saveOrderForApi(nextOrder);
+    linkAnalyticsOrderConversion(nextOrder).catch((error) => {
+      console.warn(`[analytics] order conversion link failed for ${nextOrder.id}:`, error?.message || error);
+    });
 
     let responseOrder = nextOrder;
     try {

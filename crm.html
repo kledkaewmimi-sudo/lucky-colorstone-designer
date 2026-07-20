@@ -79,6 +79,17 @@
             </button>
           </li>
           <li>
+            <button class="nav-item" data-tab="analytics" id="btnTabAnalytics">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18" />
+                <path d="M7 15l3-3 3 2 5-7" />
+                <path d="M18 7h-4" />
+                <path d="M18 7v4" />
+              </svg>
+              Analytics
+            </button>
+          </li>
+          <li>
             <button class="nav-item" data-tab="inventory" id="btnTabInventory">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="m7.5 4.27 9 5.15" />
@@ -189,6 +200,15 @@
           <path d="M12 22.08V12" />
         </svg>
         <span>Inventory</span>
+      </button>
+      <button class="mobile-nav-item" data-tab="analytics" id="btnMobTabAnalytics">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3v18h18" />
+          <path d="M7 15l3-3 3 2 5-7" />
+          <path d="M18 7h-4" />
+          <path d="M18 7v4" />
+        </svg>
+        <span>Analytics</span>
       </button>
       <button class="mobile-nav-item" data-tab="categories" id="btnMobTabCategories">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -349,6 +369,125 @@
                   <div class="system-logs" id="crmSystemLogs">
                     <div class="log-line">System initialized. Waiting for connections...</div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==========================================
+             TAB 2: ANALYTICS
+             ========================================== -->
+        <section class="tab-view" id="tabAnalytics">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Total Sessions</span>
+                <h3 class="metric-value" id="analyticsTotalSessions">0</h3>
+                <span class="metric-sub">Customer visits tracked</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Total Orders</span>
+                <h3 class="metric-value" id="analyticsTotalOrders">0</h3>
+                <span class="metric-sub">Attributed conversions</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Conversion Rate</span>
+                <h3 class="metric-value" id="analyticsConversionRate">0%</h3>
+                <span class="metric-sub">Orders / sessions</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Revenue</span>
+                <h3 class="metric-value" id="analyticsTotalRevenue">฿0</h3>
+                <span class="metric-sub">Attributed revenue</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="overview-split-grid">
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Source Performance</h4>
+              </div>
+              <div class="panel-body">
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Sessions</th>
+                        <th>Orders</th>
+                        <th>Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsSourceTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Funnel Counts</h4>
+              </div>
+              <div class="panel-body">
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Event</th>
+                        <th>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsFunnelTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overview-split-grid">
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Average Time Per Step</h4>
+              </div>
+              <div class="panel-body">
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Step</th>
+                        <th>Average Time</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsTimeTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Recent Errors</h4>
+              </div>
+              <div class="panel-body">
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Type</th>
+                        <th>Message</th>
+                        <th>Step</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsErrorsTableBody"></tbody>
+                  </table>
                 </div>
               </div>
             </div>

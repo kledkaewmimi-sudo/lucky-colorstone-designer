@@ -14,9 +14,14 @@ const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload'
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
+const ANALYTICS_SESSION_ID_KEY = 'lucky_analytics_session_id';
+const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
+const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
+const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
 const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
 const LIFF_ID = '2010525799-qImIuhla';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
+const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
   Array.from({ length: 7 }, (_, index) => `/assets/sample/s${index + 1}.webp`)
@@ -207,6 +212,12 @@ let step3NextWasComplete = false;
 let step3NextEnterTimer = null;
 let step2SupportRotationTimer = null;
 let step2SupportRotationFrame = 0;
+let analyticsSessionId = '';
+let analyticsFirstSource = null;
+let analyticsStartedAt = '';
+let analyticsLastStep = null;
+let analyticsStepEnteredAt = 0;
+let analyticsHeartbeatTimer = null;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -730,6 +741,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
   syncShellVisibility();
+  initAnalytics();
+  if (!State.landingDismissed) {
+    trackAnalyticsEvent('landing_view');
+  } else if (State.currentStep >= 1 && State.currentStep <= 4) {
+    trackStepView(State.currentStep);
+  }
   
   // Auto-login/bypass for testing
   if (urlParams.has('mock') || urlParams.has('bypass') || urlParams.has('dev') || window.navigator.webdriver) {
@@ -807,6 +824,159 @@ function withTimeout(promise, ms, label) {
     .finally(() => {
       window.clearTimeout(timeoutId);
     });
+}
+
+function createAnalyticsSessionId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `lcs_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getAnalyticsPlatformGuess(source = {}) {
+  const joined = [
+    source.utm_source,
+    source.utm_medium,
+    source.referrer,
+    navigator.userAgent
+  ].join(' ').toLowerCase();
+  if (joined.includes('line')) return 'line';
+  if (joined.includes('facebook') || joined.includes('fb_iab') || joined.includes('fban')) return 'facebook';
+  if (joined.includes('instagram')) return 'instagram';
+  if (joined.includes('tiktok')) return 'tiktok';
+  if (joined.includes('google')) return 'google';
+  if (!source.utm_source && !source.referrer) return 'direct';
+  return source.utm_source ? String(source.utm_source).toLowerCase() : 'unknown';
+}
+
+function getCurrentAnalyticsSource() {
+  const params = new URLSearchParams(window.location.search);
+  const source = {
+    utm_source: params.get('utm_source') || '',
+    utm_medium: params.get('utm_medium') || '',
+    utm_campaign: params.get('utm_campaign') || '',
+    utm_content: params.get('utm_content') || '',
+    utm_term: params.get('utm_term') || '',
+    referrer: document.referrer || '',
+    landing_url: window.location.href,
+    user_agent: navigator.userAgent || ''
+  };
+  source.platform_guess = getAnalyticsPlatformGuess(source);
+  return source;
+}
+
+function initAnalytics() {
+  try {
+    analyticsSessionId = localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || createAnalyticsSessionId();
+    localStorage.setItem(ANALYTICS_SESSION_ID_KEY, analyticsSessionId);
+    analyticsStartedAt = localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || new Date().toISOString();
+    localStorage.setItem(ANALYTICS_STARTED_AT_KEY, analyticsStartedAt);
+
+    const storedSource = localStorage.getItem(ANALYTICS_SOURCE_KEY);
+    analyticsFirstSource = storedSource ? JSON.parse(storedSource) : null;
+    if (!analyticsFirstSource) {
+      analyticsFirstSource = getCurrentAnalyticsSource();
+      localStorage.setItem(ANALYTICS_SOURCE_KEY, JSON.stringify(analyticsFirstSource));
+    }
+    localStorage.setItem(ANALYTICS_LATEST_SOURCE_KEY, JSON.stringify(getCurrentAnalyticsSource()));
+
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        trackAnalyticsEvent('page_hidden', { current_step: State.currentStep }, { beacon: true });
+      }
+    });
+    window.addEventListener('pagehide', () => {
+      trackAnalyticsEvent('page_hidden', { current_step: State.currentStep }, { beacon: true });
+    });
+    window.addEventListener('error', (event) => {
+      const target = event.target;
+      if (target && target.tagName === 'IMG') {
+        trackAnalyticsEvent('image_load_error', {
+          source: target.getAttribute('src') || '',
+          message: 'Image failed to load'
+        });
+        return;
+      }
+      trackAnalyticsEvent('javascript_error', {
+        message: event.message || '',
+        stack: event.error?.stack || '',
+        source: event.filename || ''
+      });
+    }, true);
+    window.addEventListener('unhandledrejection', (event) => {
+      trackAnalyticsEvent('unhandled_promise_rejection', {
+        message: event.reason?.message || String(event.reason || ''),
+        stack: event.reason?.stack || ''
+      });
+    });
+
+    window.clearInterval(analyticsHeartbeatTimer);
+    analyticsHeartbeatTimer = window.setInterval(() => {
+      trackAnalyticsEvent('session_heartbeat', { current_step: State.currentStep });
+    }, ANALYTICS_HEARTBEAT_MS);
+  } catch (error) {
+    console.warn('Analytics init skipped.', error);
+  }
+}
+
+function getAnalyticsOrderFields() {
+  return {
+    analyticsSessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+    analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource()
+  };
+}
+
+function sendAnalyticsPayload(payload, { beacon = false } = {}) {
+  try {
+    const body = JSON.stringify(payload);
+    if (beacon && navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      navigator.sendBeacon('/api/analytics/event', blob);
+      return;
+    }
+    fetch('/api/analytics/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: beacon
+    }).catch(() => {});
+  } catch {
+    // Analytics must never block the customer flow.
+  }
+}
+
+function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
+  if (!analyticsSessionId) return;
+  const safeProperties = {
+    ...properties,
+    started_at: analyticsStartedAt
+  };
+  sendAnalyticsPayload({
+    sessionId: analyticsSessionId,
+    eventName,
+    step: Number(State.currentStep) || null,
+    source: analyticsFirstSource || getCurrentAnalyticsSource(),
+    properties: safeProperties,
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    orderId: properties.orderId || State.orderDetailSnapshot?.id || '',
+    lineUserId: State.lineUserId || '',
+    userAgent: navigator.userAgent || ''
+  }, options);
+}
+
+function trackStepView(step) {
+  const normalizedStep = Number(step);
+  if (!normalizedStep || analyticsLastStep === normalizedStep) return;
+  const now = Date.now();
+  if (analyticsLastStep && analyticsStepEnteredAt) {
+    trackAnalyticsEvent('step_duration', {
+      from_step: analyticsLastStep,
+      to_step: normalizedStep,
+      duration_ms: now - analyticsStepEnteredAt
+    });
+  }
+  analyticsLastStep = normalizedStep;
+  analyticsStepEnteredAt = now;
+  trackAnalyticsEvent(`step_${normalizedStep}_view`, { current_step: normalizedStep });
 }
 
 function triggerLandingStartFeedback() {
@@ -950,9 +1120,13 @@ async function syncLineProfileFromLiff() {
       DOM.braceletOwnerName.value = profile.displayName;
     }
     saveState();
+    trackAnalyticsEvent('line_login_success');
     return isLineIdentityAvailable();
   } catch (profileErr) {
     console.warn("LIFF profile fetch failed. LINE identity is unavailable.", profileErr);
+    trackAnalyticsEvent('line_login_error', {
+      message: profileErr?.message || String(profileErr || '')
+    });
     return false;
   }
 }
@@ -1027,6 +1201,7 @@ function startLiffLoginForCustomization() {
   }
 
   const loader = DOM.liffLoadingOverlay;
+  trackAnalyticsEvent('line_login_start');
   rememberCustomizationLoginIntent();
   saveState();
   setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
@@ -1043,6 +1218,9 @@ function startLiffLoginForCustomization() {
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LIFF customization login failed to start.", loginErr);
+    trackAnalyticsEvent('line_login_error', {
+      message: loginErr?.message || String(loginErr || '')
+    });
     resetLandingStartAfterFailure();
     return false;
   }
@@ -1053,6 +1231,7 @@ function openLineConnectEntryForCustomization() {
   if (liffLoginInProgress) return false;
 
   const loader = DOM.liffLoadingOverlay;
+  trackAnalyticsEvent('line_login_start', { method: 'entry_url' });
   rememberCustomizationLoginIntent();
   saveState();
   setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
@@ -1068,6 +1247,10 @@ function openLineConnectEntryForCustomization() {
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LINE connect entry failed to open.", entryErr);
+    trackAnalyticsEvent('line_login_error', {
+      message: entryErr?.message || String(entryErr || ''),
+      method: 'entry_url'
+    });
     resetLandingStartAfterFailure();
     return false;
   }
@@ -1126,13 +1309,20 @@ async function initLIFF() {
           State.ownerName = profile.displayName;
           DOM.braceletOwnerName.value = profile.displayName;
         }
+        trackAnalyticsEvent('line_login_success');
       } catch (profileErr) {
         console.warn("LIFF profile fetch failed. Continuing as guest.", profileErr);
+        trackAnalyticsEvent('line_login_error', {
+          message: profileErr?.message || String(profileErr || '')
+        });
       }
     }
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
+    trackAnalyticsEvent('line_login_error', {
+      message: err?.message || String(err || '')
+    });
   } finally {
     if (loader && !customizationResumeInProgress) loader.style.display = 'none';
   }
@@ -1145,6 +1335,7 @@ function setupLandingEvents() {
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+    trackAnalyticsEvent('start_customize_click');
     resetStep3DesignState('landing-start');
     triggerLandingStartFeedback();
     setLandingButtonState('starting', 'กำลังเริ่มออกแบบ...');
@@ -1888,6 +2079,7 @@ async function goToStep(step) {
   }
   State.currentStep = step;
   await renderApp();
+  trackStepView(step);
 }
 
 function configureFooterNavigation() {
@@ -1962,17 +2154,25 @@ function configureFooterNavigation() {
 // Setup Back/Next Events
 function setupNavigationEvents() {
   DOM.btnBack.addEventListener('click', async () => {
+    trackAnalyticsEvent('back_clicked', {
+      from_step: State.currentStep,
+      to_step: Math.max(1, State.currentStep - 1)
+    });
     await goToStep(State.currentStep - 1);
   });
   
   DOM.btnNext.addEventListener('click', async () => {
     if (State.currentStep === 4) {
       if (State.orderDetailMode || State.paymentCompletedView) return;
+      trackAnalyticsEvent('payment_click', { source: 'footer_next' });
       await handleStripeCheckout();
     } else {
       if (State.currentStep === 3) {
         const validationState = syncStep3NextValidationUI();
         if (!validationState.isFull) return;
+        trackAnalyticsEvent('bracelet_completed', {
+          item_count: getSelectedStoneItems().length
+        });
       }
       await goToStep(State.currentStep + 1);
     }
@@ -1981,6 +2181,7 @@ function setupNavigationEvents() {
   // Home Button clicks
   const goHome = async (e) => {
     e.preventDefault();
+    trackAnalyticsEvent('home_clicked', { from_step: State.currentStep });
     if (confirm("Go back to Step 1? Your current design will be saved.")) {
       await goToStep(1);
     }
@@ -1998,6 +2199,7 @@ function setupNavigationEvents() {
 
   if (DOM.btnPayWithStripe) {
     DOM.btnPayWithStripe.addEventListener('click', async () => {
+      trackAnalyticsEvent('payment_click', { source: 'step4_button' });
       await handleStripeCheckout();
     });
   }
@@ -2145,6 +2347,9 @@ function setWristSize(size) {
   if (!WRIST_SIZES.includes(size) || State.wristSize === size) return;
 
   State.wristSize = size;
+  trackAnalyticsEvent('wrist_size_selected', {
+    wrist_size: size
+  });
   syncWristSizeDisplay();
 
   // Save owner name
@@ -2416,6 +2621,9 @@ function initBeadSizeOptions() {
       if (State.beadSize === targetBeadSize) return;
 
       State.beadSize = targetBeadSize;
+      trackAnalyticsEvent('bead_size_selected', {
+        bead_size: targetBeadSize
+      });
       State.mixedPlacingSize = getCurrentBeadSizeMm();
       
       DOM.beadSizeCards.forEach(c => {
@@ -2887,6 +3095,12 @@ function applySelectedCharm(charmId) {
     const itemLabel = getCharmDisplayMeta(selectedCharm).nameEn || selectedCharm.nameEn || 'Bee Heart';
     const added = addLoopItemToBracelet(loopCharm, itemLabel, getCharmFootprintMm(selectedCharm));
     if (added) {
+      trackAnalyticsEvent('item_added', {
+        item_type: 'charm',
+        item_id: selectedCharm.id,
+        charm_type: selectedCharm.type || '',
+        item_count: getSelectedStoneItems().length
+      });
       updateEstimationText();
       renderCharmOptions();
     }
@@ -2915,6 +3129,12 @@ function applySelectedCharm(charmId) {
     renderStep3();
     syncStep3NextValidationUI();
   }
+  trackAnalyticsEvent('item_added', {
+    item_type: 'charm',
+    item_id: selectedCharm.id,
+    charm_type: selectedCharm.type || '',
+    item_count: getSelectedStoneItems().length
+  });
 }
 
 function buildSelectedCharmOrderData() {
@@ -4109,6 +4329,11 @@ function syncCatalogSectionFilter() {
 
 function setActiveCatalogSection(section) {
   if (!['stones', 'charms', 'spacer'].includes(section)) return;
+  if (State.activeCatalogSection !== section) {
+    trackAnalyticsEvent('category_changed', {
+      section
+    });
+  }
   State.activeCatalogSection = section;
   syncCatalogSectionFilter();
   renderCatalogGrid();
@@ -4122,12 +4347,16 @@ function initCatalogFilters() {
     tab.textContent = nameObj.th; // Using Thai text primarily for brand feel
     tab.setAttribute('data-category', key);
     
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      State.activeCategory = key;
-      renderCatalogGrid();
-    });
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        State.activeCategory = key;
+        trackAnalyticsEvent('category_changed', {
+          section: 'stones',
+          category: key
+        });
+        renderCatalogGrid();
+      });
     
     DOM.catalogFiltersContainer.appendChild(tab);
   });
@@ -4279,6 +4508,12 @@ function addStoneToBracelet(stoneId) {
   saveState();
   
   syncStep3NextValidationUI();
+  trackAnalyticsEvent('item_added', {
+    item_type: 'stone',
+    item_id: stoneId,
+    size_mm: placedSize,
+    item_count: getSelectedStoneItems().length
+  });
 }
 
 function addSpacerToBracelet(spacerId) {
@@ -4309,6 +4544,12 @@ function addSpacerToBracelet(spacerId) {
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
+  trackAnalyticsEvent('item_added', {
+    item_type: 'spacer',
+    item_id: spacer.id,
+    size_mm: spacer.effectiveLengthMm,
+    item_count: getSelectedStoneItems().length
+  });
 }
 
 function removeLoopItemFromBracelet(index, showToastNotification = true) {
@@ -4336,6 +4577,11 @@ function removeLoopItemFromBracelet(index, showToastNotification = true) {
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
+  trackAnalyticsEvent('item_removed', {
+    item_type: isSelectedSpacerItem(removed) ? 'spacer' : isSelectedCharmItem(removed) ? 'charm' : 'stone',
+    item_id: removed?.stoneId || removed?.spacerId || removed?.charmId || removed?.id || '',
+    item_count: getSelectedStoneItems().length
+  });
 }
 
 // Remove Stone Logic
@@ -5728,6 +5974,7 @@ function buildCurrentOrderPayload(overrides = {}) {
     addressLine: shippingInfo.addressLine,
     province: shippingInfo.province,
     postalCode: shippingInfo.postalCode,
+    ...getAnalyticsOrderFields(),
     ...charmData,
     ...spacerData,
     ...overrides
@@ -5864,12 +6111,26 @@ async function handleStripeReturnIfNeeded() {
     }
 
     activatePaymentCompletedView(savedOrder);
+    trackAnalyticsEvent('payment_success', {
+      orderId: savedOrder.id,
+      converted: true,
+      revenue: Number(savedOrder.finalPrice || savedOrder.totalPrice || savedOrder.netPrice || 0),
+      stripeCheckoutSessionId: sessionId
+    });
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();
     showToast("Stripe payment received. Your order was saved to CRM.");
   } catch (error) {
     console.error("Stripe return verification failed", error);
+    trackAnalyticsEvent('payment_failed', {
+      message: error?.message || String(error || ''),
+      stripeCheckoutSessionId: sessionId || ''
+    });
+    trackAnalyticsEvent('api_error', {
+      message: error?.message || String(error || ''),
+      source: 'stripe_return'
+    });
     showToast(error.message || "Stripe payment verification failed.");
   }
 }
@@ -5938,6 +6199,14 @@ async function handleStripeCheckout() {
     window.location.assign(payload.url);
   } catch (error) {
     console.error("Stripe checkout creation failed", error);
+    trackAnalyticsEvent('payment_failed', {
+      message: error?.message || String(error || ''),
+      source: 'stripe_checkout'
+    });
+    trackAnalyticsEvent('api_error', {
+      message: error?.message || String(error || ''),
+      source: 'stripe_checkout'
+    });
     checkoutButton.disabled = false;
     checkoutButton.innerHTML = originalMarkup;
     showToast(error.message || "Stripe Checkout could not be started.");
@@ -6824,9 +7093,26 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
     }
   }
 
-  const savedOrder = await addSharedOrder(nextOrderPayload);
+  let savedOrder = null;
+  try {
+    savedOrder = await addSharedOrder(nextOrderPayload);
+  } catch (error) {
+    trackAnalyticsEvent('api_error', {
+      message: error?.message || String(error || ''),
+      source: 'order_create'
+    });
+    throw error;
+  }
   if (showToastNotification && savedOrder) {
     showToast(`Order ${savedOrder.id} submitted to CRM!`);
+  }
+  if (savedOrder) {
+    trackAnalyticsEvent('order_created', {
+      orderId: savedOrder.id,
+      converted: true,
+      revenue: Number(savedOrder.finalPrice || savedOrder.totalPrice || savedOrder.netPrice || 0),
+      paymentMethod: savedOrder.paymentMethod || ''
+    });
   }
   return savedOrder;
 
