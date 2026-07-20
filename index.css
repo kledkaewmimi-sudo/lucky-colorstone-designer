@@ -894,11 +894,14 @@ option {
 }
 
 .bead-size-details h4 {
+  margin-top: 1px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-navy-dark);
-  line-height: 1.2;
+  font-family: var(--font-body), "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-serif;
+  line-height: 1.5;
   letter-spacing: 0.01em;
+  overflow: visible;
 }
 
 .bead-size-details p {
@@ -913,14 +916,16 @@ option {
   align-items: center;
   justify-content: flex-start;
   flex-wrap: nowrap;
-  gap: 12px;
+  gap: 10px;
   width: fit-content;
   max-width: 100%;
-  margin-top: 8px;
-  padding: 4px 11px 5px 13px;
+  margin-top: 6px;
+  margin-left: -34px;
+  padding: 4px 14px 5px 11px;
   border-radius: 999px;
   background: rgba(245, 239, 255, 0.86);
   border: 1px solid rgba(181, 169, 219, 0.28);
+  overflow: visible;
 }
 
 .bead-size-support-item {
@@ -944,13 +949,14 @@ option {
 }
 
 .bead-size-support-thumb {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   background: #fff;
   border: 1px solid rgba(181, 169, 219, 0.18);
 }
@@ -961,6 +967,7 @@ option {
   object-fit: cover;
   transform: scale(1);
   opacity: 1;
+  display: block;
   transition: opacity 320ms ease, transform 320ms ease;
 }
 
@@ -1111,6 +1118,7 @@ option {
 
   .bead-size-details h4 {
     font-size: 12px;
+    line-height: 1.5;
   }
 
   .bead-size-details p {
@@ -1118,8 +1126,9 @@ option {
   }
 
   .bead-size-support-banner {
-    gap: 9px;
-    padding: 5px 9px 5px 11px;
+    gap: 8px;
+    margin-left: -30px;
+    padding: 4px 12px 5px 10px;
   }
 
   .bead-size-support-item {
@@ -1128,8 +1137,8 @@ option {
   }
 
   .bead-size-support-thumb {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
   }
 
   .bead-size-hand-panel {
