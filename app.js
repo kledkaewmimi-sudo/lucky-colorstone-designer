@@ -16,6 +16,7 @@ const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dism
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
 const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
 const LIFF_ID = '2010525799-qImIuhla';
+const STEP2_SUPPORT_ROTATION_MS = 3000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
   Array.from({ length: 7 }, (_, index) => `/assets/sample/s${index + 1}.webp`)
@@ -201,6 +202,8 @@ let step3CategoryHintSequenceTimers = [];
 let step3CategoryHintPlayedThisPage = false;
 let step3NextWasComplete = false;
 let step3NextEnterTimer = null;
+let step2SupportRotationTimer = null;
+let step2SupportRotationFrame = 0;
 const SPACER_CATALOG = Object.freeze([
   {
     id: 'diamond_ball_orange',
@@ -2239,6 +2242,74 @@ function syncWristSizeDisplay() {
 // ==========================================
 // 7. Step 2: Bead Size Logic
 // ==========================================
+function getStep2SupportThumbnailSources(kind) {
+  const fallbackSources = kind === 'charm'
+    ? ['/assets/charms/takrud/bee=blue.webp', '/assets/charms/takrud/bee-orange.webp', '/assets/charms/takrud/bee-purple.webp']
+    : ['/assets/charms/pixiu/px01.webp', '/assets/charms/pixiu/px02.webp', '/assets/charms/takrud/tg01.webp'];
+  const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
+  const filteredSources = visibleCharms
+    .filter((charm) => {
+      if (kind === 'charm') return isBeeHeartCharm(charm);
+
+      const categoryTokens = [
+        charm.categoryId,
+        charm.category,
+        charm.collection,
+        charm.type,
+        charm.slug
+      ].map(normalizeCatalogToken);
+
+      return categoryTokens.some((token) => token === 'pixiu' || token === 'takrud');
+    })
+    .map((charm) => ({ charm, image: withCatalogImageVersion(charm.image, charm) }))
+    .filter(({ image }) => image && image !== CHARM_PLACEHOLDER_IMAGE && !image.includes('_placeholder'))
+    .map(({ image }) => image);
+
+  return filteredSources.length > 0 ? filteredSources : fallbackSources;
+}
+
+function updateStep2SupportThumbnails({ animate = true } = {}) {
+  const thumbs = document.querySelectorAll('#stepView2 [data-support-thumbnail]');
+  if (!thumbs.length) return;
+
+  thumbs.forEach((thumb) => {
+    const kind = thumb.getAttribute('data-support-thumbnail');
+    const sources = getStep2SupportThumbnailSources(kind);
+    if (!sources.length) return;
+
+    const img = thumb.querySelector('img');
+    if (!img) return;
+
+    const source = sources[step2SupportRotationFrame % sources.length];
+    if (img.getAttribute('src') === source) return;
+
+    const applySource = () => {
+      img.src = source;
+      window.requestAnimationFrame(() => thumb.classList.remove('is-switching'));
+    };
+
+    if (!animate) {
+      img.src = source;
+      thumb.classList.remove('is-switching');
+      return;
+    }
+
+    thumb.classList.add('is-switching');
+    window.setTimeout(applySource, 160);
+  });
+}
+
+function startStep2SupportRotation() {
+  updateStep2SupportThumbnails({ animate: false });
+  if (step2SupportRotationTimer) return;
+
+  step2SupportRotationTimer = window.setInterval(() => {
+    if (State.currentStep !== 2) return;
+    step2SupportRotationFrame += 1;
+    updateStep2SupportThumbnails();
+  }, STEP2_SUPPORT_ROTATION_MS);
+}
+
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
     card.addEventListener('click', () => {
@@ -2323,6 +2394,7 @@ function renderStep2() {
       c.classList.remove('active');
     }
   });
+  startStep2SupportRotation();
   updateEstimationText();
 }
 
