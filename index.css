@@ -4401,8 +4401,16 @@ button.stone-card {
   justify-items: center;
   overflow: hidden;
   touch-action: none;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  -webkit-user-select: none;
   user-select: none;
   cursor: grab;
+}
+
+body.is-wrist-picker-dragging {
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 #stepView1 .wrist-wheel-window.is-dragging {

@@ -199,6 +199,7 @@ let landingRippleTimer = null;
 let customizationResumeInProgress = false;
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
+let isDraggingWristPicker = false;
 let step3CategoryHintTimer = null;
 let step3CategoryHintSequenceTimers = [];
 let step3CategoryHintPlayedThisPage = false;
@@ -2170,7 +2171,7 @@ function setupWristWheelDrag() {
   if (!wheel || wheel.dataset.dragReady === 'true') return;
 
   const swipeThresholdPx = 24;
-  let isDragging = false;
+  let activeDragInput = '';
   let lastY = 0;
 
   const applyDragDelta = (currentY) => {
@@ -2181,30 +2182,86 @@ function setupWristWheelDrag() {
     lastY = currentY;
   };
 
+  const beginDrag = (clientY, inputType) => {
+    dismissWristPickerHint();
+    isDraggingWristPicker = true;
+    activeDragInput = inputType;
+    lastY = clientY;
+    wheel.classList.add('is-dragging');
+    document.body.classList.add('is-wrist-picker-dragging');
+  };
+
+  const moveDrag = (event, clientY) => {
+    if (!isDraggingWristPicker) return;
+    event.preventDefault();
+    event.stopPropagation();
+    applyDragDelta(clientY);
+  };
+
+  const stopDrag = (event) => {
+    if (!isDraggingWristPicker) return;
+    event?.stopPropagation?.();
+    isDraggingWristPicker = false;
+    activeDragInput = '';
+    wheel.classList.remove('is-dragging');
+    document.body.classList.remove('is-wrist-picker-dragging');
+  };
+
   wheel.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    dismissWristPickerHint();
-    isDragging = true;
-    lastY = event.clientY;
-    wheel.classList.add('is-dragging');
+    if (activeDragInput === 'touch' && event.pointerType === 'touch') return;
+    beginDrag(event.clientY, 'pointer');
     wheel.setPointerCapture?.(event.pointerId);
   });
 
   wheel.addEventListener('pointermove', (event) => {
-    if (!isDragging) return;
-    event.preventDefault();
-    applyDragDelta(event.clientY);
-  });
+    if (activeDragInput !== 'pointer') return;
+    moveDrag(event, event.clientY);
+  }, { passive: false });
 
-  const stopDrag = (event) => {
-    if (!isDragging) return;
-    isDragging = false;
-    wheel.classList.remove('is-dragging');
+  wheel.addEventListener('pointerup', (event) => {
+    if (activeDragInput !== 'pointer') return;
     wheel.releasePointerCapture?.(event.pointerId);
-  };
-
-  wheel.addEventListener('pointerup', stopDrag);
-  wheel.addEventListener('pointercancel', stopDrag);
+    stopDrag(event);
+  });
+  wheel.addEventListener('pointercancel', (event) => {
+    if (activeDragInput !== 'pointer') return;
+    wheel.releasePointerCapture?.(event.pointerId);
+    stopDrag(event);
+  });
+  wheel.addEventListener('touchstart', (event) => {
+    if (activeDragInput === 'pointer') return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    beginDrag(touch.clientY, 'touch');
+  }, { passive: true });
+  wheel.addEventListener('touchmove', (event) => {
+    if (activeDragInput !== 'touch') return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    moveDrag(event, touch.clientY);
+  }, { passive: false });
+  wheel.addEventListener('touchend', (event) => {
+    if (activeDragInput !== 'touch') return;
+    stopDrag(event);
+  }, { passive: false });
+  wheel.addEventListener('touchcancel', (event) => {
+    if (activeDragInput !== 'touch') return;
+    stopDrag(event);
+  }, { passive: false });
+  document.addEventListener('touchmove', (event) => {
+    if (!isDraggingWristPicker) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { passive: false });
+  document.addEventListener('touchend', (event) => {
+    if (activeDragInput !== 'touch') return;
+    stopDrag(event);
+  }, { passive: false });
+  document.addEventListener('touchcancel', (event) => {
+    if (activeDragInput !== 'touch') return;
+    stopDrag(event);
+  }, { passive: false });
   wheel.addEventListener('wheel', (event) => {
     if (Math.abs(event.deltaY) < 10) return;
     dismissWristPickerHint();
