@@ -31,6 +31,11 @@ const CUSTOMER_COMPONENT_LABELS = {
   charm: getComponentTypeLabel('charm', 'th'),
   spacer: getComponentTypeLabel('spacer', 'th')
 };
+const DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE = Object.freeze({
+  '4': Object.freeze(['stones']),
+  '6': Object.freeze(['stones', 'charms']),
+  '10': Object.freeze(['stones', 'charms', 'spacer'])
+});
 
 // ==========================================
 // 1. Global Application State
@@ -317,6 +322,87 @@ function normalizeBeadSizeOption(value) {
 
 function getCurrentBeadSizeMm() {
   return parseInt(normalizeBeadSizeOption(State.beadSize), 10);
+}
+
+function getAllowedDesignerCategories(beadSize = State.beadSize) {
+  const normalizedSize = normalizeBeadSizeOption(beadSize);
+  return DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE[normalizedSize] || DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE['10'];
+}
+
+function normalizeDesignerCategoryId(categoryId) {
+  const normalizedCategory = String(categoryId || '').trim();
+  if (normalizedCategory === 'stone') return 'stones';
+  if (normalizedCategory === 'charm') return 'charms';
+  return normalizedCategory;
+}
+
+function canUseCategoryForBeadSize(categoryId, beadSize = State.beadSize) {
+  const normalizedCategory = normalizeDesignerCategoryId(categoryId);
+  return getAllowedDesignerCategories(beadSize).includes(normalizedCategory);
+}
+
+function getUnavailableCategoryMessage(categoryId, beadSize = State.beadSize) {
+  const normalizedSize = normalizeBeadSizeOption(beadSize);
+  const normalizedCategory = normalizeDesignerCategoryId(categoryId);
+  if (normalizedSize === '4') {
+    return '\u0E02\u0E19\u0E32\u0E14 4mm \u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E40\u0E09\u0E1E\u0E32\u0E30\u0E2B\u0E34\u0E19';
+  }
+  if (normalizedSize === '6' && normalizedCategory === 'spacer') {
+    return '\u0E02\u0E19\u0E32\u0E14\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E0A\u0E32\u0E23\u0E4C\u0E21';
+  }
+  return '\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E02\u0E19\u0E32\u0E14\u0E17\u0E35\u0E48\u0E40\u0E25\u0E37\u0E2D\u0E01';
+}
+
+function removeInvalidDesignerItemsForBeadSize({ showToastNotification = false } = {}) {
+  const canUseCharms = canUseCategoryForBeadSize('charms');
+  const canUseSpacers = canUseCategoryForBeadSize('spacer');
+  let removedCharms = false;
+  let removedSpacers = false;
+
+  if (!canUseCharms && normalizeSelectedCharmIds(State.selectedCharmIds).length > 0) {
+    State.selectedCharmIds = [];
+    removedCharms = true;
+  }
+
+  const filteredLoopItems = State.selectedStones.filter((item) => {
+    if (isSelectedCharmItem(item) && !canUseCharms) {
+      removedCharms = true;
+      return false;
+    }
+    if (isSelectedSpacerItem(item) && !canUseSpacers) {
+      removedSpacers = true;
+      return false;
+    }
+    return true;
+  });
+
+  if (filteredLoopItems.length !== State.selectedStones.length) {
+    State.selectedStones = filteredLoopItems;
+    State.activeSlotIndex = null;
+    State.newlyAddedIds = [];
+  }
+
+  if (!canUseCategoryForBeadSize(State.activeCatalogSection)) {
+    State.activeCatalogSection = 'stones';
+  }
+
+  syncSelectedCharmState();
+
+  if (showToastNotification && (removedCharms || removedSpacers)) {
+    showToast(getUnavailableCategoryMessage(removedSpacers ? 'spacer' : 'charms'));
+  }
+
+  return removedCharms || removedSpacers;
+}
+
+function ensureCurrentDesignMatchesBeadSize({ showToastNotification = false } = {}) {
+  const changed = removeInvalidDesignerItemsForBeadSize({ showToastNotification });
+  if (changed) {
+    adjustBeadsToNewCapacity();
+    updateEstimationText();
+    saveState();
+  }
+  return changed;
 }
 
 function normalizeSelectedStoneSizes() {
@@ -2027,6 +2113,9 @@ async function renderStepViews() {
   migrateSlotPlaceableCharmSelectionsIntoLoop();
   State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
   syncSelectedCharmState();
+  if (State.currentStep >= 3 && !State.orderDetailMode) {
+    ensureCurrentDesignMatchesBeadSize();
+  }
 
   DOM.stepViews.forEach((view, idx) => {
     const stepNum = idx + 1;
@@ -2168,6 +2257,7 @@ function setupNavigationEvents() {
       await handleStripeCheckout();
     } else {
       if (State.currentStep === 3) {
+        ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
         const validationState = syncStep3NextValidationUI();
         if (!validationState.isFull) return;
         trackAnalyticsEvent('bracelet_completed', {
@@ -2625,6 +2715,7 @@ function initBeadSizeOptions() {
         bead_size: targetBeadSize
       });
       State.mixedPlacingSize = getCurrentBeadSizeMm();
+      removeInvalidDesignerItemsForBeadSize({ showToastNotification: true });
       
       DOM.beadSizeCards.forEach(c => {
         if (c.getAttribute('data-bead-size') === State.beadSize) {
@@ -3054,6 +3145,16 @@ function getCurrentBraceletCapacityMetrics() {
 }
 
 function applySelectedCharm(charmId) {
+  if (!canUseCategoryForBeadSize('charms')) {
+    showToast(getUnavailableCategoryMessage('charms'));
+    removeInvalidDesignerItemsForBeadSize();
+    if (State.currentStep === 3) {
+      renderStep3();
+      syncStep3NextValidationUI();
+    }
+    return;
+  }
+
   const nextCharmId = String(charmId || '').trim();
   const currentCharmIds = normalizeSelectedCharmIds(State.selectedCharmIds);
   const currentLoopCharms = getSelectedLoopCharmItems();
@@ -4096,6 +4197,10 @@ function appendCatalogEmptyState(container, message = 'Coming soon') {
 
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
+  if (!canUseCategoryForBeadSize('charms')) {
+    DOM.charmSectionMount.innerHTML = '';
+    return;
+  }
 
   const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
   const selectedCharms = getSelectedCharmCatalogEntries();
@@ -4151,6 +4256,7 @@ function renderCharmOptions() {
 
 function renderSpacerOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
+  if (!canUseCategoryForBeadSize('spacer')) return;
 
   const selectedSpacers = getSelectedSpacerItems();
   const spacerCounts = selectedSpacers.reduce((counts, spacer) => {
@@ -4294,33 +4400,42 @@ function syncCatalogSectionFilter() {
   const activeSection = ['stones', 'charms', 'spacer'].includes(State.activeCatalogSection)
     ? State.activeCatalogSection
     : 'stones';
+  const safeActiveSection = canUseCategoryForBeadSize(activeSection) ? activeSection : 'stones';
+  if (State.activeCatalogSection !== safeActiveSection) {
+    State.activeCatalogSection = safeActiveSection;
+  }
 
   DOM.catalogTypeTabs.forEach((tab) => {
-    const isActive = tab.getAttribute('data-catalog-section') === activeSection;
+    const section = tab.getAttribute('data-catalog-section');
+    const isAllowed = canUseCategoryForBeadSize(section);
+    const isActive = section === safeActiveSection;
+    tab.hidden = !isAllowed;
+    tab.disabled = !isAllowed;
+    tab.setAttribute('aria-hidden', isAllowed ? 'false' : 'true');
     tab.classList.toggle('active', isActive);
     tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
 
   const catalogContainer = DOM.catalogFiltersContainer?.closest('.catalog-container');
   if (catalogContainer) {
-    catalogContainer.hidden = activeSection !== 'stones';
-    catalogContainer.style.display = activeSection === 'stones' ? '' : 'none';
+    catalogContainer.hidden = safeActiveSection !== 'stones';
+    catalogContainer.style.display = safeActiveSection === 'stones' ? '' : 'none';
   }
 
   if (DOM.mixedSizeSelectorBar) {
-    DOM.mixedSizeSelectorBar.hidden = activeSection !== 'stones';
+    DOM.mixedSizeSelectorBar.hidden = safeActiveSection !== 'stones';
   }
 
   if (DOM.charmSectionMount) {
-    DOM.charmSectionMount.hidden = activeSection === 'stones';
-    DOM.charmSectionMount.style.display = activeSection === 'stones' ? 'none' : '';
+    DOM.charmSectionMount.hidden = safeActiveSection === 'stones';
+    DOM.charmSectionMount.style.display = safeActiveSection === 'stones' ? 'none' : '';
     DOM.charmSectionMount
       .querySelectorAll('.component-section')
       .forEach((section) => {
         const isCharmSection = section.classList.contains('charm-component-section');
         const isSpacerSection = section.classList.contains('spacer-component-section');
-        const shouldHide = (activeSection === 'charms' && !isCharmSection)
-          || (activeSection === 'spacer' && !isSpacerSection);
+        const shouldHide = (safeActiveSection === 'charms' && !isCharmSection)
+          || (safeActiveSection === 'spacer' && !isSpacerSection);
         section.hidden = shouldHide;
         section.style.display = shouldHide ? 'none' : '';
       });
@@ -4329,6 +4444,13 @@ function syncCatalogSectionFilter() {
 
 function setActiveCatalogSection(section) {
   if (!['stones', 'charms', 'spacer'].includes(section)) return;
+  if (!canUseCategoryForBeadSize(section)) {
+    showToast(getUnavailableCategoryMessage(section));
+    State.activeCatalogSection = 'stones';
+    syncCatalogSectionFilter();
+    renderCatalogGrid();
+    return;
+  }
   if (State.activeCatalogSection !== section) {
     trackAnalyticsEvent('category_changed', {
       section
@@ -4363,6 +4485,7 @@ function initCatalogFilters() {
 }
 
 function renderCatalogGrid() {
+  if (!canUseCategoryForBeadSize('stones')) return;
   DOM.stoneCatalogGrid.innerHTML = '';
   const selectedStoneCounts = getSelectedStoneCountsById();
   
@@ -4477,6 +4600,10 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
 
 // Add Stone Logic
 function addStoneToBracelet(stoneId) {
+  if (!canUseCategoryForBeadSize('stones')) {
+    showToast(getUnavailableCategoryMessage('stones'));
+    return;
+  }
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
   
@@ -4517,6 +4644,10 @@ function addStoneToBracelet(stoneId) {
 }
 
 function addSpacerToBracelet(spacerId) {
+  if (!canUseCategoryForBeadSize('spacer')) {
+    showToast(getUnavailableCategoryMessage('spacer'));
+    return;
+  }
   const spacer = getSpacerCatalogEntry(spacerId);
   if (!spacer) return;
 
@@ -5378,6 +5509,7 @@ function createSvgDefs() {
 
 // Render step 3 workspace elements
 function renderStep3() {
+  ensureCurrentDesignMatchesBeadSize();
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);
   const pricing = calculateLiveBraceletPricing();
@@ -5465,6 +5597,7 @@ function renderStep3() {
 function showStep3CategoryHint() {
   const step3View = document.getElementById('stepView3');
   if (!step3View || !step3View.classList.contains('active')) return;
+  if (getAllowedDesignerCategories().length <= 1) return;
   if (step3CategoryHintPlayedThisPage) return;
   if (!FORCE_STEP3_CATEGORY_HINT && sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') return;
   if (step3View.classList.contains('step3-tab-hinting') || step3View.classList.contains('step3-tab-hint-pending')) return;
@@ -5481,16 +5614,17 @@ function showStep3CategoryHint() {
 function startStep3CategoryHintSequence() {
   const step3View = document.getElementById('stepView3');
   if (!step3View || !step3View.classList.contains('active')) return;
+  const allowedSections = getAllowedDesignerCategories();
 
   step3View.classList.remove('step3-tab-hint-pending');
   step3View.classList.add('step3-tab-hinting');
   setStep3CategoryHintSection('stones');
 
-  [
-    ['charms', 1100],
-    ['spacer', 2200],
-    ['stones', 3300]
-  ].forEach(([section, delay]) => {
+  const hintSequence = allowedSections
+    .filter((section) => section !== 'stones')
+    .concat('stones');
+  hintSequence.forEach((section, index) => {
+    const delay = (index + 1) * 1100;
     step3CategoryHintSequenceTimers.push(window.setTimeout(() => {
       setStep3CategoryHintSection(section);
     }, delay));
@@ -5498,7 +5632,7 @@ function startStep3CategoryHintSequence() {
 
   step3CategoryHintTimer = window.setTimeout(() => {
     completeStep3CategoryHint();
-  }, 4300);
+  }, (hintSequence.length + 1) * 1100);
 }
 
 function dismissStep3CategoryHint() {
@@ -5571,6 +5705,9 @@ async function renderStep4() {
   if (State.orderDetailLoadError) {
     renderOrderDetailErrorState(State.orderDetailLoadError);
     return;
+  }
+  if (!State.orderDetailMode) {
+    ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
   }
 
   // Set today's date formatted
@@ -5923,6 +6060,7 @@ async function ensureBraceletPreviewImage(timeoutMs = 1800) {
 }
 
 function buildCurrentOrderPayload(overrides = {}) {
+  ensureCurrentDesignMatchesBeadSize();
   const pricing = getEffectiveCheckoutSummary(buildCheckoutSummary());
   const charmData = pricing.charmData || buildCharmOrderDataFromItems(pricing.itemizedBilling || pricing.braceletSequence || []);
   const spacerData = pricing.spacerData || buildSpacerOrderDataFromItems(pricing.itemizedBilling || pricing.braceletSequence || []);
@@ -6140,6 +6278,8 @@ async function handleStripeCheckout() {
     showToast("This order has already been created.");
     return;
   }
+
+  ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
 
   if (getSelectedStoneItems().length === 0) {
     showToast("Bracelet is empty!");
@@ -7067,6 +7207,8 @@ function renderBraceletShowcaseFallback(previewKey = '') {
 
 // Submit Order to CRM backend database
 async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
+  ensureCurrentDesignMatchesBeadSize({ showToastNotification });
+
   if (getSelectedStoneItems().length === 0) {
     if (showToastNotification) showToast("Bracelet is empty!");
     return null;

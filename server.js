@@ -85,6 +85,8 @@ function ensureDataFile(filePath, fallbackText, sourceFilePath = "") {
 }
 
 function readJsonFileText(filePath, fallback = "[]") {
+  if (!fs.existsSync(filePath)) return fallback;
+
   const raw = fs.readFileSync(filePath);
   if (!raw.length) return fallback;
 
@@ -111,6 +113,9 @@ function seedDatabase() {
   ensureDataFile(dataFiles.charms, defaultFileText.charms, bundledDataFiles.charms);
   ensureDataFile(dataFiles.orders, defaultFileText.orders, bundledDataFiles.orders);
   ensureDataFile(dataFiles.settings, defaultFileText.settings, bundledDataFiles.settings);
+  ensureDataFile(dataFiles.analyticsSessions, defaultFileText.analyticsSessions, bundledDataFiles.analyticsSessions);
+  ensureDataFile(dataFiles.analyticsEvents, defaultFileText.analyticsEvents, bundledDataFiles.analyticsEvents);
+  ensureDataFile(dataFiles.analyticsErrors, defaultFileText.analyticsErrors, bundledDataFiles.analyticsErrors);
 
   Object.entries(dataFiles).forEach(([key, filePath]) => {
     const fallback = defaultFileText[key];

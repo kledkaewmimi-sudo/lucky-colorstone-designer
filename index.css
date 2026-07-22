@@ -958,7 +958,7 @@ option {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #7e6c90;
+  color: #5B3EA6;
   font-size: 9px;
   font-weight: 700;
   line-height: 1.35;
@@ -966,12 +966,11 @@ option {
 }
 
 .bead-size-recommendation::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-lavender-dark);
-  box-shadow: 0 0 8px rgba(181, 169, 219, 0.32);
+  content: '★';
+  color: #D8A93B;
+  font-size: 9px;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(216, 169, 59, 0.24);
 }
 
 .bead-size-details h4 {
@@ -1804,6 +1803,10 @@ option {
 .catalog-type-tab.active::after {
   background: #7C5CCF;
   box-shadow: 0 0 10px rgba(124, 92, 207, 0.28);
+}
+
+.catalog-type-tab[hidden] {
+  display: none;
 }
 
 .catalog-type-icon {
