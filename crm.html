@@ -379,19 +379,39 @@
              TAB 2: ANALYTICS
              ========================================== -->
         <section class="tab-view" id="tabAnalytics">
-          <div class="metrics-grid">
+          <div class="table-actions-header analytics-actions-header">
+            <div class="analytics-toolbar-left">
+              <div>
+                <h3 class="analytics-title">Analytics</h3>
+                <p class="analytics-subtitle">Traffic source, funnel, revenue, and runtime health from first-party analytics.</p>
+              </div>
+              <div class="analytics-range-tabs" role="group" aria-label="Analytics date range">
+                <button class="analytics-range-btn" type="button" data-analytics-range="today">วันนี้</button>
+                <button class="analytics-range-btn" type="button" data-analytics-range="yesterday">เมื่อวาน</button>
+                <button class="analytics-range-btn active" type="button" data-analytics-range="7d">7 วัน</button>
+                <button class="analytics-range-btn" type="button" data-analytics-range="30d">30 วัน</button>
+                <button class="analytics-range-btn" type="button" data-analytics-range="month">เดือนนี้</button>
+                <button class="analytics-range-btn" type="button" data-analytics-range="all">ทั้งหมด</button>
+              </div>
+            </div>
+            <button class="btn btn-outline" id="btnRefreshAnalytics" type="button">Refresh</button>
+          </div>
+
+          <div class="analytics-status" id="analyticsStatus">Loading analytics...</div>
+
+          <div class="metrics-grid analytics-kpi-grid">
             <div class="metric-card">
               <div class="metric-info">
-                <span class="metric-label">Total Sessions</span>
+                <span class="metric-label">ผู้เข้าชมทั้งหมด</span>
                 <h3 class="metric-value" id="analyticsTotalSessions">0</h3>
-                <span class="metric-sub">Customer visits tracked</span>
+                <span class="metric-sub">Sessions</span>
               </div>
             </div>
             <div class="metric-card">
               <div class="metric-info">
-                <span class="metric-label">Total Orders</span>
+                <span class="metric-label">ออเดอร์</span>
                 <h3 class="metric-value" id="analyticsTotalOrders">0</h3>
-                <span class="metric-sub">Attributed conversions</span>
+                <span class="metric-sub">Orders</span>
               </div>
             </div>
             <div class="metric-card">
@@ -403,17 +423,98 @@
             </div>
             <div class="metric-card">
               <div class="metric-info">
-                <span class="metric-label">Revenue</span>
+                <span class="metric-label">ยอดขายรวม</span>
                 <h3 class="metric-value" id="analyticsTotalRevenue">฿0</h3>
-                <span class="metric-sub">Attributed revenue</span>
+                <span class="metric-sub">Revenue</span>
               </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">ยอดเฉลี่ยต่อออเดอร์</span>
+                <h3 class="metric-value" id="analyticsAov">฿0</h3>
+                <span class="metric-sub">AOV</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-info">
+                <span class="metric-label">Error ล่าสุด</span>
+                <h3 class="metric-value" id="analyticsErrorsCount">0</h3>
+                <span class="metric-sub">Errors</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-heading">
+              <h4>ช่องทางที่ลูกค้าเข้ามา</h4>
+              <span id="analyticsChannelInsight">ยังไม่มีข้อมูลในช่วงเวลานี้</span>
+            </div>
+            <div class="analytics-channel-grid" id="analyticsChannelCards"></div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-heading">
+              <h4>ลูกค้าไปถึงขั้นตอนไหน</h4>
+              <span id="analyticsFunnelInsight">กำลังโหลดข้อมูล Funnel</span>
+            </div>
+            <div class="analytics-funnel-list" id="analyticsFunnelCards"></div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-heading">
+              <h4>ตอนนี้ลูกค้าค้างอยู่ที่ Step ไหน</h4>
+              <span id="analyticsStepInsight">นับจาก current_step ของ sessions</span>
+            </div>
+            <div class="analytics-step-list" id="analyticsStepDistribution"></div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-heading">
+              <h4>แนวโน้มรายวัน</h4>
+              <span>Sessions, orders, conversion, revenue</span>
+            </div>
+            <div class="analytics-daily-list" id="analyticsDailyTrendCards"></div>
+            <div class="analytics-table-container">
+              <table class="crm-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Sessions</th>
+                    <th>Orders</th>
+                    <th>CVR</th>
+                    <th>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody id="analyticsDailyTrendTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-heading">
+              <h4>ช่องทางรายวัน</h4>
+              <span>เปรียบเทียบ LINE/Facebook/IG ตามวัน</span>
+            </div>
+            <div class="analytics-table-container">
+              <table class="crm-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Channel</th>
+                    <th>Sessions</th>
+                    <th>Orders</th>
+                    <th>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody id="analyticsChannelDayTableBody"></tbody>
+              </table>
             </div>
           </div>
 
           <div class="overview-split-grid">
             <div class="panel card-panel">
               <div class="panel-header">
-                <h4>Source Performance</h4>
+                <h4>Source Detail</h4>
               </div>
               <div class="panel-body">
                 <div class="table-container">
@@ -421,9 +522,13 @@
                     <thead>
                       <tr>
                         <th>Source</th>
+                        <th>Medium</th>
+                        <th>Campaign</th>
                         <th>Sessions</th>
                         <th>Orders</th>
+                        <th>CVR</th>
                         <th>Revenue</th>
+                        <th>AOV</th>
                       </tr>
                     </thead>
                     <tbody id="analyticsSourceTableBody"></tbody>
@@ -434,7 +539,7 @@
 
             <div class="panel card-panel">
               <div class="panel-header">
-                <h4>Funnel Counts</h4>
+                <h4>Funnel Detail</h4>
               </div>
               <div class="panel-body">
                 <div class="table-container">
@@ -442,7 +547,9 @@
                     <thead>
                       <tr>
                         <th>Event</th>
-                        <th>Count</th>
+                        <th>Sessions</th>
+                        <th>Drop-off</th>
+                        <th>From landing</th>
                       </tr>
                     </thead>
                     <tbody id="analyticsFunnelTableBody"></tbody>
@@ -464,6 +571,7 @@
                       <tr>
                         <th>Step</th>
                         <th>Average Time</th>
+                        <th>Samples</th>
                       </tr>
                     </thead>
                     <tbody id="analyticsTimeTableBody"></tbody>
@@ -474,21 +582,108 @@
 
             <div class="panel card-panel">
               <div class="panel-header">
-                <h4>Recent Errors</h4>
+                <h4>ปัญหาที่พบล่าสุด</h4>
+              </div>
+              <div class="panel-body">
+                <div class="analytics-compact-list" id="analyticsErrorCards"></div>
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Session ID</th>
+                        <th>Error Type</th>
+                        <th>Step</th>
+                        <th>Message</th>
+                        <th>URL</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsErrorsTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overview-split-grid analytics-three-panel-grid">
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Top Bead Sizes</h4>
               </div>
               <div class="panel-body">
                 <div class="table-container">
                   <table class="crm-table">
                     <thead>
                       <tr>
-                        <th>Type</th>
-                        <th>Message</th>
-                        <th>Step</th>
+                        <th>Bead Size</th>
+                        <th>Count</th>
                       </tr>
                     </thead>
-                    <tbody id="analyticsErrorsTableBody"></tbody>
+                    <tbody id="analyticsBeadSizeTableBody"></tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Top Items Added</h4>
+              </div>
+              <div class="panel-body">
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsItemsTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <h4>Top Categories</h4>
+              </div>
+              <div class="panel-body">
+                <div class="table-container">
+                  <table class="crm-table">
+                    <thead>
+                      <tr>
+                        <th>Category</th>
+                        <th>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analyticsCategoriesTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel card-panel analytics-orders-panel">
+            <div class="panel-header">
+              <h4>ออเดอร์ล่าสุดตามช่องทาง</h4>
+            </div>
+            <div class="panel-body">
+              <div class="analytics-compact-list" id="analyticsOrderCards"></div>
+              <div class="table-container">
+                <table class="crm-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Source</th>
+                      <th>Campaign</th>
+                      <th>Order ID</th>
+                      <th>Revenue</th>
+                      <th>Current Step</th>
+                    </tr>
+                  </thead>
+                  <tbody id="analyticsRecentOrdersTableBody"></tbody>
+                </table>
               </div>
             </div>
           </div>

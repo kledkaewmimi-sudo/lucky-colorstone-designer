@@ -69,6 +69,8 @@ const CRMState = {
   categoryScopeFilter: 'all',
   categoryStatusFilter: 'all',
   categorySearch: '',
+  analyticsRange: '7d',
+  analyticsLoading: false,
   selectedInvoiceOrder: null // Order details populated in invoice modal
 };
 
@@ -139,10 +141,30 @@ const DOM = {
   analyticsTotalOrders: document.getElementById('analyticsTotalOrders'),
   analyticsConversionRate: document.getElementById('analyticsConversionRate'),
   analyticsTotalRevenue: document.getElementById('analyticsTotalRevenue'),
+  analyticsAov: document.getElementById('analyticsAov'),
+  analyticsErrorsCount: document.getElementById('analyticsErrorsCount'),
+  analyticsStatus: document.getElementById('analyticsStatus'),
+  analyticsRangeButtons: Array.from(document.querySelectorAll('[data-analytics-range]')),
+  btnRefreshAnalytics: document.getElementById('btnRefreshAnalytics'),
+  analyticsChannelCards: document.getElementById('analyticsChannelCards'),
+  analyticsChannelInsight: document.getElementById('analyticsChannelInsight'),
+  analyticsFunnelCards: document.getElementById('analyticsFunnelCards'),
+  analyticsFunnelInsight: document.getElementById('analyticsFunnelInsight'),
+  analyticsStepDistribution: document.getElementById('analyticsStepDistribution'),
+  analyticsStepInsight: document.getElementById('analyticsStepInsight'),
+  analyticsDailyTrendCards: document.getElementById('analyticsDailyTrendCards'),
+  analyticsDailyTrendTableBody: document.getElementById('analyticsDailyTrendTableBody'),
+  analyticsChannelDayTableBody: document.getElementById('analyticsChannelDayTableBody'),
+  analyticsOrderCards: document.getElementById('analyticsOrderCards'),
+  analyticsErrorCards: document.getElementById('analyticsErrorCards'),
   analyticsSourceTableBody: document.getElementById('analyticsSourceTableBody'),
   analyticsFunnelTableBody: document.getElementById('analyticsFunnelTableBody'),
   analyticsTimeTableBody: document.getElementById('analyticsTimeTableBody'),
   analyticsErrorsTableBody: document.getElementById('analyticsErrorsTableBody'),
+  analyticsBeadSizeTableBody: document.getElementById('analyticsBeadSizeTableBody'),
+  analyticsItemsTableBody: document.getElementById('analyticsItemsTableBody'),
+  analyticsCategoriesTableBody: document.getElementById('analyticsCategoriesTableBody'),
+  analyticsRecentOrdersTableBody: document.getElementById('analyticsRecentOrdersTableBody'),
   
   // Tab 2: Inventory CRUD
   inventorySearch: document.getElementById('inventorySearch'),
@@ -736,39 +758,66 @@ async function loadDashboardData(prefetched = {}) {
   }
 }
 
-async function fetchAnalyticsSummary() {
+async function fetchAnalyticsSummary(range = CRMState.analyticsRange || '7d') {
+  CRMState.analyticsLoading = true;
+  syncAnalyticsRangeButtons();
+  if (DOM.analyticsStatus) {
+    DOM.analyticsStatus.textContent = 'Loading analytics...';
+    DOM.analyticsStatus.className = 'analytics-status';
+  }
   try {
-    const response = await fetch('/api/analytics/summary', { cache: 'no-store' });
+    const params = new URLSearchParams({ range });
+    const response = await fetch(`/api/crm/analytics/summary?${params.toString()}`, { cache: 'no-store' });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload.error || 'Analytics summary failed.');
     }
+    if (DOM.analyticsStatus) {
+      const generatedAt = payload.generatedAt ? formatAnalyticsDateTime(payload.generatedAt) : '';
+      DOM.analyticsStatus.textContent = generatedAt ? `Updated ${generatedAt}` : 'Analytics loaded.';
+      DOM.analyticsStatus.className = 'analytics-status is-ready';
+    }
     return payload;
   } catch (error) {
     addLog(`Analytics summary unavailable: ${error.message}`, 'warn');
+    if (DOM.analyticsStatus) {
+      DOM.analyticsStatus.textContent = 'Analytics unavailable. Showing empty dashboard.';
+      DOM.analyticsStatus.className = 'analytics-status is-error';
+    }
     return {
-      totalSessions: 0,
-      totalOrders: 0,
-      conversionRate: 0,
-      totalRevenue: 0,
+      success: false,
+      range,
+      totals: { sessions: 0, orders: 0, conversionRate: 0, revenue: 0, aov: 0, errors: 0 },
+      sources: [],
       bySource: [],
-      funnel: {},
+      funnel: [],
+      channels: [],
+      stepDistribution: [],
+      dailyTrend: [],
+      channelByDay: [],
+      stepDurations: [],
       averageTimePerStep: [],
-      recentErrors: []
+      popularBeadSizes: [],
+      popularItems: [],
+      popularCategories: [],
+      recentErrors: [],
+      recentOrders: []
     };
+  } finally {
+    CRMState.analyticsLoading = false;
+    syncAnalyticsRangeButtons();
   }
 }
 
 function formatAnalyticsPercent(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '0%';
-  return `${(amount * 100).toFixed(1)}%`;
+  return `${amount.toFixed(1)}%`;
 }
 
 function formatAnalyticsDuration(ms) {
   const value = Number(ms);
-  if (!Number.isFinite(value) || value <= 0) return '-';
-  if (value < 1000) return `${Math.round(value)}ms`;
+  if (!Number.isFinite(value) || value <= 0) return 'ยังไม่มีข้อมูล';
   const seconds = value / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
   const minutes = Math.floor(seconds / 60);
@@ -778,8 +827,44 @@ function formatAnalyticsDuration(ms) {
 
 function formatAnalyticsMoney(value) {
   const amount = Number(value);
-  if (!Number.isFinite(amount)) return 'THB 0';
-  return `THB ${amount.toLocaleString()}`;
+  if (!Number.isFinite(amount)) return '฿0';
+  return `฿${Math.round(amount).toLocaleString()}`;
+}
+
+function formatAnalyticsDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('en-TH', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function getAnalyticsTotals(summary = {}) {
+  const totals = summary.totals && typeof summary.totals === 'object' ? summary.totals : {};
+  return {
+    sessions: Number(totals.sessions ?? summary.totalSessions ?? 0),
+    orders: Number(totals.orders ?? summary.totalOrders ?? 0),
+    conversionRate: Number(totals.conversionRate ?? summary.conversionRate ?? 0),
+    revenue: Number(totals.revenue ?? summary.totalRevenue ?? 0),
+    aov: Number(totals.aov ?? 0),
+    errors: Number(totals.errors ?? 0)
+  };
+}
+
+function syncAnalyticsRangeButtons() {
+  DOM.analyticsRangeButtons.forEach((button) => {
+    const isActive = button.dataset.analyticsRange === CRMState.analyticsRange;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+    button.disabled = CRMState.analyticsLoading;
+  });
+  if (DOM.btnRefreshAnalytics) {
+    DOM.btnRefreshAnalytics.disabled = CRMState.analyticsLoading;
+  }
 }
 
 function renderAnalyticsTableEmpty(tbody, colspan, message) {
@@ -787,69 +872,337 @@ function renderAnalyticsTableEmpty(tbody, colspan, message) {
   tbody.innerHTML = `<tr><td colspan="${colspan}" class="empty-state">${escapeHtml(message)}</td></tr>`;
 }
 
-function renderAnalyticsSummary(summary = {}) {
-  if (DOM.analyticsTotalSessions) DOM.analyticsTotalSessions.textContent = Number(summary.totalSessions || 0).toLocaleString();
-  if (DOM.analyticsTotalOrders) DOM.analyticsTotalOrders.textContent = Number(summary.totalOrders || 0).toLocaleString();
-  if (DOM.analyticsConversionRate) DOM.analyticsConversionRate.textContent = formatAnalyticsPercent(summary.conversionRate);
-  if (DOM.analyticsTotalRevenue) DOM.analyticsTotalRevenue.textContent = formatAnalyticsMoney(summary.totalRevenue || 0);
+function renderAnalyticsCountTable(tbody, rows, labelKey, emptyMessage) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (safeRows.length === 0) {
+    renderAnalyticsTableEmpty(tbody, 2, emptyMessage);
+    return;
+  }
+  tbody.innerHTML = safeRows.map((row) => `
+    <tr>
+      <td data-label="Item">${escapeHtml(row[labelKey] || '-')}</td>
+      <td data-label="Count">${Number(row.count || 0).toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
 
-  const bySource = Array.isArray(summary.bySource) ? summary.bySource : [];
-  if (bySource.length > 0 && DOM.analyticsSourceTableBody) {
-    DOM.analyticsSourceTableBody.innerHTML = bySource.map((row) => `
+function renderAnalyticsCardsEmpty(container, message) {
+  if (!container) return;
+  container.innerHTML = `<div class="analytics-empty-card">${escapeHtml(message)}</div>`;
+}
+
+function getAnalyticsChannelBadge(channel) {
+  const label = String(channel || 'Other / Unknown');
+  if (label === 'LINE') return 'LN';
+  if (label === 'Facebook') return 'FB';
+  if (label === 'Instagram') return 'IG';
+  if (label === 'TikTok') return 'TT';
+  if (label === 'Google') return 'GG';
+  if (label.includes('Direct')) return 'DR';
+  return 'OT';
+}
+
+function renderAnalyticsChannelCards(channels = []) {
+  const rows = Array.isArray(channels) ? channels : [];
+  if (!DOM.analyticsChannelCards) return;
+  if (rows.length === 0) {
+    renderAnalyticsCardsEmpty(DOM.analyticsChannelCards, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
+    if (DOM.analyticsChannelInsight) DOM.analyticsChannelInsight.textContent = 'ยังไม่มีข้อมูลในช่วงเวลานี้';
+    return;
+  }
+  const best = rows.slice().sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0) || Number(b.orders || 0) - Number(a.orders || 0))[0];
+  DOM.analyticsChannelCards.innerHTML = rows.map((row) => {
+    const isBest = best && row.channel === best.channel && (Number(row.revenue || 0) > 0 || Number(row.orders || 0) > 0);
+    return `
+      <article class="analytics-channel-card ${isBest ? 'is-best-channel' : ''}">
+        <div class="analytics-channel-top">
+          <span class="analytics-channel-badge">${escapeHtml(getAnalyticsChannelBadge(row.channel))}</span>
+          <div>
+            <h5>${escapeHtml(row.channel || row.source || 'Direct / Unknown')}</h5>
+            <p>${escapeHtml(row.campaign || row.medium || '-')}</p>
+          </div>
+          ${isBest ? '<span class="analytics-best-badge">ดีที่สุด</span>' : ''}
+        </div>
+        <div class="analytics-channel-main">
+          <div><strong>${Number(row.sessions || 0).toLocaleString()}</strong><span>Sessions</span></div>
+          <div><strong>${Number(row.orders || 0).toLocaleString()}</strong><span>Orders</span></div>
+          <div><strong>${formatAnalyticsPercent(row.conversionRate || 0)}</strong><span>CVR</span></div>
+          <div><strong>${formatAnalyticsMoney(row.revenue || 0)}</strong><span>Revenue</span></div>
+        </div>
+        <div class="analytics-channel-foot">
+          <span>ถึง Step 3: ${Number(row.step3Sessions || 0).toLocaleString()}</span>
+          <span>ครบวง: ${Number(row.braceletCompleted || 0).toLocaleString()}</span>
+          <span>${Number(row.orders || 0) > 0 ? `AOV ${formatAnalyticsMoney(row.aov || 0)}` : 'ยังไม่มีออเดอร์'}</span>
+        </div>
+      </article>
+    `;
+  }).join('');
+  if (DOM.analyticsChannelInsight) {
+    const top = rows.slice().sort((a, b) => Number(b.sessions || 0) - Number(a.sessions || 0))[0];
+    DOM.analyticsChannelInsight.textContent = top
+      ? `ช่องทางที่คนเข้ามามากสุด: ${top.channel || top.source || '-'} (${Number(top.sessions || 0).toLocaleString()} sessions)`
+      : 'ยังไม่มีข้อมูลในช่วงเวลานี้';
+  }
+}
+
+function renderAnalyticsFunnelCards(funnelRows = [], totals = {}) {
+  const rows = Array.isArray(funnelRows) ? funnelRows : [];
+  if (!DOM.analyticsFunnelCards) return;
+  if (rows.length === 0) {
+    renderAnalyticsCardsEmpty(DOM.analyticsFunnelCards, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
+    return;
+  }
+  DOM.analyticsFunnelCards.innerHTML = rows.map((row, index) => {
+    const percent = Number(row.percentFromLanding ?? row.landingConversionRate ?? 0);
+    const dropoff = Number(row.dropoffFromPrevious ?? row.dropoffRate ?? 0);
+    return `
+      <article class="analytics-funnel-card">
+        <div class="analytics-funnel-index">${index + 1}</div>
+        <div class="analytics-funnel-content">
+          <div class="analytics-funnel-head">
+            <strong>${escapeHtml(row.label || row.eventName || '-')}</strong>
+            <span>${Number(row.sessions || 0).toLocaleString()} sessions</span>
+          </div>
+          <div class="analytics-progress"><span style="width:${Math.max(0, Math.min(100, percent))}%"></span></div>
+          <div class="analytics-funnel-meta">
+            <span>${formatAnalyticsPercent(percent)} จากหน้าแรก</span>
+            <span>Drop-off ${formatAnalyticsPercent(dropoff)}</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+  if (DOM.analyticsFunnelInsight) {
+    const completed = rows.find((row) => row.key === 'bracelet_completed' || row.eventName === 'bracelet_completed');
+    const noPayment = Math.max(0, Number(completed?.sessions || 0) - Number(totals.orders || 0));
+    DOM.analyticsFunnelInsight.textContent = `ออกแบบครบแต่ยังไม่สั่งซื้อ ${noPayment.toLocaleString()} sessions`;
+  }
+}
+
+function renderAnalyticsStepDistribution(rows = []) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!DOM.analyticsStepDistribution) return;
+  if (safeRows.length === 0) {
+    renderAnalyticsCardsEmpty(DOM.analyticsStepDistribution, 'ยังไม่มีข้อมูล current_step');
+    return;
+  }
+  const maxValue = Math.max(1, ...safeRows.map((row) => Number(row.sessions || 0)));
+  DOM.analyticsStepDistribution.innerHTML = safeRows.map((row) => {
+    const sessions = Number(row.sessions || 0);
+    const width = Math.max(4, (sessions / maxValue) * 100);
+    return `
+      <article class="analytics-step-card">
+        <div class="analytics-step-label">
+          <strong>${escapeHtml(row.label || `Step ${row.step}`)}</strong>
+          <span>${sessions.toLocaleString()}</span>
+        </div>
+        <div class="analytics-progress"><span style="width:${width}%"></span></div>
+      </article>
+    `;
+  }).join('');
+  if (DOM.analyticsStepInsight) {
+    const stuckRows = safeRows.filter((row) => row.step !== 'converted');
+    const top = stuckRows.sort((a, b) => Number(b.sessions || 0) - Number(a.sessions || 0))[0];
+    DOM.analyticsStepInsight.textContent = top ? `ค้างมากสุด: ${top.label} (${Number(top.sessions || 0).toLocaleString()})` : 'ยังไม่มีลูกค้าค้างใน Step';
+  }
+}
+
+function renderAnalyticsDailyTrend(rows = []) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (DOM.analyticsDailyTrendCards) {
+    if (safeRows.length === 0) {
+      renderAnalyticsCardsEmpty(DOM.analyticsDailyTrendCards, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
+    } else {
+      const maxSessions = Math.max(1, ...safeRows.map((row) => Number(row.sessions || 0)));
+      DOM.analyticsDailyTrendCards.innerHTML = safeRows.slice(-14).map((row) => {
+        const width = Math.max(4, (Number(row.sessions || 0) / maxSessions) * 100);
+        return `
+          <article class="analytics-day-card">
+            <div class="analytics-day-main">
+              <strong>${escapeHtml(row.date || '-')}</strong>
+              <span>${Number(row.sessions || 0).toLocaleString()} sessions</span>
+            </div>
+            <div class="analytics-progress"><span style="width:${width}%"></span></div>
+            <div class="analytics-day-meta">
+              <span>Orders ${Number(row.orders || 0).toLocaleString()}</span>
+              <span>${formatAnalyticsPercent(row.conversionRate || 0)}</span>
+              <span>${formatAnalyticsMoney(row.revenue || 0)}</span>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+  }
+  if (safeRows.length > 0 && DOM.analyticsDailyTrendTableBody) {
+    DOM.analyticsDailyTrendTableBody.innerHTML = safeRows.map((row) => `
       <tr>
-        <td data-label="Source">${escapeHtml(row.source || 'unknown')}</td>
+        <td data-label="Date">${escapeHtml(row.date || '-')}</td>
+        <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
+        <td data-label="Orders">${Number(row.orders || 0).toLocaleString()}</td>
+        <td data-label="CVR">${formatAnalyticsPercent(row.conversionRate || 0)}</td>
+        <td data-label="Revenue">${formatAnalyticsMoney(row.revenue || 0)}</td>
+      </tr>
+    `).join('');
+  } else {
+    renderAnalyticsTableEmpty(DOM.analyticsDailyTrendTableBody, 5, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
+  }
+}
+
+function renderAnalyticsChannelDayTable(rows = []) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (safeRows.length > 0 && DOM.analyticsChannelDayTableBody) {
+    DOM.analyticsChannelDayTableBody.innerHTML = safeRows.slice(0, 100).map((row) => `
+      <tr>
+        <td data-label="Date">${escapeHtml(row.date || '-')}</td>
+        <td data-label="Channel">${escapeHtml(row.channel || '-')}</td>
         <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
         <td data-label="Orders">${Number(row.orders || 0).toLocaleString()}</td>
         <td data-label="Revenue">${formatAnalyticsMoney(row.revenue || 0)}</td>
       </tr>
     `).join('');
   } else {
-    renderAnalyticsTableEmpty(DOM.analyticsSourceTableBody, 4, 'No analytics sessions yet.');
+    renderAnalyticsTableEmpty(DOM.analyticsChannelDayTableBody, 5, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
+  }
+}
+
+function renderAnalyticsCompactOrders(rows = []) {
+  if (!DOM.analyticsOrderCards) return;
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (safeRows.length === 0) {
+    renderAnalyticsCardsEmpty(DOM.analyticsOrderCards, 'ยังไม่มีออเดอร์ในช่วงเวลานี้');
+    return;
+  }
+  DOM.analyticsOrderCards.innerHTML = safeRows.slice(0, 20).map((order) => `
+    <article class="analytics-compact-card">
+      <div>
+        <strong>${escapeHtml(order.orderId || '-')}</strong>
+        <span>${escapeHtml(formatAnalyticsDateTime(order.time))}</span>
+      </div>
+      <div>
+        <strong>${escapeHtml(order.source || 'Direct / Unknown')}</strong>
+        <span>${escapeHtml(order.campaign || '-')}</span>
+      </div>
+      <div class="analytics-compact-value">${formatAnalyticsMoney(order.revenue || 0)}</div>
+    </article>
+  `).join('');
+}
+
+function renderAnalyticsCompactErrors(rows = []) {
+  if (!DOM.analyticsErrorCards) return;
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (safeRows.length === 0) {
+    renderAnalyticsCardsEmpty(DOM.analyticsErrorCards, 'ยังไม่พบ error จากผู้ใช้งาน');
+    return;
+  }
+  DOM.analyticsErrorCards.innerHTML = safeRows.slice(0, 20).map((error) => `
+    <article class="analytics-compact-card analytics-error-card">
+      <div>
+        <strong>${escapeHtml(error.errorType || error.error_type || 'error')}</strong>
+        <span>${escapeHtml(formatAnalyticsDateTime(error.time || error.created_at))}</span>
+      </div>
+      <div>
+        <strong>${escapeHtml(error.source || error.sessionId || '-')}</strong>
+        <span>Step ${escapeHtml(error.step ?? '-')}</span>
+      </div>
+      <p>${escapeHtml(error.message || '-')}</p>
+    </article>
+  `).join('');
+}
+
+function renderAnalyticsSummary(summary = {}) {
+  const totals = getAnalyticsTotals(summary);
+  if (DOM.analyticsTotalSessions) DOM.analyticsTotalSessions.textContent = totals.sessions.toLocaleString();
+  if (DOM.analyticsTotalOrders) DOM.analyticsTotalOrders.textContent = totals.orders.toLocaleString();
+  if (DOM.analyticsConversionRate) DOM.analyticsConversionRate.textContent = formatAnalyticsPercent(totals.conversionRate);
+  if (DOM.analyticsTotalRevenue) DOM.analyticsTotalRevenue.textContent = formatAnalyticsMoney(totals.revenue);
+  if (DOM.analyticsAov) DOM.analyticsAov.textContent = formatAnalyticsMoney(totals.aov);
+  if (DOM.analyticsErrorsCount) DOM.analyticsErrorsCount.textContent = totals.errors.toLocaleString();
+
+  const bySource = Array.isArray(summary.channels) ? summary.channels : Array.isArray(summary.sources) ? summary.sources : Array.isArray(summary.bySource) ? summary.bySource : [];
+  renderAnalyticsChannelCards(bySource);
+  if (bySource.length > 0 && DOM.analyticsSourceTableBody) {
+    DOM.analyticsSourceTableBody.innerHTML = bySource.map((row) => `
+      <tr>
+        <td data-label="Source">${escapeHtml(row.channel || row.source || 'direct/unknown')}</td>
+        <td data-label="Medium">${escapeHtml(row.medium || '-')}</td>
+        <td data-label="Campaign">${escapeHtml(row.campaign || '-')}</td>
+        <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
+        <td data-label="Orders">${Number(row.orders || 0).toLocaleString()}</td>
+        <td data-label="CVR">${formatAnalyticsPercent(row.conversionRate || 0)}</td>
+        <td data-label="Revenue">${formatAnalyticsMoney(row.revenue || 0)}</td>
+        <td data-label="AOV">${formatAnalyticsMoney(row.aov || 0)}</td>
+      </tr>
+    `).join('');
+  } else {
+    renderAnalyticsTableEmpty(DOM.analyticsSourceTableBody, 8, 'No analytics sessions yet.');
   }
 
-  const funnelLabels = [
-    ['landing_view', 'Landing view'],
-    ['start_customize_click', 'Start customize click'],
-    ['step_1_view', 'Step 1 view'],
-    ['step_2_view', 'Step 2 view'],
-    ['step_3_view', 'Step 3 view'],
-    ['bracelet_completed', 'Bracelet completed'],
-    ['step_4_view', 'Step 4 view'],
-    ['payment_click', 'Payment click'],
-    ['order_created', 'Order created']
-  ];
+  const funnelRows = Array.isArray(summary.funnel) ? summary.funnel : [];
+  renderAnalyticsFunnelCards(funnelRows, totals);
   if (DOM.analyticsFunnelTableBody) {
-    DOM.analyticsFunnelTableBody.innerHTML = funnelLabels.map(([eventName, label]) => `
+    DOM.analyticsFunnelTableBody.innerHTML = funnelRows.map((row) => `
       <tr>
-        <td data-label="Event">${escapeHtml(label)}</td>
-        <td data-label="Count">${Number(summary.funnel?.[eventName] || 0).toLocaleString()}</td>
+        <td data-label="Event">${escapeHtml(row.label || row.eventName || '-')}</td>
+        <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
+        <td data-label="Drop-off">${formatAnalyticsPercent(row.dropoffFromPrevious ?? row.dropoffRate ?? 0)}</td>
+        <td data-label="From landing">${formatAnalyticsPercent(row.percentFromLanding ?? row.landingConversionRate ?? 0)}</td>
       </tr>
     `).join('');
   }
 
-  const timeRows = Array.isArray(summary.averageTimePerStep) ? summary.averageTimePerStep : [];
+  renderAnalyticsStepDistribution(summary.stepDistribution);
+  renderAnalyticsDailyTrend(summary.dailyTrend);
+  renderAnalyticsChannelDayTable(summary.channelByDay);
+
+  const timeRows = Array.isArray(summary.stepDurations) ? summary.stepDurations : Array.isArray(summary.averageTimePerStep) ? summary.averageTimePerStep : [];
   if (timeRows.length > 0 && DOM.analyticsTimeTableBody) {
     DOM.analyticsTimeTableBody.innerHTML = timeRows.map((row) => `
       <tr>
         <td data-label="Step">Step ${escapeHtml(row.step)}</td>
-        <td data-label="Average Time">${formatAnalyticsDuration(row.average_ms)}</td>
+        <td data-label="Average Time">${formatAnalyticsDuration(row.averageMs ?? row.average_ms)}</td>
+        <td data-label="Samples">${Number(row.samples || 0).toLocaleString()}</td>
       </tr>
     `).join('');
   } else {
-    renderAnalyticsTableEmpty(DOM.analyticsTimeTableBody, 2, 'No step timing data yet.');
+    renderAnalyticsTableEmpty(DOM.analyticsTimeTableBody, 3, 'ยังไม่มีข้อมูล');
   }
 
   const errors = Array.isArray(summary.recentErrors) ? summary.recentErrors : [];
+  renderAnalyticsCompactErrors(errors);
   if (errors.length > 0 && DOM.analyticsErrorsTableBody) {
-    DOM.analyticsErrorsTableBody.innerHTML = errors.slice(0, 12).map((error) => `
+    DOM.analyticsErrorsTableBody.innerHTML = errors.slice(0, 20).map((error) => `
       <tr>
-        <td data-label="Type">${escapeHtml(error.error_type || error.event_name || 'error')}</td>
-        <td data-label="Message">${escapeHtml(error.message || '-')}</td>
+        <td data-label="Time">${escapeHtml(formatAnalyticsDateTime(error.time || error.created_at))}</td>
+        <td data-label="Session ID">${escapeHtml(error.sessionId || error.session_id || '-')}</td>
+        <td data-label="Error Type">${escapeHtml(error.errorType || error.error_type || error.event_name || 'error')}</td>
         <td data-label="Step">${escapeHtml(error.step ?? '-')}</td>
+        <td data-label="Message">${escapeHtml(error.message || '-')}</td>
+        <td data-label="URL">${escapeHtml(error.url || '-')}</td>
       </tr>
     `).join('');
   } else {
-    renderAnalyticsTableEmpty(DOM.analyticsErrorsTableBody, 3, 'No recent analytics errors.');
+    renderAnalyticsTableEmpty(DOM.analyticsErrorsTableBody, 6, 'ยังไม่พบ error จากผู้ใช้งาน');
+  }
+
+  renderAnalyticsCountTable(DOM.analyticsBeadSizeTableBody, summary.popularBeadSizes, 'beadSize', 'No bead-size events yet.');
+  renderAnalyticsCountTable(DOM.analyticsItemsTableBody, summary.popularItems, 'item', 'No item-added events yet.');
+  renderAnalyticsCountTable(DOM.analyticsCategoriesTableBody, summary.popularCategories, 'category', 'No category events yet.');
+
+  const recentOrders = Array.isArray(summary.recentOrders) ? summary.recentOrders : [];
+  renderAnalyticsCompactOrders(recentOrders);
+  if (recentOrders.length > 0 && DOM.analyticsRecentOrdersTableBody) {
+    DOM.analyticsRecentOrdersTableBody.innerHTML = recentOrders.map((order) => `
+      <tr>
+        <td data-label="Time">${escapeHtml(formatAnalyticsDateTime(order.time))}</td>
+        <td data-label="Source">${escapeHtml(order.source || 'direct/unknown')}</td>
+        <td data-label="Campaign">${escapeHtml(order.campaign || '-')}</td>
+        <td data-label="Order ID">${escapeHtml(order.orderId || '-')}</td>
+        <td data-label="Revenue">${formatAnalyticsMoney(order.revenue || 0)}</td>
+        <td data-label="Current Step">${escapeHtml(order.currentStep ?? '-')}</td>
+      </tr>
+    `).join('');
+  } else {
+    renderAnalyticsTableEmpty(DOM.analyticsRecentOrdersTableBody, 6, 'No converted sessions in this range.');
   }
 }
 
@@ -4272,6 +4625,26 @@ function setupFunctionalEvents() {
         } else if (field === 'inStock') {
           await saveCharmQuickField(charmId, { availability: { inStock: target.checked } }, target.checked ? 'Marked talisman in stock' : 'Marked talisman out of stock');
         }
+      }
+    });
+  }
+
+  DOM.analyticsRangeButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      const nextRange = button.dataset.analyticsRange || '7d';
+      if (CRMState.analyticsRange === nextRange && !CRMState.analyticsLoading) return;
+      CRMState.analyticsRange = nextRange;
+      syncAnalyticsRangeButtons();
+      if (CRMState.activeTab === 'analytics') {
+        renderAnalyticsSummary(await fetchAnalyticsSummary(nextRange));
+      }
+    });
+  });
+
+  if (DOM.btnRefreshAnalytics) {
+    DOM.btnRefreshAnalytics.addEventListener('click', async () => {
+      if (CRMState.activeTab === 'analytics') {
+        renderAnalyticsSummary(await fetchAnalyticsSummary(CRMState.analyticsRange));
       }
     });
   }
