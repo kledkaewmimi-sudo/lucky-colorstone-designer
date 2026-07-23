@@ -1077,6 +1077,12 @@
         </div>
 
         <div class="form-group">
+          <label for="crudStoneStockQty">Stock Quantity</label>
+          <input type="number" id="crudStoneStockQty" min="0" step="1" value="0" required>
+          <p class="form-tip">Set to 0 to hide this stone from the customer catalog.</p>
+        </div>
+
+        <div class="form-group">
           <label class="checkbox-lbl font-semibold">
             <input type="checkbox" id="crudStoneInStock" checked> In Stock & Available for Customizer App
           </label>
@@ -1194,6 +1200,11 @@
         </div>
 
         <div class="form-grid">
+          <div class="form-group">
+            <label for="crudCharmStockQty">Stock Quantity</label>
+            <input type="number" id="crudCharmStockQty" min="0" step="1" value="0" required>
+            <p class="form-tip">Set to 0 to hide this talisman from the customer catalog.</p>
+          </div>
           <div class="form-group">
             <label class="checkbox-lbl font-semibold">
               <input type="checkbox" id="crudCharmInStock" checked> In Stock

@@ -1,4 +1,4 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
+import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -31,6 +31,7 @@ const CUSTOMER_COMPONENT_LABELS = {
   charm: getComponentTypeLabel('charm', 'th'),
   spacer: getComponentTypeLabel('spacer', 'th')
 };
+const STOCK_UNAVAILABLE_TOAST = '\u0E2A\u0E34\u0E19\u0E04\u0E49\u0E32\u0E2B\u0E21\u0E14\u0E41\u0E25\u0E49\u0E27';
 const DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE = Object.freeze({
   '4': Object.freeze(['stones']),
   '6': Object.freeze(['stones', 'charms']),
@@ -311,7 +312,54 @@ const SPACER_CATALOG = Object.freeze([
     price: 0
   }
 ]);
-const SPACER_CATALOG_MAP = new Map(SPACER_CATALOG.map((spacer) => [spacer.id, spacer]));
+let spacerCatalogCache = SPACER_CATALOG.slice();
+let SPACER_CATALOG_MAP = new Map(spacerCatalogCache.map((spacer) => [spacer.id, spacer]));
+
+function normalizeStockQtyForCustomer(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : null;
+}
+
+function isCustomerCatalogItemAvailable(item) {
+  if (!item || item.isActive === false || item.inStock === false) return false;
+  if (item.availability?.isActive === false || item.availability?.inStock === false) return false;
+  const stockQty = normalizeStockQtyForCustomer(item.stockQty ?? item.stock_qty ?? item.availability?.stockQty ?? item.availability?.stock_qty);
+  return stockQty === null || stockQty > 0;
+}
+
+function adaptSpacerRecordForCustomer(record) {
+  if (!record || typeof record !== 'object') return null;
+  const stockQty = normalizeStockQtyForCustomer(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty);
+  return {
+    id: record.id,
+    nameTh: record.name?.th || record.nameTh || record.name?.en || record.nameEn || record.id,
+    nameEn: record.name?.en || record.nameEn || record.name?.th || record.nameTh || record.id,
+    type: record.type || 'spacer',
+    color: record.color || '',
+    image: record.image?.primary || record.image || '',
+    displaySizeMm: Number(record.business?.displaySizeMm || record.displaySizeMm || record.sizeMm || 0),
+    effectiveLengthMm: Number(record.business?.effectiveLengthMm || record.effectiveLengthMm || record.footprintMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
+    renderSizeMm: Number(record.business?.renderSizeMm || record.renderSizeMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
+    thicknessMm: Number(record.business?.thicknessMm || record.thicknessMm || 0),
+    price: Number(record.pricing?.base || record.price || 0),
+    displayOrder: Number(record.displayOrder || 0),
+    inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
+    isActive: record.availability?.isActive !== false && record.isActive !== false,
+    stockQty
+  };
+}
+
+async function refreshCustomerSpacerCatalog() {
+  await refreshSpacerCatalog();
+  const sharedSpacers = await getSharedSpacerCatalog();
+  const adapted = (Array.isArray(sharedSpacers) && sharedSpacers.length > 0 ? sharedSpacers : SPACER_CATALOG)
+    .map((record) => adaptSpacerRecordForCustomer(record))
+    .filter(Boolean);
+  spacerCatalogCache = adapted.length > 0 ? adapted : SPACER_CATALOG.slice();
+  SPACER_CATALOG_MAP = new Map(spacerCatalogCache.map((spacer) => [spacer.id, spacer]));
+  return spacerCatalogCache;
+}
 
 function normalizeBeadSizeOption(value) {
   const beadSize = String(value || '').trim();
@@ -561,6 +609,89 @@ function getSelectedStoneCountsById() {
     counts[item.stoneId] = (counts[item.stoneId] || 0) + 1;
     return counts;
   }, {});
+}
+
+function incrementStockRequirement(counts, id, quantity = 1) {
+  const normalizedId = String(id || '').trim();
+  if (!normalizedId) return;
+  counts[normalizedId] = (counts[normalizedId] || 0) + Math.max(1, Number.parseInt(quantity, 10) || 1);
+}
+
+function getCurrentDesignStockRequirements() {
+  const stones = {};
+  const charms = {};
+  const spacers = {};
+
+  getSelectedStoneItems().forEach((item) => incrementStockRequirement(stones, item.stoneId, 1));
+  normalizeSelectedCharmIds(State.selectedCharmIds).forEach((charmId) => incrementStockRequirement(charms, charmId, 1));
+  getSelectedLoopItems().forEach((item) => {
+    if (isSelectedCharmItem(item)) {
+      incrementStockRequirement(charms, item.charmId || item.id, 1);
+    } else if (isSelectedSpacerItem(item)) {
+      incrementStockRequirement(spacers, item.spacerId || item.id, 1);
+    }
+  });
+
+  return { stones, charms, spacers };
+}
+
+function formatStockIssueName(item, fallbackId) {
+  return item?.nameTh || item?.name?.th || item?.name || item?.nameEn || item?.name?.en || fallbackId;
+}
+
+function collectStockIssuesForRequirements(requirements, catalogs) {
+  const issues = [];
+  [
+    ['stones', 'stone'],
+    ['charms', 'charm'],
+    ['spacers', 'spacer']
+  ].forEach(([key, itemType]) => {
+    const catalog = catalogs[key] || [];
+    const map = new Map(catalog.map((item) => [String(item.id), item]));
+    Object.entries(requirements[key] || {}).forEach(([id, requiredQty]) => {
+      const item = map.get(id);
+      const stockQty = normalizeStockQtyForCustomer(item?.stockQty ?? item?.stock_qty ?? item?.availability?.stockQty ?? item?.availability?.stock_qty);
+      if (!item || !isCustomerCatalogItemAvailable(item)) {
+        issues.push({ itemType, id, requiredQty, stockQty: stockQty || 0, name: formatStockIssueName(item, id) });
+      } else if (stockQty !== null && requiredQty > stockQty) {
+        issues.push({ itemType, id, requiredQty, stockQty, name: formatStockIssueName(item, id) });
+      }
+    });
+  });
+  return issues;
+}
+
+async function validateCurrentDesignStockWithLatestCatalog() {
+  await Promise.all([
+    refreshCatalog(),
+    refreshCharmCatalog(),
+    refreshCustomerSpacerCatalog()
+  ]);
+  const charms = getVisibleCharmCatalog();
+  const requirements = getCurrentDesignStockRequirements();
+  const issues = collectStockIssuesForRequirements(requirements, {
+    stones: STONES,
+    charms,
+    spacers: spacerCatalogCache
+  });
+
+  if (issues.length > 0) {
+    const issueText = issues
+      .slice(0, 3)
+      .map((issue) => `${issue.name} (${issue.requiredQty}/${issue.stockQty})`)
+      .join(', ');
+    trackAnalyticsEvent('checkout_stock_blocked', {
+      issues: issues.map((issue) => ({
+        item_type: issue.itemType,
+        item_id: issue.id,
+        required_qty: issue.requiredQty,
+        stock_qty: issue.stockQty
+      }))
+    });
+    showToast(`\u0E2A\u0E15\u0E47\u0E2D\u0E01\u0E44\u0E21\u0E48\u0E1E\u0E2D: ${issueText} \u0E01\u0E23\u0E38\u0E13\u0E32\u0E1B\u0E23\u0E31\u0E1A\u0E01\u0E33\u0E44\u0E25`);
+    return false;
+  }
+  return true;
 }
 
 function getSelectedSpacerItems() {
@@ -850,9 +981,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   restoreCustomizationIntentAfterLogin();
   
   // Fetch initial catalog from shared persistence
-  const [, , , sharedSettings] = await Promise.all([
+  const [, , , , sharedSettings] = await Promise.all([
     refreshCatalog(),
     refreshCharmCatalog(),
+    refreshCustomerSpacerCatalog(),
     refreshCatalogLayoutOrder(),
     getSharedSettings()
   ]);
@@ -882,11 +1014,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Polling for updates every 3 seconds to reflect CRM changes instantly
   setInterval(async () => {
-    const [updatedStones, updatedCharms] = await Promise.all([
+    const [updatedStones, updatedCharms, updatedSpacers] = await Promise.all([
       refreshCatalog(),
-      refreshCharmCatalog()
+      refreshCharmCatalog(),
+      refreshCustomerSpacerCatalog()
     ]);
-    if (updatedStones || updatedCharms) {
+    if (updatedStones || updatedCharms || updatedSpacers) {
       await renderApp();
     }
   }, 3000);
@@ -2260,6 +2393,8 @@ function setupNavigationEvents() {
         ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
         const validationState = syncStep3NextValidationUI();
         if (!validationState.isFull) return;
+        const hasStock = await validateCurrentDesignStockWithLatestCatalog();
+        if (!hasStock) return;
         trackAnalyticsEvent('bracelet_completed', {
           item_count: getSelectedStoneItems().length
         });
@@ -2623,7 +2758,7 @@ function syncWristSizeDisplay() {
 function getStep2SupportThumbnailSources(kind) {
   if (kind === 'charm') {
     const spacerSources = applyCatalogLayoutOrder(
-      SPACER_CATALOG.filter((spacer) => spacer.inStock !== false),
+      spacerCatalogCache.filter(isCustomerCatalogItemAvailable),
       'spacers'
     )
       .map((spacer) => withCatalogImageVersion(spacer.image, spacer))
@@ -2921,8 +3056,7 @@ function buildStoneCard({
 function getVisibleCharmCatalog() {
   return legacyCharmCatalogCache.filter((charm) => (
     charm &&
-    charm.isActive !== false &&
-    charm.inStock !== false &&
+    isCustomerCatalogItemAvailable(charm) &&
     charm.image &&
     charm.image !== CHARM_PLACEHOLDER_IMAGE
   ));
@@ -3182,7 +3316,20 @@ function applySelectedCharm(charmId) {
   }
 
   const selectedCharm = getVisibleCharmCatalog().find((charm) => charm.id === nextCharmId);
-  if (!selectedCharm) return;
+  if (!selectedCharm || !isCustomerCatalogItemAvailable(selectedCharm)) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'charm', item_id: nextCharmId });
+    showToast(STOCK_UNAVAILABLE_TOAST);
+    renderCharmOptions();
+    return;
+  }
+
+  const charmStockQty = normalizeStockQtyForCustomer(selectedCharm.stockQty ?? selectedCharm.stock_qty);
+  const selectedSameCharmCount = getSelectedCharmCatalogEntries().filter((charm) => charm.id === selectedCharm.id).length;
+  if (charmStockQty !== null && selectedSameCharmCount >= charmStockQty) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'charm', item_id: nextCharmId, stock_qty: charmStockQty });
+    showToast('\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E2B\u0E21\u0E14\u0E0A\u0E31\u0E48\u0E27\u0E04\u0E23\u0E32\u0E27 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E40\u0E25\u0E37\u0E2D\u0E01\u0E0A\u0E34\u0E49\u0E19\u0E2D\u0E37\u0E48\u0E19');
+    return;
+  }
 
   if (isSlotPlaceableCharmType(selectedCharm.type)) {
     if (currentLoopCharms.length >= 2) {
@@ -4270,11 +4417,12 @@ function renderSpacerOptions() {
   const grid = document.createElement('div');
   grid.className = 'stone-catalog-grid';
 
-  if (SPACER_CATALOG.length === 0) {
+  const visibleSpacers = applyCatalogLayoutOrder(spacerCatalogCache.filter(isCustomerCatalogItemAvailable), 'spacers');
+  if (visibleSpacers.length === 0) {
     appendCatalogEmptyState(grid, `${CUSTOMER_COMPONENT_LABELS.spacer} coming soon`);
   }
 
-  applyCatalogLayoutOrder(SPACER_CATALOG, 'spacers').forEach((spacer) => {
+  visibleSpacers.forEach((spacer) => {
     const quantity = spacerCounts[spacer.id] || 0;
     const spacerImage = withCatalogImageVersion(spacer.image, spacer);
     grid.appendChild(buildStoneCard({
@@ -4490,7 +4638,7 @@ function renderCatalogGrid() {
   const selectedStoneCounts = getSelectedStoneCountsById();
   
   // Filter out of stock items
-  const availableStones = applyCatalogLayoutOrder(STONES.filter(s => s.inStock !== false), 'stones');
+  const availableStones = applyCatalogLayoutOrder(STONES.filter(isCustomerCatalogItemAvailable), 'stones');
   
   const filtered = State.activeCategory === 'all' 
     ? availableStones 
@@ -4555,15 +4703,25 @@ function placeLoopItemInFirstAvailableSlot(loopItem) {
 function fillEntireBracelet(stoneId) {
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
+  if (!isCustomerCatalogItemAvailable(stoneData)) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId, source: 'fill_all' });
+    showToast(STOCK_UNAVAILABLE_TOAST);
+    return;
+  }
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
   let { availableLengthMm } = getAvailableLengthForNewLoopItem();
+  const stockQty = normalizeStockQtyForCustomer(stoneData.stockQty ?? stoneData.stock_qty);
+  let remainingStockQty = stockQty === null
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, stockQty - (getSelectedStoneCountsById()[stoneId] || 0));
   State.newlyAddedIds = [];
   
-  while (availableLengthMm + 1.0 >= placedSize) {
+  while (availableLengthMm + 1.0 >= placedSize && remainingStockQty > 0) {
     State.uniqueCounter++;
     placeLoopItemInFirstAvailableSlot(createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter));
     State.newlyAddedIds.push(State.uniqueCounter);
+    remainingStockQty -= 1;
     availableLengthMm = getAvailableLengthForNewLoopItem().availableLengthMm;
   }
   
@@ -4606,6 +4764,18 @@ function addStoneToBracelet(stoneId) {
   }
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
+  if (!isCustomerCatalogItemAvailable(stoneData)) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId });
+    showToast(STOCK_UNAVAILABLE_TOAST);
+    renderCatalogGrid();
+    return;
+  }
+  const stockQty = normalizeStockQtyForCustomer(stoneData.stockQty ?? stoneData.stock_qty);
+  if (stockQty !== null && (getSelectedStoneCountsById()[stoneId] || 0) >= stockQty) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId, stock_qty: stockQty });
+    showToast('\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E2B\u0E21\u0E14\u0E0A\u0E31\u0E48\u0E27\u0E04\u0E23\u0E32\u0E27 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E40\u0E25\u0E37\u0E2D\u0E01\u0E0A\u0E34\u0E49\u0E19\u0E2D\u0E37\u0E48\u0E19');
+    return;
+  }
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
@@ -4650,6 +4820,18 @@ function addSpacerToBracelet(spacerId) {
   }
   const spacer = getSpacerCatalogEntry(spacerId);
   if (!spacer) return;
+  if (!isCustomerCatalogItemAvailable(spacer)) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'spacer', item_id: spacerId });
+    showToast(STOCK_UNAVAILABLE_TOAST);
+    renderCharmOptions();
+    return;
+  }
+  const stockQty = normalizeStockQtyForCustomer(spacer.stockQty ?? spacer.stock_qty);
+  if (stockQty !== null && getSelectedSpacerItems().filter((item) => item.id === spacer.id).length >= stockQty) {
+    trackAnalyticsEvent('stock_unavailable', { item_type: 'spacer', item_id: spacerId, stock_qty: stockQty });
+    showToast('\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E2B\u0E21\u0E14\u0E0A\u0E31\u0E48\u0E27\u0E04\u0E23\u0E32\u0E27 \u0E01\u0E23\u0E38\u0E13\u0E32\u0E40\u0E25\u0E37\u0E2D\u0E01\u0E0A\u0E34\u0E49\u0E19\u0E2D\u0E37\u0E48\u0E19');
+    return;
+  }
 
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
 
@@ -6286,6 +6468,11 @@ async function handleStripeCheckout() {
     return;
   }
 
+  const hasStock = await validateCurrentDesignStockWithLatestCatalog();
+  if (!hasStock) {
+    return;
+  }
+
   const hasLineLogin = await requireLineLoginForCustomization();
   if (!hasLineLogin) {
     return;
@@ -6328,7 +6515,9 @@ async function handleStripeCheckout() {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.error || "Unable to create Stripe Checkout session.");
+      const error = new Error(payload.error || "Unable to create Stripe Checkout session.");
+      error.stockIssues = payload.stockIssues || [];
+      throw error;
     }
 
     if (!payload.url) {
@@ -6339,6 +6528,16 @@ async function handleStripeCheckout() {
     window.location.assign(payload.url);
   } catch (error) {
     console.error("Stripe checkout creation failed", error);
+    if (Array.isArray(error?.stockIssues) && error.stockIssues.length > 0) {
+      const issueText = error.stockIssues
+        .slice(0, 3)
+        .map((issue) => `${issue.name || issue.id} (${issue.requiredQty}/${issue.stockQty})`)
+        .join(', ');
+      showToast(`\u0E2A\u0E15\u0E47\u0E2D\u0E01\u0E44\u0E21\u0E48\u0E1E\u0E2D: ${issueText} \u0E01\u0E23\u0E38\u0E13\u0E32\u0E1B\u0E23\u0E31\u0E1A\u0E01\u0E33\u0E44\u0E25`);
+      checkoutButton.disabled = false;
+      checkoutButton.innerHTML = originalMarkup;
+      return;
+    }
     trackAnalyticsEvent('payment_failed', {
       message: error?.message || String(error || ''),
       source: 'stripe_checkout'
@@ -7239,6 +7438,15 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
   try {
     savedOrder = await addSharedOrder(nextOrderPayload);
   } catch (error) {
+    if (Array.isArray(error?.stockIssues) && error.stockIssues.length > 0) {
+      const issueText = error.stockIssues
+        .slice(0, 3)
+        .map((issue) => `${issue.name || issue.id} (${issue.requiredQty}/${issue.stockQty})`)
+        .join(', ');
+      showToast(`\u0E2A\u0E15\u0E47\u0E2D\u0E01\u0E44\u0E21\u0E48\u0E1E\u0E2D: ${issueText} \u0E01\u0E23\u0E38\u0E13\u0E32\u0E1B\u0E23\u0E31\u0E1A\u0E01\u0E33\u0E44\u0E25`);
+      trackAnalyticsEvent('checkout_stock_blocked', { source: 'order_create', issues: error.stockIssues });
+      return null;
+    }
     trackAnalyticsEvent('api_error', {
       message: error?.message || String(error || ''),
       source: 'order_create'

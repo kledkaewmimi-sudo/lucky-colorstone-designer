@@ -1592,11 +1592,11 @@ async function readSupabasePayloadTable(tableName, fallbackLabel, fallbackFn, pa
   try {
     const rows = await supabaseRequest(tableName, {
       params: {
-        select: "payload,display_order,created_at",
+        select: "payload,display_order,in_stock,is_active,created_at",
         ...params
       }
     });
-    return Array.isArray(rows) ? rows.map((row) => row.payload).filter(Boolean) : [];
+    return Array.isArray(rows) ? rows.map((row) => mergeCatalogRowAvailability(row)).filter(Boolean) : [];
   } catch (error) {
     warnSupabaseReadFallback(fallbackLabel, error);
     return fallbackFn();
@@ -1613,25 +1613,80 @@ function toNumericOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeStockQty(value, fallback = null) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : fallback;
+}
+
+function getCatalogPayloadStockQty(item) {
+  return normalizeStockQty(item?.stockQty ?? item?.stock_qty ?? item?.availability?.stockQty ?? item?.availability?.stock_qty, null);
+}
+
+function isCatalogItemAvailable(item) {
+  if (!item || item.isActive === false || item.inStock === false) return false;
+  if (item.availability?.isActive === false || item.availability?.inStock === false) return false;
+  const stockQty = getCatalogPayloadStockQty(item);
+  return stockQty === null || stockQty > 0;
+}
+
+function mergeCatalogRowAvailability(row) {
+  if (!row?.payload || typeof row.payload !== "object") return null;
+  const payload = { ...row.payload };
+  if (row.in_stock === false) payload.inStock = false;
+  if (row.is_active === false) payload.isActive = false;
+  return payload;
+}
+
+function normalizeCatalogAvailabilityPayload(item) {
+  const stockQty = getCatalogPayloadStockQty(item);
+  const inStock = item?.availability?.inStock !== false && item?.inStock !== false && (stockQty === null || stockQty > 0);
+  const isActive = item?.availability?.isActive !== false && item?.isActive !== false;
+  const next = { ...item, stockQty, stock_qty: stockQty, inStock, isActive };
+  if (item?.availability && typeof item.availability === "object") {
+    next.availability = {
+      ...item.availability,
+      stockQty,
+      stock_qty: stockQty,
+      inStock,
+      isActive
+    };
+  }
+  return next;
+}
+
 function buildStoneRow(stone, index = 0) {
+  const payload = normalizeCatalogAvailabilityPayload(stone || {});
   return {
-    id: String(stone?.id || "").trim(),
-    payload: stone,
-    category_id: String(stone?.categoryId || stone?.category || "").trim() || null,
-    display_order: toInteger(stone?.displayOrder, (index + 1) * 10),
-    in_stock: stone?.inStock !== false,
-    is_active: stone?.isActive !== false
+    id: String(payload?.id || "").trim(),
+    payload,
+    category_id: String(payload?.categoryId || payload?.category || "").trim() || null,
+    display_order: toInteger(payload?.displayOrder, (index + 1) * 10),
+    in_stock: payload.inStock !== false,
+    is_active: payload.isActive !== false
   };
 }
 
 function buildCharmRow(charm, index = 0) {
+  const payload = normalizeCatalogAvailabilityPayload(charm || {});
   return {
-    id: String(charm?.id || "").trim(),
-    payload: charm,
-    category_id: String(charm?.categoryId || charm?.collection || "").trim() || null,
-    display_order: toInteger(charm?.displayOrder, (index + 1) * 10),
-    in_stock: charm?.availability?.inStock !== false && charm?.inStock !== false,
-    is_active: charm?.availability?.isActive !== false && charm?.isActive !== false
+    id: String(payload?.id || "").trim(),
+    payload,
+    category_id: String(payload?.categoryId || payload?.collection || "").trim() || null,
+    display_order: toInteger(payload?.displayOrder, (index + 1) * 10),
+    in_stock: payload.inStock !== false,
+    is_active: payload.isActive !== false
+  };
+}
+
+function buildSpacerRow(spacer, index = 0) {
+  const payload = normalizeCatalogAvailabilityPayload(spacer || {});
+  return {
+    id: String(payload?.id || "").trim(),
+    payload,
+    display_order: toInteger(payload?.displayOrder, (index + 1) * 10),
+    in_stock: payload.inStock !== false,
+    is_active: payload.isActive !== false
   };
 }
 
@@ -2406,6 +2461,15 @@ async function readCharmsForApi() {
   );
 }
 
+async function readSpacersForApi() {
+  return readSupabasePayloadTable(
+    "catalog_spacers",
+    "/api/spacers",
+    () => [],
+    { order: "display_order.asc,id.asc" }
+  );
+}
+
 function sortOrdersForApi(orders) {
   return orders.slice().sort((a, b) => {
     const dateA = Date.parse(a?.date || a?.created_at || "") || 0;
@@ -2456,6 +2520,172 @@ async function saveOrderForApi(order) {
   }
   writeJsonFile(dataFiles.orders, orders);
   console.info(`[orders] saved ${orderId} to json`);
+}
+
+function getCatalogItemDisplayName(item, fallbackId) {
+  return String(
+    item?.nameTh ||
+    item?.name?.th ||
+    item?.name ||
+    item?.nameEn ||
+    item?.name?.en ||
+    fallbackId ||
+    "item"
+  ).trim();
+}
+
+function incrementRequiredCount(counts, type, id, quantity = 1) {
+  const normalizedType = String(type || "").trim().toLowerCase();
+  const normalizedId = String(id || "").trim();
+  const amount = Math.max(1, toInteger(quantity, 1));
+  if (!normalizedId || !["stone", "charm", "spacer"].includes(normalizedType)) return;
+  counts[normalizedType].set(normalizedId, (counts[normalizedType].get(normalizedId) || 0) + amount);
+}
+
+function buildOrderStockRequirements(order) {
+  const counts = { stone: new Map(), charm: new Map(), spacer: new Map() };
+  const itemized = Array.isArray(order?.itemizedBilling) ? order.itemizedBilling : [];
+  if (itemized.length > 0) {
+    itemized.forEach((item) => {
+      const type = String(item?.type || item?.componentType || "").trim().toLowerCase();
+      const id = type === "stone"
+        ? item?.stoneId || item?.id
+        : type === "charm"
+          ? item?.charmId || item?.id
+          : item?.spacerId || item?.id;
+      incrementRequiredCount(counts, type, id, item?.quantity ?? item?.count ?? 1);
+    });
+    return counts;
+  }
+
+  (Array.isArray(order?.braceletSequence) ? order.braceletSequence : []).forEach((item) => {
+    const type = String(item?.type || item?.componentType || "").trim().toLowerCase();
+    const id = type === "stone"
+      ? item?.stoneId || item?.id
+      : type === "charm"
+        ? item?.charmId || item?.id
+        : item?.spacerId || item?.id;
+    incrementRequiredCount(counts, type, id, item?.quantity ?? item?.count ?? 1);
+  });
+
+  (Array.isArray(order?.beads) ? order.beads : []).forEach((bead) => {
+    incrementRequiredCount(counts, "stone", bead?.stoneId || bead?.id, 1);
+  });
+  (Array.isArray(order?.charms) ? order.charms : []).forEach((charm) => {
+    incrementRequiredCount(counts, "charm", charm?.id || charm?.charmId, 1);
+  });
+  (Array.isArray(order?.spacers) ? order.spacers : []).forEach((spacer) => {
+    incrementRequiredCount(counts, "spacer", spacer?.spacerId || spacer?.id, 1);
+  });
+  return counts;
+}
+
+async function readStockCatalogMapsForOrder() {
+  const [stones, charms, spacers] = await Promise.all([
+    readStonesForApi(),
+    readCharmsForApi(),
+    readSpacersForApi()
+  ]);
+  return {
+    stone: new Map(stones.map((item) => [String(item.id), item])),
+    charm: new Map(charms.map((item) => [String(item.id), item])),
+    spacer: new Map(spacers.map((item) => [String(item.id), item]))
+  };
+}
+
+async function validateOrderStockOrThrow(order) {
+  const requirements = buildOrderStockRequirements(order);
+  const catalogs = await readStockCatalogMapsForOrder();
+  const issues = [];
+
+  Object.entries(requirements).forEach(([type, counts]) => {
+    if (counts.size > 0 && catalogs[type].size === 0) {
+      console.warn(`[stock] ${type} catalog is empty; skipping ${type} stock validation.`);
+      return;
+    }
+
+    counts.forEach((requiredQty, id) => {
+      const item = catalogs[type].get(id);
+      const stockQty = getCatalogPayloadStockQty(item);
+      if (!item || !isCatalogItemAvailable(item)) {
+        issues.push({
+          type,
+          id,
+          requiredQty,
+          stockQty: stockQty ?? 0,
+          name: getCatalogItemDisplayName(item, id),
+          reason: "unavailable"
+        });
+        return;
+      }
+      if (stockQty !== null && requiredQty > stockQty) {
+        issues.push({
+          type,
+          id,
+          requiredQty,
+          stockQty,
+          name: getCatalogItemDisplayName(item, id),
+          reason: "insufficient"
+        });
+      }
+    });
+  });
+
+  if (issues.length > 0) {
+    const error = new Error("Stock is unavailable or insufficient.");
+    error.statusCode = 409;
+    error.stockIssues = issues;
+    throw error;
+  }
+}
+
+function shouldDeductStockForOrder(order) {
+  if (order?.stockDeductedAt) return false;
+  const paymentMethod = String(order?.paymentMethod || "").trim().toLowerCase();
+  const stripePaymentStatus = String(order?.stripePaymentStatus || "").trim().toLowerCase();
+  if (paymentMethod === "stripe_checkout" && stripePaymentStatus !== "paid") return false;
+  return true;
+}
+
+async function deductStockForOrder(order) {
+  if (!shouldDeductStockForOrder(order)) return order;
+  const requirements = buildOrderStockRequirements(order);
+  const tableByType = {
+    stone: { table: "catalog_stones", buildRow: buildStoneRow },
+    charm: { table: "catalog_charms", buildRow: buildCharmRow },
+    spacer: { table: "catalog_spacers", buildRow: buildSpacerRow }
+  };
+
+  if (!isSupabaseConfigured()) {
+    console.warn(`[stock] Skipping stock deduction for ${getOrderId(order)} because Supabase is not configured.`);
+    return order;
+  }
+
+  for (const [type, counts] of Object.entries(requirements)) {
+    const config = tableByType[type];
+    if (!config || counts.size === 0) continue;
+    for (const [id, requiredQty] of counts) {
+      const currentPayload = await getSupabaseRecordById(config.table, id);
+      if (!currentPayload) {
+        console.warn(`[stock] ${type} ${id} missing during deduction for ${getOrderId(order)}.`);
+        continue;
+      }
+      const currentQty = getCatalogPayloadStockQty(currentPayload);
+      if (currentQty === null) continue;
+      const nextQty = Math.max(0, currentQty - requiredQty);
+      const nextPayload = normalizeCatalogAvailabilityPayload({
+        ...currentPayload,
+        stockQty: nextQty,
+        inStock: nextQty > 0
+      });
+      await upsertSupabaseRow(config.table, config.buildRow(nextPayload));
+    }
+  }
+
+  return {
+    ...order,
+    stockDeductedAt: new Date().toISOString()
+  };
 }
 
 async function readSupabaseSettingsForApi() {
@@ -2619,6 +2849,16 @@ async function handleApiRequest(req, res, urlObj) {
   if (pathname === "/api/stripe/checkout-session" && method === "POST") {
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
+      return true;
+    }
+
+    try {
+      await validateOrderStockOrThrow(bodyObj.order);
+    } catch (error) {
+      sendJson(res, error.statusCode || 409, {
+        error: error.message || "Stock validation failed.",
+        stockIssues: error.stockIssues || []
+      });
       return true;
     }
 
@@ -2802,6 +3042,11 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/spacers" && method === "GET") {
+    sendJson(res, 200, await readSpacersForApi());
+    return true;
+  }
+
   if (pathname === "/api/charms" && method === "POST") {
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { error: "Missing charm ID" });
@@ -2918,6 +3163,31 @@ async function handleApiRequest(req, res, urlObj) {
     }
   }
 
+  if (pathname.startsWith("/api/spacers/")) {
+    const spacerId = decodeURIComponent(pathname.slice("/api/spacers/".length));
+    if (!spacerId) {
+      sendJson(res, 400, { error: "Missing spacer ID" });
+      return true;
+    }
+
+    if (method === "PUT") {
+      if (!bodyObj || !bodyObj.id) {
+        sendJson(res, 400, { error: "Missing spacer payload" });
+        return true;
+      }
+
+      const nextRecord = { ...bodyObj, id: spacerId };
+      if (isSupabaseConfigured()) {
+        await upsertSupabaseRow("catalog_spacers", buildSpacerRow(nextRecord));
+        sendJson(res, 200, nextRecord);
+        return true;
+      }
+
+      sendJson(res, 501, { error: "Spacer persistence requires Supabase." });
+      return true;
+    }
+  }
+
   if (pathname === "/api/orders" && method === "GET") {
     sendJson(res, 200, await readOrdersForApi());
     return true;
@@ -2940,26 +3210,63 @@ async function handleApiRequest(req, res, urlObj) {
       nextOrder.status = "New Order";
     }
 
-    await saveOrderForApi(nextOrder);
-    linkAnalyticsOrderConversion(nextOrder).catch((error) => {
-      console.warn(`[analytics] order conversion link failed for ${nextOrder.id}:`, error?.message || error);
-    });
+    let existingOrder = null;
+    if (isSupabaseConfigured()) {
+      const existingParams = nextOrder.stripeCheckoutSessionId
+        ? { stripe_checkout_session_id: `eq.${nextOrder.stripeCheckoutSessionId}` }
+        : { id: `eq.${getOrderId(nextOrder)}` };
+      const existingRows = await supabaseRequest("orders", {
+        params: {
+          select: "payload",
+          ...existingParams,
+          limit: "1"
+        }
+      });
+      existingOrder = Array.isArray(existingRows) && existingRows[0] ? existingRows[0].payload : null;
+    } else {
+      const existingOrders = readJsonArray("orders");
+      existingOrder = existingOrders.find((entry) => (
+        (nextOrder.stripeCheckoutSessionId && entry?.stripeCheckoutSessionId === nextOrder.stripeCheckoutSessionId) ||
+        getOrderId(entry) === getOrderId(nextOrder)
+      )) || null;
+    }
 
-    let responseOrder = nextOrder;
-    try {
-      await notifyAdminOrderCreated(nextOrder);
-    } catch (error) {
-      console.warn(`[admin-notify] unexpected failure for ${nextOrder.id}:`, error?.message || error);
+    if (existingOrder) {
+      sendJson(res, 200, existingOrder);
+      return true;
     }
 
     try {
-      const notificationResult = await trySendPaidOrderLineNotification(nextOrder);
+      await validateOrderStockOrThrow(nextOrder);
+    } catch (error) {
+      sendJson(res, error.statusCode || 409, {
+        error: error.message || "Stock validation failed.",
+        stockIssues: error.stockIssues || []
+      });
+      return true;
+    }
+
+    const savedStockOrder = await deductStockForOrder(nextOrder);
+    await saveOrderForApi(savedStockOrder);
+    linkAnalyticsOrderConversion(savedStockOrder).catch((error) => {
+      console.warn(`[analytics] order conversion link failed for ${savedStockOrder.id}:`, error?.message || error);
+    });
+
+    let responseOrder = savedStockOrder;
+    try {
+      await notifyAdminOrderCreated(savedStockOrder);
+    } catch (error) {
+      console.warn(`[admin-notify] unexpected failure for ${savedStockOrder.id}:`, error?.message || error);
+    }
+
+    try {
+      const notificationResult = await trySendPaidOrderLineNotification(savedStockOrder);
       if (notificationResult.sent) {
         responseOrder = notificationResult.order;
         await saveOrderForApi(responseOrder);
       }
     } catch (error) {
-      console.error(`Failed to send paid-order LINE notification for ${nextOrder.id}:`, error);
+      console.error(`Failed to send paid-order LINE notification for ${savedStockOrder.id}:`, error);
     }
 
     sendJson(res, 200, responseOrder);

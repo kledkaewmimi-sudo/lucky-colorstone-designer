@@ -359,6 +359,7 @@ function normalizeStoneRecord(record, index = 0) {
 
   const categoryId = String(record.categoryId || record.category || "").trim();
   const normalizedCategory = categoryId || "uncategorized";
+  const stockQty = normalizeStockQty(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty, null);
 
   return {
     ...record,
@@ -376,8 +377,16 @@ function normalizeStoneRecord(record, index = 0) {
     image: record.image || "",
     color: record.color || "#E2C974",
     sizes: Array.isArray(record.sizes) ? record.sizes : [4, 6, 8],
-    inStock: record.inStock !== false
+    stockQty,
+    inStock: record.inStock !== false && (stockQty === null || stockQty > 0),
+    isActive: record.isActive !== false
   };
+}
+
+function normalizeStockQty(value, fallback = null) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : fallback;
 }
 
 export function getCategoryRecordById(categoryId, entityType = "all") {
@@ -977,6 +986,7 @@ function toFiniteNumber(value, fallback = 0) {
 function buildNormalizedCharmFallback(charm, index = 0) {
   const safeSizeCm = toFiniteNumber(charm.sizeCm, 0);
   const displayOrder = toFiniteNumber(charm.displayOrder, (index + 1) * 10);
+  const stockQty = normalizeStockQty(charm.stockQty ?? charm.stock_qty, null);
 
   return {
     id: charm.id,
@@ -1005,8 +1015,9 @@ function buildNormalizedCharmFallback(charm, index = 0) {
       th: charm.meaningTh || ""
     },
     availability: {
-      inStock: charm.inStock !== false,
-      isActive: charm.isActive !== false
+      inStock: charm.inStock !== false && (stockQty === null || stockQty > 0),
+      isActive: charm.isActive !== false,
+      stockQty
     },
     renderTuning: {
       visualScale: charm.visualScale,
@@ -1063,6 +1074,7 @@ function normalizeCharmRecord(record, index = 0) {
     record.business?.footprintMm ?? record.footprintMm,
     safeSizeCm * 10
   );
+  const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
 
   return {
     ...safeRecord,
@@ -1075,8 +1087,9 @@ function normalizeCharmRecord(record, index = 0) {
       th: record.meaning?.th || record.meaningTh || ""
     },
     availability: {
-      inStock: record.availability?.inStock !== false && record.inStock !== false,
-      isActive: record.availability?.isActive !== false && record.isActive !== false
+      inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
+      isActive: record.availability?.isActive !== false && record.isActive !== false,
+      stockQty
     },
     renderTuning: {
       visualScale: record.renderTuning?.visualScale ?? record.visualScale,
@@ -1103,6 +1116,7 @@ function normalizeSpacerRecord(record, index = 0) {
 
   const displaySizeMm = toFiniteNumber(record.business?.displaySizeMm ?? record.displaySizeMm ?? record.sizeMm, 0);
   const effectiveLengthMm = toFiniteNumber(record.business?.effectiveLengthMm ?? record.effectiveLengthMm ?? record.footprintMm, displaySizeMm);
+  const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
 
   return {
     id,
@@ -1135,8 +1149,9 @@ function normalizeSpacerRecord(record, index = 0) {
       th: record.meaning?.th || record.descriptionTh || record.meaningTh || ""
     },
     availability: {
-      inStock: record.availability?.inStock !== false && record.inStock !== false,
-      isActive: record.availability?.isActive !== false && record.isActive !== false
+      inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
+      isActive: record.availability?.isActive !== false && record.isActive !== false,
+      stockQty
     },
     displayOrder: toFiniteNumber(record.displayOrder, (index + 1) * 10)
   };
@@ -1163,6 +1178,7 @@ export function adaptNormalizedCharmToLegacy(record) {
     meaningEn: normalized.meaning.en,
     inStock: normalized.availability.inStock,
     isActive: normalized.availability.isActive,
+    stockQty: normalized.availability.stockQty,
     displayOrder: normalized.displayOrder,
     visualScale: normalized.renderTuning.visualScale,
     visualOffsetX: normalized.renderTuning.visualOffsetX,
@@ -1377,6 +1393,23 @@ export async function getSharedCharmCatalog() {
 }
 
 export async function refreshSpacerCatalog() {
+  try {
+    const res = await fetch("/api/spacers");
+    if (res.ok) {
+      const loaded = await res.json();
+      const normalized = Array.isArray(loaded)
+        ? loaded.map((record, index) => normalizeSpacerRecord(record, index)).filter(Boolean)
+        : [];
+      if (normalized.length > 0) {
+        SPACER_RECORDS.length = 0;
+        SPACER_RECORDS.push(...normalized);
+        return SPACER_RECORDS;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to load spacer catalog from API, falling back to bundled source", e);
+  }
+
   const normalized = SPACER_CATALOG
     .map((record, index) => normalizeSpacerRecord(record, index))
     .filter(Boolean)
@@ -1384,6 +1417,28 @@ export async function refreshSpacerCatalog() {
   SPACER_RECORDS.length = 0;
   SPACER_RECORDS.push(...normalized);
   return SPACER_RECORDS;
+}
+
+export async function saveSharedSpacerCatalogEntry(record) {
+  const normalizedRecord = normalizeSpacerRecord(record);
+  if (!normalizedRecord || !normalizedRecord.id) return null;
+
+  try {
+    const res = await fetch(`/api/spacers/${encodeURIComponent(normalizedRecord.id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(normalizedRecord)
+    });
+    if (res.ok) {
+      const savedRecord = normalizeSpacerRecord(await res.json());
+      await refreshSpacerCatalog();
+      window.dispatchEvent(new Event("storage_sync"));
+      return savedRecord;
+    }
+  } catch (e) {
+    console.error("Failed to save spacer to API", e);
+  }
+  return null;
 }
 
 export async function getSharedSpacerCatalog() {
@@ -1663,6 +1718,13 @@ export async function addSharedOrder(orderData) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(orderData)
     });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      const error = new Error(payload.error || `Order save failed with HTTP ${res.status}`);
+      error.status = res.status;
+      error.stockIssues = payload.stockIssues || [];
+      throw error;
+    }
     if (res.ok) {
       const newOrder = await res.json();
       await getSharedOrders();

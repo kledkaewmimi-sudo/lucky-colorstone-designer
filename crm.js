@@ -5,6 +5,7 @@ import {
   getSharedSpacerCatalog,
   getSharedCategoryCatalog,
   saveSharedCharmCatalogEntry,
+  saveSharedSpacerCatalogEntry,
   deleteSharedCharmCatalogEntry,
   saveSharedCategoryCatalogEntry,
   deleteSharedCategoryCatalogEntry,
@@ -226,6 +227,7 @@ const DOM = {
   btnUploadStoneImage: document.getElementById('btnUploadStoneImage'),
   crudStoneUploadStatus: document.getElementById('crudStoneUploadStatus'),
   crudStoneImagePreview: document.getElementById('crudStoneImagePreview'),
+  crudStoneStockQty: document.getElementById('crudStoneStockQty'),
   crudStoneInStock: document.getElementById('crudStoneInStock'),
   crudStoneMeaningTh: document.getElementById('crudStoneMeaningTh'),
   crudStoneMeaningEn: document.getElementById('crudStoneMeaningEn'),
@@ -266,6 +268,7 @@ const DOM = {
   crudCharmSizeCm: document.getElementById('crudCharmSizeCm'),
   crudCharmPrice: document.getElementById('crudCharmPrice'),
   crudCharmDisplayOrder: document.getElementById('crudCharmDisplayOrder'),
+  crudCharmStockQty: document.getElementById('crudCharmStockQty'),
   crudCharmMeaningTh: document.getElementById('crudCharmMeaningTh'),
   crudCharmMeaningEn: document.getElementById('crudCharmMeaningEn'),
   crudCharmInStock: document.getElementById('crudCharmInStock'),
@@ -712,8 +715,8 @@ async function loadDashboardData(prefetched = {}) {
   
   const netRevenueAmount = orders.reduce((sum, order) => sum + getOrderFinalPrice(order), 0);
   
-  const activeStonesCount = stones.filter(s => s.inStock !== false).length;
-  const oosStonesCount = stones.filter(s => s.inStock === false).length;
+  const activeStonesCount = stones.filter(isCrmItemInStock).length;
+  const oosStonesCount = stones.filter((s) => !isCrmItemInStock(s)).length;
   
   const globalDiscountRateVal = settings.globalDiscountPercent || 0;
   
@@ -1277,7 +1280,7 @@ function renderStoneInventoryCatalogLegacy(stones) {
     const categoryBadgeClass = categoryLabel.missing ? 'unknown' : (categoryKey || 'unknown');
     
     // Stock Status badge
-    const isAvailable = stone.inStock !== false;
+    const isAvailable = isCrmItemInStock(stone);
     const stockBadge = isAvailable 
       ? '<span class="badge badge-in-stock">In Stock</span>' 
       : '<span class="badge badge-out-of-stock">Out of Stock</span>';
@@ -1338,6 +1341,21 @@ function getInventoryTypeLabel(type) {
   return CRM_COMPONENT_LABELS.stone;
 }
 
+function normalizeStockQtyForCrm(value, fallback = null) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : fallback;
+}
+
+function getCrmStockQty(item) {
+  return normalizeStockQtyForCrm(item?.stockQty ?? item?.stock_qty ?? item?.availability?.stockQty ?? item?.availability?.stock_qty, null);
+}
+
+function isCrmItemInStock(item) {
+  const stockQty = getCrmStockQty(item);
+  return item?.availability?.inStock !== false && item?.inStock !== false && (stockQty === null || stockQty > 0);
+}
+
 function formatInventoryStonePrice(stone) {
   return [4, 6, 8]
     .filter((size) => stone[`p${size}`] !== undefined)
@@ -1363,8 +1381,9 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       meta: categoryLabel.th || stone.categoryTh || stone.category || categoryKey || 'Uncategorized',
       priceText: formatInventoryStonePrice(stone),
       sizeText: sizes || '&mdash;',
-      isInStock: stone.inStock !== false,
-      isActive: true,
+      stockQty: getCrmStockQty(stone),
+      isInStock: isCrmItemInStock(stone),
+      isActive: stone.isActive !== false,
       searchText: [
         stone.id,
         nameTh,
@@ -1399,7 +1418,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
       sizeText: sizeParts.join(' / ') || '&mdash;',
-      isInStock: charm.availability?.inStock !== false,
+      stockQty: getCrmStockQty(charm),
+      isInStock: isCrmItemInStock(charm),
       isActive: charm.availability?.isActive !== false,
       searchText: [
         charm.id,
@@ -1437,7 +1457,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
       sizeText: sizeParts.join(' / ') || '&mdash;',
-      isInStock: spacer.availability?.inStock !== false,
+      stockQty: getCrmStockQty(spacer),
+      isInStock: isCrmItemInStock(spacer),
       isActive: spacer.availability?.isActive !== false,
       searchText: [
         spacer.id,
@@ -1489,8 +1510,8 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     const statusClass = item.isInStock ? 'badge-in-stock' : 'badge-out-of-stock';
     const visibilityText = item.isActive === false ? '<span class="inventory-muted-status">Hidden</span>' : '';
     const actionDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
-    const actionTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} CRUD is not available yet` : `Edit ${item.typeLabel}`;
-    const deleteTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} CRUD is not available yet` : `Delete ${item.typeLabel}`;
+    const actionTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Edit ${item.typeLabel}`;
+    const deleteTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Delete ${item.typeLabel}`;
 
     tr.innerHTML = `
       <td data-label="Item">
@@ -1510,6 +1531,19 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
         <div class="inventory-status-stack">
           <span class="badge ${statusClass}">${statusText}</span>
           ${visibilityText}
+          <label class="charm-inline-field">
+            <span>Stock</span>
+            <input
+              type="number"
+              class="charm-inline-input inventory-stock-input"
+              data-item-type="${item.type}"
+              data-item-id="${item.id}"
+              value="${item.stockQty ?? ''}"
+              min="0"
+              step="1"
+              aria-label="Stock quantity for ${escapeHtml(item.nameEn)}"
+            >
+          </label>
         </div>
       </td>
       <td data-label="Actions" class="text-right">
@@ -2507,6 +2541,68 @@ async function saveCharmQuickField(charmId, patch, logLabel) {
   return false;
 }
 
+async function saveInventoryStockQty(itemType, itemId, stockQty) {
+  const normalizedType = String(itemType || '').trim().toLowerCase();
+  const normalizedQty = normalizeStockQtyForCrm(stockQty, 0);
+  const inStock = normalizedQty > 0;
+
+  if (normalizedType === 'stone') {
+    const stones = await getSharedCatalog();
+    const stone = stones.find((entry) => entry.id === itemId);
+    if (!stone) return false;
+    const saved = await saveSharedCatalog({
+      ...stone,
+      stockQty: normalizedQty,
+      inStock
+    });
+    if (saved) {
+      addLog(`Updated stone stock '${itemId}' to ${normalizedQty}.`);
+      await loadDashboardData();
+      return true;
+    }
+    return false;
+  }
+
+  if (normalizedType === 'charm') {
+    const charms = await getSharedCharmCatalog();
+    const charm = charms.find((entry) => entry.id === itemId);
+    if (!charm) return false;
+    const saved = await saveSharedCharmCatalogEntry(buildUpdatedCharmRecord(charm, {
+      availability: {
+        stockQty: normalizedQty,
+        inStock
+      }
+    }));
+    if (saved) {
+      addLog(`Updated talisman stock '${itemId}' to ${normalizedQty}.`);
+      await loadDashboardData();
+      return true;
+    }
+    return false;
+  }
+
+  if (normalizedType === 'spacer') {
+    const spacers = await getSharedSpacerCatalog();
+    const spacer = spacers.find((entry) => entry.id === itemId);
+    if (!spacer) return false;
+    const saved = await saveSharedSpacerCatalogEntry({
+      ...spacer,
+      availability: {
+        ...(spacer.availability || {}),
+        stockQty: normalizedQty,
+        inStock
+      }
+    });
+    if (saved) {
+      addLog(`Updated charm stock '${itemId}' to ${normalizedQty}.`);
+      await loadDashboardData();
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function formatCharmTuningSummary(charm) {
   const tuning = charm.renderTuning || {};
   const chips = [
@@ -2562,7 +2658,7 @@ function renderCharmCatalog(charms, categories = []) {
       if (!haystack.includes(query)) return false;
 
       const isActive = charm.availability?.isActive !== false;
-      const isInStock = charm.availability?.inStock !== false;
+      const isInStock = isCrmItemInStock(charm);
       if (activeFilter === 'active' && !isActive) return false;
       if (activeFilter === 'inactive' && isActive) return false;
       if (stockFilter === 'in' && !isInStock) return false;
@@ -2593,7 +2689,8 @@ function renderCharmCatalog(charms, categories = []) {
     const imageSrc = withCatalogImageVersion(charm.image?.primary || '', charm);
     const sizeCm = Number(charm.business?.sizeCm || 0);
     const price = Number(charm.pricing?.base || 0);
-    const isInStock = charm.availability?.inStock !== false;
+    const stockQty = getCrmStockQty(charm);
+    const isInStock = isCrmItemInStock(charm);
     const isActive = charm.availability?.isActive !== false;
     const categoryLabel = getCategoryLabelById(charm.collection || charm.categoryId, 'charm');
 
@@ -2645,6 +2742,18 @@ function renderCharmCatalog(charms, categories = []) {
             <input type="checkbox" class="charm-toggle-input" data-charm-id="${charm.id}" data-field="inStock" ${isInStock ? 'checked' : ''}>
             In Stock
           </label>
+          <label class="charm-inline-field">
+            <span>Qty</span>
+            <input
+              type="number"
+              class="charm-inline-input charm-stock-input"
+              data-charm-id="${charm.id}"
+              value="${stockQty ?? ''}"
+              min="0"
+              step="1"
+              aria-label="Stock quantity for ${charm.id}"
+            >
+          </label>
           ${formatCharmStatusBadge(isInStock ? 'In Stock' : 'Out of Stock', isInStock)}
         </div>
       </td>
@@ -2685,6 +2794,7 @@ async function openAddCharmForm() {
   DOM.crudCharmId.disabled = false;
   DOM.crudCharmInStock.checked = true;
   DOM.crudCharmIsActive.checked = true;
+  DOM.crudCharmStockQty.value = "1";
   const charms = await getSharedCharmCatalog();
   const nextOrder = charms.reduce((maxOrder, charm) => Math.max(maxOrder, Number(charm.displayOrder || 0)), 0) + 10;
   DOM.crudCharmDisplayOrder.value = String(nextOrder);
@@ -2722,9 +2832,10 @@ async function openEditCharmForm(charmId) {
   DOM.crudCharmSizeCm.value = Number(charm.business?.sizeCm || 0);
   DOM.crudCharmPrice.value = Number(charm.pricing?.base || 0);
   DOM.crudCharmDisplayOrder.value = charm.displayOrder ?? "";
+  DOM.crudCharmStockQty.value = getCrmStockQty(charm) ?? "";
   DOM.crudCharmMeaningTh.value = charm.meaning?.th || "";
   DOM.crudCharmMeaningEn.value = charm.meaning?.en || "";
-  DOM.crudCharmInStock.checked = charm.availability?.inStock !== false;
+  DOM.crudCharmInStock.checked = isCrmItemInStock(charm);
   DOM.crudCharmIsActive.checked = charm.availability?.isActive !== false;
   setReadOnlyCharmTuning(charm.renderTuning || {});
   DOM.charmCrudModal.classList.add('show');
@@ -2744,6 +2855,7 @@ async function handleSaveCharmType(e) {
     : null;
 
   const sizeCm = Number(DOM.crudCharmSizeCm.value);
+  const stockQty = normalizeStockQtyForCrm(DOM.crudCharmStockQty.value, 0);
   const recordId = DOM.crudCharmRecordId.value.trim() || DOM.crudCharmId.value.trim();
   const normalizedRecord = {
     id: DOM.crudCharmId.value.trim(),
@@ -2772,7 +2884,8 @@ async function handleSaveCharmType(e) {
       en: DOM.crudCharmMeaningEn.value.trim()
     },
     availability: {
-      inStock: DOM.crudCharmInStock.checked,
+      stockQty,
+      inStock: DOM.crudCharmInStock.checked && stockQty > 0,
       isActive: DOM.crudCharmIsActive.checked
     },
     renderTuning: existingCharm?.renderTuning || {},
@@ -2823,6 +2936,7 @@ async function openAddStoneForm() {
   DOM.crudStoneId.value = "";
   DOM.stoneCrudForm.reset();
   DOM.crudStoneInStock.checked = true;
+  DOM.crudStoneStockQty.value = "1";
   DOM.crudStonePriceP4.value = "";
   DOM.crudStonePriceP6.value = "";
   DOM.crudStonePriceP8.value = "";
@@ -2862,7 +2976,8 @@ async function openEditStoneForm(stoneId) {
   DOM.crudStoneImage.value = stone.image;
   resetImageUploadState("Stone");
   updateImagePreview(DOM.crudStoneImagePreview, DOM.crudStoneImage.value);
-  DOM.crudStoneInStock.checked = stone.inStock !== false;
+  DOM.crudStoneInStock.checked = isCrmItemInStock(stone);
+  DOM.crudStoneStockQty.value = getCrmStockQty(stone) ?? "";
   DOM.crudStoneMeaningTh.value = stone.meaningTh;
   DOM.crudStoneMeaningEn.value = stone.meaning;
   
@@ -2893,7 +3008,8 @@ async function handleSaveStoneType(e) {
   const category = DOM.crudStoneCategory.value;
   const image = DOM.crudStoneImage.value.trim();
   const color = CRMState.activeEditStoneColor || '#E2C974';
-  const inStock = DOM.crudStoneInStock.checked;
+  const stockQty = normalizeStockQtyForCrm(DOM.crudStoneStockQty.value, 0);
+  const inStock = DOM.crudStoneInStock.checked && stockQty > 0;
   const meaningTh = DOM.crudStoneMeaningTh.value.trim();
   const meaningEn = DOM.crudStoneMeaningEn.value.trim();
   
@@ -2920,7 +3036,9 @@ async function handleSaveStoneType(e) {
     image: image,
     color: color,
     sizes: sizes,
+    stockQty: stockQty,
     inStock: inStock,
+    isActive: true,
     meaning: meaningEn,
     meaningTh: meaningTh
   };
@@ -4603,6 +4721,20 @@ function setupFunctionalEvents() {
       }
     });
   }
+  if (DOM.inventoryTableBody) {
+    DOM.inventoryTableBody.addEventListener('change', async (event) => {
+      const target = event.target;
+      if (!target?.classList?.contains('inventory-stock-input')) return;
+      const itemType = target.dataset.itemType;
+      const itemId = target.dataset.itemId;
+      const stockQty = Number(target.value);
+      if (!itemType || !itemId || !Number.isFinite(stockQty)) {
+        await loadDashboardData();
+        return;
+      }
+      await saveInventoryStockQty(itemType, itemId, stockQty);
+    });
+  }
   if (DOM.charmsTableBody) {
     DOM.charmsTableBody.addEventListener('change', async (event) => {
       const target = event.target;
@@ -4618,12 +4750,26 @@ function setupFunctionalEvents() {
         await saveCharmQuickField(charmId, { displayOrder: nextOrder }, 'Updated talisman order');
       }
 
+      if (target.classList.contains('charm-stock-input')) {
+        const stockQty = normalizeStockQtyForCrm(target.value, 0);
+        await saveCharmQuickField(charmId, {
+          availability: {
+            stockQty,
+            inStock: stockQty > 0
+          }
+        }, `Updated talisman stock to ${stockQty}`);
+        return;
+      }
+
       if (target.classList.contains('charm-toggle-input')) {
         const field = target.dataset.field;
         if (field === 'isActive') {
           await saveCharmQuickField(charmId, { availability: { isActive: target.checked } }, target.checked ? 'Marked talisman visible' : 'Marked talisman hidden');
         } else if (field === 'inStock') {
-          await saveCharmQuickField(charmId, { availability: { inStock: target.checked } }, target.checked ? 'Marked talisman in stock' : 'Marked talisman out of stock');
+          const charms = await getSharedCharmCatalog();
+          const charm = charms.find((entry) => entry.id === charmId);
+          const stockQty = target.checked ? Math.max(1, getCrmStockQty(charm)) : 0;
+          await saveCharmQuickField(charmId, { availability: { stockQty, inStock: target.checked && stockQty > 0 } }, target.checked ? 'Marked talisman in stock' : 'Marked talisman out of stock');
         }
       }
     });
