@@ -1002,7 +1002,8 @@ option {
   max-width: 100%;
   margin-top: 6px;
   margin-left: -18px;
-  padding: 4px 14px 5px 11px;
+  min-height: 25px;
+  padding: 4px 14px 6px 11px;
   border-radius: 999px;
   background: rgba(245, 239, 255, 0.86);
   border: 1px solid rgba(181, 169, 219, 0.28);
@@ -1019,14 +1020,17 @@ option {
   font-family: var(--font-body), "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-serif;
   font-size: 10px;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.6;
   white-space: nowrap;
+  overflow: visible;
 }
 
 .bead-size-support-item > span:not(.bead-size-support-thumb) {
   display: inline-block;
-  line-height: 1.45;
-  padding-top: 1px;
+  /* Thai diacritics need extra line-height; do not reduce. */
+  line-height: 1.6;
+  padding-block: 2px;
+  overflow: visible;
 }
 
 .bead-size-support-thumb {
@@ -1209,12 +1213,14 @@ option {
   .bead-size-support-banner {
     gap: 8px;
     margin-left: -16px;
-    padding: 4px 12px 5px 10px;
+    min-height: 24px;
+    padding: 4px 12px 6px 10px;
   }
 
   .bead-size-support-item {
     gap: 3px;
     font-size: 9px;
+    line-height: 1.6;
   }
 
   .bead-size-support-thumb {
