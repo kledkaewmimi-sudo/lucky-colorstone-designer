@@ -274,6 +274,21 @@ const SPACER_CATALOG = Object.freeze([
     price: 0
   },
   {
+    id: 'diamond-ball-blue-9mm',
+    nameTh: '\u0e25\u0e01\u0e1a\u0e2d\u0e25\u0e04\u0e23\u0e2a\u0e15\u0e25\u0e2a\u0e1f\u0e32 9mm',
+    nameEn: 'Diamond Ball Blue 9mm',
+    type: 'ball',
+    color: 'blue',
+    image: 'assets/spacers/diamond-ball-blue-9mm.webp',
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 120,
+    stockQty: 20,
+    inStock: true,
+    isActive: true
+  },
+  {
     id: 'golden_ball',
     nameTh: 'โกลเด้นบอล',
     nameEn: 'Golden Ball',

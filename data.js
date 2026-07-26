@@ -15,7 +15,7 @@ const CANONICAL_CATEGORY_LABELS = {
 export const CATALOG_LAYOUT_ORDER_STORAGE_KEY = "lucky_crm_catalog_layout_order";
 
 // Bump this when replacing catalog assets with the same filename so browsers/CDNs fetch the new file.
-export const ASSET_VERSION = "20260713-webp-2";
+export const ASSET_VERSION = "20260726-blue-diamond-ball";
 
 function isLocalCatalogAssetUrl(imageUrl = "") {
   const value = String(imageUrl || "").trim();
@@ -504,6 +504,30 @@ export const SPACER_CATALOG = Object.freeze([
     description: "Decorative white spacer bead",
     inStock: true,
     displayOrder: 40
+  },
+  {
+    id: "diamond-ball-blue-9mm",
+    slug: "diamond-ball-blue-9mm",
+    sku: "SP-DB-BLUE-9MM",
+    nameTh: "\u0e25\u0e01\u0e1a\u0e2d\u0e25\u0e04\u0e23\u0e2a\u0e15\u0e25\u0e2a\u0e1f\u0e32 9mm",
+    nameEn: "Diamond Ball Blue 9mm",
+    entityType: "spacer",
+    categoryId: "diamond-ball",
+    type: "ball",
+    color: "blue",
+    image: "assets/spacers/diamond-ball-blue-9mm.webp",
+    sizeMm: 9,
+    displaySizeMm: 9,
+    effectiveLengthMm: 9,
+    renderSizeMm: 9,
+    price: 120,
+    stockQty: 20,
+    inStock: true,
+    isActive: true,
+    meaningTh: "\u0e2a\u0e2d\u0e16\u0e07\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e07\u0e1a \u0e04\u0e27\u0e32\u0e21\u0e2a\u0e14\u0e43\u0e2a \u0e01\u0e32\u0e23\u0e2a\u0e2d\u0e2a\u0e32\u0e23\u0e17\u0e2d\u0e2d\u0e19\u0e42\u0e22\u0e19 \u0e41\u0e25\u0e30\u0e1e\u0e25\u0e07\u0e1a\u0e27\u0e01\u0e17\u0e40\u0e1a\u0e32\u0e2a\u0e1a\u0e32\u0e22",
+    meaningEn: "Symbolizes calmness, clarity, gentle communication, and light positive energy.",
+    description: "Decorative blue diamond ball spacer",
+    displayOrder: 45
   },
   {
     id: "golden_ball",
