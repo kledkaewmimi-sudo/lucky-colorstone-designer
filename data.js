@@ -15,7 +15,7 @@ const CANONICAL_CATEGORY_LABELS = {
 export const CATALOG_LAYOUT_ORDER_STORAGE_KEY = "lucky_crm_catalog_layout_order";
 
 // Bump this when replacing catalog assets with the same filename so browsers/CDNs fetch the new file.
-export const ASSET_VERSION = "20260726-blue-diamond-ball";
+export const ASSET_VERSION = "20260804-blue-diamond-ball-normalized";
 
 function isLocalCatalogAssetUrl(imageUrl = "") {
   const value = String(imageUrl || "").trim();
