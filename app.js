@@ -7764,6 +7764,7 @@ function closeStoneInfoModal() {
 function renderInspirationGallery() {
   if (!DOM.inspirationGalleryGrid || DOM.inspirationGalleryGrid.dataset.rendered === 'true') return;
 
+  const styleNames = ['Sweet Heart', 'Lucky Dragon', 'Calm Ocean', 'Joyful Pixiu'];
   INSPIRATION_SAMPLE_IMAGES.slice(0, 4).forEach((src, index) => {
     const card = document.createElement('figure');
     card.className = 'inspiration-gallery-item';
@@ -7785,10 +7786,14 @@ function renderInspirationGallery() {
     styleName.className = 'inspiration-gallery-style-name';
     styleName.textContent = `Style ${String(index + 1).padStart(2, '0')}`;
 
+    const name = document.createElement('span');
+    name.className = 'inspiration-gallery-product-name';
+    name.textContent = styleNames[index];
+
     const actionText = document.createElement('button');
     actionText.className = 'inspiration-gallery-style-action';
     actionText.type = 'button';
-    actionText.textContent = 'ใช้สไตล์นี้';
+    actionText.textContent = 'เลือกสไตล์นี้';
     actionText.addEventListener('click', () => {
       closeInspirationGallery();
       showToast('เลือกหินจากแคตตาล็อกเพื่อใช้สไตล์นี้');
@@ -7800,6 +7805,7 @@ function renderInspirationGallery() {
 
     card.appendChild(img);
     captionWrap.appendChild(styleName);
+    captionWrap.appendChild(name);
     captionWrap.appendChild(actionText);
     card.appendChild(captionWrap);
     card.appendChild(fallback);
