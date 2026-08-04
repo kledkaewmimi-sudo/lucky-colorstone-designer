@@ -77,6 +77,11 @@ const State = {
   braceletPreviewKey: ''
 };
 
+// Keep the initialization overlay in place while a URL-based order/payment view is restored.
+// The static markup defaults to Step 1, so exposing the app shell before the first Step 4 render
+// would otherwise briefly show the wrong step.
+let startupOrderReturnInProgress = false;
+
 // ==========================================
 // 2. DOM Elements Selection
 // ==========================================
@@ -949,6 +954,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
   const shouldResumeCustomizationStart = !returnParams.has('orderId') && hasCustomizationLoginIntent();
+  startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
   // Show loading overlay during LIFF boot
   const loader = document.getElementById('liffLoadingOverlay');
@@ -1041,6 +1047,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Perform first render
   await renderApp();
+  if (startupOrderReturnInProgress) {
+    startupOrderReturnInProgress = false;
+    if (loader) loader.style.display = 'none';
+  }
   if (customizationResumeInProgress) {
     await completeCustomizationStartResume();
   }
@@ -1520,7 +1530,7 @@ async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
-    if (loader && !customizationResumeInProgress) loader.style.display = 'none';
+    if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
     return;
   }
@@ -1558,7 +1568,7 @@ async function initLIFF() {
       message: err?.message || String(err || '')
     });
   } finally {
-    if (loader && !customizationResumeInProgress) loader.style.display = 'none';
+    if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
   }
 }
 
@@ -6455,7 +6465,6 @@ async function handleStripeReturnIfNeeded() {
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();
-    showToast("Stripe payment received. Your order was saved to CRM.");
   } catch (error) {
     console.error("Stripe return verification failed", error);
     trackAnalyticsEvent('payment_failed', {
