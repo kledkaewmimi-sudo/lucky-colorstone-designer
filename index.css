@@ -3058,8 +3058,9 @@ button.stone-card {
   flex-direction: column;
   align-self: flex-end;
   background:
-    radial-gradient(circle at 50% 0%, rgba(252, 251, 255, 0.92), transparent 38%),
-    linear-gradient(180deg, #F6F2FF 0%, #F1E9FF 100%);
+    radial-gradient(circle at 14% 11%, rgba(231, 211, 255, 0.32), transparent 30%),
+    radial-gradient(circle at 88% 26%, rgba(255, 220, 239, 0.26), transparent 28%),
+    #FCF8FF;
   border: 0;
   border-radius: 28px 28px 0 0;
   box-shadow: 0 -14px 40px rgba(91, 66, 125, 0.18);
@@ -3083,9 +3084,9 @@ button.stone-card {
   align-items: center;
   min-height: 68px;
   padding: 18px 16px 8px;
-  border-bottom: 1px solid rgba(213, 198, 241, 0.72);
-  background: rgba(248, 245, 255, 0.96);
-  backdrop-filter: blur(14px);
+  border-bottom: 0;
+  background: rgba(252, 248, 255, 0.9);
+  backdrop-filter: blur(10px);
 }
 
 .inspiration-gallery-header::before {
@@ -3103,8 +3104,8 @@ button.stone-card {
 .inspiration-gallery-header h3 {
   margin: 0;
   color: #40304D;
-  font-family: var(--font-ui-thai);
-  font-size: 18px;
+  font-family: var(--font-display, var(--font-ui-thai));
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.02em;
   text-align: center;
@@ -3114,9 +3115,9 @@ button.stone-card {
   width: 40px;
   height: 40px;
   justify-content: center;
-  border: 1px solid rgba(196, 173, 226, 0.54);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.66);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: #6B4AA0;
   font-size: 22px;
   line-height: 1;
@@ -3140,7 +3141,7 @@ button.stone-card {
 .inspiration-gallery-body {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 18px 16px calc(24px + var(--mobile-safe-bottom));
+  padding: 16px 18px calc(28px + var(--mobile-safe-bottom));
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
@@ -3151,7 +3152,7 @@ button.stone-card {
 .inspiration-gallery-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 20px 16px;
   padding: 0;
 }
 
@@ -3162,20 +3163,17 @@ button.stone-card {
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 9px;
+  padding: 0;
   color: #40304D;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(205, 183, 233, 0.72);
-  border-radius: 22px;
-  box-shadow: 0 10px 22px rgba(111, 83, 148, 0.10);
-  overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  transition: transform 0.2s ease;
 }
 
 .inspiration-gallery-item:hover {
   transform: translateY(-2px);
-  border-color: rgba(166, 128, 207, 0.72);
-  box-shadow: 0 14px 28px rgba(111, 83, 148, 0.14);
 }
 
 .inspiration-gallery-item img {
@@ -3183,9 +3181,9 @@ button.stone-card {
   aspect-ratio: 1 / 1;
   display: block;
   object-fit: contain;
-  border: 1px solid rgba(255, 255, 255, 0.78);
-  border-radius: 16px;
-  box-shadow: inset 0 0 0 1px rgba(211, 191, 237, 0.36);
+  border: 0;
+  border-radius: 50% 46% 52% 48%;
+  box-shadow: 0 12px 22px rgba(148, 113, 183, 0.10);
   background:
     radial-gradient(circle at 50% 34%, rgba(255, 255, 255, 0.96), transparent 48%),
     linear-gradient(145deg, rgba(239, 228, 255, 0.96), rgba(250, 247, 255, 0.94));
@@ -3203,7 +3201,11 @@ button.stone-card {
 .inspiration-gallery-style-name {
   color: #40304D;
   font-family: var(--font-ui-thai);
-  font-size: 13px;
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(231, 216, 249, 0.72);
+  font-size: 10px;
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: 0.01em;
@@ -3212,12 +3214,12 @@ button.stone-card {
 
 .inspiration-gallery-style-action {
   appearance: none;
-  width: 100%;
-  min-height: 32px;
-  border: 1px solid rgba(184, 148, 220, 0.54);
+  width: auto;
+  min-height: 36px;
+  border: 0;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(247, 240, 255, 0.98), rgba(237, 225, 255, 0.94));
-  padding: 6px 8px;
+  background: rgba(241, 231, 255, 0.56);
+  padding: 7px 11px;
   color: #5E3F91;
   font: inherit;
   font-size: 11.5px;
@@ -3230,8 +3232,7 @@ button.stone-card {
 
 .inspiration-gallery-style-action:hover {
   color: #5E3F91;
-  border-color: rgba(151, 108, 196, 0.72);
-  background: rgba(232, 215, 252, 0.98);
+  background: rgba(232, 215, 252, 0.9);
 }
 
 .inspiration-gallery-style-action:active {
