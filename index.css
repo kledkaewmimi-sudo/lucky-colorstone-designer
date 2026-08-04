@@ -1688,17 +1688,21 @@ option {
   overflow: hidden;
 }
 
+.canvas-card {
+  position: relative;
+}
+
 .canvas-reset-control {
   position: absolute;
-  right: 8px;
-  bottom: 6px;
-  min-height: 34px;
+  right: 12px;
+  bottom: 10px;
+  min-height: 36px;
   padding: 6px 9px;
   font-size: 11px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 3px 10px rgba(98, 80, 145, 0.12);
-  z-index: 2;
+  z-index: 3;
 }
 
 .app-footer.step3-compact-footer {

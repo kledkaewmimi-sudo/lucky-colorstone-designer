@@ -2241,7 +2241,7 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
     DOM.appFooter.style.display = 'flex';
   }
 
-  DOM.btnNext.disabled = !validationState.isFull;
+  DOM.btnNext.disabled = false;
   if (validationState.isFull && !step3NextWasComplete) {
     window.clearTimeout(step3NextEnterTimer);
     DOM.btnNext.classList.remove('is-entering');
@@ -2259,8 +2259,8 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
   step3NextWasComplete = validationState.isFull;
 
   if (warningEl) {
-    warningEl.textContent = validationState.warningText;
-    warningEl.style.display = validationState.isFull ? 'none' : 'block';
+    warningEl.textContent = '';
+    warningEl.style.display = 'none';
   }
 
   return validationState;
@@ -2419,7 +2419,10 @@ function setupNavigationEvents() {
       if (State.currentStep === 3) {
         ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
         const validationState = syncStep3NextValidationUI();
-        if (!validationState.isFull) return;
+        if (!validationState.isFull) {
+          showToast('กรุณาใส่หินให้เต็มวงกำไล', 3000);
+          return;
+        }
         const hasStock = await validateCurrentDesignStockWithLatestCatalog();
         if (!hasStock) return;
         trackAnalyticsEvent('bracelet_completed', {
@@ -7853,14 +7856,17 @@ function setupModalEvents() {
 }
 
 // Toast Helper
-function showToast(message) {
+let toastTimer = null;
+function showToast(message, duration = 2500) {
   const toast = DOM.toastMessage;
+  window.clearTimeout(toastTimer);
   toast.textContent = message;
   toast.classList.add('show');
   
-  setTimeout(() => {
+  toastTimer = window.setTimeout(() => {
     toast.classList.remove('show');
-  }, 2500);
+    toastTimer = null;
+  }, duration);
 }
 
 // Custom Confirmation Dialog Helper
