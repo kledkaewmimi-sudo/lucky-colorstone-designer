@@ -2220,7 +2220,7 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
   const isStep3 = State.currentStep === 3;
 
   if (DOM.appFooter) {
-    DOM.appFooter.classList.toggle('step3-validation-active', isStep3 && !validationState.isFull);
+    DOM.appFooter.classList.toggle('step3-validation-active', false);
     DOM.appFooter.classList.toggle('step3-next-floating', isStep3);
   }
 
@@ -2238,7 +2238,7 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
   }
 
   if (DOM.appFooter) {
-    DOM.appFooter.style.display = validationState.isFull ? 'flex' : 'none';
+    DOM.appFooter.style.display = 'flex';
   }
 
   DOM.btnNext.disabled = !validationState.isFull;
@@ -2330,6 +2330,7 @@ async function goToStep(step) {
 }
 
 function configureFooterNavigation() {
+  DOM.appFooter?.classList.toggle('step3-compact-footer', State.currentStep === 3);
   if (DOM.appFooter) {
     DOM.appFooter.style.display = 'flex';
   }
@@ -2350,9 +2351,10 @@ function configureFooterNavigation() {
   if (State.currentStep === 3) {
     const validationState = syncStep3NextValidationUI();
     if (DOM.appFooter) {
-      DOM.appFooter.style.display = validationState.isFull ? 'flex' : 'none';
+      DOM.appFooter.style.display = 'flex';
     }
-    DOM.btnBack.style.display = 'none';
+    DOM.btnBack.style.display = '';
+    DOM.btnBack.style.visibility = 'visible';
     DOM.btnNext.className = 'footer-btn btn-next';
     DOM.btnNext.innerHTML = `ถัดไป &nbsp;
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4509,11 +4511,6 @@ function setupDesignerEvents() {
       State.mixedPlacingSize = parseInt(btn.getAttribute('data-size'));
       renderStep3();
     });
-  });
-
-  // Back to step 2 selection in canvas control
-  DOM.btnBackToSteps.addEventListener('click', () => {
-    goToStep(2);
   });
 
   DOM.catalogTypeTabs.forEach((tab) => {

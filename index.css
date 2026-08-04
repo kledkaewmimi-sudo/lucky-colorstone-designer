@@ -1688,6 +1688,38 @@ option {
   overflow: hidden;
 }
 
+.canvas-reset-control {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 3px 10px rgba(98, 80, 145, 0.12);
+  z-index: 2;
+}
+
+.app-footer.step3-compact-footer {
+  padding: 7px 12px calc(7px + var(--mobile-safe-bottom));
+  gap: 8px;
+}
+
+.app-footer.step3-compact-footer .footer-btn {
+  min-height: 46px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.app-footer.step3-compact-footer .btn-back {
+  flex: 0.55;
+}
+
+.app-footer.step3-compact-footer .btn-next {
+  flex: 1;
+}
+
 .catalog-type-filter::before {
   content: '';
   position: absolute;
