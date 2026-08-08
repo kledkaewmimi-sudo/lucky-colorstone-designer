@@ -3026,6 +3026,10 @@ async function handleApiRequest(req, res, urlObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
     }
+    if (typeof bodyObj.nameTh === 'string' && /[?\uFFFD]/.test(bodyObj.nameTh)) {
+      sendJson(res, 400, { error: 'Invalid Thai stone name encoding.' });
+      return true;
+    }
 
     if (isSupabaseConfigured()) {
       const stoneToSave = { ...bodyObj };
@@ -3235,7 +3239,6 @@ async function handleApiRequest(req, res, urlObj) {
       sendJson(res, 400, { error: "Missing spacer ID" });
       return true;
     }
-
     if (method === "PUT") {
       if (!bodyObj || !bodyObj.id) {
         sendJson(res, 400, { error: "Missing spacer payload" });

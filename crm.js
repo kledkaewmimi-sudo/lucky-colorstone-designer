@@ -701,19 +701,22 @@ async function triggerSyncUpdate(keyName) {
   DOM.syncIndicator.className = 'sync-status text-gold';
   DOM.syncIndicator.innerHTML = '<span class="pulse-dot" style="background-color: var(--color-gold)"></span> Syncing updates...';
   
+  if (keyName === 'local_event') {
+    DOM.syncIndicator.className = 'sync-status text-green';
+    DOM.syncIndicator.innerHTML = '<span class="pulse-dot"></span> Real-time Connected';
+    return;
+  }
+
   const [stones, categories, charms] = await Promise.all([
     refreshCatalog(),
     refreshCategoryCatalog(),
     refreshCharmCatalog()
   ]);
   
-  setTimeout(async () => {
-    DOM.syncIndicator.className = 'sync-status text-green';
-    DOM.syncIndicator.innerHTML = '<span class="pulse-dot"></span> Real-time Connected';
-    
-    addLog(`Database synchronized (${keyName}).`);
-    await loadDashboardData({ stones, categories, charms });
-  }, 400);
+  DOM.syncIndicator.className = 'sync-status text-green';
+  DOM.syncIndicator.innerHTML = '<span class="pulse-dot"></span> Real-time Connected';
+  addLog(`Database synchronized (${keyName}).`);
+  await loadDashboardData({ stones, categories, charms });
 }
 
 // ==========================================
@@ -1520,11 +1523,14 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     return item.searchText.includes(query);
   });
 
-  DOM.inventoryTableBody.innerHTML = '';
+  const nextRows = document.createDocumentFragment();
   if (filtered.length === 0) {
     const itemLabel = activeType === 'all' ? 'inventory items' : `${getInventoryTypeLabel(activeType).toLowerCase()} items`;
     const emptyMessage = `No matching ${itemLabel} found.`;
-    DOM.inventoryTableBody.innerHTML = `<tr><td colspan="4" class="empty-state">${emptyMessage}</td></tr>`;
+    const row = document.createElement('tr');
+    row.innerHTML = `<td colspan="4" class="empty-state">${emptyMessage}</td>`;
+    nextRows.appendChild(row);
+    DOM.inventoryTableBody.replaceChildren(nextRows);
     return;
   }
 
@@ -1591,8 +1597,9 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
       deleteStoneType(item.id);
     });
 
-    DOM.inventoryTableBody.appendChild(tr);
+    nextRows.appendChild(tr);
   });
+  DOM.inventoryTableBody.replaceChildren(nextRows);
 }
 
 function renderBraceletLayoutSimulatorLegacy(stones = [], charms = [], spacers = []) {
