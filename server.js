@@ -2409,6 +2409,17 @@ async function getSupabaseRecordById(tableName, id) {
   return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
 }
 
+async function getSupabaseDisplayOrderById(tableName, id) {
+  const rows = await supabaseRequest(tableName, {
+    params: {
+      select: "display_order",
+      id: `eq.${id}`,
+      limit: "1"
+    }
+  });
+  return Array.isArray(rows) && rows[0] ? toInteger(rows[0].display_order, null) : null;
+}
+
 async function upsertSupabaseRow(tableName, row, conflictKey = "id") {
   if (!row?.[conflictKey]) {
     throw new Error(`Missing ${conflictKey} for ${tableName} upsert.`);
@@ -2969,7 +2980,14 @@ async function handleApiRequest(req, res, urlObj) {
     }
 
     if (isSupabaseConfigured()) {
-      await upsertSupabaseRow("catalog_stones", buildStoneRow(bodyObj));
+      const stoneToSave = { ...bodyObj };
+      if (stoneToSave.displayOrder === undefined || stoneToSave.displayOrder === null) {
+        const existingDisplayOrder = await getSupabaseDisplayOrderById("catalog_stones", stoneToSave.id);
+        if (existingDisplayOrder !== null) {
+          stoneToSave.displayOrder = existingDisplayOrder;
+        }
+      }
+      await upsertSupabaseRow("catalog_stones", buildStoneRow(stoneToSave));
     } else {
       const stones = readJsonArray("stones");
       writeJsonFile(dataFiles.stones, upsertById(stones, bodyObj));

@@ -51,6 +51,7 @@ const CRMState = {
   sessionActive: false,
   activeTab: 'overview', // 'overview', 'analytics', 'inventory', 'simulator', 'categories', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
+  activeEditStoneIsActive: true,
   activeEditStoneColor: '#E2C974',
   activeEditCharmId: null,
   activeEditCategoryId: null,
@@ -2931,6 +2932,7 @@ async function deleteCharmType(charmId) {
 // Form Opening & Resetting
 async function openAddStoneForm() {
   CRMState.activeEditStoneId = null;
+  CRMState.activeEditStoneIsActive = true;
   CRMState.activeEditStoneColor = '#E2C974';
   DOM.stoneModalTitle.textContent = "Add New Stone Type";
   DOM.crudStoneId.value = "";
@@ -2963,6 +2965,7 @@ async function openEditStoneForm(stoneId) {
   syncCategoryAssignmentSelects(categories, stone.categoryId || stone.category);
   
   CRMState.activeEditStoneId = stoneId;
+  CRMState.activeEditStoneIsActive = stone.isActive !== false;
   CRMState.activeEditStoneColor = stone.color || '#E2C974';
   DOM.stoneModalTitle.textContent = `Edit Details: ${stone.nameTh}`;
   DOM.crudStoneId.value = stone.id;
@@ -3038,7 +3041,7 @@ async function handleSaveStoneType(e) {
     sizes: sizes,
     stockQty: stockQty,
     inStock: inStock,
-    isActive: true,
+    isActive: CRMState.activeEditStoneId ? CRMState.activeEditStoneIsActive : true,
     meaning: meaningEn,
     meaningTh: meaningTh
   };
