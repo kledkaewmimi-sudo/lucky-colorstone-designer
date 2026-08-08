@@ -49,7 +49,7 @@ const CRM_COMPONENT_LABELS = {
 
 const CRMState = {
   sessionActive: false,
-  activeTab: 'overview', // 'overview', 'analytics', 'inventory', 'simulator', 'categories', 'charms', 'orders', 'settings'
+  activeTab: 'overview', // 'overview', 'analytics', 'inventory', 'simulator', 'charms', 'orders', 'settings'
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditStoneIsActive: true,
   activeEditStoneColor: '#E2C974',
@@ -101,7 +101,6 @@ const DOM = {
     analytics: document.getElementById('btnTabAnalytics'),
     inventory: document.getElementById('btnTabInventory'),
     simulator: document.getElementById('btnTabSimulator'),
-    categories: document.getElementById('btnTabCategories'),
     charms: document.getElementById('btnTabCharms'),
     orders: document.getElementById('btnTabOrders'),
     settings: document.getElementById('btnTabSettings')
@@ -110,7 +109,6 @@ const DOM = {
     overview: document.getElementById('btnMobTabOverview'),
     analytics: document.getElementById('btnMobTabAnalytics'),
     inventory: document.getElementById('btnMobTabInventory'),
-    categories: document.getElementById('btnMobTabCategories'),
     simulator: document.getElementById('btnMobTabSimulator'),
     orders: document.getElementById('btnMobTabOrders'),
     settings: document.getElementById('btnMobTabSettings')
@@ -122,7 +120,6 @@ const DOM = {
     analytics: document.getElementById('tabAnalytics'),
     inventory: document.getElementById('tabInventory'),
     simulator: document.getElementById('tabSimulator'),
-    categories: document.getElementById('tabCategories'),
     charms: document.getElementById('tabCharms'),
     orders: document.getElementById('tabOrders'),
     settings: document.getElementById('tabSettings')
@@ -574,6 +571,7 @@ function setupTabNavigation() {
 }
 
 async function switchTab(tabName) {
+  if (!Object.prototype.hasOwnProperty.call(DOM.tabViews, tabName)) return;
   CRMState.activeTab = tabName;
   
   // Update header text title
@@ -582,7 +580,6 @@ async function switchTab(tabName) {
     analytics: "Customer Analytics",
     inventory: "Stone Inventory Manager (Module A)",
     simulator: "Catalog Layout Manager",
-    categories: "Catalog Category Manager",
     charms: "Shared Talisman Catalog Management",
     orders: "Order Management & OMS (Module B)",
     settings: "Global System Settings"
@@ -746,8 +743,6 @@ async function loadDashboardData(prefetched = {}) {
   } else if (CRMState.activeTab === 'simulator') {
     await loadSimulatorPresetFromStorage();
     renderBraceletLayoutSimulator(stones, charms, spacers);
-  } else if (CRMState.activeTab === 'categories') {
-    renderCategoryCatalog(categories, stones, charms);
   } else if (CRMState.activeTab === 'charms') {
     renderCharmCatalog(charms, categories);
   } else if (CRMState.activeTab === 'orders') {
