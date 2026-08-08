@@ -1357,11 +1357,31 @@ function isCrmItemInStock(item) {
   return item?.availability?.inStock !== false && item?.inStock !== false && (stockQty === null || stockQty > 0);
 }
 
+function getInventoryStoneSizes(stone) {
+  const supportedSizes = Array.isArray(stone?.sizes) ? stone.sizes : [];
+  const priceSizes = Object.keys(stone || {})
+    .map((key) => /^p(\d+)$/.exec(key)?.[1])
+    .filter(Boolean)
+    .map(Number);
+  return [...new Set([...supportedSizes, ...priceSizes])]
+    .map(Number)
+    .filter((size) => Number.isFinite(size) && size > 0)
+    .sort((a, b) => a - b);
+}
+
 function formatInventoryStonePrice(stone) {
-  return [4, 6, 8]
+  return getInventoryStoneSizes(stone)
     .filter((size) => stone[`p${size}`] !== undefined)
     .map((size) => `${size}mm &#3647;${Number(stone[`p${size}`] || 0).toLocaleString()}`)
     .join(' / ') || '&mdash;';
+}
+
+function formatInventoryStockSummary(item, sizes = []) {
+  const sizeText = sizes.map((size) => `${size}mm`).join(' / ');
+  const quantityText = item.stockQty === null || item.stockQty === undefined
+    ? 'Stock: —'
+    : `Stock: ${Number(item.stockQty).toLocaleString()}`;
+  return sizeText ? `${sizeText} · ${quantityText}` : quantityText;
 }
 
 function buildInventoryItems(stones = [], charms = [], spacers = []) {
@@ -1370,7 +1390,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
     const categoryLabel = getCategoryLabelById(categoryKey, 'stone');
     const nameTh = stone.nameTh || stone.name || stone.id;
     const nameEn = stone.name || stone.nameTh || stone.id;
-    const sizes = (stone.sizes || []).map((size) => `${size}mm`).join(', ');
+    const supportedSizes = getInventoryStoneSizes(stone);
+    const stockQty = getCrmStockQty(stone);
 
     return {
       id: stone.id,
@@ -1381,8 +1402,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       nameEn,
       meta: categoryLabel.th || stone.categoryTh || stone.category || categoryKey || 'Uncategorized',
       priceText: formatInventoryStonePrice(stone),
-      sizeText: sizes || '&mdash;',
-      stockQty: getCrmStockQty(stone),
+      stockQty,
+      stockSummary: formatInventoryStockSummary({ stockQty }, supportedSizes),
       isInStock: isCrmItemInStock(stone),
       isActive: stone.isActive !== false,
       searchText: [
@@ -1403,11 +1424,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
     const categoryLabel = getCategoryLabelById(charm.collection || charm.categoryId, 'charm');
     const nameTh = charm.name?.th || charm.name?.en || charm.id;
     const nameEn = charm.name?.en || charm.name?.th || charm.id;
-    const sizeCm = Number(charm.business?.sizeCm || 0);
-    const footprintMm = Number(charm.business?.footprintMm || charm.business?.effectiveLengthMm || 0);
-    const sizeParts = [];
-    if (sizeCm) sizeParts.push(`${sizeCm.toFixed(1)} cm`);
-    if (footprintMm) sizeParts.push(`${footprintMm}mm footprint`);
+    const stockQty = getCrmStockQty(charm);
 
     return {
       id: charm.id,
@@ -1418,8 +1435,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       nameEn,
       meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
-      sizeText: sizeParts.join(' / ') || '&mdash;',
-      stockQty: getCrmStockQty(charm),
+      stockQty,
+      stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(charm),
       isActive: charm.availability?.isActive !== false,
       searchText: [
@@ -1440,13 +1457,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
   const spacerItems = spacers.map((spacer) => {
     const nameTh = spacer.name?.th || spacer.name?.en || spacer.id;
     const nameEn = spacer.name?.en || spacer.name?.th || spacer.id;
-    const displaySizeMm = Number(spacer.business?.displaySizeMm || spacer.business?.sizeMm || 0);
-    const effectiveLengthMm = Number(spacer.business?.effectiveLengthMm || 0);
-    const thicknessMm = Number(spacer.business?.thicknessMm || 0);
-    const sizeParts = [];
-    if (displaySizeMm) sizeParts.push(`${displaySizeMm}mm visual`);
-    if (effectiveLengthMm) sizeParts.push(`${effectiveLengthMm}mm length`);
-    if (thicknessMm) sizeParts.push(`${thicknessMm}mm thick`);
+    const stockQty = getCrmStockQty(spacer);
 
     return {
       id: spacer.id,
@@ -1457,8 +1468,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       nameEn,
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
-      sizeText: sizeParts.join(' / ') || '&mdash;',
-      stockQty: getCrmStockQty(spacer),
+      stockQty,
+      stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(spacer),
       isActive: spacer.availability?.isActive !== false,
       searchText: [
@@ -1498,7 +1509,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
   if (filtered.length === 0) {
     const itemLabel = activeType === 'all' ? 'inventory items' : `${getInventoryTypeLabel(activeType).toLowerCase()} items`;
     const emptyMessage = `No matching ${itemLabel} found.`;
-    DOM.inventoryTableBody.innerHTML = `<tr><td colspan="6" class="empty-state">${emptyMessage}</td></tr>`;
+    DOM.inventoryTableBody.innerHTML = `<tr><td colspan="4" class="empty-state">${emptyMessage}</td></tr>`;
     return;
   }
 
@@ -1507,8 +1518,6 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     tr.className = 'inventory-compact-row';
     tr.dataset.itemType = item.type;
 
-    const statusText = item.isInStock ? 'In Stock' : 'Out of Stock';
-    const statusClass = item.isInStock ? 'badge-in-stock' : 'badge-out-of-stock';
     const visibilityText = item.isActive === false ? '<span class="inventory-muted-status">Hidden</span>' : '';
     const actionDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
     const actionTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Edit ${item.typeLabel}`;
@@ -1525,27 +1534,10 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
           </div>
         </div>
       </td>
-      <td data-label="Type"><span class="inventory-type-badge inventory-type-${item.type}">${item.typeLabel}</span></td>
       <td data-label="Price"><span class="inventory-price">${item.priceText}</span></td>
-      <td data-label="Size"><span class="inventory-size">${item.sizeText}</span></td>
       <td data-label="Status">
-        <div class="inventory-status-stack">
-          <span class="badge ${statusClass}">${statusText}</span>
-          ${visibilityText}
-          <label class="charm-inline-field">
-            <span>Stock</span>
-            <input
-              type="number"
-              class="charm-inline-input inventory-stock-input"
-              data-item-type="${item.type}"
-              data-item-id="${item.id}"
-              value="${item.stockQty ?? ''}"
-              min="0"
-              step="1"
-              aria-label="Stock quantity for ${escapeHtml(item.nameEn)}"
-            >
-          </label>
-        </div>
+        <div class="inventory-stock-summary">${escapeHtml(item.stockSummary)}</div>
+        ${visibilityText}
       </td>
       <td data-label="Actions" class="text-right">
         <div class="action-btns inventory-action-btns">

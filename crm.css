@@ -2001,8 +2001,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .inventory-compact-row td {
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding: 10px 14px;
 }
 
 .inventory-item-cell {
@@ -2064,6 +2063,20 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
+}
+
+.inventory-price,
+.inventory-stock-summary {
+  display: block;
+  min-width: 0;
+  color: var(--color-navy-dark);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.inventory-stock-summary {
+  white-space: normal;
 }
 
 .inventory-status-stack {
@@ -3502,13 +3515,49 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .inventory-item-img {
-    width: 52px;
-    height: 52px;
-    flex-basis: 52px;
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
   }
 
-  .inventory-status-stack {
-    align-items: flex-end;
+  .crm-table tr.inventory-compact-row {
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  .crm-table .inventory-compact-row td {
+    min-width: 0;
+    padding: 7px 0;
+  }
+
+  .crm-table .inventory-compact-row td[data-label="Price"],
+  .crm-table .inventory-compact-row td[data-label="Status"],
+  .crm-table .inventory-compact-row td[data-label="Actions"] {
+    flex-direction: row;
+    align-items: center;
+    text-align: right;
+  }
+
+  .crm-table .inventory-compact-row td[data-label="Price"]::before,
+  .crm-table .inventory-compact-row td[data-label="Status"]::before,
+  .crm-table .inventory-compact-row td[data-label="Actions"]::before {
+    margin-bottom: 0;
+  }
+
+  .inventory-compact-row .inventory-price,
+  .inventory-compact-row .inventory-stock-summary {
+    max-width: calc(100% - 64px);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .inventory-compact-row .inventory-action-btns {
+    width: auto;
+  }
+
+  .inventory-compact-row .inventory-action-btns .action-btn {
+    min-width: 38px;
+    min-height: 38px;
   }
 
   .charm-admin-img {
