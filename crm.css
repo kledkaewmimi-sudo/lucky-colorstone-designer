@@ -3251,7 +3251,7 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--color-gold);
   }
   
-  .mobile-nav-item.active svg {
+.mobile-nav-item.active svg {
     stroke: var(--color-gold);
   }
   
@@ -3657,6 +3657,8 @@ h1, h2, h3, h4, h5, h6 {
     margin-top: 15px;
   }
 }
+
+.purchase-kpis,.purchase-form,.purchase-filters{display:grid;gap:10px;margin-bottom:14px}.purchase-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-kpis>div,.purchase-row,.purchase-summary,.purchase-form{background:#fff;border:1px solid var(--color-gray-border);border-radius:10px;padding:12px}.purchase-kpis small,.purchase-kpis b{display:block}.purchase-kpis b{font-size:18px;color:var(--color-navy-dark)}.purchase-form{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-form h3,.purchase-form details,.purchase-form .purchase-unit{grid-column:1/-1}.purchase-form input,.purchase-form select,.purchase-form textarea{width:100%;min-height:42px}.purchase-form textarea{min-height:70px}.purchase-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;margin-bottom:8px}.purchase-row span,.purchase-row small{grid-column:1/2}.purchase-row button{padding:7px 10px}.purchase-summary{margin-top:12px;line-height:1.8}.purchase-filters{grid-template-columns:1fr 1fr 1.3fr}@media(max-width:600px){.purchase-kpis{grid-template-columns:repeat(2,1fr)}.purchase-form{grid-template-columns:1fr}.purchase-row{grid-template-columns:1fr auto}.mobile-nav-item{font-size:10px}}
 
 /* ==========================================
    ANIMATIONS KEYFRAMES

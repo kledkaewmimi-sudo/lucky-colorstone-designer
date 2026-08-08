@@ -1781,3 +1781,22 @@ export async function updateOrderStatus(orderId, newStatus, updates = {}) {
   }
   return false;
 }
+
+export async function getSharedPurchaseEntries() {
+  const res = await fetch('/api/purchases');
+  if (!res.ok) throw new Error('Unable to load purchase history.');
+  return res.json();
+}
+
+export async function savePurchaseEntry(entry, id = '') {
+  const res = await fetch(id ? `/api/purchases/${encodeURIComponent(id)}` : '/api/purchases', {
+    method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry)
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Unable to save purchase entry.');
+  return res.json();
+}
+
+export async function deletePurchaseEntry(id) {
+  const res = await fetch(`/api/purchases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Unable to delete purchase entry.');
+}

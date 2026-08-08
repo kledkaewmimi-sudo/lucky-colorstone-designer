@@ -89,6 +89,21 @@ create table if not exists public.orders (
   updated_at timestamptz default now()
 );
 
+create table if not exists public.stone_purchase_entries (
+  id uuid primary key default gen_random_uuid(),
+  purchased_at date not null default current_date,
+  stone_id text not null references public.catalog_stones(id),
+  stone_name_snapshot text not null,
+  size_mm int not null check (size_mm in (4, 6, 10)),
+  quantity int not null check (quantity > 0),
+  total_cost numeric(12,2) not null check (total_cost >= 0),
+  unit_cost numeric(12,4) not null check (unit_cost >= 0),
+  supplier text,
+  note text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 create table if not exists public.analytics_sessions (
   id uuid primary key default gen_random_uuid(),
   session_id text not null unique,
@@ -169,6 +184,10 @@ create index if not exists idx_orders_created_at
   on public.orders (created_at desc);
 create index if not exists idx_orders_payload_gin
   on public.orders using gin (payload);
+create index if not exists idx_stone_purchase_entries_date
+  on public.stone_purchase_entries (purchased_at desc, created_at desc);
+create index if not exists idx_stone_purchase_entries_stone_size
+  on public.stone_purchase_entries (stone_id, size_mm);
 
 -- Analytics indexes for CRM source, funnel, conversion, timing, and error summaries.
 create index if not exists idx_analytics_sessions_last_seen
@@ -232,6 +251,11 @@ create trigger set_orders_updated_at
 before update on public.orders
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_stone_purchase_entries_updated_at on public.stone_purchase_entries;
+create trigger set_stone_purchase_entries_updated_at
+before update on public.stone_purchase_entries
+for each row execute function public.set_updated_at();
+
 -- Enable RLS now. Do not add public policies yet: the backend should access
 -- these tables with the Supabase service_role key in a trusted server runtime.
 alter table public.catalog_stones enable row level security;
@@ -241,6 +265,7 @@ alter table public.catalog_categories enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.catalog_layout_order enable row level security;
 alter table public.orders enable row level security;
+alter table public.stone_purchase_entries enable row level security;
 alter table public.analytics_sessions enable row level security;
 alter table public.analytics_events enable row level security;
 alter table public.analytics_errors enable row level security;
@@ -252,6 +277,7 @@ comment on table public.catalog_categories is 'Managed catalog category records 
 comment on table public.app_settings is 'Application settings stored as JSONB key/value records.';
 comment on table public.catalog_layout_order is 'Catalog layout ordering for CRM/customer display surfaces.';
 comment on table public.orders is 'Customer order records. payload preserves the full current order object for compatibility.';
+comment on table public.stone_purchase_entries is 'Historical supplier purchase cost entries. Does not adjust inventory stock or selling prices.';
 comment on table public.analytics_sessions is 'First-party anonymous customer analytics sessions with attribution and conversion linkage.';
 comment on table public.analytics_events is 'First-party customer journey events for source, funnel, timing, and order analytics.';
 comment on table public.analytics_errors is 'Captured frontend/API/image analytics errors for launch monitoring.';

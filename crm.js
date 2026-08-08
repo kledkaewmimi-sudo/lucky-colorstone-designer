@@ -30,6 +30,7 @@ import {
   addSharedOrder,
   withCatalogImageVersion,
   getComponentTypeLabel
+  , getSharedPurchaseEntries, savePurchaseEntry, deletePurchaseEntry
 } from './data.js';
 
 // ==========================================
@@ -49,7 +50,8 @@ const CRM_COMPONENT_LABELS = {
 
 const CRMState = {
   sessionActive: false,
-  activeTab: 'overview', // 'overview', 'analytics', 'inventory', 'simulator', 'charms', 'orders', 'settings'
+  activeTab: 'overview',
+  purchaseEntries: [],
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditStoneIsActive: true,
   activeEditStoneColor: '#E2C974',
@@ -100,6 +102,7 @@ const DOM = {
     overview: document.getElementById('btnTabOverview'),
     analytics: document.getElementById('btnTabAnalytics'),
     inventory: document.getElementById('btnTabInventory'),
+    purchases: document.getElementById('btnTabPurchases'),
     simulator: document.getElementById('btnTabSimulator'),
     charms: document.getElementById('btnTabCharms'),
     orders: document.getElementById('btnTabOrders'),
@@ -109,6 +112,7 @@ const DOM = {
     overview: document.getElementById('btnMobTabOverview'),
     analytics: document.getElementById('btnMobTabAnalytics'),
     inventory: document.getElementById('btnMobTabInventory'),
+    purchases: document.getElementById('btnMobTabPurchases'),
     simulator: document.getElementById('btnMobTabSimulator'),
     orders: document.getElementById('btnMobTabOrders'),
     settings: document.getElementById('btnMobTabSettings')
@@ -119,6 +123,7 @@ const DOM = {
     overview: document.getElementById('tabOverview'),
     analytics: document.getElementById('tabAnalytics'),
     inventory: document.getElementById('tabInventory'),
+    purchases: document.getElementById('tabPurchases'),
     simulator: document.getElementById('tabSimulator'),
     charms: document.getElementById('tabCharms'),
     orders: document.getElementById('tabOrders'),
@@ -493,6 +498,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Setup functional listeners (CRUD, settings, search, modals)
   setupFunctionalEvents();
+  const purchaseForm = document.getElementById('purchaseForm');
+  purchaseForm.addEventListener('submit', async (event) => { event.preventDefault(); const e=purchaseElements(); try { await savePurchaseEntry({ stoneId:e.stone.value,sizeMm:Number(e.size.value),quantity:Number(e.qty.value),totalCost:Number(e.cost.value),purchasedAt:e.date.value,supplier:e.supplier.value,note:e.note.value },e.edit.value); purchaseForm.reset(); e.edit.value=''; e.date.value=new Date().toISOString().slice(0,10); document.getElementById('purchaseCancelEdit').hidden=true; await loadPurchases(); showToast('บันทึกต้นทุนแล้ว'); } catch(err) { alert(err.message); } });
+  document.getElementById('purchaseStone').addEventListener('change', updatePurchaseSizes); ['purchaseQuantity','purchaseCost'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{const e=purchaseElements();document.getElementById('purchaseUnitCost').textContent=`${formatPurchaseMoney(Number(e.cost.value||0)/Number(e.qty.value||1))} / เม็ด`;})); ['purchaseRange','purchaseFilterSize','purchaseSearch'].forEach(id=>document.getElementById(id).addEventListener(id==='purchaseSearch'?'input':'change',renderPurchases)); document.getElementById('purchaseHistory').addEventListener('click',async event=>{const id=event.target.dataset.purchaseEdit||event.target.dataset.purchaseDelete;if(!id)return;const entry=CRMState.purchaseEntries.find(x=>x.id===id);if(event.target.dataset.purchaseDelete){if(await showCustomConfirm('ลบรายการซื้อนี้?')){await deletePurchaseEntry(id);await loadPurchases();}return;}const e=purchaseElements();e.edit.value=id;e.stone.value=entry.stone_id;updatePurchaseSizes();e.size.value=entry.size_mm;e.qty.value=entry.quantity;e.cost.value=entry.total_cost;e.date.value=entry.purchased_at;e.supplier.value=entry.supplier||'';e.note.value=entry.note||'';document.getElementById('purchaseCancelEdit').hidden=false;}); document.getElementById('purchaseCancelEdit').addEventListener('click',()=>{purchaseForm.reset();purchaseElements().edit.value='';document.getElementById('purchaseCancelEdit').hidden=true;});
   
   // Setup real-time tab syncing
   setupRealtimeSync();
@@ -570,6 +578,16 @@ function setupTabNavigation() {
   DOM.quickBtnInventory.addEventListener('click', async () => await switchTab('inventory'));
 }
 
+function formatPurchaseMoney(value) { return `฿${Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+function purchaseElements() { return { stone: document.getElementById('purchaseStone'), size: document.getElementById('purchaseSize'), qty: document.getElementById('purchaseQuantity'), cost: document.getElementById('purchaseCost'), date: document.getElementById('purchaseDate'), supplier: document.getElementById('purchaseSupplier'), note: document.getElementById('purchaseNote'), edit: document.getElementById('purchaseEditId') }; }
+async function loadPurchases() {
+  const e = purchaseElements(); const stones = await getSharedCatalog();
+  if (!e.stone.options.length || e.stone.options.length === 1) e.stone.insertAdjacentHTML('beforeend', stones.map(s => `<option value="${s.id}">${escapeHtml(s.nameTh || s.name)}${s.name ? ` — ${escapeHtml(s.name)}` : ''}</option>`).join(''));
+  if (!e.date.value) e.date.value = new Date().toISOString().slice(0, 10);
+  CRMState.purchaseEntries = await getSharedPurchaseEntries(); renderPurchases(); updatePurchaseSizes();
+}
+function updatePurchaseSizes() { const e=purchaseElements(); const stone=CRMState.simulatorCatalogCache.stones.find(s=>s.id===e.stone.value) || STONES.find(s=>s.id===e.stone.value); const sizes=(stone?.sizes || [4,6,10]).map(Number).filter(s=>[4,6,10].includes(s)); e.size.innerHTML=sizes.map(s=>`<option value="${s}">${s}mm</option>`).join(''); }
+function renderPurchases() { const entries=CRMState.purchaseEntries; const total=entries.reduce((n,x)=>n+Number(x.total_cost),0), qty=entries.reduce((n,x)=>n+Number(x.quantity),0); const month=new Date().toISOString().slice(0,7); document.getElementById('purchaseTotalCost').textContent=formatPurchaseMoney(total); document.getElementById('purchaseTotalQty').textContent=`${qty} เม็ด`; document.getElementById('purchaseDistinctStones').textContent=`${new Set(entries.map(x=>x.stone_id)).size} ชนิด`; document.getElementById('purchaseMonthCost').textContent=formatPurchaseMoney(entries.filter(x=>x.purchased_at.startsWith(month)).reduce((n,x)=>n+Number(x.total_cost),0)); const range=document.getElementById('purchaseRange').value,size=document.getElementById('purchaseFilterSize').value,search=document.getElementById('purchaseSearch').value.toLowerCase(); const filtered=entries.filter(x=>(size==='all'||String(x.size_mm)===size)&&(!search||x.stone_name_snapshot.toLowerCase().includes(search))&&(range==='all'||(range==='month'?x.purchased_at.startsWith(month):new Date(x.purchased_at)>=new Date(Date.now()-30*864e5)))); document.getElementById('purchaseHistory').innerHTML=filtered.map(x=>`<article class="purchase-row"><b>${escapeHtml(x.stone_name_snapshot)}</b><span>${x.size_mm}mm · ${x.quantity} เม็ด · ${formatPurchaseMoney(x.total_cost)} · ${formatPurchaseMoney(x.unit_cost)}/เม็ด</span><small>${x.purchased_at}</small><button data-purchase-edit="${x.id}">แก้ไข</button><button data-purchase-delete="${x.id}">ลบ</button></article>`).join('')||'<p>ยังไม่มีรายการซื้อ</p>'; const groups={}; entries.forEach(x=>{const k=`${x.stone_name_snapshot}|${x.size_mm}`; const g=groups[k]||={q:0,c:0};g.q+=Number(x.quantity);g.c+=Number(x.total_cost);groups[k]=g}); document.getElementById('purchaseStoneSummary').innerHTML='<h3>สรุปตามหิน</h3>'+Object.entries(groups).map(([k,g])=>`<div>${k.replace('|',' · ')}: ${g.q} เม็ด / ${formatPurchaseMoney(g.c)} / ${formatPurchaseMoney(g.c/g.q)}/เม็ด</div>`).join(''); document.getElementById('purchaseSizeSummary').innerHTML='<h3>สรุปตามขนาด</h3>'+[4,6,10].map(s=>{const g=entries.filter(x=>x.size_mm===s).reduce((a,x)=>({q:a.q+Number(x.quantity),c:a.c+Number(x.total_cost)}),{q:0,c:0});return `<div>${s}mm: ${g.q} เม็ด / ${formatPurchaseMoney(g.c)}</div>`}).join(''); }
 async function switchTab(tabName) {
   if (!Object.prototype.hasOwnProperty.call(DOM.tabViews, tabName)) return;
   CRMState.activeTab = tabName;
@@ -579,6 +597,7 @@ async function switchTab(tabName) {
     overview: "CRM Overview",
     analytics: "Customer Analytics",
     inventory: "Stone Inventory Manager",
+    purchases: "บันทึกต้นทุนซื้อเข้า",
     simulator: "Catalog Layout Manager",
     charms: "Shared Talisman Catalog Management",
     orders: "Order Management & OMS (Module B)",
@@ -617,6 +636,7 @@ async function switchTab(tabName) {
   
   addLog(`Switched view to ${tabName}.`);
   await loadDashboardData();
+  if (tabName === 'purchases') await loadPurchases();
 }
 
 // ==========================================

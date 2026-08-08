@@ -2472,6 +2472,20 @@ async function readCharmsForApi() {
   );
 }
 
+function normalizePurchaseEntry(input, stones) {
+  const stoneId = String(input?.stoneId || '').trim();
+  const stone = stones.find((entry) => entry.id === stoneId);
+  const sizeMm = Number(input?.sizeMm);
+  const quantity = Number(input?.quantity);
+  const totalCost = Number(input?.totalCost);
+  const purchasedAt = String(input?.purchasedAt || new Date().toISOString().slice(0, 10));
+  if (!stone || ![4, 6, 10].includes(sizeMm) || !Array.isArray(stone.sizes) || !stone.sizes.map(Number).includes(sizeMm)) throw new Error('Invalid stone or size.');
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Quantity must be a positive integer.');
+  if (!Number.isFinite(totalCost) || totalCost < 0) throw new Error('Total cost must be zero or greater.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt)) throw new Error('Invalid purchase date.');
+  return { purchased_at: purchasedAt, stone_id: stoneId, stone_name_snapshot: stone.nameTh || stone.name || stoneId, size_mm: sizeMm, quantity, total_cost: totalCost, unit_cost: totalCost / quantity, supplier: String(input?.supplier || '').trim() || null, note: String(input?.note || '').trim() || null };
+}
+
 async function readSpacersForApi() {
   return readSupabasePayloadTable(
     "catalog_spacers",
@@ -2965,6 +2979,40 @@ async function handleApiRequest(req, res, urlObj) {
         recentOrders: []
       });
     }
+    return true;
+  }
+
+  if (pathname === "/api/purchases" && method === "GET") {
+    if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
+    const entries = await supabaseRequest('stone_purchase_entries', { params: { select: '*', order: 'purchased_at.desc,created_at.desc' } });
+    sendJson(res, 200, Array.isArray(entries) ? entries : []);
+    return true;
+  }
+
+  if (pathname === "/api/purchases" && method === "POST") {
+    if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
+    const entry = normalizePurchaseEntry(bodyObj, await readStonesForApi());
+    const rows = await supabaseRequest('stone_purchase_entries', { method: 'POST', body: entry, prefer: 'return=representation' });
+    sendJson(res, 201, Array.isArray(rows) ? rows[0] : entry);
+    return true;
+  }
+
+  if (pathname.startsWith('/api/purchases/') && method === 'PUT') {
+    if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
+    const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
+    const entry = normalizePurchaseEntry(bodyObj, await readStonesForApi());
+    const rows = await supabaseRequest('stone_purchase_entries', { method: 'PATCH', params: { id: `eq.${id}` }, body: entry, prefer: 'return=representation' });
+    if (!Array.isArray(rows) || !rows[0]) { sendJson(res, 404, { error: 'Purchase entry not found.' }); return true; }
+    sendJson(res, 200, rows[0]);
+    return true;
+  }
+
+  if (pathname.startsWith('/api/purchases/') && method === 'DELETE') {
+    if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
+    const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
+    const rows = await supabaseRequest('stone_purchase_entries', { method: 'DELETE', params: { id: `eq.${id}` }, prefer: 'return=representation' });
+    if (!Array.isArray(rows) || !rows[0]) { sendJson(res, 404, { error: 'Purchase entry not found.' }); return true; }
+    sendJson(res, 200, { success: true });
     return true;
   }
 
