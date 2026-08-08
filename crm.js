@@ -218,7 +218,7 @@ const DOM = {
   crudStoneNameTh: document.getElementById('crudStoneNameTh'),
   crudStonePriceP4: document.getElementById('crudStonePriceP4'),
   crudStonePriceP6: document.getElementById('crudStonePriceP6'),
-  crudStonePriceP8: document.getElementById('crudStonePriceP8'),
+  crudStonePriceP10: document.getElementById('crudStonePriceP10'),
   crudStoneCategory: document.getElementById('crudStoneCategory'),
   crudStoneImage: document.getElementById('crudStoneImage'),
   crudStoneImageFile: document.getElementById('crudStoneImageFile'),
@@ -578,7 +578,7 @@ async function switchTab(tabName) {
   const titles = {
     overview: "CRM Overview",
     analytics: "Customer Analytics",
-    inventory: "Stone Inventory Manager (Module A)",
+    inventory: "Stone Inventory Manager",
     simulator: "Catalog Layout Manager",
     charms: "Shared Talisman Catalog Management",
     orders: "Order Management & OMS (Module B)",
@@ -1293,7 +1293,7 @@ function renderStoneInventoryCatalogLegacy(stones) {
         <div style="font-size: 11px; line-height: 1.4; display: flex; flex-direction: column; gap: 2px;">
           <span>4mm: <strong>฿${stone.p4 || 0}</strong></span>
           <span>6mm: <strong>฿${stone.p6 || 0}</strong></span>
-          <span>8mm: <strong>฿${stone.p8 || 0}</strong></span>
+          <span>10mm: <strong>฿${stone.p10 || 0}</strong></span>
         </div>
       </td>
       <td data-label="Sizes">${sizesBadges}</td>
@@ -2928,7 +2928,7 @@ async function openAddStoneForm() {
   DOM.crudStoneStockQty.value = "1";
   DOM.crudStonePriceP4.value = "";
   DOM.crudStonePriceP6.value = "";
-  DOM.crudStonePriceP8.value = "";
+  DOM.crudStonePriceP10.value = "";
   
   // Set all size checkboxes checked
   document.querySelectorAll('.crud-size-chk').forEach(c => c.checked = true);
@@ -2961,7 +2961,7 @@ async function openEditStoneForm(stoneId) {
   DOM.crudStoneNameTh.value = stone.nameTh;
   DOM.crudStonePriceP4.value = stone.p4 !== undefined ? stone.p4 : stone.price || 0;
   DOM.crudStonePriceP6.value = stone.p6 !== undefined ? stone.p6 : stone.price || 0;
-  DOM.crudStonePriceP8.value = stone.p8 !== undefined ? stone.p8 : stone.price || 0;
+  DOM.crudStonePriceP10.value = stone.p10 !== undefined ? stone.p10 : stone.price || 0;
   DOM.crudStoneCategory.value = stone.categoryId || stone.category;
   DOM.crudStoneImage.value = stone.image;
   resetImageUploadState("Stone");
@@ -2994,7 +2994,7 @@ async function handleSaveStoneType(e) {
   const nameTh = DOM.crudStoneNameTh.value.trim();
   const p4 = parseInt(DOM.crudStonePriceP4.value);
   const p6 = parseInt(DOM.crudStonePriceP6.value);
-  const p8 = parseInt(DOM.crudStonePriceP8.value);
+  const p10 = parseInt(DOM.crudStonePriceP10.value);
   const category = DOM.crudStoneCategory.value;
   const image = DOM.crudStoneImage.value.trim();
   const color = CRMState.activeEditStoneColor || '#E2C974';
@@ -3020,7 +3020,7 @@ async function handleSaveStoneType(e) {
     nameTh: nameTh,
     p4: p4,
     p6: p6,
-    p8: p8,
+    p10: p10,
     category: category,
     categoryId: category,
     image: image,
@@ -4306,11 +4306,11 @@ function drawInvoiceSvgBeadMap(beads) {
   beads.forEach((bead, idx) => {
     const cx = startX + idx * spacing;
     
-    // Scale visual circle radius depending on bead size (4mm, 6mm, 8mm)
+    // Scale visual circle radius depending on bead size (4mm, 6mm, 10mm)
     const mmSize = bead.size || 6;
     let r = 8; // Default 6mm
     if (mmSize === 4) r = 5;
-    if (mmSize === 8) r = 11;
+    if (mmSize === 10) r = 11;
     
     // Group container for sheen
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -4860,31 +4860,31 @@ async function seedDemoOrders() {
     {
       customerName: "Khun Somchai",
       wristSize: 16.5,
-      beadSize: "8",
+      beadSize: "10",
       totalBeads: 22,
       beads: [
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 },
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 },
-        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 8 },
-        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 },
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 },
-        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 8 },
-        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 },
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 },
-        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 8 },
-        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
-        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 8 }
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 },
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 },
+        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 10 },
+        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 },
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 },
+        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 10 },
+        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 },
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 },
+        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 10 },
+        { stoneId: "tigers_eye", name: "Tiger's Eye", nameTh: "ไทเกอร์อาย", color: "#B07C3D", image: "assets/tigers_eye.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
+        { stoneId: "golden_rutile", name: "Golden Rutile Quartz", nameTh: "ไหมทอง", color: "#E2C974", image: "assets/golden_rutile.png", size: 10 }
       ],
       subtotal: 2780,
       discountPercent: 20,
@@ -4940,34 +4940,34 @@ async function seedDemoOrders() {
       beadSize: "mixed",
       totalBeads: 28,
       beads: [
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 },
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 },
         { stoneId: "lapis_lazuli", name: "Lapis Lazuli", nameTh: "ลาพิส ลาซูลี", color: "#2A4B7C", image: "assets/lapis_lazuli.png", size: 6 },
         { stoneId: "green_aventurine", name: "Green Aventurine", nameTh: "กรีน อเวนเจอรีน", color: "#6E9A82", image: "assets/green_aventurine.png", size: 6 },
-        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 8 }
+        { stoneId: "black_obsidian", name: "Black Obsidian", nameTh: "ออบซิเดียน", color: "#1E1E1E", image: "assets/black_obsidian.png", size: 10 }
       ],
       subtotal: 2980,
       discountPercent: 20,

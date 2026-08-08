@@ -5,7 +5,7 @@
     "nameTh": "ไหมทอง",
     "p4": 90,
     "p6": 120,
-    "p8": 150,
+    "p10": 150,
     "category": "wealth",
     "meaning": "Symbolizes prosperity, success, wealth energy, and attracting new opportunities.",
     "meaningTh": "สื่อถึงโชคลาภ ความมั่งคั่ง ความสำเร็จ และการดึงดูดโอกาสทางการเงิน",
@@ -14,7 +14,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Golden Rutile Quartz",
@@ -27,7 +27,7 @@
     "nameTh": "ไหมทอง",
     "p4": 90,
     "p6": 120,
-    "p8": 150,
+    "p10": 150,
     "category": "wealth",
     "meaning": "Symbolizes clarity, confidence, direction, and forward-moving success.",
     "meaningTh": "สื่อถึงพลังในการเดินหน้า ความชัดเจน การตัดสินใจ และความสำเร็จในงาน",
@@ -36,7 +36,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "categoryId": "wealth"
@@ -47,7 +47,7 @@
     "nameTh": "อเมทิสต์",
     "p4": 72,
     "p6": 96,
-    "p8": 120,
+    "p10": 120,
     "category": "calm",
     "meaning": "Symbolizes calm, intuition, focus, and emotional balance.",
     "meaningTh": "สื่อถึงความสงบ สติ สมาธิ และการพักใจจากความวุ่นวาย",
@@ -56,7 +56,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Amethyst",
@@ -68,7 +68,7 @@
     "nameTh": "โรสควอตซ์",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "love",
     "meaning": "Symbolizes love, compassion, tenderness, and gentle emotional healing.",
     "meaningTh": "สื่อถึงความรัก ความเมตตา ความอ่อนโยน และการเปิดใจรับพลังดี",
@@ -77,7 +77,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Rose Quartz",
@@ -89,7 +89,7 @@
     "nameTh": "ลาพิส ลาซูลี",
     "p4": 66,
     "p6": 88,
-    "p8": 110,
+    "p10": 110,
     "category": "calm",
     "meaning": "Symbolizes wisdom, truth, clear communication, and inner confidence.",
     "meaningTh": "สื่อถึงปัญญา ความจริง การสื่อสารที่ชัดเจน และความมั่นใจภายใน",
@@ -98,7 +98,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Lapis Lazuli",
@@ -110,7 +110,7 @@
     "nameTh": "ไทเกอร์อาย",
     "p4": 78,
     "p6": 104,
-    "p8": 130,
+    "p10": 130,
     "category": "protection",
     "meaning": "Symbolizes courage, protection, grounded confidence, and strong decision-making.",
     "meaningTh": "สื่อถึงความกล้าหาญ การปกป้อง ความมั่นคง และการตัดสินใจอย่างมีพลัง",
@@ -119,7 +119,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Tiger's Eye",
@@ -132,7 +132,7 @@
     "nameTh": "ไทเกอร์อายชมพู",
     "p4": 78,
     "p6": 104,
-    "p8": 130,
+    "p10": 130,
     "category": "love",
     "meaning": "Symbolizes gentle confidence, charm, balanced emotions, and relationship harmony.",
     "meaningTh": "สื่อถึงเสน่ห์ ความมั่นใจที่อ่อนโยน พลังใจ และความสมดุลในความสัมพันธ์",
@@ -141,7 +141,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "categoryId": "love"
@@ -152,7 +152,7 @@
     "nameTh": "มาลาไคท์",
     "p4": 108,
     "p6": 144,
-    "p8": 180,
+    "p10": 180,
     "category": "protection",
     "meaning": "Symbolizes transformation, protection, renewal, and personal growth.",
     "meaningTh": "สื่อถึงการเปลี่ยนผ่าน การปกป้อง การเริ่มต้นใหม่ และพลังในการเติบโต",
@@ -161,7 +161,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Malachite",
@@ -173,7 +173,7 @@
     "nameTh": "ซิทริน",
     "p4": 84,
     "p6": 112,
-    "p8": 140,
+    "p10": 140,
     "category": "wealth",
     "meaning": "Symbolizes abundance, optimism, opportunity, and success energy.",
     "meaningTh": "สื่อถึงความมั่งคั่ง ความสดใส โอกาสใหม่ และพลังแห่งความสำเร็จ",
@@ -182,7 +182,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Citrine",
@@ -194,7 +194,7 @@
     "nameTh": "ไอซ์ควอตซ์",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "calm",
     "meaning": "Symbolizes purity, calmness, clarity, and a refreshed state of mind.",
     "meaningTh": "สื่อถึงความใสสะอาด ความสงบ ความชัดเจน และการเริ่มต้นด้วยใจที่เบา",
@@ -203,7 +203,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Ice Quartz",
@@ -215,7 +215,7 @@
     "nameTh": "เบริล",
     "p4": 66,
     "p6": 88,
-    "p8": 110,
+    "p10": 110,
     "category": "calm",
     "meaning": "Symbolizes balance, serenity, understanding, and gentle clarity.",
     "meaningTh": "สื่อถึงความสมดุล ความนิ่ง ความเข้าใจ และการมองสถานการณ์อย่างอ่อนโยน",
@@ -224,7 +224,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Beryl",
@@ -236,7 +236,7 @@
     "nameTh": "ฮาวไลต์",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "calm",
     "meaning": "Symbolizes relaxation, patience, release, and peaceful rest.",
     "meaningTh": "สื่อถึงความผ่อนคลาย ความอดทน การปล่อยวาง และการนอนหลับอย่างสงบ",
@@ -245,7 +245,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Howlite",
@@ -257,7 +257,7 @@
     "nameTh": "โซดาไลต์",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "calm",
     "meaning": "Symbolizes logic, wisdom, communication confidence, and clear thinking.",
     "meaningTh": "สื่อถึงเหตุผล สติปัญญา ความมั่นใจในการสื่อสาร และการคิดอย่างเป็นระบบ",
@@ -266,7 +266,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Sodalite",
@@ -278,7 +278,7 @@
     "nameTh": "เคลียร์ควอตซ์",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "calm",
     "meaning": "Symbolizes clarity, energy amplification, focused intention, and new beginnings.",
     "meaningTh": "สื่อถึงความชัดเจน การขยายพลัง การตั้งเจตนา และการเริ่มต้นใหม่",
@@ -287,7 +287,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Clear Quartz",
@@ -299,7 +299,7 @@
     "nameTh": "ไวท์เจด",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "love",
     "meaning": "Symbolizes peace, gentleness, compassion, and soft protection.",
     "meaningTh": "สื่อถึงความสงบ ความอ่อนโยน ความเมตตา และการปกป้องอย่างนุ่มนวล",
@@ -308,7 +308,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "White Jade",
@@ -321,7 +321,7 @@
     "nameTh": "แคทอายขาว",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "protection",
     "meaning": "Symbolizes protection, awareness, steady confidence, and energetic boundaries.",
     "meaningTh": "สื่อถึงการคุ้มครอง การมองเห็นโอกาส ความมั่นคง และการป้องกันพลังลบ",
@@ -330,7 +330,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "categoryId": "protection"
@@ -342,7 +342,7 @@
     "nameTh": "โอปอล",
     "p4": 84,
     "p6": 112,
-    "p8": 140,
+    "p10": 140,
     "category": "love",
     "meaning": "Symbolizes inspiration, charm, creativity, and inner radiance.",
     "meaningTh": "สื่อถึงแรงบันดาลใจ เสน่ห์ ความคิดสร้างสรรค์ และประกายความงามจากภายใน",
@@ -351,7 +351,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "categoryId": "love"
@@ -362,7 +362,7 @@
     "nameTh": "เรดไทเกอร์อาย",
     "p4": 78,
     "p6": 104,
-    "p8": 130,
+    "p10": 130,
     "category": "protection",
     "meaning": "Symbolizes vitality, courage, determination, and confident action.",
     "meaningTh": "สื่อถึงพลังใจ ความกล้า ความมุ่งมั่น และการลงมือทำอย่างมั่นใจ",
@@ -371,7 +371,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Red Tiger Eye",
@@ -383,7 +383,7 @@
     "nameTh": "ลาเวนเดอร์ควอตซ์",
     "p4": 66,
     "p6": 88,
-    "p8": 110,
+    "p10": 110,
     "category": "love",
     "meaning": "Symbolizes soft love, comfort, compassion, and gentle emotional healing.",
     "meaningTh": "สื่อถึงความรักที่นุ่มนวล ความสบายใจ ความเมตตา และการเยียวยาใจอย่างอ่อนโยน",
@@ -392,7 +392,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Lavender Quartz",
@@ -404,7 +404,7 @@
     "nameTh": "แบล็กทัวร์มาลีน",
     "p4": 96,
     "p6": 128,
-    "p8": 160,
+    "p10": 160,
     "category": "protection",
     "meaning": "Symbolizes protection, grounding, stability, and shielding from negativity.",
     "meaningTh": "สื่อถึงการปกป้อง การกราวด์พลัง ความมั่นคง และการกันพลังลบ",
@@ -413,7 +413,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Black Tourmaline",
@@ -425,7 +425,7 @@
     "nameTh": "ลาบราโดไรต์",
     "p4": 96,
     "p6": 128,
-    "p8": 160,
+    "p10": 160,
     "category": "protection",
     "meaning": "Symbolizes intuition, transformation, protection, and hidden potential.",
     "meaningTh": "สื่อถึงสัญชาตญาณ การเปลี่ยนแปลง การปกป้อง และการค้นพบศักยภาพใหม่",
@@ -434,7 +434,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Labradorite",
@@ -446,7 +446,7 @@
     "nameTh": "คาร์เนเลียน",
     "p4": 60,
     "p6": 80,
-    "p8": 100,
+    "p10": 100,
     "category": "wealth",
     "meaning": "Symbolizes creativity, confidence, motivation, and bold action.",
     "meaningTh": "สื่อถึงพลังสร้างสรรค์ ความมั่นใจ ความกระตือรือร้น และแรงผลักดันในการลงมือทำ",
@@ -455,7 +455,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Carnelian",
@@ -467,7 +467,7 @@
     "nameTh": "มอสอาเกต",
     "p4": 66,
     "p6": 88,
-    "p8": 110,
+    "p10": 110,
     "category": "calm",
     "meaning": "Symbolizes growth, abundance, balance, and connection with nature.",
     "meaningTh": "สื่อถึงการเติบโต ความอุดมสมบูรณ์ ความสมดุล และการเชื่อมโยงกับธรรมชาติ",
@@ -476,7 +476,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Moss Agate",
@@ -488,7 +488,7 @@
     "nameTh": "โรโดไนต์",
     "p4": 72,
     "p6": 96,
-    "p8": 120,
+    "p10": 120,
     "category": "love",
     "meaning": "Symbolizes relationship healing, understanding, forgiveness, and steady love.",
     "meaningTh": "สื่อถึงการเยียวยาความสัมพันธ์ ความเข้าใจ การให้อภัย และความรักที่มั่นคง",
@@ -497,7 +497,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Rhodonite",
@@ -509,7 +509,7 @@
     "nameTh": "ซันสโตน",
     "p4": 72,
     "p6": 96,
-    "p8": 120,
+    "p10": 120,
     "category": "wealth",
     "meaning": "Symbolizes joy, luck, confidence, and uplifting positive energy.",
     "meaningTh": "สื่อถึงความสดใส โชคดี ความมั่นใจ และพลังบวกในการเริ่มต้นวันใหม่",
@@ -518,7 +518,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Sunstone",
@@ -530,7 +530,7 @@
     "nameTh": "ไข่มุก",
     "p4": 72,
     "p6": 96,
-    "p8": 120,
+    "p10": 120,
     "category": "love",
     "meaning": "Symbolizes purity, softness, elegance, and graceful charm.",
     "meaningTh": "สื่อถึงความบริสุทธิ์ ความอ่อนโยน ความสง่างาม และเสน่ห์แบบละมุน",
@@ -539,7 +539,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Pearls",
@@ -551,7 +551,7 @@
     "nameTh": "อะความารีน",
     "p4": 84,
     "p6": 112,
-    "p8": 140,
+    "p10": 140,
     "category": "calm",
     "meaning": "Symbolizes calmness, gentle communication, courage, and emotional ease.",
     "meaningTh": "สื่อถึงความสงบ การสื่อสารอย่างอ่อนโยน ความกล้า และความสบายใจ",
@@ -560,7 +560,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Aquamarine",
@@ -572,7 +572,7 @@
     "nameTh": "มูนสโตน",
     "p4": 84,
     "p6": 112,
-    "p8": 140,
+    "p10": 140,
     "category": "love",
     "meaning": "Symbolizes feminine energy, intuition, love, and new beginnings.",
     "meaningTh": "สื่อถึงพลังแห่งความอ่อนโยน สัญชาตญาณ ความรัก และการเริ่มต้นใหม่",
@@ -581,7 +581,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Moonstone",
@@ -593,7 +593,7 @@
     "nameTh": "ไพไรต์",
     "p4": 96,
     "p6": 128,
-    "p8": 160,
+    "p10": 160,
     "category": "wealth",
     "meaning": "Symbolizes wealth, prosperity, bold action, and financial opportunity.",
     "meaningTh": "สื่อถึงทรัพย์ ความมั่งคั่ง ความกล้าลงมือ และการดึงดูดโอกาสทางการเงิน",
@@ -602,7 +602,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Pyrite",
@@ -614,7 +614,7 @@
     "nameTh": "ฮันนี่เจด",
     "p4": 60,
     "p6": 80,
-    "p8": 100,
+    "p10": 100,
     "category": "wealth",
     "meaning": "Symbolizes warmth, luck, abundance, and gentle supportive energy.",
     "meaningTh": "สื่อถึงความอบอุ่น โชคลาภ ความอุดมสมบูรณ์ และพลังสนับสนุนที่นุ่มนวล",
@@ -623,7 +623,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Honey Jade",
@@ -635,7 +635,7 @@
     "nameTh": "เชอร์รี่ควอตซ์",
     "p4": 54,
     "p6": 72,
-    "p8": 90,
+    "p10": 90,
     "category": "love",
     "meaning": "Symbolizes joy, affection, positivity, and happiness in relationships.",
     "meaningTh": "สื่อถึงความสดใส ความรัก พลังบวก และความสุขในความสัมพันธ์",
@@ -644,7 +644,7 @@
     "sizes": [
       4,
       6,
-      8
+      10
     ],
     "inStock": true,
     "nameEn": "Cherry Quartz",

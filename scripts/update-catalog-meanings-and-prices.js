@@ -444,7 +444,7 @@ function stonePrices(targetPrice) {
   return {
     p4: Math.max(1, Math.round(Number(targetPrice) * 0.6)),
     p6: Math.max(1, Math.round(Number(targetPrice) * 0.8)),
-    p8: Math.max(1, Math.round(Number(targetPrice)))
+    p10: Math.max(1, Math.round(Number(targetPrice)))
   };
 }
 
@@ -470,7 +470,7 @@ function updateStone(stone) {
   setIfChanged(next, "meaning", curated.meaningEn, changes, "meaning");
 
   const prices = stonePrices(curated.targetPrice);
-  ["p4", "p6", "p8"].forEach((priceKey) => {
+  ["p4", "p6", "p10"].forEach((priceKey) => {
     setIfChanged(next, priceKey, prices[priceKey], changes, priceKey);
   });
 
@@ -677,7 +677,7 @@ async function upsertRows(tableName, rows, conflictKey = "id") {
 function validateCatalog({ stones, charms }) {
   const missingStones = Object.keys(STONE_UPDATES).filter((id) => !stones.some((stone) => stone.id === id));
   const missingCharms = Object.keys(CHARM_UPDATES).filter((id) => !charms.some((charm) => charm.id === id));
-  const invalidStones = stones.filter((stone) => STONE_UPDATES[stone.id] && (!finitePositive(stone.p4) || !finitePositive(stone.p6) || !finitePositive(stone.p8)));
+  const invalidStones = stones.filter((stone) => STONE_UPDATES[stone.id] && (!finitePositive(stone.p4) || !finitePositive(stone.p6) || !finitePositive(stone.p10)));
   const invalidCharms = charms.filter((charm) => CHARM_UPDATES[charm.id] && !finitePositive(charm.pricing?.base || charm.price));
 
   if (missingStones.length || missingCharms.length || invalidStones.length || invalidCharms.length) {

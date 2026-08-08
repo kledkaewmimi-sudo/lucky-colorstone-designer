@@ -45,7 +45,7 @@ The current implementation also supports a landing-screen dismissal state and a 
 - Wrist size is selected from the predefined grid in the customer flow.
 - The selected wrist size is stored in centimeters.
 - Bracelet length is calculated as wrist size plus a fixed tolerance of `1.5 cm`.
-- Bead size can be `4`, `6`, `8`, or `mixed`.
+- Bead size can be `4`, `6`, `10`, or `mixed`.
 - For uniform bead sizes, capacity is calculated from bracelet length in millimeters divided by the bead size.
 - For `mixed`, the bracelet uses dynamic bead sizing and the app allows beads of different sizes in the same bracelet.
 - Gemstone selection is done by adding stones from the catalog into the bracelet design.
@@ -119,7 +119,7 @@ The following business rules must not change unless explicitly requested:
 
 - The customer flow sequence from landing to LINE order.
 - The wrist-size-to-length relationship.
-- The supported bead sizes: `4`, `6`, `8`, and `mixed`.
+- The supported bead sizes: `4`, `6`, `10`, and `mixed`.
 - The current bead-capacity behavior for uniform sizes.
 - The pricing pipeline: stone price lookup, subtotal, `20%` discount, final total.
 - The order payload fields sent to CRM.

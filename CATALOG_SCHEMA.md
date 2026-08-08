@@ -26,13 +26,13 @@ Current stone record shape in practice:
   nameTh: "ไหมทอง",
   p4: 100,
   p6: 150,
-  p8: 200,
+  p10: 200,
   category: "wealth",
   meaning: "Attracts wealth, prosperity, and success in business.",
   meaningTh: "ดึงดูดความมั่งคั่ง โชคลาภ และความสำเร็จในหน้าที่การงาน",
   image: "assets/golden_rutile.png",
   color: "#E2C974",
-  sizes: [4, 6, 8],
+  sizes: [4, 6, 10],
   inStock: true
 }
 ```
@@ -42,7 +42,7 @@ Frontend usage in `app.js`:
 - `id` identifies selected stones and order payload bead items.
 - `name`, `nameTh`, `meaning`, `meaningTh`, `image`, `color` drive catalog cards, modal content, summary, and export displays.
 - `category` drives Step 3 filter tabs.
-- `p4`, `p6`, `p8` drive pricing through `getStonePriceForSize(...)`.
+- `p4`, `p6`, `p10` drive pricing through `getStonePriceForSize(...)`.
 - `inStock` hides stones from the customer catalog.
 - `sizes` exists in CRM and persisted JSON, but the current customer app does not enforce it in Step 3 because bead size is globally selected.
 
@@ -109,7 +109,7 @@ Current editable stone fields in CRM:
 - `nameTh`
 - `p4`
 - `p6`
-- `p8`
+- `p10`
 - `category`
 - `categoryId`
 - `image`
@@ -188,7 +188,7 @@ The main migration risk is mixing business-critical fields with renderer-only tu
 
 Specific risks:
 
-- Frontend pricing depends on the current stone price field names (`p4`, `p6`, `p8`).
+- Frontend pricing depends on the current stone price field names (`p4`, `p6`, `p10`).
 - Frontend category filters depend on current category keys (`wealth`, `love`, `calm`, `protection`, `all`).
 - Charm capacity math depends on `sizeCm`.
 - Charm pricing/order payload depends on current charm business fields.
@@ -242,10 +242,10 @@ Notes:
   pricing: {
     p4: 100,
     p6: 150,
-    p8: 200
+    p10: 200
   },
   availability: {
-    sizesMm: [4, 6, 8],
+    sizesMm: [4, 6, 10],
     inStock: true,
     isActive: true
   },
@@ -268,7 +268,7 @@ Notes:
 - `categoryId`
 - `pricing.p4`
 - `pricing.p6`
-- `pricing.p8`
+- `pricing.p10`
 - `availability.sizesMm`
 - `availability.inStock`
 - `availability.isActive`
@@ -510,7 +510,7 @@ Introduce catalog adapters in `data.js`.
 
 Adapters should convert normalized records into current frontend shapes:
 
-- normalized stone -> current stone shape with `name`, `nameTh`, `p4`, `p6`, `p8`, `category`, `meaning`, `meaningTh`, `image`, `color`, `sizes`, `inStock`
+- normalized stone -> current stone shape with `name`, `nameTh`, `p4`, `p6`, `p10`, `category`, `meaning`, `meaningTh`, `image`, `color`, `sizes`, `inStock`
 - normalized charm -> current charm shape with `nameEn`, `nameTh`, `sizeCm`, `price`, plus current render-tuning fields
 
 This preserves:
@@ -543,7 +543,7 @@ This should be last, not first.
 
 ## Compatibility Rules During Migration
 
-- Do not remove `p4/p6/p8` support until pricing code is deliberately migrated.
+- Do not remove `p4/p6/p10` support until pricing code is deliberately migrated.
 - Do not remove `sizeCm` support until charm capacity code is deliberately migrated.
 - Do not change order payload fields in the migration bootstrap.
 - Do not let CRM save partial charm records that omit required business fields.

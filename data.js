@@ -361,14 +361,15 @@ function normalizeStoneRecord(record, index = 0) {
   const normalizedCategory = categoryId || "uncategorized";
   const stockQty = normalizeStockQty(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty, null);
 
+  const { p8: legacyP8, ...stoneRecord } = record;
   return {
-    ...record,
+    ...stoneRecord,
     id,
     name: record.name || record.nameEn || "",
     nameTh: record.nameTh || "",
     p4: Number(record.p4 || record.price || 0),
     p6: Number(record.p6 || record.price || 0),
-    p8: Number(record.p8 || record.price || 0),
+    p10: Number(record.p10 ?? legacyP8 ?? record.price ?? 0),
     category: normalizedCategory,
     categoryId: normalizedCategory,
     categoryTh: record.categoryTh || "",
@@ -376,7 +377,9 @@ function normalizeStoneRecord(record, index = 0) {
     meaningTh: record.meaningTh || "",
     image: record.image || "",
     color: record.color || "#E2C974",
-    sizes: Array.isArray(record.sizes) ? record.sizes : [4, 6, 8],
+    sizes: Array.isArray(record.sizes)
+      ? [...new Set(record.sizes.map((size) => Number(size) === 8 ? 10 : Number(size)))]
+      : [4, 6, 10],
     stockQty,
     inStock: record.inStock !== false && (stockQty === null || stockQty > 0),
     isActive: record.isActive !== false
@@ -1237,7 +1240,7 @@ export function getStonePriceForSize(stone, size) {
   if (!stone) return 0;
   const sz = parseInt(size);
   if (sz === 4) return stone.p4 !== undefined ? stone.p4 : (stone.price || 0);
-  if (sz === 8) return stone.p8 !== undefined ? stone.p8 : (stone.price || 0);
+  if (sz === 10 || sz === 8) return stone.p10 !== undefined ? stone.p10 : (stone.p8 ?? stone.price ?? 0);
   return stone.p6 !== undefined ? stone.p6 : (stone.price || 0); // default to 6mm
 }
 
