@@ -57,6 +57,7 @@ const CRMState = {
   activeEditStoneIsActive: true,
   activeEditStoneColor: '#E2C974',
   activeEditCharmId: null,
+  activeEditSpacerId: null,
   activeEditCategoryId: null,
   pendingStoneImage: null,
   pendingCharmImage: null,
@@ -1462,6 +1463,16 @@ function isCrmItemInStock(item) {
   return item?.availability?.inStock !== false && item?.inStock !== false && (stockQty === null || stockQty > 0);
 }
 
+function isCrmItemAvailableToCustomer(item) {
+  return item?.availability?.isActive !== false && item?.isActive !== false && isCrmItemInStock(item);
+}
+
+function formatInventoryCatalogStatus(item) {
+  return isCrmItemAvailableToCustomer(item)
+    ? '<span class="inventory-availability" aria-label="Available to customers">&#10003;</span>'
+    : '<span class="inventory-availability inventory-availability-unavailable" aria-label="Unavailable to customers">&mdash;</span>';
+}
+
 function getInventoryStoneSizes(stone) {
   const supportedSizes = Array.isArray(stone?.sizes) ? stone.sizes : [];
   const priceSizes = Object.keys(stone || {})
@@ -1599,6 +1610,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
       meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
       costText: formatInventoryCatalogCost(charm.id, charmPurchaseCostIndex),
+      statusText: formatInventoryCatalogStatus(charm),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(charm),
@@ -1633,6 +1645,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
       costText: formatInventoryCatalogCost(spacer.id, spacerPurchaseCostIndex),
+      statusText: formatInventoryCatalogStatus(spacer),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(spacer),
@@ -1686,9 +1699,9 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
     tr.className = 'inventory-compact-row';
     tr.dataset.itemType = item.type;
 
-    const actionDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
-    const actionTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Edit ${item.typeLabel}`;
+    const actionTitle = `Edit ${item.typeLabel}`;
     const deleteTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Delete ${item.typeLabel}`;
+    const deleteDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
 
     tr.innerHTML = `
       <td data-label="Item">
@@ -1703,16 +1716,16 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
       </td>
       <td data-label="Price"><span class="inventory-price">${item.priceText}</span></td>
       <td data-label="Cost"><span class="inventory-cost">${item.costText}</span></td>
-      <td data-label="Status"><span class="inventory-size">${item.type === 'stone' ? item.statusText : '&mdash;'}</span></td>
+      <td data-label="Status"><span class="inventory-size">${item.statusText}</span></td>
       <td data-label="Actions" class="text-right">
         <div class="action-btns inventory-action-btns">
-          <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${actionTitle}" ${actionDisabled}>
+          <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${actionTitle}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
           </button>
-          <button class="action-btn delete" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${deleteTitle}" ${actionDisabled}>
+          <button class="action-btn delete" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${deleteTitle}" ${deleteDisabled}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -1725,9 +1738,12 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
     `;
 
     tr.querySelector('.action-btn.edit').addEventListener('click', () => {
-      if (item.type === 'spacer') return;
       if (item.type === 'charm') {
         openEditCharmForm(item.id);
+        return;
+      }
+      if (item.type === 'spacer') {
+        openEditSpacerForm(item.id);
         return;
       }
       openEditStoneForm(item.id);
@@ -2700,6 +2716,28 @@ async function saveCharmQuickField(charmId, patch, logLabel) {
   return false;
 }
 
+function configureComponentCrudForm(type) {
+  const isSpacer = type === 'spacer';
+  const label = isSpacer ? CRM_COMPONENT_LABELS.spacer : CRM_COMPONENT_LABELS.charm;
+  const sizeLabel = DOM.charmCrudForm.querySelector('label[for="crudCharmSizeCm"]');
+  const idLabel = DOM.charmCrudForm.querySelector('label[for="crudCharmId"]');
+  const stockTip = DOM.charmCrudForm.querySelector('#crudCharmStockQty + .form-tip');
+  const saveButton = DOM.charmCrudForm.querySelector('#btnSaveCharmForm');
+
+  if (idLabel) idLabel.textContent = `${label} ID`;
+  if (sizeLabel) sizeLabel.textContent = isSpacer ? 'Size (mm)' : 'Size (cm)';
+  if (stockTip) stockTip.textContent = `Set to 0 to hide this ${label.toLowerCase()} from the customer catalog.`;
+  if (saveButton) saveButton.textContent = isSpacer ? `Save ${label}` : 'Save Talisman';
+}
+
+function ensureComponentCollectionOption(value) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue || !DOM.crudCharmCollection) return;
+  const hasOption = Array.from(DOM.crudCharmCollection.options).some((option) => option.value === normalizedValue);
+  if (!hasOption) DOM.crudCharmCollection.add(new Option(normalizedValue, normalizedValue));
+  DOM.crudCharmCollection.value = normalizedValue;
+}
+
 async function saveInventoryStockQty(itemType, itemId, stockQty) {
   const normalizedType = String(itemType || '').trim().toLowerCase();
   const normalizedQty = normalizeStockQtyForCrm(stockQty, 0);
@@ -2947,6 +2985,8 @@ function renderCharmCatalog(charms, categories = []) {
 
 async function openAddCharmForm() {
   CRMState.activeEditCharmId = null;
+  CRMState.activeEditSpacerId = null;
+  configureComponentCrudForm('charm');
   DOM.charmModalTitle.textContent = "Add New Talisman";
   DOM.charmCrudForm.reset();
   DOM.crudCharmRecordId.value = "";
@@ -2976,6 +3016,8 @@ async function openEditCharmForm(charmId) {
   syncCategoryAssignmentSelects(categories, '', charm.collection || charm.categoryId);
 
   CRMState.activeEditCharmId = charmId;
+  CRMState.activeEditSpacerId = null;
+  configureComponentCrudForm('charm');
   DOM.charmModalTitle.textContent = `Edit Talisman: ${charm.name?.th || charm.id}`;
   DOM.crudCharmRecordId.value = charm.id;
   DOM.crudCharmId.value = charm.id;
@@ -3000,32 +3042,71 @@ async function openEditCharmForm(charmId) {
   DOM.charmCrudModal.classList.add('show');
 }
 
+async function openEditSpacerForm(spacerId) {
+  const cachedSpacers = getSimulatorCatalogCache().spacers;
+  const spacers = cachedSpacers.length > 0 ? cachedSpacers : await getSharedSpacerCatalog();
+  const spacer = spacers.find((entry) => entry.id === spacerId);
+  if (!spacer) return;
+
+  const categories = await getSharedCategoryCatalog('all');
+  syncCategoryAssignmentSelects(categories);
+  ensureComponentCollectionOption(spacer.collection || spacer.categoryId || 'spacer');
+
+  CRMState.activeEditCharmId = null;
+  CRMState.activeEditSpacerId = spacerId;
+  configureComponentCrudForm('spacer');
+  DOM.charmModalTitle.textContent = `Edit ${CRM_COMPONENT_LABELS.spacer}: ${spacer.name?.th || spacer.id}`;
+  DOM.crudCharmRecordId.value = spacer.id;
+  DOM.crudCharmId.value = spacer.id;
+  DOM.crudCharmId.disabled = true;
+  DOM.crudCharmSku.value = spacer.sku || '';
+  DOM.crudCharmNameEn.value = spacer.name?.en || '';
+  DOM.crudCharmNameTh.value = spacer.name?.th || '';
+  DOM.crudCharmType.value = spacer.type || 'spacer';
+  DOM.crudCharmImage.value = spacer.image?.primary || '';
+  resetImageUploadState('Charm');
+  updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImage.value);
+  DOM.crudCharmSizeCm.value = Number(spacer.business?.displaySizeMm ?? spacer.business?.sizeMm ?? spacer.sizeMm ?? 0);
+  DOM.crudCharmPrice.value = Number(spacer.pricing?.base || 0);
+  DOM.crudCharmDisplayOrder.value = spacer.displayOrder ?? '';
+  DOM.crudCharmStockQty.value = getCrmStockQty(spacer) ?? '';
+  DOM.crudCharmMeaningTh.value = spacer.meaning?.th || '';
+  DOM.crudCharmMeaningEn.value = spacer.meaning?.en || '';
+  DOM.crudCharmInStock.checked = isCrmItemInStock(spacer);
+  DOM.crudCharmIsActive.checked = spacer.availability?.isActive !== false && spacer.isActive !== false;
+  setReadOnlyCharmTuning({});
+  DOM.charmCrudModal.classList.add('show');
+}
+
 function closeCharmForm() {
   DOM.charmCrudModal.classList.remove('show');
+  CRMState.activeEditSpacerId = null;
   resetImageUploadState("Charm");
 }
 
 async function handleSaveCharmType(e) {
   e.preventDefault();
 
-  const currentCharms = await getSharedCharmCatalog();
-  const existingCharm = CRMState.activeEditCharmId
-    ? currentCharms.find((entry) => entry.id === CRMState.activeEditCharmId)
+  const isSpacer = Boolean(CRMState.activeEditSpacerId);
+  const currentItems = isSpacer ? await getSharedSpacerCatalog() : await getSharedCharmCatalog();
+  const existingItem = (CRMState.activeEditCharmId || CRMState.activeEditSpacerId)
+    ? currentItems.find((entry) => entry.id === (CRMState.activeEditCharmId || CRMState.activeEditSpacerId))
     : null;
 
-  const sizeCm = Number(DOM.crudCharmSizeCm.value);
+  const sizeValue = Number(DOM.crudCharmSizeCm.value);
   const stockQty = normalizeStockQtyForCrm(DOM.crudCharmStockQty.value, 0);
   const recordId = DOM.crudCharmRecordId.value.trim() || DOM.crudCharmId.value.trim();
   const normalizedRecord = {
+    ...(existingItem || {}),
     id: DOM.crudCharmId.value.trim(),
-    entityType: "charm",
+    entityType: isSpacer ? 'spacer' : 'charm',
     sku: DOM.crudCharmSku.value.trim(),
     slug: recordId.toLowerCase(),
     name: {
       en: DOM.crudCharmNameEn.value.trim(),
       th: DOM.crudCharmNameTh.value.trim()
     },
-    categoryId: DOM.crudCharmCollection.value.trim() || DOM.crudCharmType.value.trim() || "charms",
+    categoryId: DOM.crudCharmCollection.value.trim() || DOM.crudCharmType.value.trim() || (isSpacer ? 'spacer' : 'charms'),
     type: DOM.crudCharmType.value.trim(),
     collection: DOM.crudCharmCollection.value.trim(),
     image: {
@@ -3035,8 +3116,17 @@ async function handleSaveCharmType(e) {
       base: Number(DOM.crudCharmPrice.value || 0)
     },
     business: {
-      sizeCm,
-      footprintMm: existingCharm?.business?.footprintMm ?? Math.round(sizeCm * 10)
+      ...(existingItem?.business || {}),
+      ...(isSpacer
+        ? {
+          sizeMm: sizeValue,
+          displaySizeMm: sizeValue,
+          effectiveLengthMm: existingItem?.business?.effectiveLengthMm ?? sizeValue
+        }
+        : {
+          sizeCm: sizeValue,
+          footprintMm: existingItem?.business?.footprintMm ?? Math.round(sizeValue * 10)
+        })
     },
     meaning: {
       th: DOM.crudCharmMeaningTh.value.trim(),
@@ -3047,18 +3137,21 @@ async function handleSaveCharmType(e) {
       inStock: DOM.crudCharmInStock.checked && stockQty > 0,
       isActive: DOM.crudCharmIsActive.checked
     },
-    renderTuning: existingCharm?.renderTuning || {},
+    renderTuning: existingItem?.renderTuning || {},
     displayOrder: Number(DOM.crudCharmDisplayOrder.value || 0)
   };
 
-  const saved = await saveSharedCharmCatalogEntry(normalizedRecord);
+  const saved = isSpacer
+    ? await saveSharedSpacerCatalogEntry(normalizedRecord)
+    : await saveSharedCharmCatalogEntry(normalizedRecord);
   if (saved) {
-    if (CRMState.activeEditCharmId) {
-      addLog(`Edited talisman ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
-      showToast("Talisman details updated!");
+    const label = isSpacer ? CRM_COMPONENT_LABELS.spacer : CRM_COMPONENT_LABELS.charm;
+    if (CRMState.activeEditCharmId || CRMState.activeEditSpacerId) {
+      addLog(`Edited ${label} ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
+      showToast(`${label} details updated!`);
     } else {
-      addLog(`Created new talisman ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
-      showToast("New talisman added to catalog!");
+      addLog(`Created new ${label} ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
+      showToast(`New ${label} added to catalog!`);
     }
   }
 
