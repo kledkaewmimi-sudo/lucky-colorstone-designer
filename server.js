@@ -2472,18 +2472,24 @@ async function readCharmsForApi() {
   );
 }
 
-function normalizePurchaseEntry(input, stones) {
-  const stoneId = String(input?.stoneId || '').trim();
-  const stone = stones.find((entry) => entry.id === stoneId);
-  const sizeMm = Number(input?.sizeMm);
+function normalizePurchaseEntry(input, catalogs) {
+  const category = String(input?.category || 'stone').trim().toLowerCase();
+  const catalogItemId = String(input?.catalogItemId || input?.stoneId || '').trim();
+  const catalogByCategory = { stone: catalogs.stones, talisman: catalogs.charms, charm: catalogs.spacers };
+  const catalogItem = (catalogByCategory[category] || []).find((entry) => entry.id === catalogItemId);
+  const itemName = String(input?.itemName || '').trim();
+  const sizeMm = input?.sizeMm == null || input?.sizeMm === '' ? null : Number(input.sizeMm);
   const quantity = Number(input?.quantity);
   const totalCost = Number(input?.totalCost);
   const purchasedAt = String(input?.purchasedAt || new Date().toISOString().slice(0, 10));
-  if (!stone || ![4, 6, 10].includes(sizeMm) || !Array.isArray(stone.sizes) || !stone.sizes.map(Number).includes(sizeMm)) throw new Error('Invalid stone or size.');
+  if (!['stone', 'talisman', 'charm', 'other'].includes(category)) throw new Error('Invalid purchase category.');
+  if (category === 'other' ? !itemName : !catalogItem) throw new Error('Please select or enter a purchase item.');
+  if (category === 'stone' && (!([4, 6, 10].includes(sizeMm)) || !Array.isArray(catalogItem.sizes) || !catalogItem.sizes.map(Number).includes(sizeMm))) throw new Error('Invalid stone or size.');
   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Quantity must be a positive integer.');
   if (!Number.isFinite(totalCost) || totalCost < 0) throw new Error('Total cost must be zero or greater.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt)) throw new Error('Invalid purchase date.');
-  return { purchased_at: purchasedAt, stone_id: stoneId, stone_name_snapshot: stone.nameTh || stone.name || stoneId, size_mm: sizeMm, quantity, total_cost: totalCost, unit_cost: totalCost / quantity, supplier: String(input?.supplier || '').trim() || null, note: String(input?.note || '').trim() || null };
+  const nameSnapshot = category === 'other' ? itemName : (catalogItem.name?.th || catalogItem.nameTh || catalogItem.name?.en || catalogItem.nameEn || catalogItem.name || catalogItemId);
+  return { category, catalog_item_id: category === 'other' ? null : catalogItemId, item_name_snapshot: nameSnapshot, purchased_at: purchasedAt, stone_id: category === 'stone' ? catalogItemId : null, stone_name_snapshot: category === 'stone' ? nameSnapshot : null, size_mm: category === 'stone' ? sizeMm : null, quantity, total_cost: totalCost, unit_cost: totalCost / quantity, supplier: String(input?.supplier || '').trim() || null, note: String(input?.note || '').trim() || null };
 }
 
 async function readSpacersForApi() {
@@ -2991,7 +2997,8 @@ async function handleApiRequest(req, res, urlObj) {
 
   if (pathname === "/api/purchases" && method === "POST") {
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
-    const entry = normalizePurchaseEntry(bodyObj, await readStonesForApi());
+    const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);
+    const entry = normalizePurchaseEntry(bodyObj, { stones, charms, spacers });
     const rows = await supabaseRequest('stone_purchase_entries', { method: 'POST', body: entry, prefer: 'return=representation' });
     sendJson(res, 201, Array.isArray(rows) ? rows[0] : entry);
     return true;
@@ -3000,7 +3007,8 @@ async function handleApiRequest(req, res, urlObj) {
   if (pathname.startsWith('/api/purchases/') && method === 'PUT') {
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
-    const entry = normalizePurchaseEntry(bodyObj, await readStonesForApi());
+    const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);
+    const entry = normalizePurchaseEntry(bodyObj, { stones, charms, spacers });
     const rows = await supabaseRequest('stone_purchase_entries', { method: 'PATCH', params: { id: `eq.${id}` }, body: entry, prefer: 'return=representation' });
     if (!Array.isArray(rows) || !rows[0]) { sendJson(res, 404, { error: 'Purchase entry not found.' }); return true; }
     sendJson(res, 200, rows[0]);
