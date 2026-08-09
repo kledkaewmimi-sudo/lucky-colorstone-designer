@@ -2782,6 +2782,18 @@ button.stone-card {
   margin-bottom: 12px;
 }
 
+.shipping-benefit-card {
+  margin: -2px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid #ccebd7;
+  border-radius: 10px;
+  background: #effaf3;
+  color: #28754a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .shipping-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
