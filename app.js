@@ -7720,6 +7720,17 @@ function configureInfoModal({
   DOM.btnModalFillAll.style.display = 'none';
 }
 
+function isCorruptedThaiModalText(value) {
+  const text = String(value || '').trim();
+  return text.includes('\uFFFD') || /\?{3,}/.test(text);
+}
+
+function formatModalMeaning(thaiText, englishText, fallbackText) {
+  const thai = isCorruptedThaiModalText(thaiText) ? '' : String(thaiText || '').trim();
+  const english = String(englishText || '').trim();
+  return [thai, english].filter(Boolean).join(' / ') || fallbackText;
+}
+
 function openStoneInfoModal(stone) {
   currentModalStone = stone;
   configureInfoModal({
@@ -7727,7 +7738,7 @@ function openStoneInfoModal(stone) {
     image: stone.image,
     titleTh: stone.nameTh,
     titleEn: stone.name,
-    meaning: `${stone.meaningTh} / ${stone.meaning}`
+    meaning: formatModalMeaning(stone.meaningTh, stone.meaning, 'No additional stone details available.')
   });
   DOM.modalStonePrice.textContent = '';
   DOM.btnModalAdd.textContent = '';
@@ -7739,9 +7750,7 @@ function openCharmInfoModal(charm) {
   currentModalStone = null;
   const charmMeta = getCharmDisplayMeta(charm);
 
-  const meaning = charm.meaningTh || charm.meaningEn
-    ? `${charm.meaningTh || '-'} / ${charm.meaningEn || '-'}`
-    : 'No additional charm details available.';
+  const meaning = formatModalMeaning(charm.meaningTh, charm.meaningEn, 'No additional charm details available.');
 
   configureInfoModal({
     heading: `${CUSTOMER_COMPONENT_LABELS.charm} Information`,

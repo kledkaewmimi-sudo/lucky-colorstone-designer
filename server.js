@@ -159,6 +159,16 @@ function sendText(res, statusCode, text) {
   res.end(text);
 }
 
+function hasCorruptedThaiText(value) {
+  const text = String(value || '').trim();
+  return text.includes('\uFFFD') || /\?{3,}/.test(text);
+}
+
+function hasCorruptedThaiCatalogText(record = {}) {
+  return [record.nameTh, record.meaningTh, record.descriptionTh, record.meaning?.th, record.description?.th]
+    .some(hasCorruptedThaiText);
+}
+
 async function readRequestBody(req) {
   return await new Promise((resolve, reject) => {
     const chunks = [];
@@ -3057,8 +3067,8 @@ async function handleApiRequest(req, res, urlObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
     }
-    if (typeof bodyObj.nameTh === 'string' && /[?\uFFFD]/.test(bodyObj.nameTh)) {
-      sendJson(res, 400, { error: 'Invalid Thai stone name encoding.' });
+    if (hasCorruptedThaiCatalogText(bodyObj)) {
+      sendJson(res, 400, { error: 'Invalid Thai catalog text encoding.' });
       return true;
     }
 
@@ -3153,6 +3163,10 @@ async function handleApiRequest(req, res, urlObj) {
       sendJson(res, 400, { error: "Missing charm ID" });
       return true;
     }
+    if (hasCorruptedThaiCatalogText(bodyObj)) {
+      sendJson(res, 400, { error: 'Invalid Thai catalog text encoding.' });
+      return true;
+    }
 
     if (isSupabaseConfigured()) {
       const existingCharm = await getSupabaseRecordById("catalog_charms", bodyObj.id);
@@ -3217,6 +3231,10 @@ async function handleApiRequest(req, res, urlObj) {
       }
 
       const nextRecord = { ...bodyObj, id: charmId };
+      if (hasCorruptedThaiCatalogText(nextRecord)) {
+        sendJson(res, 400, { error: 'Invalid Thai catalog text encoding.' });
+        return true;
+      }
       if (isSupabaseConfigured()) {
         const existingCharm = await getSupabaseRecordById("catalog_charms", charmId);
         if (!existingCharm) {
@@ -3277,6 +3295,10 @@ async function handleApiRequest(req, res, urlObj) {
       }
 
       const nextRecord = { ...bodyObj, id: spacerId };
+      if (hasCorruptedThaiCatalogText(nextRecord)) {
+        sendJson(res, 400, { error: 'Invalid Thai catalog text encoding.' });
+        return true;
+      }
       if (isSupabaseConfigured()) {
         await upsertSupabaseRow("catalog_spacers", buildSpacerRow(nextRecord));
         sendJson(res, 200, nextRecord);
