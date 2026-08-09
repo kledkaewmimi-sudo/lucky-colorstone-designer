@@ -23,9 +23,12 @@ const LIFF_ID = '2010525799-qImIuhla';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
-const INSPIRATION_SAMPLE_IMAGES = Object.freeze(
-  Array.from({ length: 7 }, (_, index) => `/assets/sample/s${index + 1}.webp`)
-);
+const INSPIRATION_SAMPLE_IMAGES = Object.freeze([
+  '/assets/sample/sp1.jpg',
+  '/assets/sample/sp2.jpg',
+  '/assets/sample/sp3.jpg',
+  '/assets/sample/sp4.jpg'
+]);
 const CUSTOMER_COMPONENT_LABELS = {
   stone: getComponentTypeLabel('stone', 'th'),
   charm: getComponentTypeLabel('charm', 'th'),
@@ -7815,7 +7818,7 @@ function renderInspirationGallery() {
 
     const img = document.createElement('img');
     img.src = src;
-    img.alt = `Bracelet inspiration ${index + 1}`;
+    img.alt = `${styleNames[index]} bracelet sample`;
     img.loading = 'lazy';
     img.decoding = 'async';
     img.addEventListener('error', () => {
@@ -7834,15 +7837,6 @@ function renderInspirationGallery() {
     name.className = 'inspiration-gallery-product-name';
     name.textContent = styleNames[index];
 
-    const actionText = document.createElement('button');
-    actionText.className = 'inspiration-gallery-style-action';
-    actionText.type = 'button';
-    actionText.textContent = 'เลือกสไตล์นี้';
-    actionText.addEventListener('click', () => {
-      closeInspirationGallery();
-      showToast('เลือกหินจากแคตตาล็อกเพื่อใช้สไตล์นี้');
-    });
-
     const fallback = document.createElement('figcaption');
     fallback.className = 'inspiration-gallery-fallback';
     fallback.textContent = 'Image unavailable';
@@ -7850,7 +7844,6 @@ function renderInspirationGallery() {
     card.appendChild(img);
     captionWrap.appendChild(styleName);
     captionWrap.appendChild(name);
-    captionWrap.appendChild(actionText);
     card.appendChild(captionWrap);
     card.appendChild(fallback);
     DOM.inspirationGalleryGrid.appendChild(card);
