@@ -3001,6 +3001,23 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/purchase-costs/stones" && method === "GET") {
+    if (!isSupabaseConfigured()) throw new Error('Stone purchase costs require Supabase.');
+    const entries = await supabaseRequest('stone_purchase_entries', { params: { select: 'catalog_item_id,size_mm,quantity,total_cost', item_type: 'eq.stone', catalog_item_id: 'not.is.null' } });
+    const summaries = new Map();
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      const catalogItemId = String(entry.catalog_item_id || '').trim();
+      const sizeMm = Number(entry.size_mm), quantity = Number(entry.quantity), totalCost = Number(entry.total_cost);
+      if (!catalogItemId || ![4, 6, 10].includes(sizeMm) || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(totalCost)) return;
+      const key = `${catalogItemId}|${sizeMm}`, summary = summaries.get(key) || { catalogItemId, sizeMm, totalQuantity: 0, totalCost: 0 };
+      summary.totalQuantity += quantity;
+      summary.totalCost += totalCost;
+      summaries.set(key, summary);
+    });
+    sendJson(res, 200, Array.from(summaries.values()).map((summary) => ({ ...summary, weightedUnitCost: summary.totalCost / summary.totalQuantity })));
+    return true;
+  }
+
   if (pathname === "/api/purchases" && method === "POST") {
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);

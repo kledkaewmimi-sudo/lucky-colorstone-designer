@@ -1788,6 +1788,12 @@ export async function getSharedPurchaseEntries() {
   return res.json();
 }
 
+export async function getSharedStonePurchaseCostSummaries() {
+  const res = await fetch('/api/purchase-costs/stones');
+  if (!res.ok) throw new Error('Unable to load stone purchase costs.');
+  return res.json();
+}
+
 export async function savePurchaseEntry(entry, id = '') {
   const res = await fetch(id ? `/api/purchases/${encodeURIComponent(id)}` : '/api/purchases', {
     method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry)

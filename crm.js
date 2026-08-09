@@ -30,7 +30,7 @@ import {
   addSharedOrder,
   withCatalogImageVersion,
   getComponentTypeLabel
-  , getSharedPurchaseEntries, savePurchaseEntry, deletePurchaseEntry
+  , getSharedPurchaseEntries, getSharedStonePurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry
 } from './data.js';
 
 // ==========================================
@@ -52,6 +52,7 @@ const CRMState = {
   sessionActive: false,
   activeTab: 'overview',
   purchaseEntries: [],
+  stonePurchaseCostSummaries: [],
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditStoneIsActive: true,
   activeEditStoneColor: '#E2C974',
@@ -401,7 +402,7 @@ function getSafeThumbnailSrc(rawValue) {
 
 function renderInventoryFromCache() {
   const cache = getSimulatorCatalogCache();
-  renderInventoryCatalog(cache.stones, cache.charms, cache.spacers);
+  renderInventoryCatalog(cache.stones, cache.charms, cache.spacers, CRMState.stonePurchaseCostSummaries);
 }
 
 function setUploadStatus(statusEl, message, tone = "info") {
@@ -808,6 +809,11 @@ async function loadDashboardData(prefetched = {}) {
   const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
+  if (CRMState.activeTab === 'inventory') {
+    CRMState.stonePurchaseCostSummaries = Array.isArray(prefetched.stonePurchaseCostSummaries)
+      ? prefetched.stonePurchaseCostSummaries
+      : await getSharedStonePurchaseCostSummaries();
+  }
   CRMState.simulatorCatalogCache = { stones, charms, spacers };
   
   // Calculate Metric values
@@ -839,7 +845,7 @@ async function loadDashboardData(prefetched = {}) {
   if (CRMState.activeTab === 'overview') {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
-    renderInventoryCatalog(stones, charms, spacers);
+    renderInventoryCatalog(stones, charms, spacers, CRMState.stonePurchaseCostSummaries);
   } else if (CRMState.activeTab === 'analytics') {
     renderAnalyticsSummary(await fetchAnalyticsSummary());
   } else if (CRMState.activeTab === 'simulator') {
@@ -1473,6 +1479,23 @@ function formatInventoryStonePrice(stone) {
     .join(' / ') || '&mdash;';
 }
 
+function createStonePurchaseCostIndex(summaries = []) {
+  return summaries.reduce((index, summary) => {
+    const catalogItemId = String(summary?.catalogItemId || '').trim(), sizeMm = Number(summary?.sizeMm), weightedUnitCost = Number(summary?.weightedUnitCost);
+    if (catalogItemId && [4, 6, 10].includes(sizeMm) && Number.isFinite(weightedUnitCost)) index.set(`${catalogItemId}|${sizeMm}`, weightedUnitCost);
+    return index;
+  }, new Map());
+}
+
+function formatInventoryStoneCost(stone, costIndex) {
+  return getInventoryStoneSizes(stone)
+    .map((size) => {
+      const cost = costIndex.get(`${stone.id}|${size}`);
+      return `${size}mm ${Number.isFinite(cost) ? `&#3647;${cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '&mdash;'}`;
+    })
+    .join(' / ') || '&mdash;';
+}
+
 function formatInventoryStockSummary(item, sizes = []) {
   const sizeText = sizes.map((size) => `${size}mm`).join(' / ');
   const quantityText = item.stockQty === null || item.stockQty === undefined
@@ -1481,7 +1504,8 @@ function formatInventoryStockSummary(item, sizes = []) {
   return sizeText ? `${sizeText} · ${quantityText}` : quantityText;
 }
 
-function buildInventoryItems(stones = [], charms = [], spacers = []) {
+function buildInventoryItems(stones = [], charms = [], spacers = [], stonePurchaseCostSummaries = []) {
+  const stonePurchaseCostIndex = createStonePurchaseCostIndex(stonePurchaseCostSummaries);
   const stoneItems = stones.map((stone) => {
     const categoryKey = stone.categoryId || stone.category;
     const categoryLabel = getCategoryLabelById(categoryKey, 'stone');
@@ -1499,6 +1523,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       nameEn,
       meta: categoryLabel.th || stone.categoryTh || stone.category || categoryKey || 'Uncategorized',
       priceText: formatInventoryStonePrice(stone),
+      costText: formatInventoryStoneCost(stone, stonePurchaseCostIndex),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }, supportedSizes),
       isInStock: isCrmItemInStock(stone),
@@ -1532,6 +1557,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       nameEn,
       meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
+      costText: '&mdash;',
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(charm),
@@ -1565,6 +1591,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
       nameEn,
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
+      costText: '&mdash;',
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(spacer),
@@ -1587,7 +1614,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = []) {
   return [...stoneItems, ...charmItems, ...spacerItems];
 }
 
-function renderInventoryCatalog(stones, charms = [], spacers = []) {
+function renderInventoryCatalog(stones, charms = [], spacers = [], stonePurchaseCostSummaries = []) {
   const query = DOM.inventorySearch.value.trim().toLowerCase();
   const activeType = CRMState.inventoryTypeFilter || 'all';
   DOM.inventoryTypeTabs.forEach((tab) => {
@@ -1596,7 +1623,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     tab.setAttribute('aria-pressed', String(isActive));
   });
 
-  const filtered = buildInventoryItems(stones, charms, spacers).filter((item) => {
+  const filtered = buildInventoryItems(stones, charms, spacers, stonePurchaseCostSummaries).filter((item) => {
     if (activeType !== 'all' && item.type !== activeType) return false;
     if (!query) return true;
     return item.searchText.includes(query);
@@ -1618,7 +1645,6 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
     tr.className = 'inventory-compact-row';
     tr.dataset.itemType = item.type;
 
-    const visibilityText = item.isActive === false ? '<span class="inventory-muted-status">Hidden</span>' : '';
     const actionDisabled = item.type === 'spacer' ? 'disabled aria-disabled="true"' : '';
     const actionTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Edit ${item.typeLabel}`;
     const deleteTitle = item.type === 'spacer' ? `${CRM_COMPONENT_LABELS.spacer} business CRUD is not available yet` : `Delete ${item.typeLabel}`;
@@ -1635,10 +1661,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = []) {
         </div>
       </td>
       <td data-label="Price"><span class="inventory-price">${item.priceText}</span></td>
-      <td data-label="Status">
-        <div class="inventory-stock-summary">${escapeHtml(item.stockSummary)}</div>
-        ${visibilityText}
-      </td>
+      <td data-label="Cost"><span class="inventory-cost">${item.costText}</span></td>
       <td data-label="Actions" class="text-right">
         <div class="action-btns inventory-action-btns">
           <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${actionTitle}" ${actionDisabled}>

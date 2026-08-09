@@ -3658,6 +3658,12 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+.inventory-cost {
+  color: var(--color-navy-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .purchase-kpis,.purchase-form,.purchase-filters{display:grid;gap:10px;margin-bottom:14px}.purchase-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-kpis>div,.purchase-row,.purchase-summary,.purchase-form{background:#fff;border:1px solid var(--color-gray-border);border-radius:10px;padding:12px}.purchase-kpis small,.purchase-kpis b{display:block}.purchase-kpis b{font-size:18px;color:var(--color-navy-dark)}.purchase-form{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-form h3,.purchase-form details,.purchase-form .purchase-unit,.purchase-form .purchase-type-tabs{grid-column:1/-1}.purchase-form input,.purchase-form select,.purchase-form textarea{width:100%;min-height:42px}.purchase-form textarea{min-height:70px}.purchase-type-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--color-gray-border);border-radius:9px;overflow:hidden}.purchase-type-tab{min-height:40px;padding:6px 4px;border:0;border-right:1px solid var(--color-gray-border);background:#fff;color:var(--color-navy-muted);font:inherit;white-space:nowrap}.purchase-type-tab:last-child{border-right:0}.purchase-type-tab.is-active{background:var(--color-navy-dark);color:#fff;font-weight:700}.purchase-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;margin-bottom:8px}.purchase-row span,.purchase-row small{grid-column:1/2}.purchase-row button{padding:7px 10px}.purchase-category-badge{display:inline-block;width:max-content;padding:2px 7px;border-radius:999px;background:#eef2ff;color:var(--color-navy-dark);font-size:11px;font-weight:700}.purchase-summary{margin-top:12px;line-height:1.8}.purchase-filters{grid-template-columns:1fr 1fr 1fr 1.3fr}@media(max-width:600px){.purchase-kpis{grid-template-columns:repeat(2,1fr)}.purchase-form{grid-template-columns:1fr}.purchase-filters{grid-template-columns:1fr 1fr}.purchase-row{grid-template-columns:1fr auto}.mobile-nav-item{font-size:10px}}
 
 /* ==========================================
