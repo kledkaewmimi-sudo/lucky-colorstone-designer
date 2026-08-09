@@ -3036,6 +3036,39 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/purchase-costs" && method === "GET") {
+    if (!isSupabaseConfigured()) throw new Error('Purchase costs require Supabase.');
+    const entries = await supabaseRequest('stone_purchase_entries', { params: { select: 'item_type,catalog_item_id,size_mm,quantity,total_cost', item_type: 'in.(stone,charm,spacer)', catalog_item_id: 'not.is.null' } });
+    const summaries = { stones: new Map(), charms: new Map(), spacers: new Map() };
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      const itemType = String(entry.item_type || '').trim();
+      const catalogItemId = String(entry.catalog_item_id || '').trim();
+      const quantity = Number(entry.quantity), totalCost = Number(entry.total_cost);
+      if (!catalogItemId || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(totalCost) || totalCost < 0) return;
+
+      if (itemType === 'stone') {
+        const sizeMm = Number(entry.size_mm);
+        if (![4, 6, 10].includes(sizeMm)) return;
+        const key = `${catalogItemId}|${sizeMm}`;
+        const summary = summaries.stones.get(key) || { catalogItemId, sizeMm, totalQuantity: 0, totalCost: 0 };
+        summary.totalQuantity += quantity;
+        summary.totalCost += totalCost;
+        summaries.stones.set(key, summary);
+        return;
+      }
+
+      const group = itemType === 'charm' ? summaries.charms : itemType === 'spacer' ? summaries.spacers : null;
+      if (!group) return;
+      const summary = group.get(catalogItemId) || { catalogItemId, totalQuantity: 0, totalCost: 0 };
+      summary.totalQuantity += quantity;
+      summary.totalCost += totalCost;
+      group.set(catalogItemId, summary);
+    });
+    const toResponse = (group) => Array.from(group.values()).map((summary) => ({ ...summary, weightedUnitCost: summary.totalCost / summary.totalQuantity }));
+    sendJson(res, 200, { stones: toResponse(summaries.stones), charms: toResponse(summaries.charms), spacers: toResponse(summaries.spacers) });
+    return true;
+  }
+
   if (pathname === "/api/purchases" && method === "POST") {
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);

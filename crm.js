@@ -30,7 +30,7 @@ import {
   addSharedOrder,
   withCatalogImageVersion,
   getComponentTypeLabel
-  , getSharedPurchaseEntries, getSharedStonePurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry
+  , getSharedPurchaseEntries, getSharedPurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry
 } from './data.js';
 
 // ==========================================
@@ -52,7 +52,7 @@ const CRMState = {
   sessionActive: false,
   activeTab: 'overview',
   purchaseEntries: [],
-  stonePurchaseCostSummaries: [],
+  purchaseCostSummaries: { stones: [], charms: [], spacers: [] },
   activeEditStoneId: null, // null when creating, stoneId when editing
   activeEditStoneIsActive: true,
   activeEditStoneColor: '#E2C974',
@@ -405,7 +405,7 @@ function getSafeThumbnailSrc(rawValue) {
 
 function renderInventoryFromCache() {
   const cache = getSimulatorCatalogCache();
-  renderInventoryCatalog(cache.stones, cache.charms, cache.spacers, CRMState.stonePurchaseCostSummaries);
+  renderInventoryCatalog(cache.stones, cache.charms, cache.spacers, CRMState.purchaseCostSummaries);
 }
 
 function setUploadStatus(statusEl, message, tone = "info") {
@@ -813,9 +813,8 @@ async function loadDashboardData(prefetched = {}) {
   const orders = await getSharedOrders();
   const settings = await getSharedSettings();
   if (CRMState.activeTab === 'inventory') {
-    CRMState.stonePurchaseCostSummaries = Array.isArray(prefetched.stonePurchaseCostSummaries)
-      ? prefetched.stonePurchaseCostSummaries
-      : await getSharedStonePurchaseCostSummaries();
+    CRMState.purchaseCostSummaries = prefetched.purchaseCostSummaries
+      || await getSharedPurchaseCostSummaries();
   }
   CRMState.simulatorCatalogCache = { stones, charms, spacers };
   
@@ -848,7 +847,7 @@ async function loadDashboardData(prefetched = {}) {
   if (CRMState.activeTab === 'overview') {
     renderRecentOrdersList(orders);
   } else if (CRMState.activeTab === 'inventory') {
-    renderInventoryCatalog(stones, charms, spacers, CRMState.stonePurchaseCostSummaries);
+    renderInventoryCatalog(stones, charms, spacers, CRMState.purchaseCostSummaries);
   } else if (CRMState.activeTab === 'analytics') {
     renderAnalyticsSummary(await fetchAnalyticsSummary());
   } else if (CRMState.activeTab === 'simulator') {
@@ -1485,7 +1484,16 @@ function formatInventoryStonePrice(stone) {
 function createStonePurchaseCostIndex(summaries = []) {
   return summaries.reduce((index, summary) => {
     const catalogItemId = String(summary?.catalogItemId || '').trim(), sizeMm = Number(summary?.sizeMm), weightedUnitCost = Number(summary?.weightedUnitCost);
-    if (catalogItemId && [4, 6, 10].includes(sizeMm) && Number.isFinite(weightedUnitCost)) index.set(`${catalogItemId}|${sizeMm}`, weightedUnitCost);
+    if (catalogItemId && [4, 6, 10].includes(sizeMm) && Number.isFinite(weightedUnitCost) && weightedUnitCost >= 0) index.set(`${catalogItemId}|${sizeMm}`, weightedUnitCost);
+    return index;
+  }, new Map());
+}
+
+function createCatalogPurchaseCostIndex(summaries = []) {
+  return summaries.reduce((index, summary) => {
+    const catalogItemId = String(summary?.catalogItemId || '').trim();
+    const weightedUnitCost = Number(summary?.weightedUnitCost);
+    if (catalogItemId && Number.isFinite(weightedUnitCost) && weightedUnitCost >= 0) index.set(catalogItemId, weightedUnitCost);
     return index;
   }, new Map());
 }
@@ -1512,6 +1520,13 @@ function formatInventoryStoneCost(stone, costIndex) {
     .join(' / ') || '&mdash;';
 }
 
+function formatInventoryCatalogCost(catalogItemId, costIndex) {
+  const cost = costIndex.get(String(catalogItemId || '').trim());
+  return Number.isFinite(cost)
+    ? `&#3647;${cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '&mdash;';
+}
+
 function formatInventoryStoneSizeStatus(stone) {
   const enabledSizes = new Set(Array.isArray(stone?.sizes) ? stone.sizes.map(Number) : []);
   return [4, 6, 10]
@@ -1527,8 +1542,10 @@ function formatInventoryStockSummary(item, sizes = []) {
   return sizeText ? `${sizeText} · ${quantityText}` : quantityText;
 }
 
-function buildInventoryItems(stones = [], charms = [], spacers = [], stonePurchaseCostSummaries = []) {
-  const stonePurchaseCostIndex = createStonePurchaseCostIndex(stonePurchaseCostSummaries);
+function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCostSummaries = {}) {
+  const stonePurchaseCostIndex = createStonePurchaseCostIndex(purchaseCostSummaries?.stones);
+  const charmPurchaseCostIndex = createCatalogPurchaseCostIndex(purchaseCostSummaries?.charms);
+  const spacerPurchaseCostIndex = createCatalogPurchaseCostIndex(purchaseCostSummaries?.spacers);
   const stoneItems = stones.map((stone) => {
     const categoryKey = stone.categoryId || stone.category;
     const categoryLabel = getCategoryLabelById(categoryKey, 'stone');
@@ -1581,7 +1598,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], stonePurcha
       nameEn,
       meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
-      costText: '&mdash;',
+      costText: formatInventoryCatalogCost(charm.id, charmPurchaseCostIndex),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(charm),
@@ -1615,7 +1632,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], stonePurcha
       nameEn,
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
-      costText: '&mdash;',
+      costText: formatInventoryCatalogCost(spacer.id, spacerPurchaseCostIndex),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
       isInStock: isCrmItemInStock(spacer),
@@ -1638,7 +1655,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], stonePurcha
   return [...stoneItems, ...charmItems, ...spacerItems];
 }
 
-function renderInventoryCatalog(stones, charms = [], spacers = [], stonePurchaseCostSummaries = []) {
+function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostSummaries = {}) {
   const query = DOM.inventorySearch.value.trim().toLowerCase();
   const activeType = CRMState.inventoryTypeFilter || 'all';
   DOM.inventoryTypeTabs.forEach((tab) => {
@@ -1647,7 +1664,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], stonePurchase
     tab.setAttribute('aria-pressed', String(isActive));
   });
 
-  const filtered = buildInventoryItems(stones, charms, spacers, stonePurchaseCostSummaries).filter((item) => {
+  const filtered = buildInventoryItems(stones, charms, spacers, purchaseCostSummaries).filter((item) => {
     if (activeType !== 'all' && item.type !== activeType) return false;
     if (!query) return true;
     return item.searchText.includes(query);
@@ -3105,9 +3122,9 @@ async function openEditStoneForm(stoneId) {
 
   const [categories, summaries] = await Promise.all([
     getSharedCategoryCatalog('all'),
-    getSharedStonePurchaseCostSummaries().catch(() => CRMState.stonePurchaseCostSummaries)
+    getSharedPurchaseCostSummaries().catch(() => CRMState.purchaseCostSummaries)
   ]);
-  CRMState.stonePurchaseCostSummaries = summaries;
+  CRMState.purchaseCostSummaries = summaries;
   syncCategoryAssignmentSelects(categories, stone.categoryId || stone.category);
   
   CRMState.activeEditStoneId = stoneId;
@@ -3141,7 +3158,7 @@ async function openEditStoneForm(stoneId) {
 }
 
 function setStoneCostInputs(stone) {
-  const purchaseCostIndex = createStonePurchaseCostIndex(CRMState.stonePurchaseCostSummaries);
+  const purchaseCostIndex = createStonePurchaseCostIndex(CRMState.purchaseCostSummaries?.stones);
   [4, 6, 10].forEach((size) => {
     const input = DOM[`crudStoneManualCostP${size}`];
     const manualCost = getStoneManualCost(stone, size);
