@@ -1512,6 +1512,13 @@ function formatInventoryStoneCost(stone, costIndex) {
     .join(' / ') || '&mdash;';
 }
 
+function formatInventoryStoneSizeStatus(stone) {
+  const enabledSizes = new Set(Array.isArray(stone?.sizes) ? stone.sizes.map(Number) : []);
+  return [4, 6, 10]
+    .map((size) => `${size}mm${enabledSizes.has(size) ? ' ✓' : ''}`)
+    .join(' / ');
+}
+
 function formatInventoryStockSummary(item, sizes = []) {
   const sizeText = sizes.map((size) => `${size}mm`).join(' / ');
   const quantityText = item.stockQty === null || item.stockQty === undefined
@@ -1540,6 +1547,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], stonePurcha
       meta: categoryLabel.th || stone.categoryTh || stone.category || categoryKey || 'Uncategorized',
       priceText: formatInventoryStonePrice(stone),
       costText: formatInventoryStoneCost(stone, stonePurchaseCostIndex),
+      statusText: formatInventoryStoneSizeStatus(stone),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }, supportedSizes),
       isInStock: isCrmItemInStock(stone),
@@ -1678,6 +1686,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], stonePurchase
       </td>
       <td data-label="Price"><span class="inventory-price">${item.priceText}</span></td>
       <td data-label="Cost"><span class="inventory-cost">${item.costText}</span></td>
+      <td data-label="Status"><span class="inventory-size">${item.type === 'stone' ? item.statusText : '&mdash;'}</span></td>
       <td data-label="Actions" class="text-right">
         <div class="action-btns inventory-action-btns">
           <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${actionTitle}" ${actionDisabled}>

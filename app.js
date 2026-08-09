@@ -348,6 +348,12 @@ function isCustomerCatalogItemAvailable(item) {
   return stockQty === null || stockQty > 0;
 }
 
+function isStoneAvailableForCurrentBeadSize(stone) {
+  const selectedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : State.beadSize;
+  const beadSize = Number(normalizeBeadSizeOption(selectedSize));
+  return Array.isArray(stone?.sizes) && stone.sizes.map(Number).includes(beadSize);
+}
+
 function adaptSpacerRecordForCustomer(record) {
   if (!record || typeof record !== 'object') return null;
   const stockQty = normalizeStockQtyForCustomer(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty);
@@ -4663,7 +4669,10 @@ function renderCatalogGrid() {
   const selectedStoneCounts = getSelectedStoneCountsById();
   
   // Filter out of stock items
-  const availableStones = applyCatalogLayoutOrder(STONES.filter(isCustomerCatalogItemAvailable), 'stones');
+  const availableStones = applyCatalogLayoutOrder(
+    STONES.filter((stone) => isCustomerCatalogItemAvailable(stone) && isStoneAvailableForCurrentBeadSize(stone)),
+    'stones'
+  );
   
   const filtered = State.activeCategory === 'all' 
     ? availableStones 
@@ -4728,7 +4737,7 @@ function placeLoopItemInFirstAvailableSlot(loopItem) {
 function fillEntireBracelet(stoneId) {
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
-  if (!isCustomerCatalogItemAvailable(stoneData)) {
+  if (!isCustomerCatalogItemAvailable(stoneData) || !isStoneAvailableForCurrentBeadSize(stoneData)) {
     trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId, source: 'fill_all' });
     showToast(STOCK_UNAVAILABLE_TOAST);
     return;
@@ -4789,7 +4798,7 @@ function addStoneToBracelet(stoneId) {
   }
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
-  if (!isCustomerCatalogItemAvailable(stoneData)) {
+  if (!isCustomerCatalogItemAvailable(stoneData) || !isStoneAvailableForCurrentBeadSize(stoneData)) {
     trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId });
     showToast(STOCK_UNAVAILABLE_TOAST);
     renderCatalogGrid();
