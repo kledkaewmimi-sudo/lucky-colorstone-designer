@@ -228,9 +228,6 @@ const DOM = {
   crudStoneManualCostP4: document.getElementById('crudStoneManualCostP4'),
   crudStoneManualCostP6: document.getElementById('crudStoneManualCostP6'),
   crudStoneManualCostP10: document.getElementById('crudStoneManualCostP10'),
-  crudStoneCostSourceP4: document.getElementById('crudStoneCostSourceP4'),
-  crudStoneCostSourceP6: document.getElementById('crudStoneCostSourceP6'),
-  crudStoneCostSourceP10: document.getElementById('crudStoneCostSourceP10'),
   crudStoneCategory: document.getElementById('crudStoneCategory'),
   crudStoneImage: document.getElementById('crudStoneImage'),
   crudStoneImageFile: document.getElementById('crudStoneImageFile'),
@@ -1508,9 +1505,9 @@ function getEffectiveStoneCost(stone, size, costIndex) {
 function formatInventoryStoneCost(stone, costIndex) {
   return getInventoryStoneSizes(stone)
     .map((size) => {
-      const { cost, source } = getEffectiveStoneCost(stone, size, costIndex);
+      const { cost } = getEffectiveStoneCost(stone, size, costIndex);
       const value = Number.isFinite(cost) ? `&#3647;${cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '&mdash;';
-      return `${size}mm ${value}${source ? ` <small class="inventory-cost-source">${source === 'purchases' ? 'AUTO' : 'MANUAL'}</small>` : ''}`;
+      return `${size}mm ${value}`;
     })
     .join(' / ') || '&mdash;';
 }
@@ -3138,7 +3135,6 @@ function setStoneCostInputs(stone) {
   const purchaseCostIndex = createStonePurchaseCostIndex(CRMState.stonePurchaseCostSummaries);
   [4, 6, 10].forEach((size) => {
     const input = DOM[`crudStoneManualCostP${size}`];
-    const sourceLabel = DOM[`crudStoneCostSourceP${size}`];
     const manualCost = getStoneManualCost(stone, size);
     const calculatedCost = purchaseCostIndex.get(`${stone?.id || ''}|${size}`);
     input.dataset.manualCost = Number.isFinite(manualCost) ? String(manualCost) : '';
@@ -3146,12 +3142,10 @@ function setStoneCostInputs(stone) {
       input.value = calculatedCost.toFixed(2);
       input.readOnly = true;
       input.title = 'Active cost is calculated from Purchases. The stored manual fallback will be used if all purchase records are deleted.';
-      sourceLabel.textContent = 'Auto';
     } else {
       input.value = Number.isFinite(manualCost) ? manualCost : '';
       input.readOnly = false;
       input.title = 'Manual fallback cost per bead.';
-      sourceLabel.textContent = 'Manual';
     }
   });
 }

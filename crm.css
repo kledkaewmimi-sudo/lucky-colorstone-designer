@@ -3664,14 +3664,6 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
 }
 
-.inventory-cost-source,
-.stone-size-pricing label small {
-  color: var(--color-navy-muted);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
 .stone-price-cost-fields {
   display: grid;
   gap: 12px;
