@@ -177,6 +177,12 @@ function validateManualStoneCosts(record = {}) {
   }
 }
 
+function validateManualSpacerCost(record = {}) {
+  const value = record.manualCost;
+  if (value === undefined || value === null || value === '') return;
+  if (!Number.isFinite(Number(value)) || Number(value) < 0) throw new Error('Manual spacer cost must be a non-negative number.');
+}
+
 async function readRequestBody(req) {
   return await new Promise((resolve, reject) => {
     const chunks = [];
@@ -3342,6 +3348,7 @@ async function handleApiRequest(req, res, urlObj) {
       }
 
       const nextRecord = { ...bodyObj, id: spacerId };
+      validateManualSpacerCost(nextRecord);
       if (hasCorruptedThaiCatalogText(nextRecord)) {
         sendJson(res, 400, { error: 'Invalid Thai catalog text encoding.' });
         return true;

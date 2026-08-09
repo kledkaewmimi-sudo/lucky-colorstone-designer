@@ -275,6 +275,8 @@ const DOM = {
   crudCharmImagePreview: document.getElementById('crudCharmImagePreview'),
   crudCharmSizeCm: document.getElementById('crudCharmSizeCm'),
   crudCharmPrice: document.getElementById('crudCharmPrice'),
+  crudSpacerManualCostGroup: document.getElementById('crudSpacerManualCostGroup'),
+  crudSpacerManualCost: document.getElementById('crudSpacerManualCost'),
   crudCharmDisplayOrder: document.getElementById('crudCharmDisplayOrder'),
   crudCharmStockQty: document.getElementById('crudCharmStockQty'),
   crudCharmMeaningTh: document.getElementById('crudCharmMeaningTh'),
@@ -1531,8 +1533,16 @@ function formatInventoryStoneCost(stone, costIndex) {
     .join(' / ') || '&mdash;';
 }
 
-function formatInventoryCatalogCost(catalogItemId, costIndex) {
-  const cost = costIndex.get(String(catalogItemId || '').trim());
+function getSpacerManualCost(spacer) {
+  const value = spacer?.manualCost;
+  if (value === undefined || value === null || value === '') return null;
+  const cost = Number(value);
+  return Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
+
+function formatInventoryCatalogCost(catalogItemId, costIndex, manualCost = null) {
+  const calculatedCost = costIndex.get(String(catalogItemId || '').trim());
+  const cost = Number.isFinite(calculatedCost) ? calculatedCost : manualCost;
   return Number.isFinite(cost)
     ? `&#3647;${cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : '&mdash;';
@@ -1644,7 +1654,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
       nameEn,
       meta: [spacer.type, spacer.color].filter(Boolean).join(' / ') || CRM_COMPONENT_LABELS.spacer,
       priceText: `&#3647;${Number(spacer.pricing?.base || 0).toLocaleString()}`,
-      costText: formatInventoryCatalogCost(spacer.id, spacerPurchaseCostIndex),
+      costText: formatInventoryCatalogCost(spacer.id, spacerPurchaseCostIndex, getSpacerManualCost(spacer)),
       statusText: formatInventoryCatalogStatus(spacer),
       stockQty,
       stockSummary: formatInventoryStockSummary({ stockQty }),
@@ -2728,6 +2738,7 @@ function configureComponentCrudForm(type) {
   if (sizeLabel) sizeLabel.textContent = isSpacer ? 'Size (mm)' : 'Size (cm)';
   if (stockTip) stockTip.textContent = `Set to 0 to hide this ${label.toLowerCase()} from the customer catalog.`;
   if (saveButton) saveButton.textContent = isSpacer ? `Save ${label}` : 'Save Talisman';
+  if (DOM.crudSpacerManualCostGroup) DOM.crudSpacerManualCostGroup.hidden = !isSpacer;
 }
 
 function ensureComponentCollectionOption(value) {
@@ -3068,6 +3079,7 @@ async function openEditSpacerForm(spacerId) {
   updateImagePreview(DOM.crudCharmImagePreview, DOM.crudCharmImage.value);
   DOM.crudCharmSizeCm.value = Number(spacer.business?.displaySizeMm ?? spacer.business?.sizeMm ?? spacer.sizeMm ?? 0);
   DOM.crudCharmPrice.value = Number(spacer.pricing?.base || 0);
+  DOM.crudSpacerManualCost.value = Number.isFinite(getSpacerManualCost(spacer)) ? getSpacerManualCost(spacer) : '';
   DOM.crudCharmDisplayOrder.value = spacer.displayOrder ?? '';
   DOM.crudCharmStockQty.value = getCrmStockQty(spacer) ?? '';
   DOM.crudCharmMeaningTh.value = spacer.meaning?.th || '';
@@ -3095,11 +3107,18 @@ async function handleSaveCharmType(e) {
 
   const sizeValue = Number(DOM.crudCharmSizeCm.value);
   const stockQty = normalizeStockQtyForCrm(DOM.crudCharmStockQty.value, 0);
+  const manualCostValue = DOM.crudSpacerManualCost.value.trim();
+  const manualCost = manualCostValue === '' ? null : Number(manualCostValue);
+  if (isSpacer && (!Number.isFinite(manualCost) || manualCost < 0)) {
+    showToast('Manual cost must be a non-negative number.');
+    return;
+  }
   const recordId = DOM.crudCharmRecordId.value.trim() || DOM.crudCharmId.value.trim();
   const normalizedRecord = {
     ...(existingItem || {}),
     id: DOM.crudCharmId.value.trim(),
     entityType: isSpacer ? 'spacer' : 'charm',
+    ...(isSpacer ? { manualCost } : {}),
     sku: DOM.crudCharmSku.value.trim(),
     slug: recordId.toLowerCase(),
     name: {

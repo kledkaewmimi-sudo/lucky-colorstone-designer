@@ -1152,6 +1152,10 @@ function normalizeSpacerRecord(record, index = 0) {
   const displaySizeMm = toFiniteNumber(record.business?.displaySizeMm ?? record.displaySizeMm ?? record.sizeMm, 0);
   const effectiveLengthMm = toFiniteNumber(record.business?.effectiveLengthMm ?? record.effectiveLengthMm ?? record.footprintMm, displaySizeMm);
   const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
+  const manualCostValue = record.manualCost;
+  const manualCost = manualCostValue === undefined || manualCostValue === null || manualCostValue === ''
+    ? null
+    : (Number.isFinite(Number(manualCostValue)) && Number(manualCostValue) >= 0 ? Number(manualCostValue) : null);
 
   return {
     id,
@@ -1166,6 +1170,7 @@ function normalizeSpacerRecord(record, index = 0) {
     type: record.type || "spacer",
     collection: record.collection || "spacer",
     color: record.color || "",
+    manualCost,
     image: {
       primary: record.image?.primary || record.image || ""
     },
