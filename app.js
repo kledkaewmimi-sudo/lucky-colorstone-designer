@@ -14,11 +14,13 @@ const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload'
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
+const STEP3_INFO_HINT_SEEN_KEY = 'lucky_step3_info_hint_seen';
 const ANALYTICS_SESSION_ID_KEY = 'lucky_analytics_session_id';
 const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
 const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
 const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
 const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
+const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.get('showStep3InfoHint') === '1';
 const LIFF_ID = '2010525799-qImIuhla';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
@@ -228,6 +230,11 @@ let isDraggingWristPicker = false;
 let step3CategoryHintTimer = null;
 let step3CategoryHintSequenceTimers = [];
 let step3CategoryHintPlayedThisPage = false;
+let step3InfoHintTimers = [];
+let step3InfoHintPlayedThisPage = false;
+let step3InfoHintModalOpen = false;
+let step3InfoHintAutoClosing = false;
+let step3InfoHintTarget = null;
 let step3NextWasComplete = false;
 let step3NextEnterTimer = null;
 let step2SupportRotationTimer = null;
@@ -2355,6 +2362,7 @@ async function goToStep(step) {
   if (step < 1 || step > 4) return;
   if (State.currentStep === 3 && step !== 3) {
     dismissStep3CategoryHint();
+    dismissStep3InfoHint();
   }
   if (State.currentStep === 3 && step < 3) {
     resetStep3DesignState(`step3-back-to-${step}`);
@@ -4571,12 +4579,14 @@ function setupStep3CategoryHintDismissEvents() {
       '.catalog-type-tab, .filter-tab, .stone-card, .stone-add-btn, .info-icon-btn, .canvas-card, .mixed-size-selector-bar'
     )) {
       dismissStep3CategoryHint();
+      dismissStep3InfoHint({ markSeen: Boolean(event.target.closest('.info-icon-btn')) });
     }
   });
 
   step3View.addEventListener('pointerdown', (event) => {
     if (event.target.closest('.canvas-card')) {
       dismissStep3CategoryHint();
+      dismissStep3InfoHint();
     }
   }, { passive: true });
 
@@ -4595,11 +4605,16 @@ function setupStep3CategoryHintDismissEvents() {
       const deltaX = Math.abs((target.scrollLeft || 0) - lastScrollLeft);
       if (deltaY > 16 || deltaX > 16) {
         dismissStep3CategoryHint();
+        dismissStep3InfoHint();
       }
       lastScrollTop = target.scrollTop || 0;
       lastScrollLeft = target.scrollLeft || 0;
     }, { passive: true });
   });
+
+  window.addEventListener('scroll', () => {
+    dismissStep3InfoHint();
+  }, { passive: true });
 
   step3View.dataset.categoryHintEventsReady = 'true';
 }
@@ -5842,9 +5857,15 @@ function renderStep3() {
 function showStep3CategoryHint() {
   const step3View = document.getElementById('stepView3');
   if (!step3View || !step3View.classList.contains('active')) return;
-  if (getAllowedDesignerCategories().length <= 1) return;
+  if (getAllowedDesignerCategories().length <= 1) {
+    showStep3InfoHint();
+    return;
+  }
   if (step3CategoryHintPlayedThisPage) return;
-  if (!FORCE_STEP3_CATEGORY_HINT && sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') return;
+  if (!FORCE_STEP3_CATEGORY_HINT && sessionStorage.getItem(STEP3_CATEGORY_HINT_SEEN_KEY) === 'true') {
+    showStep3InfoHint();
+    return;
+  }
   if (step3View.classList.contains('step3-tab-hinting') || step3View.classList.contains('step3-tab-hint-pending')) return;
 
   setActiveCatalogSection('stones');
@@ -5892,6 +5913,7 @@ function dismissStep3CategoryHint() {
 function completeStep3CategoryHint() {
   setActiveCatalogSection('stones');
   dismissStep3CategoryHint();
+  showStep3InfoHint();
 }
 
 function clearStep3CategoryHintTimers() {
@@ -5917,6 +5939,89 @@ function clearStep3CategoryHintTab() {
   document
     .querySelectorAll('#stepView3 .catalog-type-tab.step3-tab-hint-active')
     .forEach((tab) => tab.classList.remove('step3-tab-hint-active'));
+}
+
+function showStep3InfoHint() {
+  const step3View = document.getElementById('stepView3');
+  if (!step3View || !step3View.classList.contains('active')) return;
+  if (step3InfoHintPlayedThisPage) return;
+  if (!FORCE_STEP3_INFO_HINT && localStorage.getItem(STEP3_INFO_HINT_SEEN_KEY) === 'true') return;
+  if (step3View.classList.contains('step3-tab-hinting') || step3View.classList.contains('step3-tab-hint-pending')) return;
+
+  step3InfoHintPlayedThisPage = true;
+  clearStep3InfoHintTimers();
+  step3InfoHintTimers.push(window.setTimeout(startStep3InfoHintSequence, 260));
+}
+
+function getStep3InfoHintTarget() {
+  const cards = Array.from(DOM.stoneCatalogGrid?.querySelectorAll('.stone-card[data-stone-id]') || []);
+  const card = cards.find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+  });
+  const infoButton = card?.querySelector('.info-icon-btn');
+  const stoneId = card?.getAttribute('data-stone-id');
+  const stone = STONES.find((candidate) => candidate.id === stoneId);
+  return card && infoButton && stone ? { card, infoButton, stone } : null;
+}
+
+function startStep3InfoHintSequence() {
+  const step3View = document.getElementById('stepView3');
+  if (!step3View || !step3View.classList.contains('active')) return;
+
+  const target = getStep3InfoHintTarget();
+  if (!target) return;
+
+  step3InfoHintTarget = target;
+  target.card.classList.add('step3-info-hint-card');
+  step3InfoHintTimers.push(window.setTimeout(() => {
+    target.card.classList.remove('step3-info-hint-card');
+    target.infoButton.classList.add('step3-info-hint-button');
+  }, 900));
+  step3InfoHintTimers.push(window.setTimeout(() => {
+    target.infoButton.classList.remove('step3-info-hint-button');
+    if (!target.infoButton.isConnected || !step3View.classList.contains('active')) return;
+    step3InfoHintModalOpen = true;
+    openStoneInfoModal(target.stone);
+  }, 1900));
+  step3InfoHintTimers.push(window.setTimeout(() => {
+    if (!step3InfoHintModalOpen) return;
+    step3InfoHintAutoClosing = true;
+    closeStoneInfoModal();
+    step3InfoHintAutoClosing = false;
+    finishStep3InfoHint();
+  }, 3900));
+}
+
+function finishStep3InfoHint() {
+  clearStep3InfoHintTimers();
+  const infoButton = step3InfoHintTarget?.infoButton;
+  if (!infoButton?.isConnected) {
+    step3InfoHintTarget = null;
+    return;
+  }
+
+  infoButton.classList.add('step3-info-hint-final');
+  step3InfoHintTimers.push(window.setTimeout(() => {
+    infoButton.classList.remove('step3-info-hint-final');
+    step3InfoHintTarget = null;
+    localStorage.setItem(STEP3_INFO_HINT_SEEN_KEY, 'true');
+  }, 1000));
+}
+
+function dismissStep3InfoHint({ markSeen = false } = {}) {
+  if (!step3InfoHintTarget && step3InfoHintTimers.length === 0) return;
+  clearStep3InfoHintTimers();
+  step3InfoHintTarget?.card.classList.remove('step3-info-hint-card');
+  step3InfoHintTarget?.infoButton.classList.remove('step3-info-hint-button', 'step3-info-hint-final');
+  step3InfoHintTarget = null;
+  step3InfoHintPlayedThisPage = true;
+  if (markSeen) localStorage.setItem(STEP3_INFO_HINT_SEEN_KEY, 'true');
+}
+
+function clearStep3InfoHintTimers() {
+  step3InfoHintTimers.forEach((timerId) => window.clearTimeout(timerId));
+  step3InfoHintTimers = [];
 }
 
 // ==========================================
@@ -7804,8 +7909,13 @@ function openCharmInfoModal(charm) {
 }
 
 function closeStoneInfoModal() {
+  const wasStep3InfoHintDemo = step3InfoHintModalOpen;
+  step3InfoHintModalOpen = false;
   DOM.stoneInfoModal.classList.remove('show');
   currentModalStone = null;
+  if (wasStep3InfoHintDemo && !step3InfoHintAutoClosing) {
+    dismissStep3InfoHint({ markSeen: true });
+  }
 }
 
 function renderInspirationGallery() {

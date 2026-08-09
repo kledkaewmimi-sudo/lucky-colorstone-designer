@@ -2031,6 +2031,68 @@ option {
   }
 }
 
+#stepView3 .stone-card.step3-info-hint-card {
+  z-index: 2;
+  border-color: rgba(166, 125, 207, 0.72);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.92),
+    0 0 20px rgba(192, 156, 227, 0.42),
+    0 10px 20px rgba(135, 96, 172, 0.16);
+  animation: step3InfoCardGlow 900ms ease-in-out both;
+}
+
+#stepView3 .stone-card.step3-info-hint-card::after {
+  content: '✦';
+  position: absolute;
+  top: -7px;
+  right: 8px;
+  color: #C79A3A;
+  font-size: 13px;
+  text-shadow: 0 0 9px rgba(255, 255, 255, 0.96), 0 0 12px rgba(199, 154, 58, 0.52);
+  pointer-events: none;
+  animation: step3InfoSparkle 900ms ease-in-out both;
+}
+
+#stepView3 .info-icon-btn.step3-info-hint-button,
+#stepView3 .info-icon-btn.step3-info-hint-final {
+  color: #5B3EA6;
+  border-color: rgba(155, 115, 200, 0.8);
+  background: linear-gradient(145deg, #FFFFFF, #F3E9FF);
+  box-shadow: 0 0 0 3px rgba(226, 205, 247, 0.74), 0 0 16px rgba(187, 148, 222, 0.58);
+}
+
+#stepView3 .info-icon-btn.step3-info-hint-button {
+  animation: step3InfoButtonPulse 1000ms ease-in-out both;
+}
+
+#stepView3 .info-icon-btn.step3-info-hint-final {
+  animation: step3InfoButtonPulse 1000ms ease-in-out both;
+}
+
+@keyframes step3InfoCardGlow {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.018); }
+}
+
+@keyframes step3InfoSparkle {
+  0%, 100% { opacity: 0; transform: translateY(4px) scale(0.72); }
+  45% { opacity: 0.95; transform: translateY(-2px) scale(1); }
+}
+
+@keyframes step3InfoButtonPulse {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #stepView3 .stone-card.step3-info-hint-card,
+  #stepView3 .stone-card.step3-info-hint-card::after,
+  #stepView3 .info-icon-btn.step3-info-hint-button,
+  #stepView3 .info-icon-btn.step3-info-hint-final {
+    animation: none;
+  }
+}
+
 .charm-amulet-icon {
   width: 27px;
   height: 27px;
