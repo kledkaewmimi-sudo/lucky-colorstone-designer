@@ -3084,6 +3084,44 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname.startsWith('/api/purchases/') && pathname.endsWith('/catalog-link') && method === 'PATCH') {
+    if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
+    const id = decodeURIComponent(pathname.slice('/api/purchases/'.length, -'/catalog-link'.length));
+    const catalogItemId = String(bodyObj?.catalogItemId || '').trim();
+    if (!id || !catalogItemId) {
+      sendJson(res, 400, { error: 'Purchase ID and catalog item ID are required.' });
+      return true;
+    }
+
+    const [existingRows, stones] = await Promise.all([
+      supabaseRequest('stone_purchase_entries', { params: { select: '*', id: `eq.${id}`, limit: '1' } }),
+      readStonesForApi()
+    ]);
+    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    const stone = stones.find((entry) => entry.id === catalogItemId);
+    if (!existing) {
+      sendJson(res, 404, { error: 'Purchase entry not found.' });
+      return true;
+    }
+    if (existing.item_type !== 'stone' || !stone || !Array.isArray(stone.sizes) || !stone.sizes.map(Number).includes(Number(existing.size_mm))) {
+      sendJson(res, 400, { error: 'Purchase entry cannot be linked to this catalog stone.' });
+      return true;
+    }
+
+    const rows = await supabaseRequest('stone_purchase_entries', {
+      method: 'PATCH',
+      params: { id: `eq.${id}` },
+      body: { catalog_item_id: catalogItemId, stone_id: catalogItemId },
+      prefer: 'return=representation'
+    });
+    if (!Array.isArray(rows) || !rows[0]) {
+      sendJson(res, 404, { error: 'Purchase entry not found.' });
+      return true;
+    }
+    sendJson(res, 200, rows[0]);
+    return true;
+  }
+
   if (pathname.startsWith('/api/purchases/') && method === 'PUT') {
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));

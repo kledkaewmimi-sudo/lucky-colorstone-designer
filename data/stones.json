@@ -649,5 +649,28 @@
     "inStock": true,
     "nameEn": "Cherry Quartz",
     "categoryId": "love"
+  },
+  {
+    "id": "green_jade",
+    "name": "Green Jade",
+    "nameTh": "กรีนเจด",
+    "p6": 30,
+    "p10": 40,
+    "category": "wealth",
+    "categoryId": "wealth",
+    "meaning": "Symbolizes luck, prosperity, balance, and positive new opportunities.",
+    "meaningTh": "สื่อถึงโชคลาภ ความมั่งคั่ง ความสมดุล และโอกาสใหม่ที่ดี",
+    "image": "assets/Green Jade.png",
+    "sizes": [
+      6,
+      10
+    ],
+    "stockQty": 1000,
+    "inStock": true,
+    "isActive": true,
+    "displayOrder": 320,
+    "manualCost4mm": null,
+    "manualCost6mm": null,
+    "manualCost10mm": null
   }
 ]
