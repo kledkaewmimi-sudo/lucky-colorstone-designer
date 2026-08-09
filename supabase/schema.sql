@@ -105,24 +105,31 @@ create table if not exists public.stone_purchase_entries (
 );
 
 -- Safe additive migration: retain every historical stone purchase while allowing
--- Purchases to record talismans, charms, and free-text operational supplies.
-alter table public.stone_purchase_entries add column if not exists category text default 'stone';
+-- Purchases to record stones, charms, spacers, and free-text operational supplies.
+-- catalog_item_id is deliberately polymorphic; do not add a single-table foreign key.
+alter table public.stone_purchase_entries add column if not exists item_type text default 'stone';
 alter table public.stone_purchase_entries add column if not exists catalog_item_id text;
 alter table public.stone_purchase_entries add column if not exists item_name_snapshot text;
 alter table public.stone_purchase_entries alter column stone_id drop not null;
 alter table public.stone_purchase_entries alter column stone_name_snapshot drop not null;
 alter table public.stone_purchase_entries alter column size_mm drop not null;
 update public.stone_purchase_entries
-set category = coalesce(category, 'stone'),
+set item_type = coalesce(item_type, 'stone'),
     catalog_item_id = coalesce(catalog_item_id, stone_id),
     item_name_snapshot = coalesce(item_name_snapshot, stone_name_snapshot)
-where category is null or catalog_item_id is null or item_name_snapshot is null;
-alter table public.stone_purchase_entries alter column category set not null;
+where item_type is null or catalog_item_id is null or item_name_snapshot is null;
+alter table public.stone_purchase_entries alter column item_type set not null;
 alter table public.stone_purchase_entries alter column item_name_snapshot set not null;
 do $$
 begin
-  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_category_check') then
-    alter table public.stone_purchase_entries add constraint stone_purchase_entries_category_check check (category in ('stone', 'talisman', 'charm', 'other'));
+  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_item_type_check') then
+    alter table public.stone_purchase_entries add constraint stone_purchase_entries_item_type_check check (item_type in ('stone', 'charm', 'spacer', 'other'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_item_reference_check') then
+    alter table public.stone_purchase_entries add constraint stone_purchase_entries_item_reference_check check ((item_type = 'other' and catalog_item_id is null) or (item_type <> 'other' and catalog_item_id is not null));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_item_size_check') then
+    alter table public.stone_purchase_entries add constraint stone_purchase_entries_item_size_check check ((item_type = 'stone' and size_mm in (4, 6, 10)) or (item_type <> 'stone' and size_mm is null));
   end if;
 end;
 $$;
@@ -211,8 +218,8 @@ create index if not exists idx_stone_purchase_entries_date
   on public.stone_purchase_entries (purchased_at desc, created_at desc);
 create index if not exists idx_stone_purchase_entries_stone_size
   on public.stone_purchase_entries (stone_id, size_mm);
-create index if not exists idx_stone_purchase_entries_category_date
-  on public.stone_purchase_entries (category, purchased_at desc);
+create index if not exists idx_stone_purchase_entries_type_date
+  on public.stone_purchase_entries (item_type, purchased_at desc);
 create index if not exists idx_stone_purchase_entries_catalog_item
   on public.stone_purchase_entries (catalog_item_id, size_mm);
 
@@ -304,7 +311,7 @@ comment on table public.catalog_categories is 'Managed catalog category records 
 comment on table public.app_settings is 'Application settings stored as JSONB key/value records.';
 comment on table public.catalog_layout_order is 'Catalog layout ordering for CRM/customer display surfaces.';
 comment on table public.orders is 'Customer order records. payload preserves the full current order object for compatibility.';
-comment on table public.stone_purchase_entries is 'Historical and current supplier purchase cost entries for stones, talismans, charms, and supplies. Does not adjust inventory stock or selling prices.';
+comment on table public.stone_purchase_entries is 'Historical and current supplier purchase cost entries for stones, charms, spacers, and supplies. catalog_item_id is a logical polymorphic reference. Does not adjust inventory stock or selling prices.';
 comment on table public.analytics_sessions is 'First-party anonymous customer analytics sessions with attribution and conversion linkage.';
 comment on table public.analytics_events is 'First-party customer journey events for source, funnel, timing, and order analytics.';
 comment on table public.analytics_errors is 'Captured frontend/API/image analytics errors for launch monitoring.';
