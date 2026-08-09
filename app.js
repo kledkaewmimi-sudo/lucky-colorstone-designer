@@ -7815,6 +7815,7 @@ function renderInspirationGallery() {
   INSPIRATION_SAMPLE_IMAGES.slice(0, 4).forEach((src, index) => {
     const card = document.createElement('figure');
     card.className = 'inspiration-gallery-item';
+    if (index === 0) card.classList.add('inspiration-gallery-item--sweet-heart');
 
     const img = document.createElement('img');
     img.src = src;

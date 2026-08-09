@@ -3401,6 +3401,11 @@ button.stone-card {
     linear-gradient(145deg, rgba(246,239,255,.98), rgba(255,248,253,.96));
 }
 
+.inspiration-gallery-item--sweet-heart img {
+  object-fit: cover;
+  object-position: center;
+}
+
 .inspiration-gallery-caption {
   display: flex;
   flex-direction: column;
