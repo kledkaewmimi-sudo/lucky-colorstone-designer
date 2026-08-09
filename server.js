@@ -2474,21 +2474,27 @@ async function readCharmsForApi() {
 
 function normalizePurchaseEntry(input, catalogs) {
   const itemType = String(input?.itemType || input?.category || 'stone').trim().toLowerCase();
-  const catalogItemId = String(input?.catalogItemId || input?.stoneId || '').trim();
+  const catalogItemId = String(input?.catalogItemId ?? input?.stoneId ?? '').trim() || null;
   const catalogByType = { stone: catalogs.stones, charm: catalogs.charms, spacer: catalogs.spacers };
   const catalogItem = (catalogByType[itemType] || []).find((entry) => entry.id === catalogItemId);
-  const itemName = String(input?.itemName || '').trim();
+  const itemName = String(input?.itemNameSnapshot ?? input?.itemName ?? '').trim();
   const sizeMm = input?.sizeMm == null || input?.sizeMm === '' ? null : Number(input.sizeMm);
   const quantity = Number(input?.quantity);
   const totalCost = Number(input?.totalCost);
   const purchasedAt = String(input?.purchasedAt || new Date().toISOString().slice(0, 10));
   if (!['stone', 'charm', 'spacer', 'other'].includes(itemType)) throw new Error('Invalid purchase type.');
-  if (itemType === 'other' ? !itemName : !catalogItem) throw new Error('Please select or enter a purchase item.');
-  if (itemType === 'stone' && (!([4, 6, 10].includes(sizeMm)) || !Array.isArray(catalogItem.sizes) || !catalogItem.sizes.map(Number).includes(sizeMm))) throw new Error('Invalid stone or size.');
+  if (itemType === 'stone') {
+    if (catalogItemId ? !catalogItem : !itemName) throw new Error('Please select or enter a stone.');
+    if (!([4, 6, 10].includes(sizeMm)) || (catalogItem && (!Array.isArray(catalogItem.sizes) || !catalogItem.sizes.map(Number).includes(sizeMm)))) throw new Error('Invalid stone or size.');
+  } else if (itemType === 'other') {
+    if (catalogItemId || !itemName) throw new Error('Please enter a purchase item.');
+  } else if (!catalogItem) {
+    throw new Error('Please select a purchase item.');
+  }
   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Quantity must be a positive integer.');
   if (!Number.isFinite(totalCost) || totalCost < 0) throw new Error('Total cost must be zero or greater.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt)) throw new Error('Invalid purchase date.');
-  const nameSnapshot = itemType === 'other' ? itemName : (catalogItem.name?.th || catalogItem.nameTh || catalogItem.name?.en || catalogItem.nameEn || catalogItem.name || catalogItemId);
+  const nameSnapshot = catalogItem ? (catalogItem.name?.th || catalogItem.nameTh || catalogItem.name?.en || catalogItem.nameEn || catalogItem.name || catalogItemId) : itemName;
   return { item_type: itemType, catalog_item_id: itemType === 'other' ? null : catalogItemId, item_name_snapshot: nameSnapshot, purchased_at: purchasedAt, stone_id: itemType === 'stone' ? catalogItemId : null, stone_name_snapshot: itemType === 'stone' ? nameSnapshot : null, size_mm: itemType === 'stone' ? sizeMm : null, quantity, total_cost: totalCost, unit_cost: totalCost / quantity, supplier: String(input?.supplier || '').trim() || null, note: String(input?.note || '').trim() || null };
 }
 
