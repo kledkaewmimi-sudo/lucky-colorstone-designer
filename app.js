@@ -5977,20 +5977,20 @@ function startStep3InfoHintSequence() {
   step3InfoHintTimers.push(window.setTimeout(() => {
     target.card.classList.remove('step3-info-hint-card');
     target.infoButton.classList.add('step3-info-hint-button');
-  }, 900));
+  }, 1000));
   step3InfoHintTimers.push(window.setTimeout(() => {
     target.infoButton.classList.remove('step3-info-hint-button');
     if (!target.infoButton.isConnected || !step3View.classList.contains('active')) return;
     step3InfoHintModalOpen = true;
     openStoneInfoModal(target.stone);
-  }, 1900));
+  }, 2000));
   step3InfoHintTimers.push(window.setTimeout(() => {
     if (!step3InfoHintModalOpen) return;
     step3InfoHintAutoClosing = true;
     closeStoneInfoModal();
     step3InfoHintAutoClosing = false;
     finishStep3InfoHint();
-  }, 3900));
+  }, 3500));
 }
 
 function finishStep3InfoHint() {
@@ -6001,19 +6001,29 @@ function finishStep3InfoHint() {
     return;
   }
 
+  step3InfoHintTarget.card.classList.add('step3-info-hint-card-final');
   infoButton.classList.add('step3-info-hint-final');
+  const callout = document.createElement('span');
+  callout.className = 'step3-info-hint-callout';
+  callout.textContent = '\u0e04\u0e27\u0e32\u0e21\u0e2b\u0e21\u0e32\u0e22\u0e02\u0e2d\u0e07\u0e2b\u0e34\u0e19';
+  callout.setAttribute('role', 'tooltip');
+  step3InfoHintTarget.card.appendChild(callout);
+  step3InfoHintTarget.callout = callout;
   step3InfoHintTimers.push(window.setTimeout(() => {
+    step3InfoHintTarget?.card.classList.remove('step3-info-hint-card-final');
     infoButton.classList.remove('step3-info-hint-final');
+    callout.remove();
     step3InfoHintTarget = null;
     localStorage.setItem(STEP3_INFO_HINT_SEEN_KEY, 'true');
-  }, 1000));
+  }, 2500));
 }
 
 function dismissStep3InfoHint({ markSeen = false } = {}) {
   if (!step3InfoHintTarget && step3InfoHintTimers.length === 0) return;
   clearStep3InfoHintTimers();
-  step3InfoHintTarget?.card.classList.remove('step3-info-hint-card');
+  step3InfoHintTarget?.card.classList.remove('step3-info-hint-card', 'step3-info-hint-card-final');
   step3InfoHintTarget?.infoButton.classList.remove('step3-info-hint-button', 'step3-info-hint-final');
+  step3InfoHintTarget?.callout?.remove();
   step3InfoHintTarget = null;
   step3InfoHintPlayedThisPage = true;
   if (markSeen) localStorage.setItem(STEP3_INFO_HINT_SEEN_KEY, 'true');
