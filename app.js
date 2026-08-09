@@ -213,6 +213,12 @@ let landingConnectPromptVisible = false;
 let landingPressTimer = null;
 let landingRippleTimer = null;
 let customizationResumeInProgress = false;
+let resolveCustomerStartupBootstrap;
+let rejectCustomerStartupBootstrap;
+const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
+  resolveCustomerStartupBootstrap = resolve;
+  rejectCustomerStartupBootstrap = reject;
+});
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
 let isDraggingWristPicker = false;
@@ -957,6 +963,7 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
 // 4. Initialisation
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+  try {
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
   const shouldResumeCustomizationStart = !returnParams.has('orderId') && hasCustomizationLoginIntent();
@@ -985,6 +992,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
   syncShellVisibility();
+  // The landing CTA must be interactive before LIFF and catalog bootstrapping finish.
+  // Its handler waits for this bootstrap promise and continues the original first tap.
+  setupLandingEvents();
   initAnalytics();
   if (!State.landingDismissed) {
     trackAnalyticsEvent('landing_view');
@@ -1036,7 +1046,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNavigationEvents();
   setupDesignerEvents();
   setupModalEvents();
-  setupLandingEvents();
   setupShippingFormEvents();
   
   // Polling for updates every 3 seconds to reflect CRM changes instantly
@@ -1059,6 +1068,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (customizationResumeInProgress) {
     await completeCustomizationStartResume();
+  }
+  resolveCustomerStartupBootstrap();
+  } catch (error) {
+    console.error('Customer startup bootstrap failed.', error);
+    rejectCustomerStartupBootstrap(error);
+    resetLandingStartAfterFailure('');
+    if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
   }
 });
 
@@ -1454,7 +1470,7 @@ function startLiffLoginForCustomization() {
   trackAnalyticsEvent('line_login_start');
   rememberCustomizationLoginIntent();
   saveState();
-  setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
+  setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
@@ -1484,7 +1500,7 @@ function openLineConnectEntryForCustomization() {
   trackAnalyticsEvent('line_login_start', { method: 'entry_url' });
   rememberCustomizationLoginIntent();
   saveState();
-  setLandingButtonState('line', 'กำลังเข้าสู่ระบบ LINE...');
+  setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
@@ -1523,7 +1539,7 @@ async function requireLineLoginForCustomization(options = {}) {
   }
 
   if (showLandingPrompt) {
-    showLineConnectPrompt();
+    return openLineConnectEntryForCustomization();
   } else {
     showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
   }
@@ -1579,6 +1595,8 @@ async function initLIFF() {
 }
 
 function setupLandingEvents() {
+  if (!DOM.btnLandingLogin || DOM.btnLandingLogin.dataset.startHandlerReady === 'true') return;
+  DOM.btnLandingLogin.dataset.startHandlerReady = 'true';
   DOM.btnLandingLogin.addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -1586,10 +1604,18 @@ function setupLandingEvents() {
     if (landingStartInProgress) return;
     landingStartInProgress = true;
     trackAnalyticsEvent('start_customize_click');
-    resetStep3DesignState('landing-start');
     triggerLandingStartFeedback();
-    setLandingButtonState('starting', 'กำลังเริ่มออกแบบ...');
-    await new Promise(resolve => window.setTimeout(resolve, 650));
+    setLandingButtonState('starting', 'กำลังเปิด...');
+
+    try {
+      await customerStartupBootstrapPromise;
+    } catch (bootstrapError) {
+      console.warn('Start customization blocked by startup bootstrap failure.', bootstrapError);
+      resetLandingStartAfterFailure('');
+      return;
+    }
+
+    resetStep3DesignState('landing-start');
 
     if (landingConnectPromptVisible) {
       if (canUseLiffLoginFromCurrentBrowser()) {
