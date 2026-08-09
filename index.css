@@ -2687,6 +2687,16 @@ button.stone-card {
   color: var(--color-navy-dark);
 }
 
+.billing-natural-variation-note {
+  margin: 0;
+  padding-top: 2px;
+  color: var(--color-navy-muted);
+  font-family: var(--font-ui-thai);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
 /* Pricing Logic styling */
 .pricing-breakdown {
   margin-top: 16px;

@@ -6231,6 +6231,11 @@ async function renderStep4() {
 
     DOM.billingItemsList.appendChild(div);
   });
+
+  const naturalVariationNote = document.createElement('p');
+  naturalVariationNote.className = 'billing-natural-variation-note';
+  naturalVariationNote.textContent = 'หมายเหตุ สีและลวดลายของหินจริงอาจต่างจากภาพเล็กน้อยตามธรรมชาติและสภาพแสง';
+  DOM.billingItemsList.appendChild(naturalVariationNote);
   
   // Use saved order pricing in order-detail mode; otherwise use the current effective discount settings.
   const savedOrderSnapshot = State.orderDetailSnapshot;
