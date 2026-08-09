@@ -360,6 +360,11 @@ function normalizeStoneRecord(record, index = 0) {
   const categoryId = String(record.categoryId || record.category || "").trim();
   const normalizedCategory = categoryId || "uncategorized";
   const stockQty = normalizeStockQty(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty, null);
+  const normalizeManualCost = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+  };
 
   const { p8: legacyP8, ...stoneRecord } = record;
   return {
@@ -370,6 +375,9 @@ function normalizeStoneRecord(record, index = 0) {
     p4: Number(record.p4 || record.price || 0),
     p6: Number(record.p6 || record.price || 0),
     p10: Number(record.p10 ?? legacyP8 ?? record.price ?? 0),
+    manualCost4mm: normalizeManualCost(record.manualCost4mm),
+    manualCost6mm: normalizeManualCost(record.manualCost6mm),
+    manualCost10mm: normalizeManualCost(record.manualCost10mm),
     category: normalizedCategory,
     categoryId: normalizedCategory,
     categoryTh: record.categoryTh || "",

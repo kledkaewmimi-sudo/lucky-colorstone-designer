@@ -1003,19 +1003,22 @@
           </div>
         </div>
 
-        <div class="form-grid-3">
-          <div class="form-group">
-            <label for="crudStonePriceP4">Price 4mm (฿ THB)</label>
-            <input type="number" id="crudStonePriceP4" min="0" required placeholder="e.g. 100">
-          </div>
-          <div class="form-group">
-            <label for="crudStonePriceP6">Price 6mm (฿ THB)</label>
-            <input type="number" id="crudStonePriceP6" min="0" required placeholder="e.g. 150">
-          </div>
-          <div class="form-group">
-            <label for="crudStonePriceP10">Price 10mm (฿ THB)</label>
-            <input type="number" id="crudStonePriceP10" min="0" required placeholder="e.g. 200">
-          </div>
+        <div class="stone-price-cost-fields">
+          <section class="stone-size-pricing">
+            <h4>4mm</h4>
+            <div class="form-group"><label for="crudStonePriceP4">Price (฿)</label><input type="number" id="crudStonePriceP4" min="0" required placeholder="e.g. 100"></div>
+            <div class="form-group"><label for="crudStoneManualCostP4">Cost (฿/bead) <small id="crudStoneCostSourceP4"></small></label><input type="number" id="crudStoneManualCostP4" min="0" step="0.01" placeholder="—"></div>
+          </section>
+          <section class="stone-size-pricing">
+            <h4>6mm</h4>
+            <div class="form-group"><label for="crudStonePriceP6">Price (฿)</label><input type="number" id="crudStonePriceP6" min="0" required placeholder="e.g. 150"></div>
+            <div class="form-group"><label for="crudStoneManualCostP6">Cost (฿/bead) <small id="crudStoneCostSourceP6"></small></label><input type="number" id="crudStoneManualCostP6" min="0" step="0.01" placeholder="—"></div>
+          </section>
+          <section class="stone-size-pricing">
+            <h4>10mm</h4>
+            <div class="form-group"><label for="crudStonePriceP10">Price (฿)</label><input type="number" id="crudStonePriceP10" min="0" required placeholder="e.g. 200"></div>
+            <div class="form-group"><label for="crudStoneManualCostP10">Cost (฿/bead) <small id="crudStoneCostSourceP10"></small></label><input type="number" id="crudStoneManualCostP10" min="0" step="0.01" placeholder="—"></div>
+          </section>
         </div>
 
         <div class="form-grid">

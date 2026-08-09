@@ -225,6 +225,12 @@ const DOM = {
   crudStonePriceP4: document.getElementById('crudStonePriceP4'),
   crudStonePriceP6: document.getElementById('crudStonePriceP6'),
   crudStonePriceP10: document.getElementById('crudStonePriceP10'),
+  crudStoneManualCostP4: document.getElementById('crudStoneManualCostP4'),
+  crudStoneManualCostP6: document.getElementById('crudStoneManualCostP6'),
+  crudStoneManualCostP10: document.getElementById('crudStoneManualCostP10'),
+  crudStoneCostSourceP4: document.getElementById('crudStoneCostSourceP4'),
+  crudStoneCostSourceP6: document.getElementById('crudStoneCostSourceP6'),
+  crudStoneCostSourceP10: document.getElementById('crudStoneCostSourceP10'),
   crudStoneCategory: document.getElementById('crudStoneCategory'),
   crudStoneImage: document.getElementById('crudStoneImage'),
   crudStoneImageFile: document.getElementById('crudStoneImageFile'),
@@ -1487,11 +1493,24 @@ function createStonePurchaseCostIndex(summaries = []) {
   }, new Map());
 }
 
+function getStoneManualCost(stone, size) {
+  const cost = Number(stone?.[`manualCost${size}mm`]);
+  return Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
+
+function getEffectiveStoneCost(stone, size, costIndex) {
+  const calculatedCost = costIndex.get(`${stone.id}|${size}`);
+  if (Number.isFinite(calculatedCost)) return { cost: calculatedCost, source: 'purchases' };
+  const manualCost = getStoneManualCost(stone, size);
+  return Number.isFinite(manualCost) ? { cost: manualCost, source: 'manual' } : { cost: null, source: null };
+}
+
 function formatInventoryStoneCost(stone, costIndex) {
   return getInventoryStoneSizes(stone)
     .map((size) => {
-      const cost = costIndex.get(`${stone.id}|${size}`);
-      return `${size}mm ${Number.isFinite(cost) ? `&#3647;${cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '&mdash;'}`;
+      const { cost, source } = getEffectiveStoneCost(stone, size, costIndex);
+      const value = Number.isFinite(cost) ? `&#3647;${cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '&mdash;';
+      return `${size}mm ${value}${source ? ` <small class="inventory-cost-source">${source === 'purchases' ? 'AUTO' : 'MANUAL'}</small>` : ''}`;
     })
     .join(' / ') || '&mdash;';
 }
@@ -3058,6 +3077,7 @@ async function openAddStoneForm() {
   DOM.crudStonePriceP4.value = "";
   DOM.crudStonePriceP6.value = "";
   DOM.crudStonePriceP10.value = "";
+  setStoneCostInputs({});
   
   // Set all size checkboxes checked
   document.querySelectorAll('.crud-size-chk').forEach(c => c.checked = true);
@@ -3077,7 +3097,11 @@ async function openEditStoneForm(stoneId) {
   const stone = stones.find(s => s.id === stoneId);
   if (!stone) return;
 
-  const categories = await getSharedCategoryCatalog('all');
+  const [categories, summaries] = await Promise.all([
+    getSharedCategoryCatalog('all'),
+    getSharedStonePurchaseCostSummaries().catch(() => CRMState.stonePurchaseCostSummaries)
+  ]);
+  CRMState.stonePurchaseCostSummaries = summaries;
   syncCategoryAssignmentSelects(categories, stone.categoryId || stone.category);
   
   CRMState.activeEditStoneId = stoneId;
@@ -3091,6 +3115,7 @@ async function openEditStoneForm(stoneId) {
   DOM.crudStonePriceP4.value = stone.p4 !== undefined ? stone.p4 : stone.price || 0;
   DOM.crudStonePriceP6.value = stone.p6 !== undefined ? stone.p6 : stone.price || 0;
   DOM.crudStonePriceP10.value = stone.p10 !== undefined ? stone.p10 : stone.price || 0;
+  setStoneCostInputs(stone);
   DOM.crudStoneCategory.value = stone.categoryId || stone.category;
   DOM.crudStoneImage.value = stone.image;
   resetImageUploadState("Stone");
@@ -3109,6 +3134,36 @@ async function openEditStoneForm(stoneId) {
   DOM.stoneCrudModal.classList.add('show');
 }
 
+function setStoneCostInputs(stone) {
+  const purchaseCostIndex = createStonePurchaseCostIndex(CRMState.stonePurchaseCostSummaries);
+  [4, 6, 10].forEach((size) => {
+    const input = DOM[`crudStoneManualCostP${size}`];
+    const sourceLabel = DOM[`crudStoneCostSourceP${size}`];
+    const manualCost = getStoneManualCost(stone, size);
+    const calculatedCost = purchaseCostIndex.get(`${stone?.id || ''}|${size}`);
+    input.dataset.manualCost = Number.isFinite(manualCost) ? String(manualCost) : '';
+    if (Number.isFinite(calculatedCost)) {
+      input.value = calculatedCost.toFixed(2);
+      input.readOnly = true;
+      input.title = 'Active cost is calculated from Purchases. The stored manual fallback will be used if all purchase records are deleted.';
+      sourceLabel.textContent = 'Auto';
+    } else {
+      input.value = Number.isFinite(manualCost) ? manualCost : '';
+      input.readOnly = false;
+      input.title = 'Manual fallback cost per bead.';
+      sourceLabel.textContent = 'Manual';
+    }
+  });
+}
+
+function getStoneManualCostInput(size) {
+  const input = DOM[`crudStoneManualCostP${size}`];
+  const value = input.readOnly ? input.dataset.manualCost : input.value;
+  if (value === '') return null;
+  const cost = Number(value);
+  return Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
+
 function closeStoneForm() {
   DOM.stoneCrudModal.classList.remove('show');
   CRMState.activeEditStoneColor = '#E2C974';
@@ -3124,6 +3179,9 @@ async function handleSaveStoneType(e) {
   const p4 = parseInt(DOM.crudStonePriceP4.value);
   const p6 = parseInt(DOM.crudStonePriceP6.value);
   const p10 = parseInt(DOM.crudStonePriceP10.value);
+  const manualCost4mm = getStoneManualCostInput(4);
+  const manualCost6mm = getStoneManualCostInput(6);
+  const manualCost10mm = getStoneManualCostInput(10);
   const category = DOM.crudStoneCategory.value;
   const image = DOM.crudStoneImage.value.trim();
   const color = CRMState.activeEditStoneColor || '#E2C974';
@@ -3150,6 +3208,9 @@ async function handleSaveStoneType(e) {
     p4: p4,
     p6: p6,
     p10: p10,
+    manualCost4mm,
+    manualCost6mm,
+    manualCost10mm,
     category: category,
     categoryId: category,
     image: image,

@@ -169,6 +169,14 @@ function hasCorruptedThaiCatalogText(record = {}) {
     .some(hasCorruptedThaiText);
 }
 
+function validateManualStoneCosts(record = {}) {
+  for (const field of ['manualCost4mm', 'manualCost6mm', 'manualCost10mm']) {
+    const value = record[field];
+    if (value === undefined || value === null || value === '') continue;
+    if (!Number.isFinite(Number(value)) || Number(value) < 0) throw new Error('Manual stone cost must be a non-negative number.');
+  }
+}
+
 async function readRequestBody(req) {
   return await new Promise((resolve, reject) => {
     const chunks = [];
@@ -3069,6 +3077,12 @@ async function handleApiRequest(req, res, urlObj) {
     }
     if (hasCorruptedThaiCatalogText(bodyObj)) {
       sendJson(res, 400, { error: 'Invalid Thai catalog text encoding.' });
+      return true;
+    }
+    try {
+      validateManualStoneCosts(bodyObj);
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
       return true;
     }
 
