@@ -824,7 +824,9 @@ async function loadDashboardData(prefetched = {}) {
   // Calculate Metric values
   const totalOrdersCount = orders.length;
   
-  const netRevenueAmount = orders.reduce((sum, order) => sum + getOrderFinalPrice(order), 0);
+  const netRevenueAmount = orders
+    .filter(isOrderPaidForRevenue)
+    .reduce((sum, order) => sum + getOrderFinalPrice(order), 0);
   
   const activeStonesCount = stones.filter(isCrmItemInStock).length;
   const oosStonesCount = stones.filter((s) => !isCrmItemInStock(s)).length;
@@ -3540,6 +3542,10 @@ function getOrderFinalPrice(order = {}) {
     order.netPrice
   ].find((value) => Number.isFinite(Number(value)));
   return candidate == null ? 0 : Number(candidate);
+}
+
+function isOrderPaidForRevenue(order = {}) {
+  return String(order.stripePaymentStatus || order.paymentStatus || "").trim().toLowerCase() === "paid";
 }
 
 function getOrderItemizedBilling(order = {}) {
