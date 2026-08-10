@@ -147,6 +147,7 @@ const DOM = {
   analyticsTotalOrders: document.getElementById('analyticsTotalOrders'),
   analyticsConversionRate: document.getElementById('analyticsConversionRate'),
   analyticsTotalRevenue: document.getElementById('analyticsTotalRevenue'),
+  analyticsCheckoutStarted: document.getElementById('analyticsCheckoutStarted'),
   analyticsAov: document.getElementById('analyticsAov'),
   analyticsErrorsCount: document.getElementById('analyticsErrorsCount'),
   analyticsStatus: document.getElementById('analyticsStatus'),
@@ -1024,38 +1025,35 @@ function renderAnalyticsChannelCards(channels = []) {
     if (DOM.analyticsChannelInsight) DOM.analyticsChannelInsight.textContent = 'ยังไม่มีข้อมูลในช่วงเวลานี้';
     return;
   }
-  const best = rows.slice().sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0) || Number(b.orders || 0) - Number(a.orders || 0))[0];
   DOM.analyticsChannelCards.innerHTML = rows.map((row) => {
-    const isBest = best && row.channel === best.channel && (Number(row.revenue || 0) > 0 || Number(row.orders || 0) > 0);
+    const breakdown = Array.isArray(row.breakdown) ? row.breakdown : [];
+    const breakdownText = breakdown.length
+      ? breakdown.map((entry) => `${entry.label}: ${Number(entry.sessions || 0).toLocaleString()}`).join(' · ')
+      : 'No attributed sessions yet';
     return `
-      <article class="analytics-channel-card ${isBest ? 'is-best-channel' : ''}">
+      <article class="analytics-channel-card">
         <div class="analytics-channel-top">
           <span class="analytics-channel-badge">${escapeHtml(getAnalyticsChannelBadge(row.channel))}</span>
           <div>
-            <h5>${escapeHtml(row.channel || row.source || 'Direct / Unknown')}</h5>
-            <p>${escapeHtml(row.campaign || row.medium || '-')}</p>
+            <h5>${escapeHtml(row.channel || row.source || 'Others')}</h5>
+            <p>${escapeHtml(breakdownText)}</p>
           </div>
-          ${isBest ? '<span class="analytics-best-badge">ดีที่สุด</span>' : ''}
         </div>
         <div class="analytics-channel-main">
           <div><strong>${Number(row.sessions || 0).toLocaleString()}</strong><span>Sessions</span></div>
-          <div><strong>${Number(row.orders || 0).toLocaleString()}</strong><span>Orders</span></div>
+          <div><strong>${Number(row.checkoutStarted || 0).toLocaleString()}</strong><span>Checkout</span></div>
+          <div><strong>${Number(row.orders || row.paid || 0).toLocaleString()}</strong><span>Paid Orders</span></div>
           <div><strong>${formatAnalyticsPercent(row.conversionRate || 0)}</strong><span>CVR</span></div>
           <div><strong>${formatAnalyticsMoney(row.revenue || 0)}</strong><span>Revenue</span></div>
         </div>
         <div class="analytics-channel-foot">
-          <span>ถึง Step 3: ${Number(row.step3Sessions || 0).toLocaleString()}</span>
-          <span>ครบวง: ${Number(row.braceletCompleted || 0).toLocaleString()}</span>
-          <span>${Number(row.orders || 0) > 0 ? `AOV ${formatAnalyticsMoney(row.aov || 0)}` : 'ยังไม่มีออเดอร์'}</span>
+          <span>${Number(row.orders || row.paid || 0) > 0 ? `AOV ${formatAnalyticsMoney(row.aov || 0)}` : 'No paid orders yet'}</span>
         </div>
       </article>
     `;
   }).join('');
   if (DOM.analyticsChannelInsight) {
-    const top = rows.slice().sort((a, b) => Number(b.sessions || 0) - Number(a.sessions || 0))[0];
-    DOM.analyticsChannelInsight.textContent = top
-      ? `ช่องทางที่คนเข้ามามากสุด: ${top.channel || top.source || '-'} (${Number(top.sessions || 0).toLocaleString()} sessions)`
-      : 'ยังไม่มีข้อมูลในช่วงเวลานี้';
+    DOM.analyticsChannelInsight.textContent = 'Fixed owner groups. Original source, medium, and campaign remain in Source Detail below.';
   }
 }
 
@@ -1230,11 +1228,15 @@ function renderAnalyticsSummary(summary = {}) {
   if (DOM.analyticsTotalOrders) DOM.analyticsTotalOrders.textContent = totals.orders.toLocaleString();
   if (DOM.analyticsConversionRate) DOM.analyticsConversionRate.textContent = formatAnalyticsPercent(totals.conversionRate);
   if (DOM.analyticsTotalRevenue) DOM.analyticsTotalRevenue.textContent = formatAnalyticsMoney(totals.revenue);
+  const checkoutStarted = (Array.isArray(summary.funnel) ? summary.funnel : [])
+    .find((row) => row.key === 'checkout_started' || row.eventName === 'checkout_started');
+  if (DOM.analyticsCheckoutStarted) DOM.analyticsCheckoutStarted.textContent = Number(checkoutStarted?.sessions || 0).toLocaleString();
   if (DOM.analyticsAov) DOM.analyticsAov.textContent = formatAnalyticsMoney(totals.aov);
-  if (DOM.analyticsErrorsCount) DOM.analyticsErrorsCount.textContent = totals.errors.toLocaleString();
+  if (DOM.analyticsErrorsCount) DOM.analyticsErrorsCount.textContent = `Errors: ${totals.errors.toLocaleString()}`;
 
-  const bySource = Array.isArray(summary.channels) ? summary.channels : Array.isArray(summary.sources) ? summary.sources : Array.isArray(summary.bySource) ? summary.bySource : [];
-  renderAnalyticsChannelCards(bySource);
+  const bySource = Array.isArray(summary.sourceDetails) ? summary.sourceDetails : Array.isArray(summary.channels) ? summary.channels : Array.isArray(summary.sources) ? summary.sources : Array.isArray(summary.bySource) ? summary.bySource : [];
+  const ownerChannels = Array.isArray(summary.ownerChannels) ? summary.ownerChannels : bySource;
+  renderAnalyticsChannelCards(ownerChannels);
   if (bySource.length > 0 && DOM.analyticsSourceTableBody) {
     DOM.analyticsSourceTableBody.innerHTML = bySource.map((row) => `
       <tr>

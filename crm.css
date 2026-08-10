@@ -868,6 +868,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-navy-muted);
   font-size: 11px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .analytics-channel-badge {
@@ -1076,7 +1077,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .analytics-channel-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

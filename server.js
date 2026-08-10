@@ -2220,6 +2220,60 @@ function normalizeAnalyticsChannel(source, platformGuess) {
   return { channel: "Other / Unknown", source: raw || "other" };
 }
 
+const OWNER_ANALYTICS_CHANNELS = Object.freeze([
+  { key: "instagram", label: "Instagram" },
+  { key: "line", label: "LINE" },
+  { key: "facebook", label: "Facebook" },
+  { key: "others", label: "Others" }
+]);
+
+function getOwnerAnalyticsChannel(source, platformGuess) {
+  const channel = normalizeAnalyticsChannel(source, platformGuess).channel;
+  if (channel === "Instagram") return OWNER_ANALYTICS_CHANNELS[0];
+  if (channel === "LINE") return OWNER_ANALYTICS_CHANNELS[1];
+  if (channel === "Facebook") return OWNER_ANALYTICS_CHANNELS[2];
+  return OWNER_ANALYTICS_CHANNELS[3];
+}
+
+function getOwnerAnalyticsBreakdownLabel(ownerChannel, session = {}) {
+  const medium = String(session.first_medium || session.firstMedium || "").trim().toLowerCase();
+  if (ownerChannel.key === "instagram" || ownerChannel.key === "facebook") {
+    if (medium === "organic") return "Organic";
+    if (medium === "paid") return "Paid";
+    return "Other";
+  }
+  if (ownerChannel.key === "line") {
+    if (medium === "oa") return "OA";
+    if (medium === "organic") return "Organic";
+    return "Other";
+  }
+  return normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel;
+}
+
+function createOwnerAnalyticsChannelRow(definition) {
+  return {
+    key: definition.key,
+    channel: definition.label,
+    sessions: 0,
+    checkoutStarted: 0,
+    orders: 0,
+    paid: 0,
+    revenue: 0,
+    conversionRate: 0,
+    aov: 0,
+    breakdownMap: new Map()
+  };
+}
+
+function getOwnerAnalyticsBreakdownRow(ownerRow, session = {}) {
+  const label = getOwnerAnalyticsBreakdownLabel(ownerRow, session);
+  const key = label.toLowerCase();
+  if (!ownerRow.breakdownMap.has(key)) {
+    ownerRow.breakdownMap.set(key, { label, sessions: 0, checkoutStarted: 0, orders: 0, paid: 0, revenue: 0 });
+  }
+  return ownerRow.breakdownMap.get(key);
+}
+
 function getAnalyticsDateKey(value) {
   const time = value ? new Date(value) : null;
   if (!time || Number.isNaN(time.getTime())) return "";
@@ -2291,6 +2345,8 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const errors = includeTest ? analyticsRows.errors : analyticsRows.errors.filter((error) => !internalTestSessionIds.has(getAnalyticsSessionId(error)));
   const sessionById = new Map();
   const channelStats = new Map();
+  const sourceDetailStats = new Map();
+  const ownerChannelStats = new Map(OWNER_ANALYTICS_CHANNELS.map((definition) => [definition.key, createOwnerAnalyticsChannelRow(definition)]));
   const dailyStats = new Map();
   const channelDayStats = new Map();
   const funnelSessionSets = new Map(ANALYTICS_FUNNEL_STAGES.map(([eventName]) => [eventName, new Set()]));
@@ -2305,10 +2361,29 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     const sessionId = getAnalyticsSessionId(session);
     if (sessionId) sessionById.set(sessionId, session);
     const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+    const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+    const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
+    const ownerBreakdownRow = getOwnerAnalyticsBreakdownRow(ownerChannelRow, session);
     const channel = channelInfo.channel;
     const source = normalizeAnalyticsDimension(channelInfo.source, "direct/unknown");
     const medium = normalizeAnalyticsDimension(session.first_medium || session.firstMedium);
     const campaign = normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign);
+    const sourceDetailKey = `${source}\u0000${medium}\u0000${campaign}`;
+    if (!sourceDetailStats.has(sourceDetailKey)) {
+      sourceDetailStats.set(sourceDetailKey, {
+        channel: channelInfo.channel,
+        source,
+        medium,
+        campaign,
+        sessions: 0,
+        orders: 0,
+        revenue: 0,
+        conversionRate: 0,
+        aov: 0
+      });
+    }
+    const sourceDetailRow = sourceDetailStats.get(sourceDetailKey);
+    sourceDetailRow.sessions += 1;
     if (!channelStats.has(channel)) {
       channelStats.set(channel, {
         channel,
@@ -2326,6 +2401,8 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     }
     const channelRow = channelStats.get(channel);
     channelRow.sessions += 1;
+    ownerChannelRow.sessions += 1;
+    ownerBreakdownRow.sessions += 1;
     if (channelRow.source === "direct/unknown" && source !== "direct/unknown") channelRow.source = source;
     if (channelRow.medium === "-" && medium !== "-") channelRow.medium = medium;
     if (channelRow.campaign === "-" && campaign !== "-") channelRow.campaign = campaign;
@@ -2335,6 +2412,14 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     if (converted) {
       channelRow.orders += 1;
       channelRow.revenue += revenue;
+      sourceDetailRow.orders += 1;
+      sourceDetailRow.revenue += revenue;
+      ownerChannelRow.orders += 1;
+      ownerChannelRow.paid += 1;
+      ownerChannelRow.revenue += revenue;
+      ownerBreakdownRow.orders += 1;
+      ownerBreakdownRow.paid += 1;
+      ownerBreakdownRow.revenue += revenue;
       stepDistributionCounts.converted += 1;
       if (sessionId) funnelSessionSets.get("payment_success")?.add(sessionId);
     } else {
@@ -2405,6 +2490,14 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const startedDesignerSessionIds = funnelSessionSets.get("start_designer") || new Set();
   const checkoutSessionIds = funnelSessionSets.get("checkout_started") || new Set();
   const paidSessionIds = funnelSessionSets.get("payment_success") || new Set();
+  checkoutSessionIds.forEach((sessionId) => {
+    const session = sessionById.get(sessionId);
+    if (!session) return;
+    const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+    const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
+    ownerChannelRow.checkoutStarted += 1;
+    getOwnerAnalyticsBreakdownRow(ownerChannelRow, session).checkoutStarted += 1;
+  });
   channelStats.forEach((row) => {
     let step3Count = 0;
     let startedDesignerCount = 0;
@@ -2450,6 +2543,33 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       aov: row.orders ? row.revenue / row.orders : 0
     }))
     .sort((a, b) => b.revenue - a.revenue || b.sessions - a.sessions);
+  const ownerChannels = OWNER_ANALYTICS_CHANNELS.map((definition) => {
+    const row = ownerChannelStats.get(definition.key);
+    return {
+      key: row.key,
+      channel: row.channel,
+      sessions: row.sessions,
+      checkoutStarted: row.checkoutStarted,
+      orders: row.orders,
+      paid: row.paid,
+      revenue: row.revenue,
+      conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0,
+      aov: row.orders ? row.revenue / row.orders : 0,
+      breakdown: Array.from(row.breakdownMap.values())
+        .map((breakdown) => ({
+          ...breakdown,
+          conversionRate: breakdown.sessions ? (breakdown.orders / breakdown.sessions) * 100 : 0
+        }))
+        .sort((a, b) => b.sessions - a.sessions || a.label.localeCompare(b.label))
+    };
+  });
+  const sourceDetails = Array.from(sourceDetailStats.values())
+    .map((row) => ({
+      ...row,
+      conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0,
+      aov: row.orders ? row.revenue / row.orders : 0
+    }))
+    .sort((a, b) => b.sessions - a.sessions || b.revenue - a.revenue || a.source.localeCompare(b.source));
   const landingSessions = funnelSessionSets.get("landing_view")?.size || 0;
   let previousCount = null;
   const funnel = ANALYTICS_FUNNEL_STAGES.map(([eventName, label]) => {
@@ -2532,6 +2652,8 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       errors: errors.length
     },
     channels,
+    ownerChannels,
+    sourceDetails,
     sources: channels,
     bySource: channels,
     funnel,

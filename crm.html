@@ -387,9 +387,9 @@
             </div>
             <div class="metric-card">
               <div class="metric-info">
-                <span class="metric-label">ออเดอร์</span>
+                <span class="metric-label">Paid Orders</span>
                 <h3 class="metric-value" id="analyticsTotalOrders">0</h3>
-                <span class="metric-sub">Orders</span>
+                <span class="metric-sub">Authoritative payments</span>
               </div>
             </div>
             <div class="metric-card">
@@ -408,23 +408,23 @@
             </div>
             <div class="metric-card">
               <div class="metric-info">
-                <span class="metric-label">ยอดเฉลี่ยต่อออเดอร์</span>
-                <h3 class="metric-value" id="analyticsAov">฿0</h3>
-                <span class="metric-sub">AOV</span>
+                <span class="metric-label">Checkout Started</span>
+                <h3 class="metric-value" id="analyticsCheckoutStarted">0</h3>
+                <span class="metric-sub">Stripe Checkout sessions</span>
               </div>
             </div>
             <div class="metric-card">
               <div class="metric-info">
-                <span class="metric-label">Error ล่าสุด</span>
-                <h3 class="metric-value" id="analyticsErrorsCount">0</h3>
-                <span class="metric-sub">Errors</span>
+                <span class="metric-label">Average Order Value</span>
+                <h3 class="metric-value" id="analyticsAov">฿0</h3>
+                <span class="metric-sub">Paid revenue / paid orders</span>
               </div>
             </div>
           </div>
 
           <div class="analytics-section">
             <div class="analytics-section-heading">
-              <h4>ช่องทางที่ลูกค้าเข้ามา</h4>
+                <h4>Owner Channels</h4>
               <span id="analyticsChannelInsight">ยังไม่มีข้อมูลในช่วงเวลานี้</span>
             </div>
             <div class="analytics-channel-grid" id="analyticsChannelCards"></div>
@@ -560,7 +560,8 @@
 
             <div class="panel card-panel">
               <div class="panel-header">
-                <h4>ปัญหาที่พบล่าสุด</h4>
+                <h4>Technical Health</h4>
+                <span id="analyticsErrorsCount">Errors: 0</span>
               </div>
               <div class="panel-body">
                 <div class="analytics-compact-list" id="analyticsErrorCards"></div>
