@@ -934,6 +934,11 @@ function getStoneSellingPrice(stone, size) {
   return Number.isFinite(price) && price >= 0 ? price : null;
 }
 
+function getCatalogSellingPrice(item) {
+  const price = Number(item?.pricing?.base ?? item?.price);
+  return Number.isFinite(price) && price >= 0 ? price : null;
+}
+
 async function buildAuthoritativeStripeOrder(clientOrder = {}) {
   const sequence = Array.isArray(clientOrder.braceletSequence) ? clientOrder.braceletSequence : [];
   if (!sequence.length) throw new Error("Bracelet configuration is required.");
@@ -953,7 +958,7 @@ async function buildAuthoritativeStripeOrder(clientOrder = {}) {
       if (!Array.isArray(item.sizes) || !item.sizes.map(Number).includes(size)) throw new Error("The selected stone size is unavailable.");
       unitPrice = getStoneSellingPrice(item, size);
     } else {
-      unitPrice = Number(item.price);
+      unitPrice = getCatalogSellingPrice(item);
     }
     if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("A selected catalog item has invalid pricing.");
     billing.push({ type, id, stoneId: type === 'stone' ? id : undefined, charmId: type === 'charm' ? id : undefined, spacerId: type === 'spacer' ? id : undefined, size, quantity: 1, unitPrice, totalPrice: unitPrice });
