@@ -2550,7 +2550,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     recentOrders: recentSessions.filter((session) => session.orderId),
     recentSessions,
     testCampaignExcluded: true,
-    paymentSuccessAuthority: "client_return_verified_pending_webhook"
+    paymentSuccessAuthority: "stripe_webhook_authoritative"
   };
 }
 
