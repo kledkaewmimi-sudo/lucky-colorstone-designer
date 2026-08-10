@@ -172,6 +172,15 @@ const DOM = {
   analyticsItemsTableBody: document.getElementById('analyticsItemsTableBody'),
   analyticsCategoriesTableBody: document.getElementById('analyticsCategoriesTableBody'),
   analyticsRecentOrdersTableBody: document.getElementById('analyticsRecentOrdersTableBody'),
+  utmBaseUrl: document.getElementById('utmBaseUrl'),
+  utmSource: document.getElementById('utmSource'),
+  utmMedium: document.getElementById('utmMedium'),
+  utmCampaign: document.getElementById('utmCampaign'),
+  utmContent: document.getElementById('utmContent'),
+  utmGeneratedUrl: document.getElementById('utmGeneratedUrl'),
+  utmGeneratorStatus: document.getElementById('utmGeneratorStatus'),
+  btnCopyUtmLink: document.getElementById('btnCopyUtmLink'),
+  utmPresetButtons: Array.from(document.querySelectorAll('[data-utm-source]')),
   
   // Tab 2: Inventory CRUD
   inventorySearch: document.getElementById('inventorySearch'),
@@ -871,6 +880,73 @@ async function loadDashboardData(prefetched = {}) {
         : settings.discountEnabled !== false;
     }
   }
+}
+
+function normalizeUtmValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/gu, '_');
+}
+
+function getGeneratedUtmUrl() {
+  const baseUrl = String(DOM.utmBaseUrl?.value || '').trim();
+  const source = normalizeUtmValue(DOM.utmSource?.value);
+  const medium = normalizeUtmValue(DOM.utmMedium?.value);
+  const campaign = normalizeUtmValue(DOM.utmCampaign?.value);
+  const content = normalizeUtmValue(DOM.utmContent?.value);
+  if (!baseUrl || !source || !medium || !campaign) return { url: '', error: 'Source, Medium, and Campaign are required.' };
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set('utm_source', source);
+    url.searchParams.set('utm_medium', medium);
+    url.searchParams.set('utm_campaign', campaign);
+    if (content) url.searchParams.set('utm_content', content);
+    else url.searchParams.delete('utm_content');
+    return { url: url.toString(), error: '' };
+  } catch {
+    return { url: '', error: 'Enter a valid Base URL.' };
+  }
+}
+
+function renderUtmGeneratedUrl() {
+  const { url, error } = getGeneratedUtmUrl();
+  if (DOM.utmGeneratedUrl) DOM.utmGeneratedUrl.textContent = url || error;
+  if (DOM.utmGeneratedUrl) DOM.utmGeneratedUrl.classList.toggle('is-error', Boolean(error));
+  if (DOM.btnCopyUtmLink) DOM.btnCopyUtmLink.disabled = !url;
+  if (DOM.utmGeneratorStatus && error) DOM.utmGeneratorStatus.textContent = '';
+  return url;
+}
+
+async function copyGeneratedUtmLink() {
+  const url = renderUtmGeneratedUrl();
+  if (!url) return;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    copied = true;
+  } catch {
+    const fallback = document.createElement('textarea');
+    fallback.value = url;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    document.body.appendChild(fallback);
+    fallback.select();
+    copied = document.execCommand('copy');
+    fallback.remove();
+  }
+  if (DOM.utmGeneratorStatus) DOM.utmGeneratorStatus.textContent = copied ? 'คัดลอกลิงก์แล้ว' : 'Copy failed — select the URL and copy manually.';
+}
+
+function applyUtmPreset(button) {
+  if (!button) return;
+  if (DOM.utmSource) DOM.utmSource.value = button.dataset.utmSource || '';
+  if (DOM.utmMedium) DOM.utmMedium.value = button.dataset.utmMedium || '';
+  if (DOM.utmCampaign) DOM.utmCampaign.value = button.dataset.utmCampaign || '';
+  if (DOM.utmContent) DOM.utmContent.value = '';
+  if (DOM.utmGeneratorStatus) DOM.utmGeneratorStatus.textContent = '';
+  renderUtmGeneratedUrl();
 }
 
 async function fetchAnalyticsSummary(range = CRMState.analyticsRange || '7d') {
@@ -5115,6 +5191,16 @@ function setupFunctionalEvents() {
       }
     });
   }
+
+  [DOM.utmBaseUrl, DOM.utmSource, DOM.utmMedium, DOM.utmCampaign, DOM.utmContent].forEach((input) => {
+    input?.addEventListener('input', () => {
+      if (DOM.utmGeneratorStatus) DOM.utmGeneratorStatus.textContent = '';
+      renderUtmGeneratedUrl();
+    });
+  });
+  DOM.utmPresetButtons.forEach((button) => button.addEventListener('click', () => applyUtmPreset(button)));
+  DOM.btnCopyUtmLink?.addEventListener('click', copyGeneratedUtmLink);
+  renderUtmGeneratedUrl();
   
   // Orders filters
   DOM.orderStatusFilter.addEventListener('change', () => loadDashboardData());

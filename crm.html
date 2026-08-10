@@ -537,6 +537,56 @@
             </div>
           </div>
 
+          <section class="analytics-section utm-generator-section" aria-labelledby="utmGeneratorTitle">
+            <div class="analytics-section-heading">
+              <h4 id="utmGeneratorTitle">UTM Link Generator</h4>
+              <span>Internal utility only — generating a link does not write analytics data.</span>
+            </div>
+            <div class="panel card-panel utm-generator-card">
+              <div class="panel-body">
+                <div class="utm-quick-presets" aria-label="Quick UTM presets">
+                  <button class="btn btn-outline utm-preset-btn" type="button" data-utm-source="instagram" data-utm-medium="organic" data-utm-campaign="launch_2026">Instagram Organic</button>
+                  <button class="btn btn-outline utm-preset-btn" type="button" data-utm-source="instagram" data-utm-medium="paid" data-utm-campaign="bracelet_launch_2026">Instagram Ads</button>
+                  <button class="btn btn-outline utm-preset-btn" type="button" data-utm-source="line" data-utm-medium="oa" data-utm-campaign="launch_2026">LINE OA</button>
+                  <button class="btn btn-outline utm-preset-btn" type="button" data-utm-source="facebook" data-utm-medium="organic" data-utm-campaign="launch_2026">Facebook Organic</button>
+                  <button class="btn btn-outline utm-preset-btn" type="button" data-utm-source="facebook" data-utm-medium="paid" data-utm-campaign="bracelet_launch_2026">Facebook Ads</button>
+                </div>
+                <div class="utm-generator-fields">
+                  <label class="utm-field utm-field-wide">Base URL
+                    <input id="utmBaseUrl" type="url" value="https://customize.luckycolorstone.com/" inputmode="url" autocomplete="url">
+                  </label>
+                  <label class="utm-field">Source
+                    <input id="utmSource" list="utmSourcePresets" value="instagram" placeholder="instagram" autocomplete="off">
+                  </label>
+                  <label class="utm-field">Medium
+                    <input id="utmMedium" list="utmMediumPresets" value="organic" placeholder="organic" autocomplete="off">
+                  </label>
+                  <label class="utm-field">Campaign
+                    <input id="utmCampaign" value="launch_2026" placeholder="launch_2026" autocomplete="off">
+                  </label>
+                  <label class="utm-field">Content <span>(optional)</span>
+                    <input id="utmContent" placeholder="reel_01" autocomplete="off">
+                  </label>
+                </div>
+                <datalist id="utmSourcePresets">
+                  <option value="instagram"></option><option value="line"></option><option value="facebook"></option><option value="tiktok"></option><option value="google"></option><option value="other"></option>
+                </datalist>
+                <datalist id="utmMediumPresets">
+                  <option value="organic"></option><option value="paid"></option><option value="oa"></option><option value="social"></option><option value="referral"></option><option value="other"></option>
+                </datalist>
+                <div class="utm-generated-wrap">
+                  <span class="utm-generated-label">Generated URL</span>
+                  <output id="utmGeneratedUrl" class="utm-generated-url" aria-live="polite"></output>
+                  <div class="utm-generator-actions">
+                    <button class="btn btn-primary" id="btnCopyUtmLink" type="button" disabled>Copy Link</button>
+                    <span id="utmGeneratorStatus" class="utm-generator-status" aria-live="polite"></span>
+                  </div>
+                  <p class="utm-generator-note">Source, medium, and campaign are stored by current analytics. Content is included in the link but is not yet available as a session reporting dimension.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div class="overview-split-grid">
             <div class="panel card-panel">
               <div class="panel-header">
