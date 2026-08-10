@@ -1703,6 +1703,31 @@ function toNumericOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+async function notifyPaidOrderLineRecipients(order) {
+  let nextOrder = order;
+
+  try {
+    const adminResult = await notifyAdminOrderCreated(nextOrder);
+    if (adminResult.sent) {
+      nextOrder = markOrderNotificationSent(nextOrder, "adminOrderCreatedSentAt");
+    }
+  } catch (error) {
+    console.error(`[stripe-webhook] admin LINE notification failed for ${getOrderId(order)}:`, error?.message || error);
+  }
+
+  try {
+    const buyerResult = await trySendPaidOrderLineNotification(nextOrder);
+    nextOrder = buyerResult.order;
+  } catch (error) {
+    console.error(`[stripe-webhook] buyer LINE notification failed for ${getOrderId(order)}:`, error?.message || error);
+  }
+
+  if (nextOrder !== order) {
+    await saveOrderForApi(nextOrder);
+  }
+  return nextOrder;
+}
+
 function normalizeStockQty(value, fallback = null) {
   if (value === undefined || value === null || value === "") return fallback;
   const numeric = Number(value);
@@ -2710,7 +2735,9 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
     throw new Error(`Application Checkout Session amount or currency mismatch (order=${orderReference}).`);
   }
   const processed = Array.isArray(order.stripeWebhookEventIds) ? order.stripeWebhookEventIds : [];
-  if (processed.includes(eventId) || String(order.stripePaymentStatus).toLowerCase() === 'paid') return { order, duplicate: true };
+  if (processed.includes(eventId) || String(order.stripePaymentStatus).toLowerCase() === 'paid') {
+    return { order: await notifyPaidOrderLineRecipients(order), duplicate: true };
+  }
   const paidOrder = await deductStockForOrder({
     ...order,
     status: 'Payment Received',
@@ -2723,7 +2750,7 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
   await saveOrderForApi(paidOrder);
   await linkAnalyticsOrderConversion(paidOrder);
   console.info(`[stripe-webhook] paid order=${orderReference} session=${sessionId} event=${eventId || '-'}`);
-  return { order: paidOrder };
+  return { order: await notifyPaidOrderLineRecipients(paidOrder) };
 }
 
 function getCatalogItemDisplayName(item, fallbackId) {
