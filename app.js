@@ -6574,8 +6574,9 @@ async function handleStripeReturnIfNeeded() {
       throw new Error(payload.error || "Unable to verify Stripe payment.");
     }
 
-    if (payload.paymentStatus !== 'paid') {
-      throw new Error("Stripe payment is not marked as paid yet.");
+    if (payload.paymentStatus !== 'paid' || !payload.order || payload.order.stripePaymentStatus !== 'paid') {
+      showToast('กำลังยืนยันการชำระเงิน กรุณารอสักครู่');
+      return;
     }
 
     const existingOrders = await getSharedOrders();
@@ -6596,44 +6597,9 @@ async function handleStripeReturnIfNeeded() {
       ? payload.shippingDetails
       : getShippingDetailsFromInfo(persistedShippingInfo);
     const shippingAddress = shippingDetails?.address || getShippingAddressFromInfo(persistedShippingInfo);
-    let savedOrder = existingOrder || null;
-
-    if (!existingOrder) {
-      const paymentUpdates = {
-        status: 'Payment Received',
-        paymentMethod: 'stripe_checkout',
-        stripeCheckoutSessionId: sessionId,
-        stripeCheckoutStatus: payload.status || '',
-        stripePaymentStatus: payload.paymentStatus || '',
-        shippingInfo: persistedShippingInfo,
-        recipientName: persistedShippingInfo.recipientName,
-        shippingDetails,
-        shippingAddress,
-        phoneNumber,
-        addressLine: persistedShippingInfo.addressLine,
-        province: persistedShippingInfo.province,
-        postalCode: persistedShippingInfo.postalCode
-      };
-      const pendingStripeOrderPayload = readStripeOrderPayload(sessionId);
-      savedOrder = pendingStripeOrderPayload
-        ? await addSharedOrder({
-          ...pendingStripeOrderPayload,
-          ...paymentUpdates
-        })
-        : await submitOrderToCRM(false, paymentUpdates);
-
-      if (!savedOrder) {
-        throw new Error("Payment succeeded, but the order could not be saved from the current design state.");
-      }
-    }
+    const savedOrder = existingOrder || normalizeSavedOrder(payload.order);
 
     activatePaymentCompletedView(savedOrder);
-    trackAnalyticsEvent('payment_success', {
-      orderId: savedOrder.id,
-      converted: true,
-      revenue: Number(savedOrder.finalPrice || savedOrder.totalPrice || savedOrder.netPrice || 0),
-      stripeCheckoutSessionId: sessionId
-    });
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();

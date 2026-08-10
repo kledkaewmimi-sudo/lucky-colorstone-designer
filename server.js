@@ -925,6 +925,71 @@ async function sendLineFlexMessageWithTextFallback({ userId, flexMessage, fallba
   }
 }
 
+function getStripeWebhookSecret() {
+  return getEnvValue("STRIPE_WEBHOOK_SECRET");
+}
+
+function getStoneSellingPrice(stone, size) {
+  const price = Number(stone?.[`p${Number(size)}`]);
+  return Number.isFinite(price) && price >= 0 ? price : null;
+}
+
+async function buildAuthoritativeStripeOrder(clientOrder = {}) {
+  const sequence = Array.isArray(clientOrder.braceletSequence) ? clientOrder.braceletSequence : [];
+  if (!sequence.length) throw new Error("Bracelet configuration is required.");
+  const [catalogs, settings] = await Promise.all([readStockCatalogMapsForOrder(), readSettingsForApi()]);
+  const billing = [];
+  for (const component of sequence) {
+    const type = String(component?.type || component?.componentType || "").toLowerCase();
+    if (type === "empty") continue;
+    if (!['stone', 'charm', 'spacer'].includes(type)) throw new Error("Unsupported bracelet component.");
+    const id = String(type === 'stone' ? (component.stoneId || component.id) : type === 'charm' ? (component.charmId || component.id) : (component.spacerId || component.id)).trim();
+    const item = catalogs[type].get(id);
+    if (!id || !item || !isCatalogItemAvailable(item)) throw new Error("A selected catalog item is unavailable. Please refresh and try again.");
+    let unitPrice;
+    let size = null;
+    if (type === 'stone') {
+      size = Number(component.size || component.sizeMm || clientOrder.beadSize);
+      if (!Array.isArray(item.sizes) || !item.sizes.map(Number).includes(size)) throw new Error("The selected stone size is unavailable.");
+      unitPrice = getStoneSellingPrice(item, size);
+    } else {
+      unitPrice = Number(item.price);
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("A selected catalog item has invalid pricing.");
+    billing.push({ type, id, stoneId: type === 'stone' ? id : undefined, charmId: type === 'charm' ? id : undefined, spacerId: type === 'spacer' ? id : undefined, size, quantity: 1, unitPrice, totalPrice: unitPrice });
+  }
+  if (!billing.length) throw new Error("Bracelet configuration is empty.");
+  const subtotal = billing.reduce((sum, item) => sum + item.totalPrice, 0);
+  const discountPercent = settings?.discountEnabled === false ? 0 : Math.max(0, Number(settings?.globalDiscountPercent ?? 20));
+  const discountAmount = Math.round(subtotal * discountPercent / 100);
+  const finalPrice = subtotal - discountAmount;
+  const clientTotal = parseMoneyValue(clientOrder?.checkoutSummary?.finalPrice ?? clientOrder.finalPrice ?? clientOrder.totalPrice);
+  if (clientTotal != null && Math.abs(clientTotal - finalPrice) > 0.01) {
+    const error = new Error("Price changed. Please refresh before checkout.");
+    error.statusCode = 409;
+    throw error;
+  }
+  return {
+    ...clientOrder,
+    id: String(clientOrder.id || nextRandomOrderId()),
+    itemizedBilling: billing,
+    subtotal, discountPercent, discountAmount, shippingAmount: 0,
+    finalPrice, totalPrice: finalPrice, netPrice: finalPrice,
+    checkoutSummary: { subtotal, discountPercent, discountAmount, shippingAmount: 0, finalPrice, totalPrice: finalPrice, netPrice: finalPrice },
+    paymentMethod: 'stripe_checkout', stripePaymentStatus: 'pending_payment', status: 'Pending Payment'
+  };
+}
+
+function verifyStripeWebhookSignature(rawBody, signatureHeader, secret) {
+  if (!secret || !signatureHeader) return false;
+  const fields = Object.fromEntries(String(signatureHeader).split(',').map((part) => part.split('=').map((value) => value.trim())));
+  const timestamp = fields.t;
+  const signatures = String(signatureHeader).split(',').filter((part) => part.startsWith('v1=')).map((part) => part.slice(3));
+  if (!timestamp || !signatures.length || Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300) return false;
+  const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody.toString('utf8')}`).digest('hex');
+  return signatures.some((signature) => signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected)));
+}
+
 function getPublicCrmOrigin() {
   const configuredOrigin = normalizeLineUri(
     process.env.PUBLIC_CRM_ORIGIN || process.env.CRM_URL,
@@ -1319,7 +1384,7 @@ async function createStripeCheckoutSession({ order, origin }) {
     throw new Error("Missing order payload.");
   }
 
-  const canonicalOrder = normalizeCanonicalOrderPricing(order);
+  const canonicalOrder = order;
   const safeOrigin = getSafeOrigin(origin);
   const amountTotal = normalizeCurrencyAmount(getOrderTotalPrice(canonicalOrder));
   const customerName = String(canonicalOrder.customerName || "Khun Guest").trim() || "Khun Guest";
@@ -1355,6 +1420,7 @@ async function createStripeCheckoutSession({ order, origin }) {
   form.append("metadata[beadSize]", beadSize.slice(0, 500));
   form.append("metadata[totalBeads]", String(totalBeads));
   form.append("metadata[netPrice]", String(getOrderTotalPrice(canonicalOrder) ?? ""));
+  form.append("metadata[orderId]", String(canonicalOrder.id || "").slice(0, 500));
   if (recipientName) {
     form.append("metadata[recipientName]", recipientName.slice(0, 500));
   }
@@ -2619,6 +2685,34 @@ async function saveOrderForApi(order) {
   console.info(`[orders] saved ${orderId} to json`);
 }
 
+async function findOrderByStripeCheckoutSessionId(sessionId) {
+  if (!sessionId) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', stripe_checkout_session_id: `eq.${sessionId}`, limit: '1' } });
+    return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+  }
+  return readJsonArray('orders').find((order) => order?.stripeCheckoutSessionId === sessionId) || null;
+}
+
+async function applyStripeCheckoutPaymentEvent(session, eventId) {
+  const order = await findOrderByStripeCheckoutSessionId(session?.id);
+  if (!order) throw new Error('No pending order matches this Stripe Checkout Session.');
+  const processed = Array.isArray(order.stripeWebhookEventIds) ? order.stripeWebhookEventIds : [];
+  if (processed.includes(eventId) || String(order.stripePaymentStatus).toLowerCase() === 'paid') return order;
+  const paidOrder = await deductStockForOrder({
+    ...order,
+    status: 'Payment Received',
+    stripePaymentStatus: 'paid',
+    stripeCheckoutStatus: session.status || 'complete',
+    stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : '',
+    paidAt: new Date().toISOString(),
+    stripeWebhookEventIds: [...processed, eventId].slice(-20)
+  });
+  await saveOrderForApi(paidOrder);
+  await linkAnalyticsOrderConversion(paidOrder);
+  return paidOrder;
+}
+
 function getCatalogItemDisplayName(item, fallbackId) {
   return String(
     item?.nameTh ||
@@ -2921,6 +3015,25 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/stripe/webhook" && method === "POST") {
+    const rawBody = await readRequestBodyBuffer(req);
+    if (!verifyStripeWebhookSignature(rawBody, req.headers['stripe-signature'], getStripeWebhookSecret())) {
+      sendJson(res, 400, { error: 'Invalid Stripe signature.' });
+      return true;
+    }
+    const event = parseJsonText(rawBody.toString('utf8')) || {};
+    try {
+      if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type) && event.data?.object?.payment_status === 'paid') {
+        await applyStripeCheckoutPaymentEvent(event.data.object, String(event.id || ''));
+      }
+      sendJson(res, 200, { received: true });
+    } catch (error) {
+      console.error('[stripe-webhook] processing failed:', error?.message || error);
+      sendJson(res, 500, { error: 'Webhook processing failed.' });
+    }
+    return true;
+  }
+
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
@@ -2949,8 +3062,10 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    let authoritativeOrder;
     try {
-      await validateOrderStockOrThrow(bodyObj.order);
+      authoritativeOrder = await buildAuthoritativeStripeOrder(bodyObj.order);
+      await validateOrderStockOrThrow(authoritativeOrder);
     } catch (error) {
       sendJson(res, error.statusCode || 409, {
         error: error.message || "Stock validation failed.",
@@ -2960,15 +3075,25 @@ async function handleApiRequest(req, res, urlObj) {
     }
 
     const session = await createStripeCheckoutSession({
-      order: bodyObj.order,
+      order: authoritativeOrder,
       origin: bodyObj.origin
     });
+
+    const pendingOrder = {
+      ...authoritativeOrder,
+      stripeCheckoutSessionId: session.id,
+      stripeCheckoutStatus: session.status || 'open',
+      stripePaymentStatus: 'pending_payment',
+      date: new Date().toISOString()
+    };
+    await saveOrderForApi(pendingOrder);
 
     sendJson(res, 200, {
       id: session.id,
       url: session.url,
       amountTotal: session.amount_total,
-      currency: session.currency
+      currency: session.currency,
+      orderId: pendingOrder.id
     });
     return true;
   }
@@ -2978,6 +3103,7 @@ async function handleApiRequest(req, res, urlObj) {
     const session = await getStripeCheckoutSession(sessionId);
     const shippingDetails = getStripeSessionShippingDetails(session);
     const phoneNumber = String(session.customer_details?.phone || "").trim();
+    const order = await findOrderByStripeCheckoutSessionId(sessionId);
 
     sendJson(res, 200, {
       id: session.id,
@@ -2989,7 +3115,8 @@ async function handleApiRequest(req, res, urlObj) {
       shippingAddress: shippingDetails?.address || null,
       amountTotal: session.amount_total,
       currency: session.currency,
-      metadata: session.metadata || {}
+      metadata: session.metadata || {},
+      order
     });
     return true;
   }
@@ -3458,6 +3585,11 @@ async function handleApiRequest(req, res, urlObj) {
     }
     if (!nextOrder.status) {
       nextOrder.status = "New Order";
+    }
+
+    if (String(bodyObj.paymentMethod || '').toLowerCase() === 'stripe_checkout') {
+      sendJson(res, 403, { error: 'Stripe orders are created and confirmed server-side.' });
+      return true;
     }
 
     let existingOrder = null;
