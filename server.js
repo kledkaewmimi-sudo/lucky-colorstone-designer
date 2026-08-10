@@ -2482,7 +2482,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     const session = sessionById.get(sessionId);
     const rawEventName = getAnalyticsEventName(event);
     if (!sessionId || !session || !isAnalyticsSessionConverted(session)) return;
-    if (rawEventName === "order_created" || rawEventName === "payment_success") {
+    if (rawEventName === "order_created") {
       paidSessionTimes.set(sessionId, getAnalyticsRowTime(event, ["created_at", "timestamp"]));
     }
   });
