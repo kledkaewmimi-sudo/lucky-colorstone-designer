@@ -2695,10 +2695,22 @@ async function findOrderByStripeCheckoutSessionId(sessionId) {
 }
 
 async function applyStripeCheckoutPaymentEvent(session, eventId) {
-  const order = await findOrderByStripeCheckoutSessionId(session?.id);
-  if (!order) throw new Error('No pending order matches this Stripe Checkout Session.');
+  const sessionId = String(session?.id || '').trim();
+  const orderReference = String(session?.metadata?.orderId || '').trim();
+  if (!orderReference) {
+    console.info(`[stripe-webhook] ignored unrelated session event=${eventId || '-'} session=${sessionId || '-'}`);
+    return { ignored: true, reason: 'missing_order_reference' };
+  }
+
+  const order = await findOrderByStripeCheckoutSessionId(sessionId);
+  if (!order) throw new Error(`Application Checkout Session has no pending order (order=${orderReference}).`);
+  if (getOrderId(order) !== orderReference) throw new Error(`Application Checkout Session order reference mismatch (order=${orderReference}).`);
+  const expectedAmount = normalizeCurrencyAmount(getOrderTotalPrice(order));
+  if (String(session?.currency || '').toLowerCase() !== 'thb' || Number(session?.amount_total) !== expectedAmount) {
+    throw new Error(`Application Checkout Session amount or currency mismatch (order=${orderReference}).`);
+  }
   const processed = Array.isArray(order.stripeWebhookEventIds) ? order.stripeWebhookEventIds : [];
-  if (processed.includes(eventId) || String(order.stripePaymentStatus).toLowerCase() === 'paid') return order;
+  if (processed.includes(eventId) || String(order.stripePaymentStatus).toLowerCase() === 'paid') return { order, duplicate: true };
   const paidOrder = await deductStockForOrder({
     ...order,
     status: 'Payment Received',
@@ -2710,7 +2722,8 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
   });
   await saveOrderForApi(paidOrder);
   await linkAnalyticsOrderConversion(paidOrder);
-  return paidOrder;
+  console.info(`[stripe-webhook] paid order=${orderReference} session=${sessionId} event=${eventId || '-'}`);
+  return { order: paidOrder };
 }
 
 function getCatalogItemDisplayName(item, fallbackId) {
