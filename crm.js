@@ -1240,7 +1240,7 @@ function renderAnalyticsSummary(summary = {}) {
   if (bySource.length > 0 && DOM.analyticsSourceTableBody) {
     DOM.analyticsSourceTableBody.innerHTML = bySource.map((row) => `
       <tr>
-        <td data-label="Source">${escapeHtml(row.channel || row.source || 'direct/unknown')}</td>
+        <td data-label="Source">${escapeHtml(row.source || row.channel || 'direct/unknown')}</td>
         <td data-label="Medium">${escapeHtml(row.medium || '-')}</td>
         <td data-label="Campaign">${escapeHtml(row.campaign || '-')}</td>
         <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
