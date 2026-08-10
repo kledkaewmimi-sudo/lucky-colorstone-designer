@@ -2062,7 +2062,7 @@ async function linkAnalyticsOrderConversion(order = {}) {
 
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
 const ANALYTICS_FUNNEL_STAGES = Object.freeze([
-  ["landing_view", "\u0E40\u0E02\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E41\u0E23\u0E01"],
+  ["landing_view", "\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01\u0E01\u0E32\u0E23\u0E40\u0E02\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E41\u0E23\u0E01"],
   ["start_designer", "\u0E01\u0E14\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
   ["step_1_view", "\u0E16\u0E36\u0E07 Step 1"],
   ["step_2_view", "\u0E16\u0E36\u0E07 Step 2"],
@@ -2294,7 +2294,9 @@ async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangePa
     try {
       const [sessions, events, errors] = await Promise.all([
         supabaseRequest("analytics_sessions", {
-          params: addDateRangeFilters({ select: "*", order: "last_seen_at.desc", limit: "5000" }, "started_at", rangeInfo)
+          // Keep session attribution available for in-range events that belong to an older session.
+          // The summary applies its own selected-period filter to session-start KPIs below.
+          params: { select: "*", order: "last_seen_at.desc", limit: "5000" }
         }),
         supabaseRequest("analytics_events", {
           params: addDateRangeFilters({ select: "*", order: "created_at.desc", limit: "10000" }, "created_at", rangeInfo)
@@ -2314,7 +2316,7 @@ async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangePa
   }
 
   return {
-    sessions: readJsonArray("analyticsSessions").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["started_at", "last_seen_at"])),
+    sessions: readJsonArray("analyticsSessions"),
     events: readJsonArray("analyticsEvents").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"])),
     errors: readJsonArray("analyticsErrors").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"]))
   };
@@ -2340,10 +2342,15 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const internalTestSessionIds = new Set((analyticsRows.sessions || [])
     .filter((session) => String(session.first_campaign || session.firstCampaign || "").trim().toLowerCase() === "prelaunch_test")
     .map((session) => getAnalyticsSessionId(session)));
-  const sessions = includeTest ? analyticsRows.sessions : analyticsRows.sessions.filter((session) => !internalTestSessionIds.has(getAnalyticsSessionId(session)));
+  const allSessions = includeTest ? analyticsRows.sessions : analyticsRows.sessions.filter((session) => !internalTestSessionIds.has(getAnalyticsSessionId(session)));
+  const sessions = allSessions.filter((session) => isAnalyticsRowInRange(session, rangeInfo, ["started_at"]));
   const events = includeTest ? analyticsRows.events : analyticsRows.events.filter((event) => !internalTestSessionIds.has(getAnalyticsSessionId(event)));
   const errors = includeTest ? analyticsRows.errors : analyticsRows.errors.filter((error) => !internalTestSessionIds.has(getAnalyticsSessionId(error)));
   const sessionById = new Map();
+  allSessions.forEach((session) => {
+    const sessionId = getAnalyticsSessionId(session);
+    if (sessionId) sessionById.set(sessionId, session);
+  });
   const channelStats = new Map();
   const sourceDetailStats = new Map();
   const ownerChannelStats = new Map(OWNER_ANALYTICS_CHANNELS.map((definition) => [definition.key, createOwnerAnalyticsChannelRow(definition)]));
@@ -2407,26 +2414,9 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     if (channelRow.medium === "-" && medium !== "-") channelRow.medium = medium;
     if (channelRow.campaign === "-" && campaign !== "-") channelRow.campaign = campaign;
 
-    const converted = isAnalyticsSessionConverted(session);
-    const revenue = converted ? getAnalyticsSessionRevenue(session) : 0;
-    if (converted) {
-      channelRow.orders += 1;
-      channelRow.revenue += revenue;
-      sourceDetailRow.orders += 1;
-      sourceDetailRow.revenue += revenue;
-      ownerChannelRow.orders += 1;
-      ownerChannelRow.paid += 1;
-      ownerChannelRow.revenue += revenue;
-      ownerBreakdownRow.orders += 1;
-      ownerBreakdownRow.paid += 1;
-      ownerBreakdownRow.revenue += revenue;
-      stepDistributionCounts.converted += 1;
-      if (sessionId) funnelSessionSets.get("payment_success")?.add(sessionId);
-    } else {
-      const currentStep = Number(session.current_step ?? session.currentStep);
-      if ([1, 2, 3, 4].includes(currentStep)) {
-        stepDistributionCounts[currentStep] += 1;
-      }
+    const currentStep = Number(session.current_step ?? session.currentStep);
+    if ([1, 2, 3, 4].includes(currentStep)) {
+      stepDistributionCounts[currentStep] += 1;
     }
 
     const dateKey = getAnalyticsDateKey(session.started_at || session.startedAt || session.last_seen_at || session.lastSeenAt);
@@ -2436,10 +2426,6 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       }
       const dayRow = dailyStats.get(dateKey);
       dayRow.sessions += 1;
-      if (converted) {
-        dayRow.orders += 1;
-        dayRow.revenue += revenue;
-      }
 
       const channelDayKey = `${dateKey}\u0000${channel}`;
       if (!channelDayStats.has(channelDayKey)) {
@@ -2447,10 +2433,6 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       }
       const channelDayRow = channelDayStats.get(channelDayKey);
       channelDayRow.sessions += 1;
-      if (converted) {
-        channelDayRow.orders += 1;
-        channelDayRow.revenue += revenue;
-      }
     }
   });
 
@@ -2458,7 +2440,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     const eventName = getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(event));
     const sessionId = getAnalyticsSessionId(event);
     const properties = parseAnalyticsProperties(event.properties);
-    if (funnelSessionSets.has(eventName) && sessionId) {
+    if (eventName !== "payment_success" && funnelSessionSets.has(eventName) && sessionId) {
       funnelSessionSets.get(eventName).add(sessionId);
     }
 
@@ -2486,17 +2468,82 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     }
   });
 
+  // Paid conversion/revenue are authoritative webhook-linked sessions. Use the conversion
+  // timestamp (last_seen_at) for the selected period rather than the session start date.
+  const paidSessionTimes = new Map();
+  allSessions.forEach((session) => {
+    const sessionId = getAnalyticsSessionId(session);
+    if (!sessionId || !isAnalyticsSessionConverted(session)) return;
+    if (!isAnalyticsRowInRange(session, rangeInfo, ["last_seen_at", "started_at"])) return;
+    paidSessionTimes.set(sessionId, getAnalyticsRowTime(session, ["last_seen_at", "started_at"]));
+  });
+  events.forEach((event) => {
+    const sessionId = getAnalyticsSessionId(event);
+    const session = sessionById.get(sessionId);
+    const rawEventName = getAnalyticsEventName(event);
+    if (!sessionId || !session || !isAnalyticsSessionConverted(session)) return;
+    if (rawEventName === "order_created" || rawEventName === "payment_success") {
+      paidSessionTimes.set(sessionId, getAnalyticsRowTime(event, ["created_at", "timestamp"]));
+    }
+  });
+
+  paidSessionTimes.forEach((paymentTime, sessionId) => {
+    const session = sessionById.get(sessionId);
+    if (!session) return;
+    const revenue = getAnalyticsSessionRevenue(session);
+    const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+    const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+    const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
+    const ownerBreakdownRow = getOwnerAnalyticsBreakdownRow(ownerChannelRow, session);
+    const source = normalizeAnalyticsDimension(channelInfo.source, "direct/unknown");
+    const medium = normalizeAnalyticsDimension(session.first_medium || session.firstMedium);
+    const campaign = normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign);
+    const sourceDetailKey = `${source}\u0000${medium}\u0000${campaign}`;
+    if (!sourceDetailStats.has(sourceDetailKey)) {
+      sourceDetailStats.set(sourceDetailKey, { channel: channelInfo.channel, source, medium, campaign, sessions: 0, orders: 0, revenue: 0, conversionRate: 0, aov: 0 });
+    }
+    const sourceDetailRow = sourceDetailStats.get(sourceDetailKey);
+    if (!channelStats.has(channelInfo.channel)) {
+      channelStats.set(channelInfo.channel, { channel: channelInfo.channel, source, medium, campaign, sessions: 0, step3Sessions: 0, braceletCompleted: 0, orders: 0, revenue: 0, conversionRate: 0, aov: 0 });
+    }
+    const channelRow = channelStats.get(channelInfo.channel);
+    sourceDetailRow.orders += 1;
+    sourceDetailRow.revenue += revenue;
+    channelRow.orders += 1;
+    channelRow.revenue += revenue;
+    ownerChannelRow.orders += 1;
+    ownerChannelRow.paid += 1;
+    ownerChannelRow.revenue += revenue;
+    ownerBreakdownRow.orders += 1;
+    ownerBreakdownRow.paid += 1;
+    ownerBreakdownRow.revenue += revenue;
+    stepDistributionCounts.converted += 1;
+    funnelSessionSets.get("payment_success")?.add(sessionId);
+
+    const dateKey = getAnalyticsDateKey(paymentTime ? new Date(paymentTime).toISOString() : null);
+    if (dateKey) {
+      if (!dailyStats.has(dateKey)) dailyStats.set(dateKey, { date: dateKey, sessions: 0, orders: 0, revenue: 0, conversionRate: 0 });
+      const dayRow = dailyStats.get(dateKey);
+      dayRow.orders += 1;
+      dayRow.revenue += revenue;
+      const channelDayKey = `${dateKey}\u0000${channelInfo.channel}`;
+      if (!channelDayStats.has(channelDayKey)) channelDayStats.set(channelDayKey, { date: dateKey, channel: channelInfo.channel, sessions: 0, orders: 0, revenue: 0 });
+      const channelDayRow = channelDayStats.get(channelDayKey);
+      channelDayRow.orders += 1;
+      channelDayRow.revenue += revenue;
+    }
+  });
+
   const step3SessionIds = funnelSessionSets.get("step_3_view") || new Set();
   const startedDesignerSessionIds = funnelSessionSets.get("start_designer") || new Set();
   const checkoutSessionIds = funnelSessionSets.get("checkout_started") || new Set();
   const paidSessionIds = funnelSessionSets.get("payment_success") || new Set();
   checkoutSessionIds.forEach((sessionId) => {
     const session = sessionById.get(sessionId);
-    if (!session) return;
-    const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+    const ownerChannel = getOwnerAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess);
     const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
     ownerChannelRow.checkoutStarted += 1;
-    getOwnerAnalyticsBreakdownRow(ownerChannelRow, session).checkoutStarted += 1;
+    getOwnerAnalyticsBreakdownRow(ownerChannelRow, session || {}).checkoutStarted += 1;
   });
   channelStats.forEach((row) => {
     let step3Count = 0;
@@ -2533,9 +2580,12 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     samples: timeStepCounts[step] || 0
   })).sort((a, b) => String(a.step).localeCompare(String(b.step), undefined, { numeric: true }));
 
-  const totalOrders = sessions.filter((session) => session.converted || session.order_id || session.orderId).length;
+  const paidSessions = Array.from(paidSessionIds)
+    .map((sessionId) => sessionById.get(sessionId))
+    .filter((session) => session && isAnalyticsSessionConverted(session));
+  const totalOrders = paidSessions.length;
   const totalSessions = sessions.length;
-  const revenue = sessions.reduce((sum, session) => sum + (isAnalyticsSessionConverted(session) ? getAnalyticsSessionRevenue(session) : 0), 0);
+  const revenue = paidSessions.reduce((sum, session) => sum + getAnalyticsSessionRevenue(session), 0);
   const channels = Array.from(channelStats.values())
     .map((row) => ({
       ...row,
@@ -2669,7 +2719,23 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     popularItems: sortCountRows(itemCounts),
     popularCategories: sortCountRows(categoryCounts),
     recentErrors,
-    recentOrders: recentSessions.filter((session) => session.orderId),
+    recentOrders: paidSessions
+      .map((session) => {
+        const sessionId = getAnalyticsSessionId(session);
+        const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
+        return {
+          time: paidSessionTimes.get(sessionId) ? new Date(paidSessionTimes.get(sessionId)).toISOString() : (session.last_seen_at || session.started_at || null),
+          source: channelInfo.channel,
+          rawSource: normalizeAnalyticsDimension(channelInfo.source, "direct/unknown"),
+          medium: normalizeAnalyticsDimension(session.first_medium || session.firstMedium),
+          campaign: normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign),
+          orderId: session.order_id || session.orderId || "",
+          revenue: getAnalyticsSessionRevenue(session),
+          currentStep: session.current_step ?? session.currentStep ?? null
+        };
+      })
+      .sort((a, b) => getAnalyticsRowTime(b, ["time"]) - getAnalyticsRowTime(a, ["time"]))
+      .slice(0, 20),
     recentSessions,
     testCampaignExcluded: true,
     paymentSuccessAuthority: "stripe_webhook_authoritative"
