@@ -1085,9 +1085,10 @@ function renderAnalyticsFunnelCards(funnelRows = [], totals = {}) {
     `;
   }).join('');
   if (DOM.analyticsFunnelInsight) {
-    const completed = rows.find((row) => row.key === 'bracelet_completed' || row.eventName === 'bracelet_completed');
-    const noPayment = Math.max(0, Number(completed?.sessions || 0) - Number(totals.orders || 0));
-    DOM.analyticsFunnelInsight.textContent = `ออกแบบครบแต่ยังไม่สั่งซื้อ ${noPayment.toLocaleString()} sessions`;
+    const checkout = rows.find((row) => row.key === 'checkout_started' || row.eventName === 'checkout_started');
+    const paid = rows.find((row) => row.key === 'payment_success' || row.eventName === 'payment_success');
+    const awaitingPayment = Math.max(0, Number(checkout?.sessions || 0) - Number(paid?.sessions || 0));
+    DOM.analyticsFunnelInsight.textContent = `เริ่มชำระเงินแต่ยังไม่สำเร็จ ${awaitingPayment.toLocaleString()} sessions`;
   }
 }
 
@@ -1300,7 +1301,7 @@ function renderAnalyticsSummary(summary = {}) {
   renderAnalyticsCountTable(DOM.analyticsItemsTableBody, summary.popularItems, 'item', 'No item-added events yet.');
   renderAnalyticsCountTable(DOM.analyticsCategoriesTableBody, summary.popularCategories, 'category', 'No category events yet.');
 
-  const recentOrders = Array.isArray(summary.recentOrders) ? summary.recentOrders : [];
+  const recentOrders = Array.isArray(summary.recentSessions) ? summary.recentSessions : Array.isArray(summary.recentOrders) ? summary.recentOrders : [];
   renderAnalyticsCompactOrders(recentOrders);
   if (recentOrders.length > 0 && DOM.analyticsRecentOrdersTableBody) {
     DOM.analyticsRecentOrdersTableBody.innerHTML = recentOrders.map((order) => `
@@ -1314,7 +1315,7 @@ function renderAnalyticsSummary(summary = {}) {
       </tr>
     `).join('');
   } else {
-    renderAnalyticsTableEmpty(DOM.analyticsRecentOrdersTableBody, 6, 'No converted sessions in this range.');
+    renderAnalyticsTableEmpty(DOM.analyticsRecentOrdersTableBody, 6, 'No recent sessions in this range.');
   }
 }
 

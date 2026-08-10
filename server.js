@@ -1967,46 +1967,59 @@ async function linkAnalyticsOrderConversion(order = {}) {
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
 const ANALYTICS_FUNNEL_STAGES = Object.freeze([
   ["landing_view", "\u0E40\u0E02\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E41\u0E23\u0E01"],
-  ["start_customize_click", "\u0E01\u0E14\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
+  ["start_designer", "\u0E01\u0E14\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
   ["step_1_view", "\u0E16\u0E36\u0E07 Step 1"],
   ["step_2_view", "\u0E16\u0E36\u0E07 Step 2"],
   ["step_3_view", "\u0E16\u0E36\u0E07 Step 3"],
-  ["bracelet_completed", "\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A\u0E04\u0E23\u0E1A\u0E27\u0E07"],
   ["step_4_view", "\u0E16\u0E36\u0E07 Step 4"],
-  ["payment_click", "\u0E01\u0E14\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19"],
-  ["order_created", "\u0E2A\u0E31\u0E48\u0E07\u0E0B\u0E37\u0E49\u0E2D\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08"]
+  ["checkout_started", "\u0E40\u0E23\u0E34\u0E48\u0E21\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19"],
+  ["payment_success", "\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08"]
 ]);
+
+const ANALYTICS_FUNNEL_EVENT_ALIASES = Object.freeze({
+  start_customize_click: "start_designer",
+  payment_click: "checkout_started",
+  order_created: "payment_success"
+});
+
+function getCanonicalAnalyticsFunnelEvent(eventName) {
+  return ANALYTICS_FUNNEL_EVENT_ALIASES[eventName] || eventName;
+}
+
+function getBangkokCalendarDate(value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 function normalizeAnalyticsRangeParams(searchParams = new URLSearchParams()) {
   const requestedRange = String(searchParams.get("range") || "7d").trim().toLowerCase();
   const range = ANALYTICS_RANGE_PRESETS.includes(requestedRange) ? requestedRange : "7d";
   const now = new Date();
+  const bangkokDate = getBangkokCalendarDate(now);
+  const bangkokStart = (date) => new Date(`${date}T00:00:00.000+07:00`);
+  const shiftBangkokDate = (days) => {
+    const date = new Date(`${bangkokDate}T12:00:00.000+07:00`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return getBangkokCalendarDate(date);
+  };
   let startDate = null;
   let endDate = null;
 
   if (range === "today") {
-    startDate = new Date(now);
-    startDate.setHours(0, 0, 0, 0);
+    startDate = bangkokStart(bangkokDate);
     endDate = new Date(now);
   } else if (range === "yesterday") {
-    startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - 1);
-    startDate.setHours(0, 0, 0, 0);
-    endDate = new Date(startDate);
-    endDate.setHours(23, 59, 59, 999);
+    startDate = bangkokStart(shiftBangkokDate(-1));
+    endDate = new Date(`${shiftBangkokDate(-1)}T23:59:59.999+07:00`);
   } else if (range === "7d") {
-    startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - 6);
-    startDate.setHours(0, 0, 0, 0);
+    startDate = bangkokStart(shiftBangkokDate(-6));
     endDate = new Date(now);
   } else if (range === "30d") {
-    startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - 29);
-    startDate.setHours(0, 0, 0, 0);
+    startDate = bangkokStart(shiftBangkokDate(-29));
     endDate = new Date(now);
   } else if (range === "month") {
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    startDate.setHours(0, 0, 0, 0);
+    startDate = bangkokStart(`${bangkokDate.slice(0, 7)}-01`);
     endDate = new Date(now);
   }
 
@@ -2025,9 +2038,9 @@ function normalizeAnalyticsRangeParams(searchParams = new URLSearchParams()) {
 function parseDateBoundary(value, endOfDay = false) {
   const rawValue = String(value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) return null;
-  const parsed = new Date(`${rawValue}T00:00:00.000Z`);
+  const parsed = new Date(`${rawValue}T00:00:00.000+07:00`);
   if (Number.isNaN(parsed.getTime())) return null;
-  if (endOfDay) parsed.setUTCHours(23, 59, 59, 999);
+  if (endOfDay) return new Date(`${rawValue}T23:59:59.999+07:00`);
   return parsed;
 }
 
@@ -2114,7 +2127,7 @@ function normalizeAnalyticsChannel(source, platformGuess) {
 function getAnalyticsDateKey(value) {
   const time = value ? new Date(value) : null;
   if (!time || Number.isNaN(time.getTime())) return "";
-  return time.toISOString().slice(0, 10);
+  return getBangkokCalendarDate(time);
 }
 
 function isAnalyticsSessionConverted(session = {}) {
@@ -2172,7 +2185,14 @@ function addAnalyticsCount(map, key, labelKey = "label") {
 
 async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const rangeInfo = normalizeAnalyticsRangeParams(searchParams);
-  const { sessions, events, errors } = await readAnalyticsRowsForSummary(rangeInfo);
+  const analyticsRows = await readAnalyticsRowsForSummary(rangeInfo);
+  const includeTest = searchParams.get("include_test") === "1";
+  const internalTestSessionIds = new Set((analyticsRows.sessions || [])
+    .filter((session) => String(session.first_campaign || session.firstCampaign || "").trim().toLowerCase() === "prelaunch_test")
+    .map((session) => getAnalyticsSessionId(session)));
+  const sessions = includeTest ? analyticsRows.sessions : analyticsRows.sessions.filter((session) => !internalTestSessionIds.has(getAnalyticsSessionId(session)));
+  const events = includeTest ? analyticsRows.events : analyticsRows.events.filter((event) => !internalTestSessionIds.has(getAnalyticsSessionId(event)));
+  const errors = includeTest ? analyticsRows.errors : analyticsRows.errors.filter((error) => !internalTestSessionIds.has(getAnalyticsSessionId(error)));
   const sessionById = new Map();
   const channelStats = new Map();
   const dailyStats = new Map();
@@ -2220,7 +2240,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       channelRow.orders += 1;
       channelRow.revenue += revenue;
       stepDistributionCounts.converted += 1;
-      if (sessionId) funnelSessionSets.get("order_created")?.add(sessionId);
+      if (sessionId) funnelSessionSets.get("payment_success")?.add(sessionId);
     } else {
       const currentStep = Number(session.current_step ?? session.currentStep);
       if ([1, 2, 3, 4].includes(currentStep)) {
@@ -2254,7 +2274,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   });
 
   events.forEach((event) => {
-    const eventName = getAnalyticsEventName(event);
+    const eventName = getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(event));
     const sessionId = getAnalyticsSessionId(event);
     const properties = parseAnalyticsProperties(event.properties);
     if (funnelSessionSets.has(eventName) && sessionId) {
@@ -2286,22 +2306,36 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   });
 
   const step3SessionIds = funnelSessionSets.get("step_3_view") || new Set();
-  const completedSessionIds = funnelSessionSets.get("bracelet_completed") || new Set();
+  const startedDesignerSessionIds = funnelSessionSets.get("start_designer") || new Set();
+  const checkoutSessionIds = funnelSessionSets.get("checkout_started") || new Set();
+  const paidSessionIds = funnelSessionSets.get("payment_success") || new Set();
   channelStats.forEach((row) => {
     let step3Count = 0;
-    let completedCount = 0;
+    let startedDesignerCount = 0;
+    let checkoutCount = 0;
+    let paidCount = 0;
     step3SessionIds.forEach((sessionId) => {
       const session = sessionById.get(sessionId);
       const sessionChannel = normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel;
       if (sessionChannel === row.channel) step3Count += 1;
     });
-    completedSessionIds.forEach((sessionId) => {
+    startedDesignerSessionIds.forEach((sessionId) => {
       const session = sessionById.get(sessionId);
       const sessionChannel = normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel;
-      if (sessionChannel === row.channel) completedCount += 1;
+      if (sessionChannel === row.channel) startedDesignerCount += 1;
+    });
+    checkoutSessionIds.forEach((sessionId) => {
+      const session = sessionById.get(sessionId);
+      if (normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel === row.channel) checkoutCount += 1;
+    });
+    paidSessionIds.forEach((sessionId) => {
+      const session = sessionById.get(sessionId);
+      if (normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel === row.channel) paidCount += 1;
     });
     row.step3Sessions = step3Count;
-    row.braceletCompleted = completedCount;
+    row.startedDesigner = startedDesignerCount;
+    row.checkoutStarted = checkoutCount;
+    row.paid = paidCount;
   });
 
   const stepDurations = Object.entries(timeStepTotals).map(([step, totalMs]) => ({
@@ -2367,8 +2401,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
         url: error.url || ""
       };
     });
-  const recentOrders = sessions
-    .filter((session) => session.converted || session.order_id || session.orderId)
+  const recentSessions = sessions
     .sort((a, b) => getAnalyticsRowTime(b, ["last_seen_at", "started_at"]) - getAnalyticsRowTime(a, ["last_seen_at", "started_at"]))
     .slice(0, 20)
     .map((session) => {
@@ -2418,7 +2451,10 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     popularItems: sortCountRows(itemCounts),
     popularCategories: sortCountRows(categoryCounts),
     recentErrors,
-    recentOrders
+    recentOrders: recentSessions.filter((session) => session.orderId),
+    recentSessions,
+    testCampaignExcluded: true,
+    paymentSuccessAuthority: "client_return_verified_pending_webhook"
   };
 }
 

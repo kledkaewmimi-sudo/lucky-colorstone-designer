@@ -1255,6 +1255,21 @@ function trackStepView(step) {
   trackAnalyticsEvent(`step_${normalizedStep}_view`, { current_step: normalizedStep });
 }
 
+function trackCheckoutStarted(checkoutSessionId) {
+  if (!checkoutSessionId) return;
+  const key = `lucky_analytics_checkout_started_${checkoutSessionId}`;
+  try {
+    if (sessionStorage.getItem(key) === '1') return;
+    sessionStorage.setItem(key, '1');
+  } catch {
+    // Analytics is best-effort if storage is unavailable.
+  }
+  trackAnalyticsEvent('checkout_started', {
+    stripeCheckoutSessionId: checkoutSessionId,
+    checkout_tracking: 'stripe_session_created'
+  });
+}
+
 function triggerLandingStartFeedback() {
   const button = DOM.btnLandingLogin;
   if (!button) return;
@@ -1596,9 +1611,9 @@ async function initLIFF() {
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
-    trackAnalyticsEvent('line_login_error', {
-      message: err?.message || String(err || '')
-    });
+    trackAnalyticsEvent('line_login_unavailable', {
+        message: err?.message || String(err || '')
+      });
   } finally {
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
   }
@@ -2456,7 +2471,6 @@ function setupNavigationEvents() {
   DOM.btnNext.addEventListener('click', async () => {
     if (State.currentStep === 4) {
       if (State.orderDetailMode || State.paymentCompletedView) return;
-      trackAnalyticsEvent('payment_click', { source: 'footer_next' });
       await handleStripeCheckout();
     } else {
       if (State.currentStep === 3) {
@@ -2497,7 +2511,6 @@ function setupNavigationEvents() {
 
   if (DOM.btnPayWithStripe) {
     DOM.btnPayWithStripe.addEventListener('click', async () => {
-      trackAnalyticsEvent('payment_click', { source: 'step4_button' });
       await handleStripeCheckout();
     });
   }
@@ -6707,6 +6720,8 @@ async function handleStripeCheckout() {
       throw new Error("Stripe Checkout session did not include a redirect URL.");
     }
 
+    // Checkout Started is recorded only after Stripe created a session.
+    trackCheckoutStarted(payload.id);
     rememberStripeOrderPayload(payload.id, orderPayload);
     window.location.assign(payload.url);
   } catch (error) {
