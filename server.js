@@ -2883,6 +2883,13 @@ function shouldDeductStockForOrder(order) {
   return true;
 }
 
+function isUnpaidStripeCheckoutOrder(order) {
+  const paymentMethod = String(order?.paymentMethod || "").trim().toLowerCase();
+  const checkoutSessionId = String(order?.stripeCheckoutSessionId || "").trim();
+  const stripePaymentStatus = String(order?.stripePaymentStatus || "").trim().toLowerCase();
+  return (paymentMethod === "stripe_checkout" || checkoutSessionId.startsWith("cs_")) && stripePaymentStatus !== "paid";
+}
+
 async function deductStockForOrder(order) {
   if (!shouldDeductStockForOrder(order)) return order;
   const requirements = buildOrderStockRequirements(order);
@@ -3709,6 +3716,10 @@ async function handleApiRequest(req, res, urlObj) {
     if (isSupabaseConfigured()) {
       const previousOrder = await getSupabaseRecordById("orders", bodyObj.id);
       if (previousOrder) {
+        if (isUnpaidStripeCheckoutOrder(previousOrder)) {
+          sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
+          return true;
+        }
         let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
 
         try {
@@ -3731,6 +3742,10 @@ async function handleApiRequest(req, res, urlObj) {
     const orderIndex = orders.findIndex((entry) => entry && entry.id === bodyObj.id);
     if (orderIndex >= 0) {
       const previousOrder = orders[orderIndex];
+      if (isUnpaidStripeCheckoutOrder(previousOrder)) {
+        sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
+        return true;
+      }
       let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
       orders[orderIndex] = nextOrder;
       writeJsonFile(dataFiles.orders, orders);

@@ -814,6 +814,7 @@ async function loadDashboardData(prefetched = {}) {
   const charms = Array.isArray(prefetched.charms) ? prefetched.charms : await getSharedCharmCatalog();
   const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
   const orders = await getSharedOrders();
+  const operationalOrders = orders.filter(isOrderPaidForRevenue);
   const settings = await getSharedSettings();
   if (CRMState.activeTab === 'inventory') {
     CRMState.purchaseCostSummaries = prefetched.purchaseCostSummaries
@@ -822,10 +823,9 @@ async function loadDashboardData(prefetched = {}) {
   CRMState.simulatorCatalogCache = { stones, charms, spacers };
   
   // Calculate Metric values
-  const totalOrdersCount = orders.length;
+  const totalOrdersCount = operationalOrders.length;
   
-  const netRevenueAmount = orders
-    .filter(isOrderPaidForRevenue)
+  const netRevenueAmount = operationalOrders
     .reduce((sum, order) => sum + getOrderFinalPrice(order), 0);
   
   const activeStonesCount = stones.filter(isCrmItemInStock).length;
@@ -850,7 +850,7 @@ async function loadDashboardData(prefetched = {}) {
   
   // Render views based on active tab
   if (CRMState.activeTab === 'overview') {
-    renderRecentOrdersList(orders);
+    renderRecentOrdersList(operationalOrders);
   } else if (CRMState.activeTab === 'inventory') {
     renderInventoryCatalog(stones, charms, spacers, CRMState.purchaseCostSummaries);
   } else if (CRMState.activeTab === 'analytics') {
@@ -861,7 +861,7 @@ async function loadDashboardData(prefetched = {}) {
   } else if (CRMState.activeTab === 'charms') {
     renderCharmCatalog(charms, categories);
   } else if (CRMState.activeTab === 'orders') {
-    renderOrdersList(orders);
+    renderOrdersList(operationalOrders);
   } else if (CRMState.activeTab === 'settings') {
     DOM.globalDiscountPercent.value = globalDiscountRateVal;
     if (DOM.discountEnabled) {
