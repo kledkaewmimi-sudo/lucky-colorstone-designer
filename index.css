@@ -2382,7 +2382,7 @@ button.stone-card {
   width: 88%;
   height: 88%;
   opacity: 0;
-  transition: opacity 320ms ease-in-out;
+  transition: opacity 400ms ease-in-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -32,6 +32,7 @@ import {
   getComponentTypeLabel
   , getSharedPurchaseEntries, getSharedPurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry
 } from './data.js';
+import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 
 // ==========================================
 // 1. CRM Application State
@@ -79,16 +80,6 @@ const CRMState = {
   analyticsLoading: false,
   selectedInvoiceOrder: null // Order details populated in invoice modal
 };
-const BERYL_STONE_ID = 'beryl';
-const BERYL_VISUAL_IMAGES = Object.freeze([
-  'assets/Beryl.png',
-  'assets/Beryl pink.png',
-  'assets/Beryl blue.png'
-]);
-
-function getBerylVisualImage(occurrenceIndex = 0) {
-  return BERYL_VISUAL_IMAGES[occurrenceIndex % BERYL_VISUAL_IMAGES.length];
-}
 
 // ==========================================
 // 2. DOM Elements Selection

@@ -1,4 +1,5 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
+import { BERYL_CATALOG_FADE_MS, BERYL_CATALOG_HOLD_MS, BERYL_STONE_ID, BERYL_VISUAL_IMAGES, getBerylVisualImage } from './beryl-visuals.js';
 
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
@@ -209,13 +210,11 @@ const SHIPPING_FIELD_CONFIG = Object.freeze([
 ]);
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
-const BERYL_STONE_ID = 'beryl';
-const BERYL_VISUAL_IMAGES = Object.freeze([
-  'assets/Beryl.png',
-  'assets/Beryl pink.png',
-  'assets/Beryl blue.png'
-]);
 let berylCatalogRotationTimer = null;
+let berylCatalogRotationGeneration = 0;
+let berylCatalogPreviewImages = [];
+let berylCatalogCurrentColorIndex = 0;
+let berylCatalogSchedulerRunning = false;
 let berylCatalogImagesPreloadPromise = null;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
@@ -3159,29 +3158,53 @@ function getVisibleCharmCatalog() {
   ));
 }
 
-function getBerylVisualImage(occurrenceIndex = 0) {
-  return BERYL_VISUAL_IMAGES[occurrenceIndex % BERYL_VISUAL_IMAGES.length];
-}
-
 function preloadBerylCatalogImages() {
   if (!berylCatalogImagesPreloadPromise) {
     berylCatalogImagesPreloadPromise = Promise.all(BERYL_VISUAL_IMAGES.map((imageUrl) => (
-      new Promise((resolve) => {
-        const image = new Image();
-        image.onload = resolve;
-        image.onerror = resolve;
-        image.src = withCatalogImageVersion(imageUrl);
-      })
+      loadAndDecodeBerylImage(new Image(), withCatalogImageVersion(imageUrl))
+        .then((loaded) => ({ imageUrl, loaded }))
     )));
   }
   return berylCatalogImagesPreloadPromise;
 }
 
+function loadAndDecodeBerylImage(image, imageUrl) {
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = async (loaded) => {
+      if (finished) return;
+      finished = true;
+      image.removeEventListener('load', onLoad);
+      image.removeEventListener('error', onError);
+      if (!loaded) {
+        resolve(false);
+        return;
+      }
+      try {
+        if (typeof image.decode === 'function') await image.decode();
+        resolve((image.naturalWidth || 0) > 0);
+      } catch (error) {
+        resolve(false);
+      }
+    };
+    const onLoad = () => finish(true);
+    const onError = () => finish(false);
+    image.addEventListener('load', onLoad, { once: true });
+    image.addEventListener('error', onError, { once: true });
+    image.src = imageUrl;
+    if (image.complete) finish((image.naturalWidth || 0) > 0);
+  });
+}
+
 function stopBerylCatalogRotation() {
+  berylCatalogRotationGeneration += 1;
   if (berylCatalogRotationTimer !== null) {
-    window.clearInterval(berylCatalogRotationTimer);
+    window.clearTimeout(berylCatalogRotationTimer);
     berylCatalogRotationTimer = null;
   }
+  berylCatalogPreviewImages = [];
+  berylCatalogCurrentColorIndex = 0;
+  berylCatalogSchedulerRunning = false;
 }
 
 function createBerylCatalogPreview(card) {
@@ -3208,30 +3231,69 @@ function startBerylCatalogRotation(images) {
     || State.currentStep !== 3
     || images.some((image) => !image.isConnected)
   ) return;
-  stopBerylCatalogRotation();
 
-  let colorIndex = 0;
-  let visibleImageIndex = 0;
-  images[0].src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+  if (berylCatalogSchedulerRunning) {
+    berylCatalogPreviewImages = images;
+    images[0].src = withCatalogImageVersion(getBerylVisualImage(berylCatalogCurrentColorIndex));
+    images[0].style.opacity = '1';
+    images[1].style.opacity = '0';
+    return;
+  }
+
+  stopBerylCatalogRotation();
+  const generation = berylCatalogRotationGeneration;
+  berylCatalogPreviewImages = images;
+  berylCatalogCurrentColorIndex = 0;
+  berylCatalogSchedulerRunning = true;
+  images[0].src = withCatalogImageVersion(getBerylVisualImage(berylCatalogCurrentColorIndex));
   images[0].style.opacity = '1';
   images[1].style.opacity = '0';
-  berylCatalogRotationTimer = window.setInterval(() => {
-    if (State.currentStep !== 3 || images.some((image) => !image.isConnected)) {
-      stopBerylCatalogRotation();
-      return;
-    }
-    colorIndex = (colorIndex + 1) % BERYL_VISUAL_IMAGES.length;
-    const incomingImageIndex = (visibleImageIndex + 1) % images.length;
-    const outgoingImage = images[visibleImageIndex];
-    const incomingImage = images[incomingImageIndex];
-    incomingImage.style.opacity = '0';
-    incomingImage.src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
-    // Force the source update to commit before beginning the crossfade.
-    void incomingImage.offsetWidth;
-    incomingImage.style.opacity = '1';
-    outgoingImage.style.opacity = '0';
-    visibleImageIndex = incomingImageIndex;
-  }, 2000);
+
+  const scheduleNextTransition = () => {
+    berylCatalogRotationTimer = window.setTimeout(async () => {
+      const activeImages = berylCatalogPreviewImages;
+      if (
+        generation !== berylCatalogRotationGeneration
+        || State.currentStep !== 3
+        || activeImages.length !== 2
+        || activeImages.some((image) => !image.isConnected)
+      ) {
+        if (generation === berylCatalogRotationGeneration) stopBerylCatalogRotation();
+        return;
+      }
+
+      const nextColorIndex = (berylCatalogCurrentColorIndex + 1) % BERYL_VISUAL_IMAGES.length;
+      const outgoingImage = activeImages[0];
+      const incomingImage = activeImages[1];
+      incomingImage.style.opacity = '0';
+      const imageReady = await loadAndDecodeBerylImage(
+        incomingImage,
+        withCatalogImageVersion(getBerylVisualImage(nextColorIndex))
+      );
+      if (!imageReady) {
+        incomingImage.closest('.stone-card')?.setAttribute('data-beryl-animation-error', 'image-load');
+        stopBerylCatalogRotation();
+        return;
+      }
+
+      if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) return;
+        incomingImage.style.opacity = '1';
+        outgoingImage.style.opacity = '0';
+        berylCatalogRotationTimer = window.setTimeout(() => {
+          if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) return;
+          berylCatalogCurrentColorIndex = nextColorIndex;
+          berylCatalogPreviewImages = [incomingImage, outgoingImage];
+          scheduleNextTransition();
+        }, BERYL_CATALOG_FADE_MS);
+      });
+    }, BERYL_CATALOG_HOLD_MS);
+  };
+  scheduleNextTransition();
 }
 
 function getCharmCatalogThumbnailTargetRatio(charms = []) {
@@ -4808,7 +4870,6 @@ function initCatalogFilters() {
 
 function renderCatalogGrid() {
   if (!canUseCategoryForBeadSize('stones')) return;
-  stopBerylCatalogRotation();
   DOM.stoneCatalogGrid.innerHTML = '';
   const selectedStoneCounts = getSelectedStoneCountsById();
   
@@ -4852,7 +4913,15 @@ function renderCatalogGrid() {
     }
   });
   if (berylCatalogPreview.length === 2) {
-    preloadBerylCatalogImages().then(() => startBerylCatalogRotation(berylCatalogPreview));
+    preloadBerylCatalogImages().then((results) => {
+      if (results.every((result) => result.loaded)) {
+        startBerylCatalogRotation(berylCatalogPreview);
+      } else {
+        berylCatalogPreview[0]?.closest('.stone-card')?.setAttribute('data-beryl-animation-error', 'preload');
+      }
+    });
+  } else {
+    stopBerylCatalogRotation();
   }
 }
 
