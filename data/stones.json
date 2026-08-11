@@ -513,7 +513,7 @@
     "category": "wealth",
     "meaning": "Symbolizes joy, luck, confidence, and uplifting positive energy.",
     "meaningTh": "สื่อถึงความสดใส โชคดี ความมั่นใจ และพลังบวกในการเริ่มต้นวันใหม่",
-    "image": "assets/Sunstone.png",
+    "image": "assets/Sunstone.webp",
     "color": "#F4A258",
     "sizes": [
       4,
@@ -660,7 +660,7 @@
     "categoryId": "wealth",
     "meaning": "Symbolizes luck, prosperity, balance, and positive new opportunities.",
     "meaningTh": "สื่อถึงโชคลาภ ความมั่งคั่ง ความสมดุล และโอกาสใหม่ที่ดี",
-    "image": "assets/Green Jade.png",
+    "image": "assets/Green Jade.webp",
     "sizes": [
       6,
       10

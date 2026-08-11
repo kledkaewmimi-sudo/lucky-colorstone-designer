@@ -1,8 +1,8 @@
 export const BERYL_STONE_ID = 'beryl';
 export const BERYL_VISUAL_IMAGES = Object.freeze([
-  'assets/Beryl.png',
-  'assets/Beryl pink.png',
-  'assets/Beryl blue.png'
+  'assets/Beryl.webp',
+  'assets/Beryl pink.webp',
+  'assets/Beryl blue.webp'
 ]);
 export const BERYL_CATALOG_HOLD_MS = 2000;
 export const BERYL_CATALOG_FADE_MS = 400;
