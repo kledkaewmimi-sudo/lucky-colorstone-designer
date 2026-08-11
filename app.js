@@ -209,6 +209,14 @@ const SHIPPING_FIELD_CONFIG = Object.freeze([
 ]);
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
+const BERYL_STONE_ID = 'beryl';
+const BERYL_VISUAL_IMAGES = Object.freeze([
+  'assets/Beryl.png',
+  'assets/Beryl pink.png',
+  'assets/Beryl blue.png'
+]);
+let berylCatalogRotationTimer = null;
+let berylCatalogImagesPreloaded = false;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
@@ -2324,6 +2332,9 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 }
 
 async function renderStepViews() {
+  if (State.currentStep !== 3) {
+    stopBerylCatalogRotation();
+  }
   legacyCharmCatalogCache = await getLegacyCharmCatalog();
   migrateSlotPlaceableCharmSelectionsIntoLoop();
   State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
@@ -3146,6 +3157,42 @@ function getVisibleCharmCatalog() {
     charm.image &&
     charm.image !== CHARM_PLACEHOLDER_IMAGE
   ));
+}
+
+function getBerylVisualImage(occurrenceIndex = 0) {
+  return BERYL_VISUAL_IMAGES[occurrenceIndex % BERYL_VISUAL_IMAGES.length];
+}
+
+function preloadBerylCatalogImages() {
+  if (berylCatalogImagesPreloaded) return;
+  berylCatalogImagesPreloaded = true;
+  BERYL_VISUAL_IMAGES.forEach((imageUrl) => {
+    const image = new Image();
+    image.src = withCatalogImageVersion(imageUrl);
+  });
+}
+
+function stopBerylCatalogRotation() {
+  if (berylCatalogRotationTimer !== null) {
+    window.clearInterval(berylCatalogRotationTimer);
+    berylCatalogRotationTimer = null;
+  }
+}
+
+function startBerylCatalogRotation(image) {
+  stopBerylCatalogRotation();
+  if (!image) return;
+
+  let colorIndex = 0;
+  image.src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+  berylCatalogRotationTimer = window.setInterval(() => {
+    if (State.currentStep !== 3 || !image.isConnected) {
+      stopBerylCatalogRotation();
+      return;
+    }
+    colorIndex = (colorIndex + 1) % BERYL_VISUAL_IMAGES.length;
+    image.src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+  }, 2000);
 }
 
 function getCharmCatalogThumbnailTargetRatio(charms = []) {
@@ -4722,6 +4769,7 @@ function initCatalogFilters() {
 
 function renderCatalogGrid() {
   if (!canUseCategoryForBeadSize('stones')) return;
+  stopBerylCatalogRotation();
   DOM.stoneCatalogGrid.innerHTML = '';
   const selectedStoneCounts = getSelectedStoneCountsById();
   
@@ -4735,14 +4783,17 @@ function renderCatalogGrid() {
     ? availableStones 
     : availableStones.filter(s => (s.categoryId || s.category) === State.activeCategory);
     
+  let berylCatalogImage = null;
   filtered.forEach(stone => {
     const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
     const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
     const selectedCount = selectedStoneCounts[stone.id] || 0;
-    DOM.stoneCatalogGrid.appendChild(buildStoneCard({
+    const card = buildStoneCard({
       dataAttributeName: 'stone-id',
       dataAttributeValue: stone.id,
-      image: withCatalogImageVersion(stone.image, stone),
+      image: stone.id === BERYL_STONE_ID
+        ? getBerylVisualImage(0)
+        : withCatalogImageVersion(stone.image, stone),
       imageAlt: stone.name,
       nameTh: stone.nameTh,
       nameEn: stone.name,
@@ -4755,8 +4806,16 @@ function renderCatalogGrid() {
       actionText: selectedCount > 0 ? String(selectedCount) : '+',
       actionTitle: selectedCount > 0 ? `Add another stone (currently ${selectedCount} selected)` : 'Add Stone',
       actionAriaLabel: selectedCount > 0 ? `Add another stone. ${selectedCount} selected in bracelet.` : 'Add Stone'
-    }));
+    });
+    DOM.stoneCatalogGrid.appendChild(card);
+    if (stone.id === BERYL_STONE_ID) {
+      berylCatalogImage = card.querySelector('img.stone-img');
+    }
   });
+  if (berylCatalogImage) {
+    preloadBerylCatalogImages();
+    startBerylCatalogRotation(berylCatalogImage);
+  }
 }
 
 function getFirstEmptyLoopSlotIndex() {
@@ -5011,6 +5070,7 @@ function createBraceletConfig() {
 }
 
 function createBraceletComponentList() {
+  let berylOccurrenceIndex = 0;
   const loopComponents = State.selectedStones
     .map((item, index) => {
       if (isEmptyLoopSlot(item)) {
@@ -5080,6 +5140,9 @@ function createBraceletComponentList() {
         };
       }
 
+      const visualImage = item.stoneId === BERYL_STONE_ID
+        ? getBerylVisualImage(berylOccurrenceIndex++)
+        : '';
       return {
         id: item.uniqueId,
         type: 'stone',
@@ -5087,6 +5150,7 @@ function createBraceletComponentList() {
         sourceIndex: index,
         stoneId: item.stoneId,
         sizeMm: item.size,
+        visualImage,
         uniqueId: item.uniqueId
       };
     })
@@ -5608,7 +5672,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
         
         const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
-        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", withCatalogImageVersion(stoneData.image, stoneData));
+        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", getComponentRenderImageUrl(component));
         const scaleFactor = 1.3;
         const imgSize = bRadiusPx * 2 * scaleFactor;
         img.setAttribute("x", bx - imgSize / 2);
@@ -6753,7 +6817,7 @@ function getComponentRenderImageUrl(component) {
   }
   if (component.type === 'stone') {
     const stoneData = STONES.find((stone) => stone.id === component.stoneId) || STONES[0];
-    return withCatalogImageVersion(stoneData?.image || '', stoneData);
+    return withCatalogImageVersion(component.visualImage || stoneData?.image || '', stoneData);
   }
   return '';
 }
@@ -7345,7 +7409,7 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const bx = node.renderCenterX;
 
     const stoneData = STONES.find(s => s.id === node.component.stoneId) || STONES[0];
-    const imgUrl = stoneData ? stoneData.image : "";
+    const imgUrl = getComponentRenderImageUrl(node.component);
     const imgObj = imageCache[imgUrl];
 
     rCtx.save();

@@ -79,6 +79,16 @@ const CRMState = {
   analyticsLoading: false,
   selectedInvoiceOrder: null // Order details populated in invoice modal
 };
+const BERYL_STONE_ID = 'beryl';
+const BERYL_VISUAL_IMAGES = Object.freeze([
+  'assets/Beryl.png',
+  'assets/Beryl pink.png',
+  'assets/Beryl blue.png'
+]);
+
+function getBerylVisualImage(occurrenceIndex = 0) {
+  return BERYL_VISUAL_IMAGES[occurrenceIndex % BERYL_VISUAL_IMAGES.length];
+}
 
 // ==========================================
 // 2. DOM Elements Selection
@@ -3753,6 +3763,7 @@ function getOrderCharmRenderTuning(item = {}, catalogCharm = null) {
 }
 
 function normalizeOrderBraceletPreviewItems(order = {}) {
+  let berylOccurrenceIndex = 0;
   return getOrderBraceletSequence(order)
     .filter((item) => item && typeof item === 'object')
     .map((item, index) => {
@@ -3762,6 +3773,9 @@ function normalizeOrderBraceletPreviewItems(order = {}) {
       const charm = itemType === 'charm' ? getCrmCharmCatalogEntry(itemId) : null;
       const spacer = itemType === 'spacer' ? getCrmSpacerCatalogEntry(itemId) : null;
       const catalogItem = stone || charm || spacer || {};
+      const berylVisualImage = itemType === 'stone' && itemId === BERYL_STONE_ID
+        ? getBerylVisualImage(berylOccurrenceIndex++)
+        : '';
       const sizeMm = getOrderBraceletItemSize({ ...catalogItem, ...item }, itemType, order);
       const displaySizeMm = item.displaySizeMm || spacer?.business?.displaySizeMm || spacer?.displaySizeMm || sizeMm;
       const renderTuning = itemType === 'charm' ? getOrderCharmRenderTuning(item, charm) : {};
@@ -3777,7 +3791,7 @@ function normalizeOrderBraceletPreviewItems(order = {}) {
           nameTh: item.nameTh || getNestedNameValue(catalogItem, 'th'),
           nameEn: item.nameEn || getNestedNameValue(catalogItem, 'en')
         }),
-        previewImage: getOrderBraceletItemImage({ ...catalogItem, ...item, image: getNestedImageValue(item) || getNestedImageValue(catalogItem) }),
+        previewImage: berylVisualImage || getOrderBraceletItemImage({ ...catalogItem, ...item, image: getNestedImageValue(item) || getNestedImageValue(catalogItem) }),
         previewColor: getOrderBraceletItemColor({ ...catalogItem, ...item, color: item.color || catalogItem.color || catalogItem.colorHex }),
         previewSizeMm: sizeMm,
         displaySizeMm,
@@ -3947,7 +3961,11 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
   const className = options.className || '';
   const title = options.title || 'Bracelet layout preview';
 
-  if (savedPreviewImage) {
+  const hasBeryl = getOrderBraceletSequence(order).some((item) => (
+    getOrderBraceletItemType(item) === 'stone'
+    && String(item?.stoneId || item?.id || '').trim() === BERYL_STONE_ID
+  ));
+  if (savedPreviewImage && !hasBeryl) {
     return `
       <div class="order-bracelet-preview order-bracelet-preview-snapshot ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
         <img class="order-bracelet-preview-img" src="${escapeHtml(savedPreviewImage)}" alt="${escapeHtml(title)}">
