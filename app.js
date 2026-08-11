@@ -3171,9 +3171,11 @@ function preloadBerylCatalogImages() {
 function loadAndDecodeBerylImage(image, imageUrl) {
   return new Promise((resolve) => {
     let finished = false;
+    const loadTimeout = window.setTimeout(() => finish((image.naturalWidth || 0) > 0), 8000);
     const finish = async (loaded) => {
       if (finished) return;
       finished = true;
+      window.clearTimeout(loadTimeout);
       image.removeEventListener('load', onLoad);
       image.removeEventListener('error', onError);
       if (!loaded) {
@@ -3182,10 +3184,11 @@ function loadAndDecodeBerylImage(image, imageUrl) {
       }
       try {
         if (typeof image.decode === 'function') await image.decode();
-        resolve((image.naturalWidth || 0) > 0);
       } catch (error) {
-        resolve(false);
+        // LINE WebView can reject decode() for an otherwise loaded WebP.
+        // A positive intrinsic width is sufficient for <img> rendering.
       }
+      resolve((image.naturalWidth || 0) > 0);
     };
     const onLoad = () => finish(true);
     const onError = () => finish(false);
@@ -3213,9 +3216,12 @@ function createBerylCatalogPreview(card) {
   if (!container || !greenImage) return [];
 
   const nextImage = document.createElement('img');
+  card.dataset.berylCatalogCard = 'true';
+  greenImage.dataset.berylLayer = 'active';
   nextImage.className = 'stone-img beryl-catalog-image';
   nextImage.alt = '';
   nextImage.setAttribute('aria-hidden', 'true');
+  nextImage.dataset.berylLayer = 'incoming';
   greenImage.classList.add('beryl-catalog-image');
   greenImage.src = withCatalogImageVersion(getBerylVisualImage(0));
   greenImage.style.opacity = '1';
@@ -3280,17 +3286,16 @@ function startBerylCatalogRotation(images) {
         return;
       }
 
-      window.requestAnimationFrame(() => {
+      // Commit the hidden, decoded source before starting the CSS opacity transition.
+      void incomingImage.offsetWidth;
+      incomingImage.style.opacity = '1';
+      outgoingImage.style.opacity = '0';
+      berylCatalogRotationTimer = window.setTimeout(() => {
         if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) return;
-        incomingImage.style.opacity = '1';
-        outgoingImage.style.opacity = '0';
-        berylCatalogRotationTimer = window.setTimeout(() => {
-          if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) return;
-          berylCatalogCurrentColorIndex = nextColorIndex;
-          berylCatalogPreviewImages = [incomingImage, outgoingImage];
-          scheduleNextTransition();
-        }, BERYL_CATALOG_FADE_MS);
-      });
+        berylCatalogCurrentColorIndex = nextColorIndex;
+        berylCatalogPreviewImages = [incomingImage, outgoingImage];
+        scheduleNextTransition();
+      }, BERYL_CATALOG_FADE_MS);
     }, BERYL_CATALOG_HOLD_MS);
   };
   scheduleNextTransition();

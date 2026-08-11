@@ -11,6 +11,22 @@ export function getBerylVisualImage(occurrenceIndex = 0) {
   return BERYL_VISUAL_IMAGES[occurrenceIndex % BERYL_VISUAL_IMAGES.length];
 }
 
+export function createBerylCatalogSchedulerState() {
+  return { currentIndex: 0, phase: 'hold' };
+}
+
+export function advanceBerylCatalogSchedulerState(state = createBerylCatalogSchedulerState()) {
+  const currentIndex = Number(state.currentIndex) || 0;
+  return {
+    currentIndex: (currentIndex + 1) % BERYL_VISUAL_IMAGES.length,
+    phase: 'hold',
+    transition: {
+      from: getBerylVisualImage(currentIndex),
+      to: getBerylVisualImage(currentIndex + 1)
+    }
+  };
+}
+
 export function validateBerylCatalogSchedulerSequence(loopCount = 2) {
   if (BERYL_VISUAL_IMAGES.length !== 3) {
     throw new Error('Beryl catalog animation requires exactly three images.');
