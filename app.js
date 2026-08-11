@@ -1,6 +1,10 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 import { BERYL_CATALOG_FADE_MS, BERYL_CATALOG_HOLD_MS, BERYL_STONE_ID, BERYL_VISUAL_IMAGES, getBerylVisualImage } from './beryl-visuals.js';
 
+// These photo assets already include their own natural edge treatment. Drawing the
+// generic SVG color stroke over them creates a visible halo in the bracelet ring.
+const CLEAN_EDGE_STONE_IDS = new Set([BERYL_STONE_ID, 'sunstone', 'green_jade']);
+
 // Clear session helper for testing/debugging
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearStorage')) {
@@ -5806,15 +5810,17 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         sheenCircle.setAttribute("pointer-events", "none");
         group.appendChild(sheenCircle);
         
-        const border = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        border.setAttribute("cx", bx);
-        border.setAttribute("cy", by);
-        border.setAttribute("r", bRadiusPx - 0.5);
-        border.setAttribute("fill", "none");
-        border.setAttribute("stroke", stoneData.color);
-        border.setAttribute("stroke-width", "1");
-        border.setAttribute("opacity", "0.5");
-        group.appendChild(border);
+        if (!CLEAN_EDGE_STONE_IDS.has(stoneId)) {
+          const border = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          border.setAttribute("cx", bx);
+          border.setAttribute("cy", by);
+          border.setAttribute("r", bRadiusPx - 0.5);
+          border.setAttribute("fill", "none");
+          border.setAttribute("stroke", stoneData.color);
+          border.setAttribute("stroke-width", "1");
+          border.setAttribute("opacity", "0.5");
+          group.appendChild(border);
+        }
         
         if (node.isActiveSlot) {
           const activeRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");

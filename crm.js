@@ -34,6 +34,9 @@ import {
 } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 
+const CLEAN_EDGE_STONE_IDS = new Set([BERYL_STONE_ID, 'sunstone', 'green_jade']);
+let orderBraceletPreviewInstance = 0;
+
 // ==========================================
 // 1. CRM Application State
 // ==========================================
@@ -3951,6 +3954,7 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
   const size = Number(options.size || 150);
   const className = options.className || '';
   const title = options.title || 'Bracelet layout preview';
+  const previewInstanceId = ++orderBraceletPreviewInstance;
 
   const hasBeryl = getOrderBraceletSequence(order).some((item) => (
     getOrderBraceletItemType(item) === 'stone'
@@ -3986,7 +3990,7 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
   }
 
   const ringStrokeWidth = Math.max(2, size * 0.016);
-  const markerHtml = nodes.map((node) => {
+  const markerHtml = nodes.map((node, nodeIndex) => {
     const component = node.component;
     const x = node.renderCenterX;
     const y = node.renderCenterY;
@@ -4038,12 +4042,18 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
     }
 
     const imageSize = radiusPx * 2 * 1.3;
+    const stoneId = String(component.stoneId || component.id || '').trim();
+    const usesCleanImageEdge = CLEAN_EDGE_STONE_IDS.has(stoneId);
+    const imageClipId = `order-bracelet-stone-clip-${previewInstanceId}-${nodeIndex}`;
     return `
+      ${usesCleanImageEdge && escapedImage
+        ? `<defs><clipPath id="${imageClipId}"><circle cx="${x}" cy="${y}" r="${radiusPx}"></circle></clipPath></defs>`
+        : ''}
       <g class="order-bracelet-preview-item order-bracelet-preview-stone">
         <title>${escapedLabel}</title>
-        <circle cx="${x}" cy="${y}" r="${radiusPx}" fill="${escapedColor}" stroke="#FFFFFF" stroke-width="${Math.max(0.7, size * 0.006)}"></circle>
+        <circle cx="${x}" cy="${y}" r="${radiusPx}" fill="${escapedColor}"${usesCleanImageEdge ? '' : ` stroke="#FFFFFF" stroke-width="${Math.max(0.7, size * 0.006)}"`}></circle>
         ${escapedImage
-          ? `<image href="${escapedImage}" x="${x - imageSize / 2}" y="${y - imageSize / 2}" width="${imageSize}" height="${imageSize}" preserveAspectRatio="xMidYMid slice"></image>`
+          ? `<image href="${escapedImage}" x="${x - imageSize / 2}" y="${y - imageSize / 2}" width="${imageSize}" height="${imageSize}" preserveAspectRatio="xMidYMid slice"${usesCleanImageEdge ? ` clip-path="url(#${imageClipId})"` : ''}></image>`
           : ''}
       </g>
     `;
