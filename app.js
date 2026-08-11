@@ -3242,14 +3242,8 @@ function startBerylCatalogRotation(images) {
     || images.some((image) => !image.isConnected)
   ) return;
 
-  if (berylCatalogSchedulerRunning) {
-    berylCatalogPreviewImages = images;
-    images[0].src = withCatalogImageVersion(getBerylVisualImage(berylCatalogCurrentColorIndex));
-    images[0].style.opacity = '1';
-    images[1].style.opacity = '0';
-    return;
-  }
-
+  // The grid may have been rebuilt while a prior crossfade was pending. Always
+  // retire that controller before attaching a scheduler to this card instance.
   stopBerylCatalogRotation();
   const generation = berylCatalogRotationGeneration;
   berylCatalogPreviewImages = images;
@@ -4878,6 +4872,10 @@ function initCatalogFilters() {
 }
 
 function renderCatalogGrid() {
+  // The catalog grid owns the Beryl preview DOM. Retire its controller before
+  // replacing that DOM so an in-flight fade cannot leave a stale "running"
+  // scheduler with no pending next dwell.
+  stopBerylCatalogRotation();
   if (!canUseCategoryForBeadSize('stones')) return;
   DOM.stoneCatalogGrid.innerHTML = '';
   const selectedStoneCounts = getSelectedStoneCountsById();
