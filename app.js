@@ -1,5 +1,6 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
-import { BERYL_CATALOG_FADE_MS, BERYL_CATALOG_HOLD_MS, BERYL_STONE_ID, BERYL_VISUAL_IMAGES, getBerylVisualImage } from './beryl-visuals.js';
+import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
+import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -214,12 +215,7 @@ const SHIPPING_FIELD_CONFIG = Object.freeze([
 ]);
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
-let berylCatalogRotationTimer = null;
-let berylCatalogRotationGeneration = 0;
-let berylCatalogPreviewImages = [];
-let berylCatalogCurrentColorIndex = 0;
-let berylCatalogSchedulerRunning = false;
-let berylCatalogImagesPreloadPromise = null;
+let berylCatalogPreviewController = null;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
@@ -3162,141 +3158,15 @@ function getVisibleCharmCatalog() {
   ));
 }
 
-function preloadBerylCatalogImages() {
-  if (!berylCatalogImagesPreloadPromise) {
-    berylCatalogImagesPreloadPromise = Promise.all(BERYL_VISUAL_IMAGES.map((imageUrl) => (
-      loadAndDecodeBerylImage(new Image(), withCatalogImageVersion(imageUrl))
-        .then((loaded) => ({ imageUrl, loaded }))
-    )));
-  }
-  return berylCatalogImagesPreloadPromise;
-}
-
-function loadAndDecodeBerylImage(image, imageUrl) {
-  return new Promise((resolve) => {
-    let finished = false;
-    const loadTimeout = window.setTimeout(() => finish((image.naturalWidth || 0) > 0), 8000);
-    const finish = async (loaded) => {
-      if (finished) return;
-      finished = true;
-      window.clearTimeout(loadTimeout);
-      image.removeEventListener('load', onLoad);
-      image.removeEventListener('error', onError);
-      if (!loaded) {
-        resolve(false);
-        return;
-      }
-      try {
-        if (typeof image.decode === 'function') await image.decode();
-      } catch (error) {
-        // LINE WebView can reject decode() for an otherwise loaded WebP.
-        // A positive intrinsic width is sufficient for <img> rendering.
-      }
-      resolve((image.naturalWidth || 0) > 0);
-    };
-    const onLoad = () => finish(true);
-    const onError = () => finish(false);
-    image.addEventListener('load', onLoad, { once: true });
-    image.addEventListener('error', onError, { once: true });
-    image.src = imageUrl;
-    if (image.complete) finish((image.naturalWidth || 0) > 0);
-  });
-}
-
 function stopBerylCatalogRotation() {
-  berylCatalogRotationGeneration += 1;
-  if (berylCatalogRotationTimer !== null) {
-    window.clearTimeout(berylCatalogRotationTimer);
-    berylCatalogRotationTimer = null;
-  }
-  berylCatalogPreviewImages = [];
-  berylCatalogCurrentColorIndex = 0;
-  berylCatalogSchedulerRunning = false;
+  berylCatalogPreviewController?.stop();
+  berylCatalogPreviewController = null;
 }
 
-function createBerylCatalogPreview(card) {
-  const container = card?.querySelector('.stone-img-container');
-  const greenImage = container?.querySelector('img.stone-img');
-  if (!container || !greenImage) return [];
-
-  const nextImage = document.createElement('img');
-  card.dataset.berylCatalogCard = 'true';
-  greenImage.dataset.berylLayer = 'active';
-  nextImage.className = 'stone-img beryl-catalog-image';
-  nextImage.alt = '';
-  nextImage.setAttribute('aria-hidden', 'true');
-  nextImage.dataset.berylLayer = 'incoming';
-  greenImage.classList.add('beryl-catalog-image');
-  greenImage.src = withCatalogImageVersion(getBerylVisualImage(0));
-  greenImage.style.opacity = '1';
-  nextImage.style.opacity = '0';
-  container.appendChild(nextImage);
-  return [greenImage, nextImage];
-}
-
-function startBerylCatalogRotation(images) {
-  if (
-    !Array.isArray(images)
-    || images.length !== 2
-    || State.currentStep !== 3
-    || images.some((image) => !image.isConnected)
-  ) return;
-
-  // The grid may have been rebuilt while a prior crossfade was pending. Always
-  // retire that controller before attaching a scheduler to this card instance.
+function startBerylCatalogRotation(preview) {
+  if (!preview?.root?.isConnected || State.currentStep !== 3) return;
   stopBerylCatalogRotation();
-  const generation = berylCatalogRotationGeneration;
-  berylCatalogPreviewImages = images;
-  berylCatalogCurrentColorIndex = 0;
-  berylCatalogSchedulerRunning = true;
-  images[0].src = withCatalogImageVersion(getBerylVisualImage(berylCatalogCurrentColorIndex));
-  images[0].style.opacity = '1';
-  images[1].style.opacity = '0';
-
-  const scheduleNextTransition = () => {
-    berylCatalogRotationTimer = window.setTimeout(async () => {
-      const activeImages = berylCatalogPreviewImages;
-      if (
-        generation !== berylCatalogRotationGeneration
-        || State.currentStep !== 3
-        || activeImages.length !== 2
-        || activeImages.some((image) => !image.isConnected)
-      ) {
-        if (generation === berylCatalogRotationGeneration) stopBerylCatalogRotation();
-        return;
-      }
-
-      const nextColorIndex = (berylCatalogCurrentColorIndex + 1) % BERYL_VISUAL_IMAGES.length;
-      const outgoingImage = activeImages[0];
-      const incomingImage = activeImages[1];
-      incomingImage.style.opacity = '0';
-      const imageReady = await loadAndDecodeBerylImage(
-        incomingImage,
-        withCatalogImageVersion(getBerylVisualImage(nextColorIndex))
-      );
-      if (!imageReady) {
-        incomingImage.closest('.stone-card')?.setAttribute('data-beryl-animation-error', 'image-load');
-        stopBerylCatalogRotation();
-        return;
-      }
-
-      if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) {
-        return;
-      }
-
-      // Commit the hidden, decoded source before starting the CSS opacity transition.
-      void incomingImage.offsetWidth;
-      incomingImage.style.opacity = '1';
-      outgoingImage.style.opacity = '0';
-      berylCatalogRotationTimer = window.setTimeout(() => {
-        if (generation !== berylCatalogRotationGeneration || berylCatalogPreviewImages !== activeImages) return;
-        berylCatalogCurrentColorIndex = nextColorIndex;
-        berylCatalogPreviewImages = [incomingImage, outgoingImage];
-        scheduleNextTransition();
-      }, BERYL_CATALOG_FADE_MS);
-    }, BERYL_CATALOG_HOLD_MS);
-  };
-  scheduleNextTransition();
+  berylCatalogPreviewController = createBerylCatalogPreviewController(preview);
 }
 
 function getCharmCatalogThumbnailTargetRatio(charms = []) {
@@ -4890,7 +4760,7 @@ function renderCatalogGrid() {
     ? availableStones 
     : availableStones.filter(s => (s.categoryId || s.category) === State.activeCategory);
     
-  let berylCatalogPreview = [];
+  let berylCatalogPreview = null;
   filtered.forEach(stone => {
     const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
     const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
@@ -4919,16 +4789,14 @@ function renderCatalogGrid() {
       berylCatalogPreview = createBerylCatalogPreview(card);
     }
   });
-  if (berylCatalogPreview.length === 2) {
-    preloadBerylCatalogImages().then((results) => {
-      if (results.every((result) => result.loaded)) {
+  if (berylCatalogPreview) {
+    waitForBerylCatalogPreviewReady(berylCatalogPreview).then((isReady) => {
+      if (isReady && berylCatalogPreview.root.isConnected) {
         startBerylCatalogRotation(berylCatalogPreview);
       } else {
-        berylCatalogPreview[0]?.closest('.stone-card')?.setAttribute('data-beryl-animation-error', 'preload');
+        berylCatalogPreview.root?.setAttribute('data-beryl-animation-error', 'preload');
       }
     });
-  } else {
-    stopBerylCatalogRotation();
   }
 }
 
