@@ -216,7 +216,7 @@ const BERYL_VISUAL_IMAGES = Object.freeze([
   'assets/Beryl blue.png'
 ]);
 let berylCatalogRotationTimer = null;
-let berylCatalogImagesPreloaded = false;
+let berylCatalogImagesPreloadPromise = null;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
@@ -3164,12 +3164,17 @@ function getBerylVisualImage(occurrenceIndex = 0) {
 }
 
 function preloadBerylCatalogImages() {
-  if (berylCatalogImagesPreloaded) return;
-  berylCatalogImagesPreloaded = true;
-  BERYL_VISUAL_IMAGES.forEach((imageUrl) => {
-    const image = new Image();
-    image.src = withCatalogImageVersion(imageUrl);
-  });
+  if (!berylCatalogImagesPreloadPromise) {
+    berylCatalogImagesPreloadPromise = Promise.all(BERYL_VISUAL_IMAGES.map((imageUrl) => (
+      new Promise((resolve) => {
+        const image = new Image();
+        image.onload = resolve;
+        image.onerror = resolve;
+        image.src = withCatalogImageVersion(imageUrl);
+      })
+    )));
+  }
+  return berylCatalogImagesPreloadPromise;
 }
 
 function stopBerylCatalogRotation() {
@@ -3179,19 +3184,53 @@ function stopBerylCatalogRotation() {
   }
 }
 
-function startBerylCatalogRotation(image) {
+function createBerylCatalogPreview(card) {
+  const container = card?.querySelector('.stone-img-container');
+  const greenImage = container?.querySelector('img.stone-img');
+  if (!container || !greenImage) return [];
+
+  const nextImage = document.createElement('img');
+  nextImage.className = 'stone-img beryl-catalog-image';
+  nextImage.alt = '';
+  nextImage.setAttribute('aria-hidden', 'true');
+  greenImage.classList.add('beryl-catalog-image');
+  greenImage.src = withCatalogImageVersion(getBerylVisualImage(0));
+  greenImage.style.opacity = '1';
+  nextImage.style.opacity = '0';
+  container.appendChild(nextImage);
+  return [greenImage, nextImage];
+}
+
+function startBerylCatalogRotation(images) {
+  if (
+    !Array.isArray(images)
+    || images.length !== 2
+    || State.currentStep !== 3
+    || images.some((image) => !image.isConnected)
+  ) return;
   stopBerylCatalogRotation();
-  if (!image) return;
 
   let colorIndex = 0;
-  image.src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+  let visibleImageIndex = 0;
+  images[0].src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+  images[0].style.opacity = '1';
+  images[1].style.opacity = '0';
   berylCatalogRotationTimer = window.setInterval(() => {
-    if (State.currentStep !== 3 || !image.isConnected) {
+    if (State.currentStep !== 3 || images.some((image) => !image.isConnected)) {
       stopBerylCatalogRotation();
       return;
     }
     colorIndex = (colorIndex + 1) % BERYL_VISUAL_IMAGES.length;
-    image.src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+    const incomingImageIndex = (visibleImageIndex + 1) % images.length;
+    const outgoingImage = images[visibleImageIndex];
+    const incomingImage = images[incomingImageIndex];
+    incomingImage.style.opacity = '0';
+    incomingImage.src = withCatalogImageVersion(getBerylVisualImage(colorIndex));
+    // Force the source update to commit before beginning the crossfade.
+    void incomingImage.offsetWidth;
+    incomingImage.style.opacity = '1';
+    outgoingImage.style.opacity = '0';
+    visibleImageIndex = incomingImageIndex;
   }, 2000);
 }
 
@@ -4783,7 +4822,7 @@ function renderCatalogGrid() {
     ? availableStones 
     : availableStones.filter(s => (s.categoryId || s.category) === State.activeCategory);
     
-  let berylCatalogImage = null;
+  let berylCatalogPreview = [];
   filtered.forEach(stone => {
     const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
     const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
@@ -4809,12 +4848,11 @@ function renderCatalogGrid() {
     });
     DOM.stoneCatalogGrid.appendChild(card);
     if (stone.id === BERYL_STONE_ID) {
-      berylCatalogImage = card.querySelector('img.stone-img');
+      berylCatalogPreview = createBerylCatalogPreview(card);
     }
   });
-  if (berylCatalogImage) {
-    preloadBerylCatalogImages();
-    startBerylCatalogRotation(berylCatalogImage);
+  if (berylCatalogPreview.length === 2) {
+    preloadBerylCatalogImages().then(() => startBerylCatalogRotation(berylCatalogPreview));
   }
 }
 

@@ -2376,6 +2376,21 @@ button.stone-card {
   /* Crop out checkerboard transparency patterns */
 }
 
+.beryl-catalog-image {
+  position: absolute;
+  inset: 6%;
+  width: 88%;
+  height: 88%;
+  opacity: 0;
+  transition: opacity 320ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beryl-catalog-image {
+    transition-duration: 0ms;
+  }
+}
+
 .charm-card-img {
   clip-path: none;
   width: 112%;
