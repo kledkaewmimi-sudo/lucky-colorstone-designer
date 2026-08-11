@@ -993,13 +993,17 @@ option {
 }
 
 .bead-size-support-banner {
+  --step2-support-pill-width: 128px;
+  --step2-support-pill-height: 28px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   flex-wrap: nowrap;
   gap: 10px;
-  width: fit-content;
-  max-width: 100%;
+  width: var(--step2-support-pill-width);
+  height: var(--step2-support-pill-height);
+  box-sizing: border-box;
+  max-width: none;
   margin-top: 6px;
   margin-left: -18px;
   min-height: 25px;
