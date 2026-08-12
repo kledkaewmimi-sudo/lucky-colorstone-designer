@@ -229,6 +229,9 @@ create index if not exists idx_analytics_sessions_last_seen
   on public.analytics_sessions (last_seen_at desc);
 create index if not exists idx_analytics_sessions_source
   on public.analytics_sessions (first_source);
+create index if not exists idx_analytics_sessions_visitor_id_started_at
+  on public.analytics_sessions (visitor_id, started_at desc)
+  where visitor_id is not null;
 create index if not exists idx_analytics_sessions_converted
   on public.analytics_sessions (converted, order_id);
 create index if not exists idx_analytics_events_name_created
