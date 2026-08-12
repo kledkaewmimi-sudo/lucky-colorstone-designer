@@ -148,6 +148,7 @@ const DOM = {
   quickBtnInventory: document.getElementById('quickBtnInventory'),
   crmSystemLogs: document.getElementById('crmSystemLogs'),
   analyticsTotalSessions: document.getElementById('analyticsTotalSessions'),
+  analyticsUniqueVisitors: document.getElementById('analyticsUniqueVisitors'),
   analyticsTotalOrders: document.getElementById('analyticsTotalOrders'),
   analyticsConversionRate: document.getElementById('analyticsConversionRate'),
   analyticsTotalRevenue: document.getElementById('analyticsTotalRevenue'),
@@ -982,7 +983,7 @@ async function fetchAnalyticsSummary(range = CRMState.analyticsRange || '7d') {
     return {
       success: false,
       range,
-      totals: { sessions: 0, orders: 0, conversionRate: 0, revenue: 0, aov: 0, errors: 0 },
+      totals: { sessions: 0, uniqueVisitors: 0, visitorTrackedSessions: 0, legacySessionsWithoutVisitorId: 0, orders: 0, conversionRate: 0, revenue: 0, aov: 0, errors: 0 },
       sources: [],
       bySource: [],
       funnel: [],
@@ -1042,6 +1043,9 @@ function getAnalyticsTotals(summary = {}) {
   const totals = summary.totals && typeof summary.totals === 'object' ? summary.totals : {};
   return {
     sessions: Number(totals.sessions ?? summary.totalSessions ?? 0),
+    uniqueVisitors: Number(totals.uniqueVisitors ?? 0),
+    visitorTrackedSessions: Number(totals.visitorTrackedSessions ?? 0),
+    legacySessionsWithoutVisitorId: Number(totals.legacySessionsWithoutVisitorId ?? 0),
     orders: Number(totals.orders ?? summary.totalOrders ?? 0),
     conversionRate: Number(totals.conversionRate ?? summary.conversionRate ?? 0),
     revenue: Number(totals.revenue ?? summary.totalRevenue ?? 0),
@@ -1120,6 +1124,7 @@ function renderAnalyticsChannelCards(channels = []) {
           </div>
         </div>
         <div class="analytics-channel-main">
+          <div><strong>${Number(row.uniqueVisitors || 0).toLocaleString()}</strong><span>Visitors</span></div>
           <div><strong>${Number(row.sessions || 0).toLocaleString()}</strong><span>Sessions</span></div>
           <div><strong>${Number(row.checkoutStarted || 0).toLocaleString()}</strong><span>Checkout</span></div>
           <div><strong>${Number(row.orders || row.paid || 0).toLocaleString()}</strong><span>Paid Orders</span></div>
@@ -1304,6 +1309,7 @@ function renderAnalyticsCompactErrors(rows = []) {
 
 function renderAnalyticsSummary(summary = {}) {
   const totals = getAnalyticsTotals(summary);
+  if (DOM.analyticsUniqueVisitors) DOM.analyticsUniqueVisitors.textContent = totals.uniqueVisitors.toLocaleString();
   if (DOM.analyticsTotalSessions) DOM.analyticsTotalSessions.textContent = totals.sessions.toLocaleString();
   if (DOM.analyticsTotalOrders) DOM.analyticsTotalOrders.textContent = totals.orders.toLocaleString();
   if (DOM.analyticsConversionRate) DOM.analyticsConversionRate.textContent = formatAnalyticsPercent(totals.conversionRate);
@@ -1313,6 +1319,9 @@ function renderAnalyticsSummary(summary = {}) {
   if (DOM.analyticsCheckoutStarted) DOM.analyticsCheckoutStarted.textContent = Number(checkoutStarted?.sessions || 0).toLocaleString();
   if (DOM.analyticsAov) DOM.analyticsAov.textContent = formatAnalyticsMoney(totals.aov);
   if (DOM.analyticsErrorsCount) DOM.analyticsErrorsCount.textContent = `Errors: ${totals.errors.toLocaleString()}`;
+  if (DOM.analyticsStatus && totals.sessions > 0) {
+    DOM.analyticsStatus.textContent = `${DOM.analyticsStatus.textContent} • Visitor tracking covers ${totals.visitorTrackedSessions.toLocaleString()} of ${totals.sessions.toLocaleString()} sessions`;
+  }
 
   const bySource = Array.isArray(summary.sourceDetails) ? summary.sourceDetails : Array.isArray(summary.channels) ? summary.channels : Array.isArray(summary.sources) ? summary.sources : Array.isArray(summary.bySource) ? summary.bySource : [];
   const ownerChannels = Array.isArray(summary.ownerChannels) ? summary.ownerChannels : bySource;

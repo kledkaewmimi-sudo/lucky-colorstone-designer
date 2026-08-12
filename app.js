@@ -22,6 +22,7 @@ const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dism
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
 const STEP3_INFO_HINT_SEEN_KEY = 'lucky_step3_info_hint_seen';
 const ANALYTICS_SESSION_ID_KEY = 'lucky_analytics_session_id';
+const ANALYTICS_VISITOR_ID_KEY = 'lucky_colorstone_visitor_id';
 const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
 const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
 const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
@@ -247,6 +248,7 @@ let step3NextEnterTimer = null;
 let step2SupportRotationTimer = null;
 let step2SupportRotationFrame = 0;
 let analyticsSessionId = '';
+let analyticsVisitorId = '';
 let analyticsFirstSource = null;
 let analyticsStartedAt = '';
 let analyticsLastStep = null;
@@ -1114,6 +1116,18 @@ function createAnalyticsSessionId() {
   return `lcs_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 }
 
+function createAnalyticsVisitorId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  if (!window.crypto?.getRandomValues) return '';
+  const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  return Array.from(bytes, (byte, index) => {
+    const separator = [4, 6, 8, 10].includes(index) ? '-' : '';
+    return `${separator}${byte.toString(16).padStart(2, '0')}`;
+  }).join('');
+}
+
 function getAnalyticsPlatformGuess(source = {}) {
   const joined = [
     source.utm_source,
@@ -1150,6 +1164,8 @@ function initAnalytics() {
   try {
     analyticsSessionId = localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || createAnalyticsSessionId();
     localStorage.setItem(ANALYTICS_SESSION_ID_KEY, analyticsSessionId);
+    analyticsVisitorId = localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || createAnalyticsVisitorId();
+    if (analyticsVisitorId) localStorage.setItem(ANALYTICS_VISITOR_ID_KEY, analyticsVisitorId);
     analyticsStartedAt = localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || new Date().toISOString();
     localStorage.setItem(ANALYTICS_STARTED_AT_KEY, analyticsStartedAt);
 
@@ -1203,6 +1219,7 @@ function initAnalytics() {
 function getAnalyticsOrderFields() {
   return {
     analyticsSessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+    analyticsVisitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
     analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource()
   };
 }
@@ -1234,6 +1251,7 @@ function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
   };
   sendAnalyticsPayload({
     sessionId: analyticsSessionId,
+    visitorId: analyticsVisitorId,
     eventName,
     step: Number(State.currentStep) || null,
     source: analyticsFirstSource || getCurrentAnalyticsSource(),

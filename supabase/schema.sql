@@ -137,6 +137,7 @@ $$;
 create table if not exists public.analytics_sessions (
   id uuid primary key default gen_random_uuid(),
   session_id text not null unique,
+  visitor_id text,
   line_user_id text,
   first_source text,
   first_medium text,

@@ -1885,9 +1885,12 @@ function normalizeAnalyticsEventPayload(payload = {}, req = null) {
   const source = normalizeAnalyticsSource(payload.source || {});
   const eventName = truncateText(payload.eventName || payload.event_name || "", 120);
   const sessionId = truncateText(payload.sessionId || payload.session_id || "", 120);
+  const rawVisitorId = truncateText(payload.visitorId || payload.visitor_id || "", 80);
+  const visitorId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawVisitorId) ? rawVisitorId.toLowerCase() : "";
   const stepValue = Number(payload.step);
   return {
     sessionId,
+    visitorId,
     eventName,
     step: Number.isFinite(stepValue) ? stepValue : null,
     source,
@@ -1905,6 +1908,7 @@ async function upsertAnalyticsSession(payload) {
   const source = payload.source || normalizeAnalyticsSource();
   const sessionRow = {
     session_id: payload.sessionId,
+    visitor_id: payload.visitorId || null,
     line_user_id: payload.lineUserId || null,
     first_source: source.utm_source || source.platform_guess || "unknown",
     first_medium: source.utm_medium || null,
@@ -1932,6 +1936,7 @@ async function upsertAnalyticsSession(payload) {
     const existing = Array.isArray(existingRows) ? existingRows[0] : null;
     if (existing) {
       sessionRow.line_user_id = sessionRow.line_user_id || existing.line_user_id || null;
+      sessionRow.visitor_id = sessionRow.visitor_id || existing.visitor_id || null;
       sessionRow.first_source = existing.first_source || sessionRow.first_source;
       sessionRow.first_medium = existing.first_medium || sessionRow.first_medium;
       sessionRow.first_campaign = existing.first_campaign || sessionRow.first_campaign;
@@ -1958,6 +1963,7 @@ async function upsertAnalyticsSession(payload) {
   if (existingIndex >= 0) {
     sessions[existingIndex] = {
       ...sessions[existingIndex],
+      visitor_id: sessionRow.visitor_id || sessions[existingIndex].visitor_id || null,
       line_user_id: sessionRow.line_user_id || sessions[existingIndex].line_user_id || null,
       last_seen_at: sessionRow.last_seen_at,
       current_step: sessionRow.current_step ?? sessions[existingIndex].current_step ?? null,
@@ -2192,6 +2198,11 @@ function getAnalyticsSessionId(row = {}) {
   return normalizeAnalyticsDimension(row.session_id || row.sessionId, "");
 }
 
+function getAnalyticsVisitorId(row = {}) {
+  const visitorId = String(row.visitor_id || row.visitorId || "").trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(visitorId) ? visitorId : "";
+}
+
 function getAnalyticsEventName(row = {}) {
   return normalizeAnalyticsDimension(row.event_name || row.eventName, "");
 }
@@ -2261,6 +2272,7 @@ function createOwnerAnalyticsChannelRow(definition) {
     revenue: 0,
     conversionRate: 0,
     aov: 0,
+    visitorIds: new Set(),
     breakdownMap: new Map()
   };
 }
@@ -2269,7 +2281,7 @@ function getOwnerAnalyticsBreakdownRow(ownerRow, session = {}) {
   const label = getOwnerAnalyticsBreakdownLabel(ownerRow, session);
   const key = label.toLowerCase();
   if (!ownerRow.breakdownMap.has(key)) {
-    ownerRow.breakdownMap.set(key, { label, sessions: 0, checkoutStarted: 0, orders: 0, paid: 0, revenue: 0 });
+    ownerRow.breakdownMap.set(key, { label, sessions: 0, checkoutStarted: 0, orders: 0, paid: 0, revenue: 0, visitorIds: new Set() });
   }
   return ownerRow.breakdownMap.get(key);
 }
@@ -2363,9 +2375,12 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const itemCounts = {};
   const categoryCounts = {};
   const stepDistributionCounts = { 1: 0, 2: 0, 3: 0, 4: 0, converted: 0 };
+  const visitorIds = new Set();
+  let visitorTrackedSessions = 0;
 
   sessions.forEach((session) => {
     const sessionId = getAnalyticsSessionId(session);
+    const visitorId = getAnalyticsVisitorId(session);
     if (sessionId) sessionById.set(sessionId, session);
     const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
     const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
@@ -2410,6 +2425,12 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     channelRow.sessions += 1;
     ownerChannelRow.sessions += 1;
     ownerBreakdownRow.sessions += 1;
+    if (visitorId) {
+      visitorIds.add(visitorId);
+      visitorTrackedSessions += 1;
+      ownerChannelRow.visitorIds.add(visitorId);
+      ownerBreakdownRow.visitorIds.add(visitorId);
+    }
     if (channelRow.source === "direct/unknown" && source !== "direct/unknown") channelRow.source = source;
     if (channelRow.medium === "-" && medium !== "-") channelRow.medium = medium;
     if (channelRow.campaign === "-" && campaign !== "-") channelRow.campaign = campaign;
@@ -2598,6 +2619,7 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     return {
       key: row.key,
       channel: row.channel,
+      uniqueVisitors: row.visitorIds.size,
       sessions: row.sessions,
       checkoutStarted: row.checkoutStarted,
       orders: row.orders,
@@ -2607,7 +2629,13 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       aov: row.orders ? row.revenue / row.orders : 0,
       breakdown: Array.from(row.breakdownMap.values())
         .map((breakdown) => ({
-          ...breakdown,
+          label: breakdown.label,
+          uniqueVisitors: breakdown.visitorIds.size,
+          sessions: breakdown.sessions,
+          checkoutStarted: breakdown.checkoutStarted,
+          orders: breakdown.orders,
+          paid: breakdown.paid,
+          revenue: breakdown.revenue,
           conversionRate: breakdown.sessions ? (breakdown.orders / breakdown.sessions) * 100 : 0
         }))
         .sort((a, b) => b.sessions - a.sessions || a.label.localeCompare(b.label))
@@ -2695,6 +2723,9 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     generatedAt: new Date().toISOString(),
     totals: {
       sessions: totalSessions,
+      uniqueVisitors: visitorIds.size,
+      visitorTrackedSessions,
+      legacySessionsWithoutVisitorId: Math.max(0, totalSessions - visitorTrackedSessions),
       orders: totalOrders,
       conversionRate: totalSessions ? (totalOrders / totalSessions) * 100 : 0,
       revenue,
