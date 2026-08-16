@@ -151,6 +151,9 @@ const DOM = {
   catalogTypeTabs: document.querySelectorAll('.catalog-type-tab'),
   catalogFiltersContainer: document.getElementById('catalogFiltersContainer'),
   stoneCatalogGrid: document.getElementById('stoneCatalogGrid'),
+  braceletMeaningSummary: document.getElementById('braceletMeaningSummary'),
+  braceletMeaningSummaryTags: document.getElementById('braceletMeaningSummaryTags'),
+  btnBraceletMeaningDetails: document.getElementById('btnBraceletMeaningDetails'),
   
   // Step 4: Summary & Billing
   summaryTitleText: document.getElementById('summaryTitleText'),
@@ -188,6 +191,11 @@ const DOM = {
   confirmModalMessage: document.getElementById('confirmModalMessage'),
   btnConfirmClose: document.getElementById('btnConfirmClose'),
   btnConfirmCancel: document.getElementById('btnConfirmCancel'),
+  braceletMeaningDetailsModal: document.getElementById('braceletMeaningDetailsModal'),
+  btnBraceletMeaningDetailsClose: document.getElementById('btnBraceletMeaningDetailsClose'),
+  braceletMeaningDetailsTags: document.getElementById('braceletMeaningDetailsTags'),
+  braceletMeaningDetailsCopy: document.getElementById('braceletMeaningDetailsCopy'),
+  braceletMeaningDetailsContributors: document.getElementById('braceletMeaningDetailsContributors'),
   btnConfirmOK: document.getElementById('btnConfirmOK'),
   inspirationGalleryModal: document.getElementById('inspirationGalleryModal'),
   inspirationGalleryGrid: document.getElementById('inspirationGalleryGrid'),
@@ -245,6 +253,23 @@ let step3InfoHintAutoClosing = false;
 let step3InfoHintTarget = null;
 let step3NextWasComplete = false;
 let step3NextEnterTimer = null;
+let braceletMeaningSummaryWasVisible = false;
+
+// Category labels are derived from the catalog's existing meaning text. These
+// keyword rules are intentionally small and stable so the result is explainable.
+const BRACELET_MEANING_TAG_RULES = Object.freeze([
+  Object.freeze({ label: 'ความรัก', keywords: ['ความรัก', 'เมตตา', 'ความสัมพันธ์', 'เสน่ห์', 'เปิดใจ', 'affection', 'love', 'relationship', 'compassion', 'charm'] }),
+  Object.freeze({ label: 'การงาน', keywords: ['การงาน', 'ตัดสินใจ', 'เดินหน้า', 'direction', 'work', 'career'] }),
+  Object.freeze({ label: 'การเงิน', keywords: ['การเงิน', 'ทรัพย์', 'มั่งคั่ง', 'โชคลาภ', 'prosperity', 'wealth', 'financial', 'abundance'] }),
+  Object.freeze({ label: 'สุขภาพ', keywords: ['พักใจ', 'ผ่อนคลาย', 'relaxation', 'rest', 'vitality'] }),
+  Object.freeze({ label: 'ความสงบ', keywords: ['ความสงบ', 'ปล่อยวาง', 'นิ่ง', 'serenity', 'calm', 'peaceful'] }),
+  Object.freeze({ label: 'ความมั่นใจ', keywords: ['ความมั่นใจ', 'ความกล้า', 'กล้าหาญ', 'confidence', 'courage'] }),
+  Object.freeze({ label: 'การสื่อสาร', keywords: ['การสื่อสาร', 'ความจริง', 'communication', 'truth'] }),
+  Object.freeze({ label: 'สมาธิ', keywords: ['สมาธิ', 'สติ', 'focus', 'clarity'] }),
+  Object.freeze({ label: 'ความสำเร็จ', keywords: ['ความสำเร็จ', 'โอกาส', 'success', 'opportunity'] }),
+  Object.freeze({ label: 'การปกป้อง', keywords: ['การปกป้อง', 'คุ้มครอง', 'ป้องกัน', 'protection', 'shielding'] }),
+  Object.freeze({ label: 'สมดุล', keywords: ['ความสมดุล', 'สมดุล', 'balance', 'harmony'] })
+]);
 let step2SupportRotationTimer = null;
 let step2SupportRotationFrame = 0;
 let analyticsSessionId = '';
@@ -652,6 +677,97 @@ function isSelectedStoneItem(item) {
 
 function getSelectedStoneItems() {
   return getSelectedLoopItems().filter((item) => isSelectedStoneItem(item));
+}
+
+function getBraceletMeaningCategories() {
+  const selectedStoneCounts = getSelectedStoneItems().reduce((counts, item) => {
+    const stoneId = String(item?.stoneId || '').trim();
+    if (stoneId) counts.set(stoneId, (counts.get(stoneId) || 0) + 1);
+    return counts;
+  }, new Map());
+  const categories = new Map();
+
+  selectedStoneCounts.forEach((count, stoneId) => {
+    const stone = STONES.find((item) => item.id === stoneId);
+    if (!stone) return;
+    const sourceText = `${stone.meaningTh || ''} ${stone.meaning || ''}`.toLowerCase();
+    const influence = 1 + Math.log2(count); // Repeats help, but each additional bead has less influence.
+
+    BRACELET_MEANING_TAG_RULES.forEach((rule, index) => {
+      if (!rule.keywords.some((keyword) => sourceText.includes(keyword.toLowerCase()))) return;
+      const category = categories.get(rule.label) || { label: rule.label, score: 0, contributors: [], order: index };
+      category.score += influence;
+      category.contributors.push(stone);
+      categories.set(rule.label, category);
+    });
+  });
+
+  return [...categories.values()]
+    .sort((a, b) => b.score - a.score || b.contributors.length - a.contributors.length || a.order - b.order);
+}
+
+function createBraceletMeaningTag(label, extraClass = '') {
+  const tag = document.createElement('span');
+  tag.className = `bracelet-meaning-tag ${extraClass}`.trim();
+  tag.textContent = label;
+  return tag;
+}
+
+function renderBraceletMeaningSummary() {
+  if (!DOM.braceletMeaningSummary || !DOM.braceletMeaningSummaryTags) return;
+  const categories = getBraceletMeaningCategories();
+  const hasSelectedStones = getSelectedStoneItems().length > 0;
+
+  if (!hasSelectedStones) {
+    DOM.braceletMeaningSummary.hidden = true;
+    DOM.braceletMeaningSummary.classList.remove('is-entering');
+    DOM.braceletMeaningSummaryTags.replaceChildren();
+    braceletMeaningSummaryWasVisible = false;
+    return;
+  }
+
+  DOM.braceletMeaningSummaryTags.replaceChildren(
+    ...categories.slice(0, 3).map((category) => createBraceletMeaningTag(category.label)),
+    ...(categories.length > 3 ? [createBraceletMeaningTag(`+${categories.length - 3}`, 'is-more')] : [])
+  );
+  DOM.braceletMeaningSummary.hidden = false;
+
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (!braceletMeaningSummaryWasVisible && !reduceMotion) {
+    DOM.braceletMeaningSummary.classList.remove('is-entering');
+    void DOM.braceletMeaningSummary.offsetWidth;
+    DOM.braceletMeaningSummary.classList.add('is-entering');
+  }
+  braceletMeaningSummaryWasVisible = true;
+}
+
+function openBraceletMeaningDetails() {
+  const categories = getBraceletMeaningCategories();
+  if (!categories.length || !DOM.braceletMeaningDetailsModal) return;
+
+  DOM.braceletMeaningDetailsTags?.replaceChildren(...categories.map((category) => createBraceletMeaningTag(category.label)));
+  if (DOM.braceletMeaningDetailsCopy) {
+    DOM.braceletMeaningDetailsCopy.textContent = `กำไลเส้นนี้รวบรวมความหมายเชิงสัญลักษณ์ด้าน${categories.map((category) => category.label).join(' • ')} จากหินที่คุณเลือก`;
+  }
+  if (DOM.braceletMeaningDetailsContributors) {
+    DOM.braceletMeaningDetailsContributors.replaceChildren(...categories.map((category) => {
+      const row = document.createElement('div');
+      row.className = 'bracelet-meaning-contributor-row';
+      const title = document.createElement('strong');
+      title.textContent = category.label;
+      const stones = document.createElement('span');
+      stones.textContent = [...new Map(category.contributors.map((stone) => [stone.id, stone.nameTh || stone.name])).values()].join(' · ');
+      row.append(title, stones);
+      return row;
+    }));
+  }
+  DOM.braceletMeaningDetailsModal.classList.add('show');
+  DOM.braceletMeaningDetailsModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeBraceletMeaningDetails() {
+  DOM.braceletMeaningDetailsModal?.classList.remove('show');
+  DOM.braceletMeaningDetailsModal?.setAttribute('aria-hidden', 'true');
 }
 
 function getSelectedStoneCountsById() {
@@ -5923,6 +6039,7 @@ function renderStep3() {
   
   // Render SVG loop and catalog
   renderBraceletCanvas(resolvedLayout);
+  renderBraceletMeaningSummary();
   renderCatalogGrid();
   renderCharmOptions();
   syncCatalogSectionFilter();
@@ -8065,9 +8182,17 @@ function setupModalEvents() {
       closeInspirationGallery();
     }
   });
+  DOM.btnBraceletMeaningDetails?.addEventListener('click', openBraceletMeaningDetails);
+  DOM.btnBraceletMeaningDetailsClose?.addEventListener('click', closeBraceletMeaningDetails);
+  DOM.braceletMeaningDetailsModal?.addEventListener('click', (e) => {
+    if (e.target === DOM.braceletMeaningDetailsModal) closeBraceletMeaningDetails();
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && DOM.inspirationGalleryModal?.classList.contains('show')) {
       closeInspirationGallery();
+    }
+    if (e.key === 'Escape' && DOM.braceletMeaningDetailsModal?.classList.contains('show')) {
+      closeBraceletMeaningDetails();
     }
   });
 }

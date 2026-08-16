@@ -1815,6 +1815,143 @@ option {
   overflow: hidden;
 }
 
+/* Step 3 bracelet meaning summary: present only after at least one stone is selected. */
+.bracelet-meaning-summary {
+  position: relative;
+  padding: 12px 14px;
+  border: 1px solid rgba(191, 168, 235, 0.34);
+  border-radius: 17px;
+  background: rgba(247, 243, 255, 0.82);
+  box-shadow: 0 7px 18px rgba(113, 80, 164, 0.10);
+  backdrop-filter: blur(10px);
+}
+
+.bracelet-meaning-summary[hidden] {
+  display: none;
+}
+
+.bracelet-meaning-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bracelet-meaning-summary-title {
+  min-width: 0;
+  color: #563b83;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.bracelet-meaning-summary-icon {
+  margin-right: 4px;
+  color: #9b79d4;
+  font-size: 12px;
+}
+
+.bracelet-meaning-summary-more {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: #8060b6;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bracelet-meaning-summary-tags,
+.bracelet-meaning-details-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bracelet-meaning-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #654994;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  box-shadow: inset 0 0 0 1px rgba(190, 164, 232, 0.35);
+}
+
+.bracelet-meaning-tag.is-more {
+  color: #8060b6;
+  background: rgba(229, 218, 250, 0.72);
+}
+
+.bracelet-meaning-summary.is-entering {
+  animation: braceletMeaningSummaryEnter 300ms cubic-bezier(0.22, 0.8, 0.32, 1) both, braceletMeaningSummaryGlow 620ms ease-out both;
+}
+
+@keyframes braceletMeaningSummaryEnter {
+  from { opacity: 0; transform: translateY(48px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes braceletMeaningSummaryGlow {
+  0%, 100% { box-shadow: 0 7px 18px rgba(113, 80, 164, 0.10); }
+  48% { box-shadow: 0 8px 26px rgba(160, 121, 220, 0.28); }
+}
+
+.bracelet-meaning-details-modal {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.bracelet-meaning-details-card {
+  max-width: 520px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.bracelet-meaning-details-body {
+  display: grid;
+  gap: 15px;
+}
+
+.bracelet-meaning-details-copy {
+  margin: 0;
+  color: var(--color-navy);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.bracelet-meaning-details-contributors {
+  display: grid;
+  gap: 9px;
+}
+
+.bracelet-meaning-contributor-row {
+  display: grid;
+  gap: 2px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(191, 168, 235, 0.3);
+  color: var(--color-navy-muted);
+  font-size: 12px;
+}
+
+.bracelet-meaning-contributor-row strong {
+  color: #654994;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bracelet-meaning-summary.is-entering {
+    animation: none;
+  }
+}
+
 .canvas-card {
   position: relative;
 }
@@ -4419,6 +4556,11 @@ button.stone-card {
 
   #stepView1 .name-input-group {
     margin-top: 10px;
+  }
+
+  #stepView3 .bracelet-meaning-summary {
+    padding: 10px 12px;
+    border-radius: 15px;
   }
 
   #stepView1 .name-input-group .name-label {
