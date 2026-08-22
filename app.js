@@ -2,7 +2,7 @@ import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCha
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { parseCustomizationLoginIntent } from './line-redirect-restore.js';
+import { DEFER_LINE_LOGIN_TO_STEP4, parseCustomizationLoginIntent, shouldDeferInitialLineLogin } from './line-redirect-restore.js';
 import { planLineCallbackBootstrap } from './line-callback-bootstrap.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -1719,11 +1719,17 @@ function openLineConnectEntryForCustomization() {
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { showLandingPrompt = false } = options;
+  const { showLandingPrompt = false, allowDeferredInitialLogin = false } = options;
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
   // Desktop remains independent of LIFF availability and login state.
   if (!requiresLineLoginForCustomization()) return true;
+  if (shouldDeferInitialLineLogin({
+    featureEnabled: DEFER_LINE_LOGIN_TO_STEP4,
+    requiresLineLogin: true,
+    isAuthenticated: isLineIdentityAvailable(),
+    isCustomization: allowDeferredInitialLogin
+  })) return true;
   if (isLineIdentityAvailable()) return true;
   if (isLiffLoggedIn()) {
     const profileReady = await syncLineProfileFromLiff();
@@ -1830,7 +1836,7 @@ function setupLandingEvents() {
     let canContinue = false;
     try {
       canContinue = await withTimeout(
-        requireLineLoginForCustomization({ showLandingPrompt: true }),
+        requireLineLoginForCustomization({ showLandingPrompt: true, allowDeferredInitialLogin: true }),
         8000,
         "Start customization"
       );
