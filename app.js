@@ -3,6 +3,7 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { parseCustomizationLoginIntent } from './line-redirect-restore.js';
+import { planLineCallbackBootstrap } from './line-callback-bootstrap.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -996,7 +997,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
-  const shouldResumeCustomizationStart = !returnParams.has('orderId') && hasCustomizationLoginIntent();
+  // Classify callback intent before the legacy resume branch can reset Step 3 state.
+  // Phase 3B.1 keeps V2 dormant; only the existing legacy intent may resume here.
+  const startupCallbackPlan = planLineCallbackBootstrap({
+    rawIntent: localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY)
+  });
+  const shouldResumeCustomizationStart = !returnParams.has('orderId') && startupCallbackPlan.kind === 'legacy';
   startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
   // Show loading overlay during LIFF boot

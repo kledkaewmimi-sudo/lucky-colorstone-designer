@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from '../line-callback-bootstrap.js';
 import { getBerylVisualImage } from '../beryl-visuals.js';
+import { readFile } from 'node:fs/promises';
 
 const now = 1_760_000_000_000;
 const token = 'a'.repeat(43);
@@ -32,4 +33,10 @@ test('V2 recovery safely falls back to local or no-op without identity', async (
   assert.equal(waiting.reason, 'v2-wait-for-identity');
   const local = await runDormantV2CallbackRestore({ rawIntent: v2, hasLineIdentity: true, guard: createLineCallbackRestoreGuard(), now, consumeServerHandoff: async () => null, restoreLocalSnapshot: async () => ({ ok: true, snapshot }) });
   assert.equal(local.source, 'local');
+});
+
+test('app startup classifies the callback before the legacy destructive resume branch', async () => {
+  const appSource = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  assert.ok(appSource.indexOf('planLineCallbackBootstrap') < appSource.indexOf("resetStep3DesignState('customization-login-resume')"));
+  assert.match(appSource, /startupCallbackPlan\.kind === 'legacy'/);
 });
