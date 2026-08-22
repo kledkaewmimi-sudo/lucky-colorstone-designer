@@ -323,6 +323,32 @@ option {
   z-index: 1;
 }
 
+.landing-load-reassurance {
+  display: none;
+  width: min(100%, 300px);
+  margin: 10px auto 0;
+  color: rgba(82, 66, 115, 0.94);
+  font-family: var(--font-ui-thai), sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  transform: translateY(4px);
+  text-shadow: 0 0 8px rgba(207, 191, 245, 0.7), 0 0 16px rgba(181, 169, 219, 0.28);
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+
+.landing-load-reassurance.is-mounted {
+  display: block;
+}
+
+.landing-load-reassurance.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  animation: landingReassuranceGlow 2.6s ease-in-out infinite;
+}
+
 .btn-start-customize.is-loading .btn-sparkle {
   width: 18px;
   height: 18px;
@@ -446,8 +472,16 @@ option {
   .btn-start-customize::after,
   .btn-start-customize.is-loading .btn-sparkle,
   .btn-start-customize.is-line-login,
-  .btn-start-customize.is-line-login::after {
+  .btn-start-customize.is-line-login::after,
+  .landing-load-reassurance,
+  .landing-load-reassurance.is-visible {
     animation: none;
+  }
+
+  .landing-load-reassurance,
+  .landing-load-reassurance.is-visible {
+    transition: none;
+    transform: none;
   }
 }
 
@@ -495,6 +529,15 @@ option {
 @keyframes landingButtonSpinner {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes landingReassuranceGlow {
+  0%, 100% {
+    text-shadow: 0 0 8px rgba(207, 191, 245, 0.58), 0 0 16px rgba(181, 169, 219, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 10px rgba(215, 198, 249, 0.8), 0 0 20px rgba(181, 169, 219, 0.34);
   }
 }
 

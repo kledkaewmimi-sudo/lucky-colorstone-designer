@@ -198,6 +198,7 @@ const DOM = {
   // Landing Page & Loading selectors
   landingView: document.getElementById('landingView'),
   btnLandingLogin: document.getElementById('btnLandingLogin'),
+  landingLoadReassurance: document.getElementById('landingLoadReassurance'),
   liffLoadingOverlay: document.getElementById('liffLoadingOverlay')
 };
 
@@ -225,6 +226,11 @@ let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 let landingPressTimer = null;
 let landingRippleTimer = null;
+let landingReassuranceDelayTimer = null;
+let landingReassuranceVisibleTimer = null;
+let landingReassuranceUnmountTimer = null;
+let landingReassuranceGapTimer = null;
+let landingReassuranceActive = false;
 let customizationResumeInProgress = false;
 let resolveCustomerStartupBootstrap;
 let rejectCustomerStartupBootstrap;
@@ -1374,8 +1380,64 @@ function setLandingButtonState(state, message = '') {
   }
 }
 
+function clearLandingReassuranceTimers() {
+  window.clearTimeout(landingReassuranceDelayTimer);
+  window.clearTimeout(landingReassuranceVisibleTimer);
+  window.clearTimeout(landingReassuranceUnmountTimer);
+  window.clearTimeout(landingReassuranceGapTimer);
+  landingReassuranceDelayTimer = null;
+  landingReassuranceVisibleTimer = null;
+  landingReassuranceUnmountTimer = null;
+  landingReassuranceGapTimer = null;
+}
+
+function stopLandingLoadReassurance() {
+  landingReassuranceActive = false;
+  clearLandingReassuranceTimers();
+  DOM.landingLoadReassurance?.classList.remove('is-mounted', 'is-visible');
+}
+
+function showLandingLoadReassurance() {
+  if (!landingReassuranceActive || !landingStartInProgress) return;
+
+  const message = DOM.landingLoadReassurance;
+  if (!message) return;
+
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  message.classList.add('is-mounted');
+  if (reducedMotion) {
+    message.classList.add('is-visible');
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    if (landingReassuranceActive && landingStartInProgress) {
+      message.classList.add('is-visible');
+    }
+  });
+
+  landingReassuranceVisibleTimer = window.setTimeout(() => {
+    if (!landingReassuranceActive || !landingStartInProgress) return;
+    message.classList.remove('is-visible');
+    landingReassuranceUnmountTimer = window.setTimeout(() => {
+      if (!landingReassuranceActive || !landingStartInProgress) return;
+      message.classList.remove('is-mounted');
+    }, 300);
+    landingReassuranceGapTimer = window.setTimeout(showLandingLoadReassurance, 1300);
+  }, 3000);
+}
+
+function startLandingLoadReassurance() {
+  stopLandingLoadReassurance();
+  if (!DOM.landingLoadReassurance) return;
+
+  landingReassuranceActive = true;
+  landingReassuranceDelayTimer = window.setTimeout(showLandingLoadReassurance, 3000);
+}
+
 function resetLandingStartState() {
   landingStartInProgress = false;
+  stopLandingLoadReassurance();
   setLandingButtonState('idle', landingConnectPromptVisible ? 'เข้าสู่ระบบด้วย LINE' : '');
 }
 
@@ -1703,6 +1765,7 @@ function setupLandingEvents() {
     trackAnalyticsEvent('start_customize_click');
     triggerLandingStartFeedback();
     setLandingButtonState('starting', 'กำลังเปิด...');
+    startLandingLoadReassurance();
 
     try {
       await customerStartupBootstrapPromise;
@@ -1744,6 +1807,7 @@ function setupLandingEvents() {
     }
 
     clearLineConnectPrompt();
+    stopLandingLoadReassurance();
     State.currentStep = 1;
     State.landingDismissed = true;
     persistLandingDismissed();
@@ -1858,6 +1922,9 @@ function persistLandingDismissed() {
 }
 
 function syncShellVisibility() {
+  if (State.landingDismissed) {
+    stopLandingLoadReassurance();
+  }
   if (DOM.landingView) {
     DOM.landingView.style.display = State.landingDismissed ? 'none' : 'flex';
   }
