@@ -2,6 +2,7 @@ import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCha
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
+import { parseCustomizationLoginIntent } from './line-redirect-restore.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -1605,15 +1606,7 @@ function hasCustomizationLoginIntent() {
   const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
   if (!rawIntent) return false;
 
-  try {
-    const intent = JSON.parse(rawIntent);
-    const intentAgeMs = Date.now() - Number(intent?.ts || 0);
-    if (intentAgeMs >= 0 && intentAgeMs <= 10 * 60 * 1000) {
-      return true;
-    }
-  } catch (intentErr) {
-    console.warn("Invalid customization login intent. Clearing stale state.", intentErr);
-  }
+  if (parseCustomizationLoginIntent(rawIntent)) return true;
 
   clearCustomizationLoginIntent();
   return false;

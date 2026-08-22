@@ -4,6 +4,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
+const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 
 const workspaceDir = __dirname;
 const bundledDataDir = path.join(workspaceDir, "data");
@@ -1746,6 +1747,37 @@ function toNumericOrNull(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+async function supabaseRpc(functionName, body = {}) {
+  const { url, serviceRoleKey } = getSupabaseConfig();
+  const response = await fetch(new URL(`/rest/v1/rpc/${functionName}`, url), {
+    method: 'POST',
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`${functionName} failed: ${text || `HTTP ${response.status}`}`);
+  return text ? JSON.parse(text) : null;
+}
+
+async function createLineAuthHandoff(input) {
+  if (!isSupabaseConfigured()) return null;
+  const payload = normalizeHandoffPayload(input);
+  if (!payload) return null;
+  const token = createHandoffToken();
+  await supabaseRequest('line_auth_handoffs', {
+    method: 'POST',
+    body: { token, payload, expires_at: new Date(payload.expiresAt).toISOString() },
+    prefer: 'return=minimal'
+  });
+  return { token, expiresAt: payload.expiresAt };
+}
+
+async function consumeLineAuthHandoff(token) {
+  if (!isSupabaseConfigured() || !HANDOFF_TOKEN_PATTERN.test(String(token || ''))) return null;
+  const rows = await supabaseRpc('consume_line_auth_handoff', { p_token: token });
+  return Array.isArray(rows) && rows[0]?.payload ? rows[0].payload : null;
+}
+
 async function notifyPaidOrderLineRecipients(order) {
   let nextOrder = order;
 
@@ -3349,6 +3381,43 @@ async function handleApiRequest(req, res, urlObj) {
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
+
+  if (pathname === '/api/auth-handoffs' && method === 'POST') {
+    if (!bodyObj) {
+      sendJson(res, 400, { error: 'Invalid handoff request.' });
+      return true;
+    }
+    if (Buffer.byteLength(JSON.stringify(bodyObj), 'utf8') > 16 * 1024) {
+      sendJson(res, 413, { error: 'Handoff request too large.' });
+      return true;
+    }
+    try {
+      const handoff = await createLineAuthHandoff(bodyObj);
+      if (!handoff) {
+        sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+        return true;
+      }
+      sendJson(res, 201, handoff);
+    } catch {
+      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+    }
+    return true;
+  }
+
+  const consumeHandoffMatch = pathname.match(/^\/api\/auth-handoffs\/([A-Za-z0-9_-]{43})\/consume$/);
+  if (consumeHandoffMatch && method === 'POST') {
+    try {
+      const payload = await consumeLineAuthHandoff(consumeHandoffMatch[1]);
+      if (!payload) {
+        sendJson(res, 404, { error: 'Handoff unavailable or expired.' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, payload });
+    } catch {
+      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+    }
+    return true;
+  }
 
   if (pathname === "/api/uploads/image" && method === "POST") {
     if (!bodyObj) {
