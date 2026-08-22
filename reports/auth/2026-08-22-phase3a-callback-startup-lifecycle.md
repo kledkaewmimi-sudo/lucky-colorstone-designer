@@ -1,0 +1,7 @@
+# Phase 3A callback startup lifecycle
+
+Current order: DOM startup reads the login intent before `loadPersistedState`; a recognized intent sets the landing dismissed/Step 1 resume branch and calls `resetStep3DesignState`. Startup then initializes analytics and UI, starts catalog warming, initializes LIFF/profile, clears OAuth parameters, calls `restoreCustomizationIntentAfterLogin`, renders, and completes the legacy resume. The destructive reset points are the pre-LIFF `resetStep3DesignState('customization-login-resume')` and the legacy restore assignment to Step 1.
+
+`line-callback-bootstrap.js` provides a dormant callback-first plan. It distinguishes normal startup, legacy intent, V2 waiting-for-identity, V2 restore-before-reset, already-restored refresh, and safe fallback. It is not imported by `app.js` in Phase 3A, so production behavior remains exactly legacy while the feature flag remains false.
+
+The restore guard records an opaque handoff token only after successful canonical-state application, preventing refresh/back-forward duplication. The Phase 3B hook is immediately after LIFF identity sync and before the existing reset/resume branch; it must invoke the planner before any destructive reset when the flag is enabled. Tests cover legacy behavior, V2 precedence, idempotency, local fallback, no-identity loop prevention, and Beryl determinism. Pricing, analytics identity/UTM, Pixel, Stripe, CRM, renderer, and catalog code are not changed.
