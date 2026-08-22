@@ -1,6 +1,12 @@
 export const DEFER_LINE_LOGIN_TO_STEP4 = false;
 export const LINE_REDIRECT_INTENT_VERSION = 2;
 
+// Test injection only: callers must pass this value directly in memory. It never
+// reads a URL, local/session storage, DOM, or user-controlled production input.
+export function resolveDeferredLineLoginFlag({ testOverride } = {}) {
+  return testOverride === true ? true : DEFER_LINE_LOGIN_TO_STEP4;
+}
+
 // Pure Phase 3B.2A decision helper. It is intentionally not wired into app.js yet.
 export function shouldDeferInitialLineLogin({ featureEnabled = false, requiresLineLogin = false, isAuthenticated = false, isCustomization = false } = {}) {
   if (!featureEnabled || !isCustomization || !requiresLineLogin) return false;

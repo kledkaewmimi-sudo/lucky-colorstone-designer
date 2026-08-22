@@ -6,7 +6,7 @@ const serverHelperSource = (await readFile(new URL('../line-auth-handoff.js', im
   .replace("const crypto = require('crypto');", "const crypto = { randomBytes: () => ({ toString: () => 'a'.repeat(43) }) };")
   .replace('module.exports = {', 'export default {');
 const serverHelper = await import(`data:text/javascript,${encodeURIComponent(serverHelperSource)}`);
-const { parseCustomizationLoginIntent, restoreLineRedirectHandoff, DEFER_LINE_LOGIN_TO_STEP4, shouldDeferInitialLineLogin } = await import(`data:text/javascript,${encodeURIComponent(await readFile(new URL('../line-redirect-restore.js', import.meta.url), 'utf8'))}`);
+const { parseCustomizationLoginIntent, restoreLineRedirectHandoff, DEFER_LINE_LOGIN_TO_STEP4, resolveDeferredLineLoginFlag, shouldDeferInitialLineLogin } = await import(`data:text/javascript,${encodeURIComponent(await readFile(new URL('../line-redirect-restore.js', import.meta.url), 'utf8'))}`);
 const helper = serverHelper.default;
 const NOW = 1_760_000_000_000;
 const snapshot = { version: 1, savedAt: NOW, expiresAt: NOW + 7_200_000, step: 3, design: { wristSize: 16, beadSize: '6', selectedCharmIds: [], components: [{ type: 'stone', id: 'beryl' }] } };
@@ -44,4 +44,12 @@ test('deferred initial-login decision is pure and fails safe to legacy behavior'
   assert.equal(shouldDeferInitialLineLogin({ featureEnabled: true, requiresLineLogin: true, isCustomization: true, isAuthenticated: true }), false);
   assert.equal(shouldDeferInitialLineLogin({ featureEnabled: true, requiresLineLogin: false, isCustomization: true }), false);
   assert.equal(shouldDeferInitialLineLogin(), false);
+});
+
+test('test-only flag resolver defaults false and accepts only explicit in-memory true', () => {
+  assert.equal(DEFER_LINE_LOGIN_TO_STEP4, false);
+  assert.equal(resolveDeferredLineLoginFlag(), false);
+  assert.equal(resolveDeferredLineLoginFlag({ testOverride: true }), true);
+  assert.equal(resolveDeferredLineLoginFlag({ testOverride: 'true' }), false);
+  assert.equal(shouldDeferInitialLineLogin({ featureEnabled: resolveDeferredLineLoginFlag({ testOverride: true }), requiresLineLogin: true, isCustomization: true }), true);
 });
