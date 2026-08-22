@@ -17,6 +17,8 @@ The app serves static files and exposes a REST API under `/api/*`. The frontend 
 
 ## Environment variables
 - `API_URL` – optional, overrides the API base URL used by the client.
+- `META_PIXEL_ID` – set to `1573172861217430` when enabling server-side Meta Purchase tracking.
+- `META_CONVERSIONS_API_ACCESS_TOKEN` – optional secret from Meta Events Manager. When this and `META_PIXEL_ID` are both set, a paid Stripe webhook sends one server-authoritative Meta Purchase event. Never expose or commit this token.
 
 ## Notes
 - The `data/` folder contains the seed JSON files (`stones.json`, `orders.json`, `settings.json`). They are created automatically if missing.

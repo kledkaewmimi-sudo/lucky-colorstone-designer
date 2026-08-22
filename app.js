@@ -1019,6 +1019,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     trackAnalyticsEvent('landing_view');
   } else if (State.currentStep >= 1 && State.currentStep <= 4) {
     trackStepView(State.currentStep);
+    if (State.currentStep < 4) trackMetaViewContent();
   }
   
   // Auto-login/bypass for testing
@@ -1292,6 +1293,45 @@ function trackCheckoutStarted(checkoutSessionId) {
   trackAnalyticsEvent('checkout_started', {
     stripeCheckoutSessionId: checkoutSessionId,
     checkout_tracking: 'stripe_session_created'
+  });
+}
+
+function trackMetaEvent(eventName, parameters = {}) {
+  try {
+    if (typeof window.fbq !== 'function') return;
+    window.fbq('track', eventName, parameters);
+  } catch {
+    // Marketing tracking must never interrupt the customer or LINE flow.
+  }
+}
+
+function trackMetaViewContent() {
+  const key = 'lucky_meta_view_content_sent';
+  try {
+    if (sessionStorage.getItem(key) === '1') return;
+    sessionStorage.setItem(key, '1');
+  } catch {
+    // A storage-blocked browser still receives one best-effort event per execution.
+  }
+  trackMetaEvent('ViewContent');
+}
+
+function trackMetaInitiateCheckout(checkoutSessionId, amountTotal, currency) {
+  const normalizedAmount = Number(amountTotal);
+  const normalizedCurrency = String(currency || '').toUpperCase();
+  if (!checkoutSessionId || !Number.isFinite(normalizedAmount) || normalizedAmount < 0 || normalizedCurrency !== 'THB') return;
+
+  const key = `lucky_meta_initiate_checkout_${checkoutSessionId}`;
+  try {
+    if (sessionStorage.getItem(key) === '1') return;
+    sessionStorage.setItem(key, '1');
+  } catch {
+    // A storage-blocked browser still receives one best-effort event per execution.
+  }
+
+  trackMetaEvent('InitiateCheckout', {
+    currency: normalizedCurrency,
+    value: normalizedAmount / 100
   });
 }
 
@@ -1701,6 +1741,7 @@ function setupLandingEvents() {
     State.landingDismissed = true;
     persistLandingDismissed();
     await renderApp();
+    trackMetaViewContent();
     if (State.currentStep === 1) {
       clearCustomizationLoginIntent();
     }
@@ -6754,6 +6795,7 @@ async function handleStripeCheckout() {
 
     // Checkout Started is recorded only after Stripe created a session.
     trackCheckoutStarted(payload.id);
+    trackMetaInitiateCheckout(payload.id, payload.amountTotal, payload.currency);
     rememberStripeOrderPayload(payload.id, orderPayload);
     window.location.assign(payload.url);
   } catch (error) {

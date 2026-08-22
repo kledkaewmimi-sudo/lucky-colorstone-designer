@@ -239,6 +239,43 @@ function getStripeSecretKey() {
   return getEnvValue("STRIPE_SECRET_KEY");
 }
 
+function getMetaConversionsApiConfig() {
+  const pixelId = getEnvValue("META_PIXEL_ID");
+  const accessToken = getEnvValue("META_CONVERSIONS_API_ACCESS_TOKEN");
+  return pixelId && accessToken ? { pixelId, accessToken } : null;
+}
+
+async function sendMetaPurchaseEvent(order) {
+  const config = getMetaConversionsApiConfig();
+  const checkoutSessionId = String(order?.stripeCheckoutSessionId || "").trim();
+  const totalPrice = getOrderTotalPrice(order);
+  if (!config || !checkoutSessionId || !Number.isFinite(Number(totalPrice))) {
+    return { sent: false, skipped: "not_configured_or_incomplete" };
+  }
+
+  const response = await fetch(`https://graph.facebook.com/v22.0/${encodeURIComponent(config.pixelId)}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      access_token: config.accessToken,
+      data: [{
+        event_name: "Purchase",
+        event_time: Math.floor(Date.now() / 1000),
+        action_source: "website",
+        event_source_url: "https://customize.luckycolorstone.com/",
+        event_id: `stripe_checkout_${checkoutSessionId}`,
+        custom_data: {
+          currency: "THB",
+          value: Number(totalPrice)
+        }
+      }]
+    })
+  });
+
+  if (!response.ok) throw new Error(`Meta Conversions API returned HTTP ${response.status}.`);
+  return { sent: true };
+}
+
 function getLineChannelAccessToken() {
   return getEnvValue("LINE_CHANNEL_ACCESS_TOKEN");
 }
@@ -2973,6 +3010,9 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
   });
   await saveOrderForApi(paidOrder);
   await linkAnalyticsOrderConversion(paidOrder);
+  sendMetaPurchaseEvent(paidOrder).catch((error) => {
+    console.warn(`[meta-capi] Purchase delivery failed for order=${orderReference}:`, error?.message || error);
+  });
   console.info(`[stripe-webhook] paid order=${orderReference} session=${sessionId} event=${eventId || '-'}`);
   return { order: await notifyPaidOrderLineRecipients(paidOrder) };
 }
