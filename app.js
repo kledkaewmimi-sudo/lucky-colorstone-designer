@@ -1,6 +1,7 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
+import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -1956,6 +1957,58 @@ function saveState() {
     currentStep: State.currentStep
   };
   localStorage.setItem('lucky_colorstone_state', JSON.stringify(stateCopy));
+}
+
+// Phase 1 guest-design persistence. These helpers are intentionally not called by the
+// current flow; mobile LINE login remains before Step 1 until a later flagged phase.
+function getGuestDesignSnapshotCatalog() {
+  return {
+    stones: STONES.filter(isCustomerCatalogItemAvailable),
+    charms: getVisibleCharmCatalog(),
+    spacers: spacerCatalogCache.filter(isCustomerCatalogItemAvailable),
+    slotPlaceableCharms: legacyCharmCatalogCache.filter((charm) => isSlotPlaceableCharmType(charm?.type))
+  };
+}
+
+function getCanonicalGuestDesignState() {
+  return {
+    currentStep: State.currentStep,
+    wristSize: State.wristSize,
+    beadSize: State.beadSize,
+    selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
+    selectedStones: getSelectedLoopItems()
+  };
+}
+
+function saveGuestDesignSnapshot() {
+  return writeGuestDesignSnapshot(getCanonicalGuestDesignState());
+}
+
+function restoreGuestDesignSnapshot() {
+  const result = readGuestDesignSnapshot({ catalog: getGuestDesignSnapshotCatalog() });
+  if (!result.ok) return result;
+
+  const { design, step } = result.snapshot;
+  State.wristSize = design.wristSize;
+  State.beadSize = design.beadSize;
+  State.mixedPlacingSize = getCurrentBeadSizeMm();
+  State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
+  syncSelectedCharmState();
+  State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
+    if (component.type === 'empty') return null;
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: getCurrentBeadSizeMm() };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
+    return { componentType: 'spacer', spacerId: component.id };
+  }));
+  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
+  State.uniqueCounter = State.selectedStones.length;
+  normalizeSelectedStoneSizes();
+  State.currentStep = step;
+  return result;
+}
+
+function clearGuestDesignSnapshot() {
+  return clearStoredGuestDesignSnapshot();
 }
 
 function persistLandingDismissed() {
