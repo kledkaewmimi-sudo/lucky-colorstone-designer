@@ -32,6 +32,7 @@ const LIFF_ID = '2010525799-qImIuhla';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
+const STARTUP_PERFORMANCE_DEBUG = urlParams.has('startupDebug');
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze([
   '/assets/sample/sp1.jpg',
   '/assets/sample/sp2.jpg',
@@ -238,6 +239,8 @@ const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
   resolveCustomerStartupBootstrap = resolve;
   rejectCustomerStartupBootstrap = reject;
 });
+let customerCatalogStartupPromise = null;
+let catalogRefreshPollingTimer = null;
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
 let isDraggingWristPicker = false;
@@ -1038,30 +1041,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Setup LIFF (LINE Front-end Framework)
-  await initLIFF();
-  clearOAuthQueryParams();
-  restoreCustomizationIntentAfterLogin();
-  
-  // Fetch initial catalog from shared persistence
-  const [, , , , sharedSettings] = await Promise.all([
-    refreshCatalog(),
-    refreshCharmCatalog(),
-    refreshCustomerSpacerCatalog(),
-    refreshCatalogLayoutOrder(),
-    getSharedSettings()
-  ]);
-  State.discountEnabled = sharedSettings?.discountEnabled === undefined
-    ? sharedSettings?.showDiscountBanner !== false
-    : sharedSettings.discountEnabled !== false;
-  State.globalDiscountPercent = Number.isFinite(Number(sharedSettings?.globalDiscountPercent))
-    ? Math.max(0, Math.min(100, Number(sharedSettings.globalDiscountPercent)))
-    : 20;
-  State.showDiscountBanner = State.discountEnabled && sharedSettings?.showDiscountBanner !== false;
-
-  await loadOrderDetailFromUrlIfNeeded();
-  await handleStripeReturnIfNeeded();
-  
   // Initialise step UI components
   initWristSizeGrid();
   initBeadSizeOptions();
@@ -1073,20 +1052,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupDesignerEvents();
   setupModalEvents();
   setupShippingFormEvents();
+
+  // Catalog data and its images are needed for Step 3, not for the initial wrist-size step.
+  // Start the shared-data work immediately, but keep it off the mobile authentication/Step 1 path.
+  startCustomerCatalogWarmup();
+
+  // Setup LIFF (LINE Front-end Framework). This remains the required mobile gate.
+  await initLIFF();
+  markStartupPerformance('T1_liff_ready');
+  clearOAuthQueryParams();
+  restoreCustomizationIntentAfterLogin();
+
+  await loadOrderDetailFromUrlIfNeeded();
+  await handleStripeReturnIfNeeded();
   
-  // Polling for updates every 3 seconds to reflect CRM changes instantly
-  setInterval(async () => {
-    const [updatedStones, updatedCharms, updatedSpacers] = await Promise.all([
-      refreshCatalog(),
-      refreshCharmCatalog(),
-      refreshCustomerSpacerCatalog()
-    ]);
-    if (updatedStones || updatedCharms || updatedSpacers) {
-      await renderApp();
-    }
-  }, 3000);
-  
-  // Perform first render
+  // Perform the first render without waiting for catalog hydration.
   await renderApp();
   if (startupOrderReturnInProgress) {
     startupOrderReturnInProgress = false;
@@ -1096,6 +1076,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await completeCustomizationStartResume();
   }
   resolveCustomerStartupBootstrap();
+  startCatalogRefreshPollingAfterWarmup();
   } catch (error) {
     console.error('Customer startup bootstrap failed.', error);
     rejectCustomerStartupBootstrap(error);
@@ -1116,6 +1097,65 @@ function withTimeout(promise, ms, label) {
     .finally(() => {
       window.clearTimeout(timeoutId);
     });
+}
+
+function markStartupPerformance(stage) {
+  if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return;
+  const markName = `lucky_startup_${stage}`;
+  performance.mark(markName);
+  if (STARTUP_PERFORMANCE_DEBUG) {
+    console.debug(`[startup] ${stage}`, Math.round(performance.now()));
+  }
+}
+
+function applySharedCustomerSettings(sharedSettings) {
+  State.discountEnabled = sharedSettings?.discountEnabled === undefined
+    ? sharedSettings?.showDiscountBanner !== false
+    : sharedSettings.discountEnabled !== false;
+  State.globalDiscountPercent = Number.isFinite(Number(sharedSettings?.globalDiscountPercent))
+    ? Math.max(0, Math.min(100, Number(sharedSettings.globalDiscountPercent)))
+    : 20;
+  State.showDiscountBanner = State.discountEnabled && sharedSettings?.showDiscountBanner !== false;
+}
+
+function startCustomerCatalogWarmup() {
+  if (customerCatalogStartupPromise) return customerCatalogStartupPromise;
+
+  customerCatalogStartupPromise = Promise.all([
+    refreshCatalog(),
+    refreshCharmCatalog(),
+    refreshCustomerSpacerCatalog(),
+    refreshCatalogLayoutOrder(),
+    getSharedSettings()
+  ]).then(([, , , , sharedSettings]) => {
+    applySharedCustomerSettings(sharedSettings);
+    markStartupPerformance('T6_catalog_ready');
+    return true;
+  }).catch((error) => {
+    // Keep Step 1 available when shared catalog persistence is slow or unavailable.
+    console.warn('Customer catalog warmup failed; catalog fallbacks remain available.', error);
+    return false;
+  });
+
+  return customerCatalogStartupPromise;
+}
+
+function startCatalogRefreshPollingAfterWarmup() {
+  if (catalogRefreshPollingTimer) return;
+
+  startCustomerCatalogWarmup().finally(() => {
+    if (catalogRefreshPollingTimer) return;
+    catalogRefreshPollingTimer = window.setInterval(async () => {
+      const [updatedStones, updatedCharms, updatedSpacers] = await Promise.all([
+        refreshCatalog(),
+        refreshCharmCatalog(),
+        refreshCustomerSpacerCatalog()
+      ]);
+      if (updatedStones || updatedCharms || updatedSpacers) {
+        await renderApp();
+      }
+    }, 3000);
+  });
 }
 
 function createAnalyticsSessionId() {
@@ -1762,6 +1802,7 @@ function setupLandingEvents() {
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+    markStartupPerformance('T0_cta_click');
     trackAnalyticsEvent('start_customize_click');
     triggerLandingStartFeedback();
     setLandingButtonState('starting', 'กำลังเปิด...');
@@ -1806,12 +1847,16 @@ function setupLandingEvents() {
       return;
     }
 
+    markStartupPerformance('T2_auth_ready');
     clearLineConnectPrompt();
     stopLandingLoadReassurance();
     State.currentStep = 1;
     State.landingDismissed = true;
     persistLandingDismissed();
+    markStartupPerformance('T3_minimum_designer_ready');
     await renderApp();
+    markStartupPerformance('T4_step1_rendered');
+    window.requestAnimationFrame(() => markStartupPerformance('T5_step1_interactive'));
     trackMetaViewContent();
     if (State.currentStep === 1) {
       clearCustomizationLoginIntent();
@@ -2467,12 +2512,16 @@ async function renderStepViews() {
   if (State.currentStep !== 3) {
     stopBerylCatalogRotation();
   }
-  legacyCharmCatalogCache = await getLegacyCharmCatalog();
-  migrateSlotPlaceableCharmSelectionsIntoLoop();
-  State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
-  syncSelectedCharmState();
-  if (State.currentStep >= 3 && !State.orderDetailMode) {
-    ensureCurrentDesignMatchesBeadSize();
+  if (State.currentStep >= 3) {
+    // Catalog-dependent designer and checkout work starts at Step 3; Step 1 and Step 2 do not need it.
+    await startCustomerCatalogWarmup();
+    legacyCharmCatalogCache = await getLegacyCharmCatalog();
+    migrateSlotPlaceableCharmSelectionsIntoLoop();
+    State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
+    syncSelectedCharmState();
+    if (State.currentStep === 3 && !State.orderDetailMode) {
+      ensureCurrentDesignMatchesBeadSize();
+    }
   }
 
   DOM.stepViews.forEach((view, idx) => {
