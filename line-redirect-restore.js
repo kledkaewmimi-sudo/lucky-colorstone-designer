@@ -1,6 +1,14 @@
 export const DEFER_LINE_LOGIN_TO_STEP4 = false;
 export const LINE_REDIRECT_INTENT_VERSION = 2;
 
+// Pure Phase 3B.2A decision helper. It is intentionally not wired into app.js yet.
+export function shouldDeferInitialLineLogin({ featureEnabled = false, requiresLineLogin = false, isAuthenticated = false, isCustomization = false } = {}) {
+  if (!featureEnabled || !isCustomization || !requiresLineLogin) return false;
+  // An authenticated user already passes the legacy guard; no deferred bypass is needed.
+  if (isAuthenticated) return false;
+  return true;
+}
+
 const HANDOFF_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ALLOWED_TARGET_STEPS = new Set([1, 4]);
 
