@@ -1435,6 +1435,10 @@ function isLikelyMobileBrowser() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || '');
 }
 
+function requiresLineLoginForCustomization() {
+  return isLiffInClient() || isLikelyMobileBrowser();
+}
+
 function canUseLiffLoginFromCurrentBrowser() {
   return typeof liff !== 'undefined'
     && State.liffInitialized
@@ -1615,6 +1619,9 @@ function openLineConnectEntryForCustomization() {
 async function requireLineLoginForCustomization(options = {}) {
   const { showLandingPrompt = false } = options;
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
+  // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
+  // Desktop remains independent of LIFF availability and login state.
+  if (!requiresLineLoginForCustomization()) return true;
   if (isLineIdentityAvailable()) return true;
   if (isLiffLoggedIn()) {
     const profileReady = await syncLineProfileFromLiff();
