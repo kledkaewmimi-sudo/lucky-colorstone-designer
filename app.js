@@ -2,7 +2,8 @@ import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCha
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { DEFER_LINE_LOGIN_TO_STEP4, parseCustomizationLoginIntent, shouldDeferInitialLineLogin } from './line-redirect-restore.js';
+import { parseCustomizationLoginIntent } from './line-redirect-restore.js';
+import { shouldBypassInitialLineLoginInProduction } from './deferred-initial-line-login.js';
 import { planLineCallbackBootstrap } from './line-callback-bootstrap.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -1724,8 +1725,7 @@ async function requireLineLoginForCustomization(options = {}) {
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
   // Desktop remains independent of LIFF availability and login state.
   if (!requiresLineLoginForCustomization()) return true;
-  if (shouldDeferInitialLineLogin({
-    featureEnabled: DEFER_LINE_LOGIN_TO_STEP4,
+  if (shouldBypassInitialLineLoginInProduction({
     requiresLineLogin: true,
     isAuthenticated: isLineIdentityAvailable(),
     isCustomization: allowDeferredInitialLogin
