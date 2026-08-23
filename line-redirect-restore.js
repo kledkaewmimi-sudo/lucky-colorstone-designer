@@ -44,6 +44,9 @@ export async function restoreLineRedirectHandoff({ intent, consumeServerHandoff,
   try {
     const serverResult = await consumeServerHandoff?.(intent.handoffToken);
     if (serverResult?.ok) return { ...serverResult, source: 'server', targetStep: intent.targetStep };
+    // A server-confirmed missing/expired/consumed token is terminal. Do not
+    // resurrect an old local design after an explicitly invalid callback.
+    if (serverResult?.reason === 'not_found') return { ok: false, reason: 'handoff_not_found' };
   } catch {
     // A same-context local snapshot is the deliberately safe fallback.
   }

@@ -38,6 +38,21 @@ test('server-first restore falls back to local and fails safely when both are un
   assert.deepEqual(unavailable, { ok: false, reason: 'handoff_unavailable' });
 });
 
+test('an expired or consumed handoff never falls back to an old local design', async () => {
+  const intent = parseCustomizationLoginIntent(JSON.stringify({ version: 2, ts: NOW, step: 3, targetStep: 4, handoffToken: 'c'.repeat(43) }), { now: NOW });
+  let localFallbackCalled = false;
+  const result = await restoreLineRedirectHandoff({
+    intent,
+    consumeServerHandoff: async () => ({ ok: false, reason: 'not_found' }),
+    restoreLocalSnapshot: async () => {
+      localFallbackCalled = true;
+      return { ok: true, snapshot };
+    }
+  });
+  assert.deepEqual(result, { ok: false, reason: 'handoff_not_found' });
+  assert.equal(localFallbackCalled, false);
+});
+
 test('deferred initial-login decision is pure and fails safe to legacy behavior', () => {
   assert.equal(shouldDeferInitialLineLogin({ featureEnabled: false, requiresLineLogin: true, isCustomization: true }), false);
   assert.equal(shouldDeferInitialLineLogin({ featureEnabled: true, requiresLineLogin: true, isCustomization: true }), true);

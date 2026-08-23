@@ -122,3 +122,19 @@ test('callback bootstrap holds default UI until one final callback render', asyn
   assert.match(cssSource, /html\.callback-bootstrap-hold \.landing-page/);
   assert.match(cssSource, /html\.callback-bootstrap-hold \.app-container/);
 });
+
+test('a fresh public entry clears only customization state while valid callbacks retain recovery state', async () => {
+  const appSource = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  assert.match(appSource, /const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume/);
+  assert.match(appSource, /const hasValidCustomizationResume = !deferredLoginQaActivationAttempted/);
+  assert.match(appSource, /deferredLoginQaActivationAttempted = activation\.attempted === true/);
+  assert.match(appSource, /if \(shouldStartFreshCustomization\) \{\s*resetCustomizationSessionForFreshEntry\(\);/);
+  assert.match(appSource, /function resetCustomizationSessionForFreshEntry/);
+  assert.match(appSource, /localStorage\.removeItem\(CUSTOMIZATION_STATE_STORAGE_KEY\)/);
+  assert.match(appSource, /clearGuestDesignSnapshot\(\);/);
+  assert.match(appSource, /clearCustomizationLoginIntent\(\);/);
+  assert.match(appSource, /clearLineOaFriendshipResumePending\(\);/);
+  assert.doesNotMatch(appSource, /resetCustomizationSessionForFreshEntry[\s\S]{0,1600}localStorage\.clear\(/);
+  assert.match(appSource, /restored\?\.reason === 'handoff_not_found'/);
+  assert.match(appSource, /resetCustomizationSessionForFreshEntry\(\);/);
+});

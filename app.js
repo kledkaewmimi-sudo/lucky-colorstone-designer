@@ -23,6 +23,7 @@ if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearSto
 const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
+const CUSTOMIZATION_STATE_STORAGE_KEY = 'lucky_colorstone_state';
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const LINE_OA_FRIENDSHIP_RESUME_KEY = 'lucky_colorstone_line_oa_friendship_resume';
 const LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY = 'lucky_colorstone_line_oa_friendship_resume_fallback';
@@ -106,6 +107,7 @@ let startupOrderReturnInProgress = false;
 // Deferred LINE callbacks must keep the static landing/Step 1 markup hidden until the
 // authenticated design restore has produced one final allowed render.
 let callbackBootstrapHoldActive = false;
+let deferredLoginQaActivationAttempted = false;
 
 // ==========================================
 // 2. DOM Elements Selection
@@ -1036,6 +1038,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldHoldForFriendshipResume = !returnParams.has('orderId')
     && hasLineOaFriendshipResumePending();
   const shouldHoldForCallbackBootstrap = shouldHoldForDeferredCallback || shouldHoldForFriendshipResume;
+  const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
+    && (shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
+  const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
   setCallbackBootstrapHold(shouldHoldForCallbackBootstrap);
   startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
@@ -1043,8 +1048,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const loader = document.getElementById('liffLoadingOverlay');
   if (loader) loader.style.display = 'flex';
 
-  // Load persisted state if exists
-  loadPersistedState();
+  // A public/manual entry is deliberately a new design session. Only a bounded
+  // active LINE callback/resume context may load prior customization state.
+  if (shouldStartFreshCustomization) {
+    resetCustomizationSessionForFreshEntry();
+  } else {
+    loadPersistedState();
+  }
   if (shouldOpenStep4FromUrl) {
     if (returnParams.has('orderId')) {
       clearCustomizationLoginIntent();
@@ -1061,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (shouldHoldForDeferredCallback) {
     // Preserve pre-login canonical state until the V2 recovery controller has
     // verified LINE identity and reconciled the handoff below.
-  } else {
+  } else if (!shouldStartFreshCustomization) {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
   syncShellVisibility();
@@ -1110,7 +1120,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
     const handoffToken = parseCustomizationLoginIntent(startupRawCustomizationIntent)?.handoffToken;
     const restoreAlreadyApplied = Boolean(handoffToken && lineCallbackRestoreGuard.has(handoffToken));
-    if (!restored?.ok && !restoreAlreadyApplied) {
+    if (!restored?.ok && restored?.reason === 'handoff_not_found') {
+      resetCustomizationSessionForFreshEntry();
+    } else if (!restored?.ok && !restoreAlreadyApplied) {
       await restoreDeferredCallbackDesignToStep3Fallback();
     }
   } else {
@@ -2096,6 +2108,7 @@ function isDeferredLineLoginEffectivelyEnabled() {
 
 async function initializeDeferredLoginQaSession() {
   const activation = await activateDeferredLoginQaSessionFromFragment();
+  deferredLoginQaActivationAttempted = activation.attempted === true;
   const state = activation.attempted ? activation : await getValidatedDeferredLoginQaState();
   deferredLoginQaEnabled = state.enabled === true;
   return deferredLoginQaEnabled;
@@ -2258,7 +2271,7 @@ function setupLandingEvents() {
 
 // Load State from LocalStorage
 function loadPersistedState() {
-  const savedState = localStorage.getItem('lucky_colorstone_state');
+  const savedState = localStorage.getItem(CUSTOMIZATION_STATE_STORAGE_KEY);
   if (savedState) {
     try {
       const parsed = JSON.parse(savedState);
@@ -2298,6 +2311,43 @@ function loadPersistedState() {
   }
 
   State.landingDismissed = sessionStorage.getItem(LANDING_DISMISSED_KEY) === '1';
+}
+
+function resetCustomizationSessionForFreshEntry({ preserveCurrentLineIdentity = false } = {}) {
+  const currentLineUserId = preserveCurrentLineIdentity ? State.lineUserId : '';
+  const currentOwnerName = preserveCurrentLineIdentity ? State.ownerName : '';
+  try {
+    localStorage.removeItem(CUSTOMIZATION_STATE_STORAGE_KEY);
+    localStorage.removeItem(CHECKOUT_SUMMARY_STORAGE_KEY);
+    localStorage.removeItem(STRIPE_ORDER_PAYLOAD_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear stale customization state.', error);
+  }
+  clearGuestDesignSnapshot();
+  clearCustomizationLoginIntent();
+  clearLineOaFriendshipResumePending();
+  try {
+    sessionStorage.removeItem(LANDING_DISMISSED_KEY);
+  } catch {
+    // Storage may be unavailable in an in-app browser; runtime state remains fresh.
+  }
+
+  State.wristSize = 16.0;
+  State.beadSize = '6';
+  State.mixedPlacingSize = 6;
+  State.ownerName = currentOwnerName;
+  State.lineUserId = currentLineUserId;
+  State.shippingInfo = {
+    recipientName: '',
+    phoneNumber: '',
+    addressLine: '',
+    province: '',
+    postalCode: ''
+  };
+  State.currentStep = 1;
+  State.landingDismissed = false;
+  resetStep3DesignState('fresh-entry');
+  if (DOM.braceletOwnerName) DOM.braceletOwnerName.value = State.ownerName;
 }
 
 function resetStep3DesignState(reason = '', options = {}) {
@@ -2346,7 +2396,7 @@ function saveState() {
     selectedStones: normalizeSelectedLoopItems(State.selectedStones),
     currentStep: State.currentStep
   };
-  localStorage.setItem('lucky_colorstone_state', JSON.stringify(stateCopy));
+  localStorage.setItem(CUSTOMIZATION_STATE_STORAGE_KEY, JSON.stringify(stateCopy));
 }
 
 // Phase 1 guest-design persistence. These helpers are intentionally not called by the
@@ -2448,10 +2498,12 @@ async function consumeDeferredLineAuthHandoff(token) {
       method: 'POST'
     });
     const result = await response.json().catch(() => null);
-    if (!response.ok || !result?.payload?.designSnapshot) return null;
+    if (!response.ok || !result?.payload?.designSnapshot) {
+      return { ok: false, reason: response.status === 404 ? 'not_found' : 'unavailable' };
+    }
     return { ok: true, snapshot: result.payload.designSnapshot };
   } catch {
-    return null;
+    return { ok: false, reason: 'unavailable' };
   }
 }
 
@@ -3239,8 +3291,12 @@ function setupNavigationEvents() {
   const goHome = async (e) => {
     e.preventDefault();
     trackAnalyticsEvent('home_clicked', { from_step: State.currentStep });
-    if (confirm("Go back to Step 1? Your current design will be saved.")) {
-      await goToStep(1);
+    if (confirm("Go back to Step 1? Your current design will be discarded.")) {
+      resetCustomizationSessionForFreshEntry({ preserveCurrentLineIdentity: true });
+      State.currentStep = 1;
+      State.landingDismissed = true;
+      persistLandingDismissed();
+      await renderApp();
     }
   };
   DOM.btnHome.addEventListener('click', goHome);
