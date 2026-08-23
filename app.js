@@ -103,6 +103,9 @@ const State = {
 // The static markup defaults to Step 1, so exposing the app shell before the first Step 4 render
 // would otherwise briefly show the wrong step.
 let startupOrderReturnInProgress = false;
+// Deferred LINE callbacks must keep the static landing/Step 1 markup hidden until the
+// authenticated design restore has produced one final allowed render.
+let callbackBootstrapHoldActive = false;
 
 // ==========================================
 // 2. DOM Elements Selection
@@ -209,7 +212,8 @@ const DOM = {
   landingView: document.getElementById('landingView'),
   btnLandingLogin: document.getElementById('btnLandingLogin'),
   landingLoadReassurance: document.getElementById('landingLoadReassurance'),
-  liffLoadingOverlay: document.getElementById('liffLoadingOverlay')
+  liffLoadingOverlay: document.getElementById('liffLoadingOverlay'),
+  callbackBootstrapOverlay: document.getElementById('callbackBootstrapOverlay')
 };
 
 // ==========================================
@@ -1009,6 +1013,12 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+  // The document-head marker prevents a first-paint landing flash while the QA
+  // status request below is still resolving. Confirm the real callback state
+  // immediately afterwards before continuing to hold normal UI rendering.
+  if (document.documentElement.classList.contains('callback-bootstrap-hold')) {
+    setCallbackBootstrapHold(true);
+  }
   await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
@@ -1023,6 +1033,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldResumeCustomizationStart = !returnParams.has('orderId') && startupCallbackPlan.kind === 'legacy';
   const shouldHoldForDeferredCallback = !returnParams.has('orderId')
     && (startupCallbackPlan.kind === 'v2-wait-for-identity' || startupCallbackPlan.kind === 'v2-restore-before-reset');
+  const shouldHoldForFriendshipResume = !returnParams.has('orderId')
+    && hasLineOaFriendshipResumePending();
+  const shouldHoldForCallbackBootstrap = shouldHoldForDeferredCallback || shouldHoldForFriendshipResume;
+  setCallbackBootstrapHold(shouldHoldForCallbackBootstrap);
   startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
   // Show loading overlay during LIFF boot
@@ -1093,10 +1107,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   markStartupPerformance('T1_liff_ready');
   clearOAuthQueryParams();
   if (shouldHoldForDeferredCallback) {
-    await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
+    const restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
+    const handoffToken = parseCustomizationLoginIntent(startupRawCustomizationIntent)?.handoffToken;
+    const restoreAlreadyApplied = Boolean(handoffToken && lineCallbackRestoreGuard.has(handoffToken));
+    if (!restored?.ok && !restoreAlreadyApplied) {
+      await restoreDeferredCallbackDesignToStep3Fallback();
+    }
   } else {
     restoreCustomizationIntentAfterLogin();
-    await resumeLineOaFriendshipAfterReturn();
+    const resumedFriendship = await resumeLineOaFriendshipAfterReturn();
+    if (shouldHoldForFriendshipResume && !resumedFriendship && State.currentStep !== 3) {
+      await restoreDeferredCallbackDesignToStep3Fallback();
+    }
   }
 
   await loadOrderDetailFromUrlIfNeeded();
@@ -1104,6 +1126,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Perform the first render without waiting for catalog hydration.
   await renderApp();
+  // Release the visual hold only after the final callback outcome has been
+  // rendered. This avoids exposing landing/default steps between LIFF return
+  // and the restored Step 4 (or the safe Step 3 fallback).
+  setCallbackBootstrapHold(false);
   if (startupOrderReturnInProgress) {
     startupOrderReturnInProgress = false;
     if (loader) loader.style.display = 'none';
@@ -1118,6 +1144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     rejectCustomerStartupBootstrap(error);
     resetLandingStartAfterFailure('');
     if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+    setCallbackBootstrapHold(false);
   }
 });
 
@@ -2405,6 +2432,16 @@ function applyCanonicalGuestDesignSnapshot(snapshot, { targetStep = 4 } = {}) {
   return { ok: true, snapshot: reconciled.snapshot, skipped: reconciled.skipped };
 }
 
+async function restoreDeferredCallbackDesignToStep3Fallback() {
+  // A cancelled, unavailable, or non-friend callback must still resolve to one
+  // stable, recoverable Step 3 render. The server handoff and V2 intent remain
+  // intact for a later verified retry.
+  await startCustomerCatalogWarmup();
+  const localSnapshot = restoreGuestDesignSnapshot();
+  if (!localSnapshot?.ok) return false;
+  return applyCanonicalGuestDesignSnapshot(localSnapshot.snapshot, { targetStep: 3 }).ok;
+}
+
 async function consumeDeferredLineAuthHandoff(token) {
   try {
     const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}/consume`, {
@@ -3221,6 +3258,14 @@ function setupNavigationEvents() {
     DOM.btnPayWithStripe.addEventListener('click', async () => {
       await handleStripeCheckout();
     });
+  }
+}
+
+function setCallbackBootstrapHold(active) {
+  callbackBootstrapHoldActive = active === true;
+  document.documentElement.classList.toggle('callback-bootstrap-hold', callbackBootstrapHoldActive);
+  if (DOM.callbackBootstrapOverlay) {
+    DOM.callbackBootstrapOverlay.setAttribute('aria-hidden', callbackBootstrapHoldActive ? 'false' : 'true');
   }
 }
 

@@ -100,3 +100,25 @@ test('app startup classifies the callback before the legacy destructive resume b
   assert.ok(appSource.indexOf('await initLIFF()') < callbackInvocation);
   assert.ok(callbackInvocation < appSource.indexOf('restoreCustomizationIntentAfterLogin()'));
 });
+
+test('callback bootstrap holds default UI until one final callback render', async () => {
+  const [appSource, htmlSource, cssSource] = await Promise.all([
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../index.css', import.meta.url), 'utf8')
+  ]);
+  const holdBeforePersistedState = appSource.indexOf('setCallbackBootstrapHold(shouldHoldForCallbackBootstrap)');
+  const persistedStateLoad = appSource.indexOf('loadPersistedState();');
+  const finalRender = appSource.indexOf('await renderApp();');
+  const holdRelease = appSource.indexOf('setCallbackBootstrapHold(false);', finalRender);
+
+  assert.ok(holdBeforePersistedState > -1);
+  assert.ok(holdBeforePersistedState < persistedStateLoad);
+  assert.ok(finalRender > -1);
+  assert.ok(holdRelease > finalRender);
+  assert.match(appSource, /restoreDeferredCallbackDesignToStep3Fallback\(\)/);
+  assert.match(htmlSource, /callback-bootstrap-hold/);
+  assert.match(htmlSource, /callbackBootstrapOverlay/);
+  assert.match(cssSource, /html\.callback-bootstrap-hold \.landing-page/);
+  assert.match(cssSource, /html\.callback-bootstrap-hold \.app-container/);
+});

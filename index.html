@@ -9,6 +9,27 @@
     content="Design your custom stone bracelet and order directly via LINE. Select your wrist size, bead size, and customize with premium natural stones.">
   <!-- ponytail: absolute path for Vercel static serving -->
   <link rel="stylesheet" href="/index.css">
+  <script>
+    // Prevent the static landing markup from painting while a valid deferred
+    // LINE callback is returning. app.js confirms this state before release.
+    (function () {
+      try {
+        const intent = JSON.parse(localStorage.getItem('lucky_colorstone_customize_login_intent') || 'null');
+        const friendshipResume = sessionStorage.getItem('lucky_colorstone_line_oa_friendship_resume') === '1';
+        const friendshipFallback = JSON.parse(localStorage.getItem('lucky_colorstone_line_oa_friendship_resume_fallback') || 'null');
+        const validV2Intent = intent?.version === 2
+          && intent?.mode === 'guest_design_handoff'
+          && intent?.targetStep === 4;
+        const validFriendshipFallback = Number.isFinite(friendshipFallback?.expiresAt)
+          && friendshipFallback.expiresAt > Date.now();
+        if (validV2Intent || friendshipResume || validFriendshipFallback) {
+          document.documentElement.classList.add('callback-bootstrap-hold');
+        }
+      } catch {
+        // Storage may be unavailable in an in-app browser; normal startup remains safe.
+      }
+    }());
+  </script>
 
   <!-- Meta Pixel: public browser identifier; no access token is exposed here. -->
   <script>
@@ -35,6 +56,13 @@
 </head>
 
 <body>
+
+  <div class="callback-bootstrap-overlay" id="callbackBootstrapOverlay" role="status" aria-live="polite" aria-hidden="true">
+    <div class="callback-bootstrap-content">
+      <div class="pastel-spinner" aria-hidden="true"></div>
+      <p>กำลังกลับเข้าสู่แบบกำไลของคุณ</p>
+    </div>
+  </div>
 
   <!-- LANDING PAGE SECTION -->
   <section class="landing-page" id="landingView">
