@@ -61,6 +61,12 @@ The fixture coverage verifies deduplicated v2 stages, a verified-only LINE Conne
 
 Revert only this focused CRM Analytics commit. No database migration, customer-storage cleanup, feature-flag change, or payment rollback is required.
 
-## Remaining validation
+## Deployment verification
 
-After deployment, open CRM Analytics and confirm the v2 status label, nine funnel rows, separate Checkout/Paid daily columns, and responsive table layout. Live paid/revenue totals should be compared with authoritative Orders for the selected period.
+The focused commits `3473c16` and `b810d95` were pushed to `origin/main` and deployed through the normal production workflow.
+
+- `https://crm.luckycolorstone.com/api/crm/analytics/summary?range=7d` returned HTTP 200 with `modelVersion: 2`, `legacyExcluded: true`, and `paymentSuccessAuthority: "stripe_webhook_authoritative"`.
+- The live `crm.js` contains the v2 legacy-exclusion status marker.
+- The live customer `app.js` contains the Landing CTA `trackStepView(1)` instrumentation fix.
+
+Interactive browser automation was unavailable in this environment, so the owner should still open CRM Analytics to visually confirm the nine funnel rows, separate Checkout/Paid daily columns, and responsive layout. Live paid/revenue totals should be compared with authoritative Orders for the selected period.
