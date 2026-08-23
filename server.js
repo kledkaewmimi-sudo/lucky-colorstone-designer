@@ -5,6 +5,12 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
+const {
+  DEFERRED_LOGIN_QA_TTL_MS,
+  DEFERRED_LOGIN_QA_TOKEN_PATTERN,
+  createDeferredLoginQaToken,
+  isDeferredLoginQaSessionActive
+} = require('./deferred-login-qa-session.js');
 
 const workspaceDir = __dirname;
 const bundledDataDir = path.join(workspaceDir, "data");
@@ -159,6 +165,39 @@ function sendText(res, statusCode, text) {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   setCorsHeaders(res);
   res.end(text);
+}
+
+const DEFERRED_LOGIN_QA_COOKIE = '__Host-lucky-deferred-login-qa';
+const DEFERRED_LOGIN_QA_PROBE_COOKIE = 'lucky_deferred_login_qa_probe';
+
+function getRequestCookie(req, name) {
+  const target = `${name}=`;
+  const part = String(req.headers.cookie || '')
+    .split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(target));
+  return part ? part.slice(target.length) : '';
+}
+
+function setDeferredLoginQaCookies(res, token = '', maxAgeSeconds = 0) {
+  const suffix = `Path=/; Secure; SameSite=Lax; Max-Age=${Math.max(0, Math.trunc(maxAgeSeconds))}`;
+  const sessionCookie = token
+    ? `${DEFERRED_LOGIN_QA_COOKIE}=${token}; HttpOnly; ${suffix}`
+    : `${DEFERRED_LOGIN_QA_COOKIE}=; HttpOnly; ${suffix}`;
+  const probeCookie = token
+    ? `${DEFERRED_LOGIN_QA_PROBE_COOKIE}=1; ${suffix}`
+    : `${DEFERRED_LOGIN_QA_PROBE_COOKIE}=; ${suffix}`;
+  res.setHeader('Set-Cookie', [sessionCookie, probeCookie]);
+}
+
+function hasDeferredLoginQaAdminAccess(req) {
+  const secret = getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET');
+  const provided = String(req.headers.authorization || '');
+  const expected = secret ? `Bearer ${secret}` : '';
+  if (!expected || !provided) return false;
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  const providedBuffer = Buffer.from(provided, 'utf8');
+  return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
 function hasCorruptedThaiText(value) {
@@ -1778,6 +1817,39 @@ async function consumeLineAuthHandoff(token) {
   return Array.isArray(rows) && rows[0]?.payload ? rows[0].payload : null;
 }
 
+async function createDeferredLoginQaSession() {
+  if (!isSupabaseConfigured() || !getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET')) return null;
+  const token = createDeferredLoginQaToken();
+  const expiresAt = Date.now() + DEFERRED_LOGIN_QA_TTL_MS;
+  await supabaseRequest('deferred_login_qa_sessions', {
+    method: 'POST',
+    body: { token, expires_at: new Date(expiresAt).toISOString() },
+    prefer: 'return=minimal'
+  });
+  return { token, expiresAt };
+}
+
+async function findActiveDeferredLoginQaSession(token) {
+  if (!isSupabaseConfigured() || !DEFERRED_LOGIN_QA_TOKEN_PATTERN.test(String(token || ''))) return null;
+  const rows = await supabaseRequest('deferred_login_qa_sessions', {
+    params: { select: 'expires_at,revoked_at', token: `eq.${token}`, limit: '1' }
+  });
+  return isDeferredLoginQaSessionActive(Array.isArray(rows) ? rows[0] : null)
+    ? { expiresAt: Date.parse(rows[0].expires_at) }
+    : null;
+}
+
+async function revokeDeferredLoginQaSession(token) {
+  if (!isSupabaseConfigured() || !DEFERRED_LOGIN_QA_TOKEN_PATTERN.test(String(token || ''))) return false;
+  const rows = await supabaseRequest('deferred_login_qa_sessions', {
+    method: 'PATCH',
+    params: { token: `eq.${token}`, revoked_at: 'is.null' },
+    body: { revoked_at: new Date().toISOString() },
+    prefer: 'return=representation'
+  });
+  return Array.isArray(rows) && rows.length === 1;
+}
+
 async function notifyPaidOrderLineRecipients(order) {
   let nextOrder = order;
 
@@ -3381,6 +3453,72 @@ async function handleApiRequest(req, res, urlObj) {
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
+
+  if (pathname === '/api/internal/deferred-login-qa-sessions' && method === 'POST') {
+    if (!hasDeferredLoginQaAdminAccess(req)) {
+      sendJson(res, 404, { error: 'Not found.' });
+      return true;
+    }
+    try {
+      const session = await createDeferredLoginQaSession();
+      if (!session) {
+        sendJson(res, 503, { error: 'QA session storage unavailable.' });
+        return true;
+      }
+      sendJson(res, 201, session);
+    } catch {
+      sendJson(res, 503, { error: 'QA session storage unavailable.' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/internal/deferred-login-qa-sessions/revoke' && method === 'POST') {
+    if (!hasDeferredLoginQaAdminAccess(req) || !DEFERRED_LOGIN_QA_TOKEN_PATTERN.test(String(bodyObj?.token || ''))) {
+      sendJson(res, 404, { error: 'Not found.' });
+      return true;
+    }
+    try {
+      sendJson(res, (await revokeDeferredLoginQaSession(bodyObj.token)) ? 200 : 404, { ok: true });
+    } catch {
+      sendJson(res, 503, { error: 'QA session storage unavailable.' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/deferred-login-qa-sessions/activate' && method === 'POST') {
+    try {
+      const session = await findActiveDeferredLoginQaSession(bodyObj?.token);
+      if (!session) {
+        setDeferredLoginQaCookies(res);
+        sendJson(res, 404, { enabled: false });
+        return true;
+      }
+      setDeferredLoginQaCookies(res, bodyObj.token, Math.ceil((session.expiresAt - Date.now()) / 1000));
+      sendJson(res, 200, { enabled: true, expiresAt: session.expiresAt });
+    } catch {
+      setDeferredLoginQaCookies(res);
+      sendJson(res, 503, { enabled: false });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/deferred-login-qa-sessions/current' && method === 'GET') {
+    try {
+      const session = await findActiveDeferredLoginQaSession(getRequestCookie(req, DEFERRED_LOGIN_QA_COOKIE));
+      if (!session) setDeferredLoginQaCookies(res);
+      sendJson(res, 200, session ? { enabled: true, expiresAt: session.expiresAt } : { enabled: false });
+    } catch {
+      setDeferredLoginQaCookies(res);
+      sendJson(res, 503, { enabled: false });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/deferred-login-qa-sessions/deactivate' && method === 'POST') {
+    setDeferredLoginQaCookies(res);
+    sendJson(res, 200, { enabled: false });
+    return true;
+  }
 
   if (pathname === '/api/auth-handoffs' && method === 'POST') {
     if (!bodyObj) {

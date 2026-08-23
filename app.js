@@ -3,9 +3,10 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
-import { shouldBypassInitialLineLoginInProduction } from './deferred-initial-line-login.js';
+import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
+import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -239,6 +240,10 @@ let landingReassuranceGapTimer = null;
 let landingReassuranceActive = false;
 let customizationResumeInProgress = false;
 const lineCallbackRestoreGuard = createLineCallbackRestoreGuard();
+let deferredLoginQaEnabled = false;
+const shouldBypassInitialLineLoginForApp = createInitialLineLoginGuard({
+  resolveFeatureEnabled: () => isDeferredLineLoginEffectivelyEnabled()
+});
 let resolveCustomerStartupBootstrap;
 let rejectCustomerStartupBootstrap;
 const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
@@ -998,12 +1003,13 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+  await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
   const startupRawCustomizationIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
-  const startupDeferredFeatureEnabled = resolveDeferredLineLoginFlag();
+  const startupDeferredFeatureEnabled = isDeferredLineLoginEffectivelyEnabled();
   const startupCallbackPlan = planLineCallbackBootstrap({
     rawIntent: startupRawCustomizationIntent,
     featureEnabled: startupDeferredFeatureEnabled
@@ -1752,7 +1758,7 @@ async function requireLineLoginForCustomization(options = {}) {
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
   // Desktop remains independent of LIFF availability and login state.
   if (!requiresLineLoginForCustomization()) return true;
-  if (shouldBypassInitialLineLoginInProduction({
+  if (shouldBypassInitialLineLoginForApp({
     requiresLineLogin: true,
     isAuthenticated: isLineIdentityAvailable(),
     isCustomization: allowDeferredInitialLogin
@@ -1794,6 +1800,17 @@ function getDeferredLineAuthAnalyticsContinuity() {
   };
 }
 
+function isDeferredLineLoginEffectivelyEnabled() {
+  return resolveDeferredLineLoginFlag() === true || deferredLoginQaEnabled === true;
+}
+
+async function initializeDeferredLoginQaSession() {
+  const activation = await activateDeferredLoginQaSessionFromFragment();
+  const state = activation.attempted ? activation : await getValidatedDeferredLoginQaState();
+  deferredLoginQaEnabled = state.enabled === true;
+  return deferredLoginQaEnabled;
+}
+
 async function createDeferredLineAuthHandoff(payload) {
   try {
     const response = await fetch('/api/auth-handoffs', {
@@ -1817,6 +1834,7 @@ function startDeferredLineLoginWithPersistedIntent() {
 
 async function beginDeferredStep3AuthBoundary() {
   const boundary = createDeferredStep3AuthBoundary({
+    resolveFeatureEnabled: isDeferredLineLoginEffectivelyEnabled,
     requiresLineLogin: requiresLineLoginForCustomization,
     isAuthenticated: isLineIdentityAvailable,
     saveSnapshot: saveGuestDesignSnapshot,
@@ -2138,7 +2156,7 @@ async function consumeDeferredLineAuthHandoff(token) {
 }
 
 async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
-  const featureEnabled = resolveDeferredLineLoginFlag();
+  const featureEnabled = isDeferredLineLoginEffectivelyEnabled();
   const plan = planLineCallbackBootstrap({
     rawIntent,
     hasLineIdentity: isLineIdentityAvailable(),
