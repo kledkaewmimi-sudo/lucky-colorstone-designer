@@ -196,6 +196,9 @@ const DOM = {
   btnConfirmClose: document.getElementById('btnConfirmClose'),
   btnConfirmCancel: document.getElementById('btnConfirmCancel'),
   btnConfirmOK: document.getElementById('btnConfirmOK'),
+  lineOaFriendshipModal: document.getElementById('lineOaFriendshipModal'),
+  btnLineOaAddFriend: document.getElementById('btnLineOaAddFriend'),
+  btnLineOaRecheck: document.getElementById('btnLineOaRecheck'),
   inspirationGalleryModal: document.getElementById('inspirationGalleryModal'),
   inspirationGalleryGrid: document.getElementById('inspirationGalleryGrid'),
   btnInspirationGalleryClose: document.getElementById('btnInspirationGalleryClose'),
@@ -241,6 +244,8 @@ let landingReassuranceActive = false;
 let customizationResumeInProgress = false;
 const lineCallbackRestoreGuard = createLineCallbackRestoreGuard();
 let deferredLoginQaEnabled = false;
+let lineOaFriendshipRequired = false;
+let lineOaFriendshipRecheckInFlight = false;
 const shouldBypassInitialLineLoginForApp = createInitialLineLoginGuard({
   resolveFeatureEnabled: () => isDeferredLineLoginEffectivelyEnabled()
 });
@@ -1097,6 +1102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Perform the first render without waiting for catalog hydration.
   await renderApp();
+  if (lineOaFriendshipRequired) showLineOaFriendshipGate();
   if (startupOrderReturnInProgress) {
     startupOrderReturnInProgress = false;
     if (loader) loader.style.display = 'none';
@@ -1620,6 +1626,66 @@ async function syncLineProfileFromLiff() {
     });
     return false;
   }
+}
+
+async function getLineOaFriendshipStatus() {
+  if (!isLineIdentityAvailable() || typeof liff === 'undefined' || typeof liff.getFriendship !== 'function') {
+    return { ok: false, friendFlag: false };
+  }
+  try {
+    const result = await withTimeout(liff.getFriendship(), 5000, 'LINE friendship check');
+    return { ok: true, friendFlag: result?.friendFlag === true };
+  } catch (error) {
+    console.warn('LINE OA friendship check unavailable.', error?.name || 'unknown');
+    return { ok: false, friendFlag: false };
+  }
+}
+
+function showLineOaFriendshipGate() {
+  DOM.lineOaFriendshipModal?.classList.add('show');
+  DOM.lineOaFriendshipModal?.setAttribute('aria-hidden', 'false');
+}
+
+function hideLineOaFriendshipGate() {
+  DOM.lineOaFriendshipModal?.classList.remove('show');
+  DOM.lineOaFriendshipModal?.setAttribute('aria-hidden', 'true');
+}
+
+async function recheckLineOaFriendshipAndResume() {
+  if (lineOaFriendshipRecheckInFlight) return;
+  lineOaFriendshipRecheckInFlight = true;
+  try {
+    const friendship = await getLineOaFriendshipStatus();
+    if (!friendship.friendFlag) {
+      showToast('กรณาเพมเพอน Lucky Colorstone ใน LINE กอนดำเนนการตอ');
+      return;
+    }
+    lineOaFriendshipRequired = false;
+    const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+    const restored = await restoreDeferredLineCallbackBeforeReset(rawIntent);
+    if (!restored.ok) {
+      lineOaFriendshipRequired = true;
+      showToast('ไมสามารถกคืนแบบกำไลได โปรดลองอกครง');
+      return;
+    }
+    hideLineOaFriendshipGate();
+    await renderApp();
+  } finally {
+    lineOaFriendshipRecheckInFlight = false;
+  }
+}
+
+async function requestLineOaFriendship() {
+  if (typeof liff === 'undefined' || typeof liff.requestFriendship !== 'function') {
+    showToast('ไมสามารถเปดหนาเพมเพอน LINE ได โปรดลองอกครง');
+    return;
+  }
+  try {
+    await liff.requestFriendship();
+  } catch (error) {
+    console.warn('LINE OA friendship prompt failed.', error?.name || 'unknown');
+  }
+  await recheckLineOaFriendshipAndResume();
 }
 
 function persistCustomizationLoginIntent(intent) {
@@ -2165,6 +2231,12 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
 
+  const friendship = await getLineOaFriendshipStatus();
+  if (!friendship.friendFlag) {
+    lineOaFriendshipRequired = true;
+    return { ok: false, reason: 'line_oa_friendship_required' };
+  }
+
   await startCustomerCatalogWarmup();
   const restored = await runDormantV2CallbackRestore({
     rawIntent,
@@ -2179,6 +2251,7 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
     }
   });
   if (restored.ok) {
+    lineOaFriendshipRequired = false;
     clearCustomizationLoginIntent();
     clearGuestDesignSnapshot();
   }
@@ -8459,6 +8532,8 @@ function setupModalEvents() {
   DOM.btnInspirationGallery?.addEventListener('click', openInspirationGallery);
   DOM.btnInspirationGalleryClose?.addEventListener('click', closeInspirationGallery);
   DOM.btnInspirationGalleryBottomClose?.addEventListener('click', closeInspirationGallery);
+  DOM.btnLineOaAddFriend?.addEventListener('click', requestLineOaFriendship);
+  DOM.btnLineOaRecheck?.addEventListener('click', recheckLineOaFriendshipAndResume);
   DOM.inspirationGalleryModal?.addEventListener('click', (e) => {
     if (e.target === DOM.inspirationGalleryModal) {
       closeInspirationGallery();

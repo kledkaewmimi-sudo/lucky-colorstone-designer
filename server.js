@@ -1392,15 +1392,24 @@ function applyOrderWorkflowUpdates(baseOrder, updates) {
 
 async function trySendPaidOrderLineNotification(order) {
   if (!isPaidOrderLineNotificationEligible(order)) {
+    console.info(`[buyer-line-notify] skipped order=${getOrderId(order)} reason=ineligible`);
     return { sent: false, order };
   }
 
-  console.info(`[orders] sending paid LINE detail link for ${getOrderId(order)}: ${getOrderDetailUrl(order)}`);
-  await sendLineFlexMessageWithTextFallback({
-    userId: getOrderLineUserId(order),
-    flexMessage: buildPaymentSuccessFlexMessage(order),
-    fallbackText: buildPaymentSuccessFallbackLineMessage(order)
-  });
+  const orderId = getOrderId(order);
+  console.info(`[buyer-line-notify] attempted order=${orderId}`);
+  try {
+    await sendLineFlexMessageWithTextFallback({
+      userId: getOrderLineUserId(order),
+      flexMessage: buildPaymentSuccessFlexMessage(order),
+      fallbackText: buildPaymentSuccessFallbackLineMessage(order)
+    });
+    console.info(`[buyer-line-notify] success order=${orderId}`);
+  } catch (error) {
+    const statusMatch = String(error?.message || '').match(/HTTP\s+(\d{3})/);
+    console.warn(`[buyer-line-notify] failure order=${orderId} category=${statusMatch ? `http_${statusMatch[1]}` : 'delivery_error'}`);
+    throw error;
+  }
 
   return {
     sent: true,
