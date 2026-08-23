@@ -24,6 +24,7 @@ const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
+const LINE_OA_FRIENDSHIP_RESUME_KEY = 'lucky_colorstone_line_oa_friendship_resume';
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
 const STEP3_INFO_HINT_SEEN_KEY = 'lucky_step3_info_hint_seen';
@@ -196,9 +197,6 @@ const DOM = {
   btnConfirmClose: document.getElementById('btnConfirmClose'),
   btnConfirmCancel: document.getElementById('btnConfirmCancel'),
   btnConfirmOK: document.getElementById('btnConfirmOK'),
-  lineOaFriendshipModal: document.getElementById('lineOaFriendshipModal'),
-  btnLineOaAddFriend: document.getElementById('btnLineOaAddFriend'),
-  btnLineOaRecheck: document.getElementById('btnLineOaRecheck'),
   inspirationGalleryModal: document.getElementById('inspirationGalleryModal'),
   inspirationGalleryGrid: document.getElementById('inspirationGalleryGrid'),
   btnInspirationGalleryClose: document.getElementById('btnInspirationGalleryClose'),
@@ -1096,6 +1094,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
   } else {
     restoreCustomizationIntentAfterLogin();
+    await resumeLineOaFriendshipAfterReturn();
   }
 
   await loadOrderDetailFromUrlIfNeeded();
@@ -1103,7 +1102,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Perform the first render without waiting for catalog hydration.
   await renderApp();
-  if (lineOaFriendshipRequired) showLineOaFriendshipGate();
   if (startupOrderReturnInProgress) {
     startupOrderReturnInProgress = false;
     if (loader) loader.style.display = 'none';
@@ -1642,14 +1640,70 @@ async function getLineOaFriendshipStatus() {
   }
 }
 
-function showLineOaFriendshipGate() {
-  DOM.lineOaFriendshipModal?.classList.add('show');
-  DOM.lineOaFriendshipModal?.setAttribute('aria-hidden', 'false');
+function setLineOaFriendshipResumePending() {
+  try {
+    sessionStorage.setItem(LINE_OA_FRIENDSHIP_RESUME_KEY, '1');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function hideLineOaFriendshipGate() {
-  DOM.lineOaFriendshipModal?.classList.remove('show');
-  DOM.lineOaFriendshipModal?.setAttribute('aria-hidden', 'true');
+function hasLineOaFriendshipResumePending() {
+  try {
+    return sessionStorage.getItem(LINE_OA_FRIENDSHIP_RESUME_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function clearLineOaFriendshipResumePending() {
+  try {
+    sessionStorage.removeItem(LINE_OA_FRIENDSHIP_RESUME_KEY);
+  } catch {
+    // Storage can be unavailable in an in-app browser. The Step 4 hard gate remains fail-closed.
+  }
+}
+
+function isApprovedLineOaAddFriendUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' && ['line.me', 'www.line.me', 'lin.ee'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function getLineOaAddFriendUrl() {
+  try {
+    const response = await fetch('/api/line-oa-add-friend', { credentials: 'same-origin' });
+    const result = await response.json().catch(() => null);
+    return response.ok && isApprovedLineOaAddFriendUrl(result?.url) ? result.url : '';
+  } catch {
+    return '';
+  }
+}
+
+async function openLineOaAddFriendExperience() {
+  const addFriendUrl = await getLineOaAddFriendUrl();
+  if (addFriendUrl) {
+    window.location.assign(addFriendUrl);
+    return { opened: true, source: 'official_add_friend_url' };
+  }
+
+  // LINE documents this API as a full-size LIFF browser feature. It remains a
+  // constrained official fallback only when no verified direct OA link is available.
+  const liffContext = typeof liff !== 'undefined' && typeof liff.getContext === 'function' ? liff.getContext() : null;
+  if (isLiffInClient() && liffContext?.viewType === 'full' && typeof liff !== 'undefined' && typeof liff.requestFriendship === 'function') {
+    try {
+      await liff.requestFriendship();
+      return { opened: true, source: 'liff_request_friendship' };
+    } catch (error) {
+      console.warn('LINE OA friendship prompt failed.', error?.name || 'unknown');
+    }
+  }
+
+  return { opened: false, source: 'unavailable' };
 }
 
 async function recheckLineOaFriendshipAndResume() {
@@ -1658,7 +1712,6 @@ async function recheckLineOaFriendshipAndResume() {
   try {
     const friendship = await getLineOaFriendshipStatus();
     if (!friendship.friendFlag) {
-      showToast('กรณาเพมเพอน Lucky Colorstone ใน LINE กอนดำเนนการตอ');
       return;
     }
     lineOaFriendshipRequired = false;
@@ -1669,7 +1722,7 @@ async function recheckLineOaFriendshipAndResume() {
         return;
       }
       lineOaFriendshipStep4ResumePending = false;
-      hideLineOaFriendshipGate();
+      clearLineOaFriendshipResumePending();
       await goToStep(4);
       return;
     }
@@ -1677,10 +1730,9 @@ async function recheckLineOaFriendshipAndResume() {
     const restored = await restoreDeferredLineCallbackBeforeReset(rawIntent);
     if (!restored.ok) {
       lineOaFriendshipRequired = true;
-      showToast('ไมสามารถกคืนแบบกำไลได โปรดลองอกครง');
       return;
     }
-    hideLineOaFriendshipGate();
+    clearLineOaFriendshipResumePending();
     await renderApp();
   } finally {
     lineOaFriendshipRecheckInFlight = false;
@@ -1695,32 +1747,65 @@ function requiresLineOaFriendshipForOperationalStep4() {
     && !State.paymentCompletedView;
 }
 
-async function canEnterOperationalStep4({ queueStep3Resume = false, showGate = true } = {}) {
+async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFriend = false } = {}) {
   if (!requiresLineOaFriendshipForOperationalStep4()) return true;
   if (!isLineIdentityAvailable()) return false;
 
   const friendship = await getLineOaFriendshipStatus();
   if (friendship.friendFlag) return true;
 
-  if (showGate) {
+  if (queueStep3Resume) {
     lineOaFriendshipStep4ResumePending = queueStep3Resume && State.currentStep === 3;
     lineOaFriendshipRequired = true;
-    showLineOaFriendshipGate();
+    const savedSnapshot = saveGuestDesignSnapshot();
+    if (!savedSnapshot?.ok) {
+      showToast('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e41\u0e1a\u0e1a\u0e01\u0e33\u0e44\u0e25\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e19 LINE \u0e44\u0e14\u0e49 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
+      return false;
+    }
+    setLineOaFriendshipResumePending();
+    const addFriend = await openLineOaAddFriendExperience();
+    if (!addFriend.opened) {
+      showToast('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e40\u0e1b\u0e34\u0e14 LINE \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e14\u0e49 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
+      clearLineOaFriendshipResumePending();
+    } else if (addFriend.source === 'liff_request_friendship') {
+      await recheckLineOaFriendshipAndResume();
+    }
+  } else if (openAddFriend) {
+    lineOaFriendshipRequired = true;
+    setLineOaFriendshipResumePending();
+    await openLineOaAddFriendExperience();
   }
   return false;
 }
 
-async function requestLineOaFriendship() {
-  if (typeof liff === 'undefined' || typeof liff.requestFriendship !== 'function') {
-    showToast('ไมสามารถเปดหนาเพมเพอน LINE ได โปรดลองอกครง');
-    return;
+async function resumeLineOaFriendshipAfterReturn() {
+  if (!hasLineOaFriendshipResumePending() || !isLineIdentityAvailable()) return false;
+
+  await startCustomerCatalogWarmup();
+  const restoredSnapshot = restoreGuestDesignSnapshot();
+  if (restoredSnapshot?.ok) {
+    State.currentStep = 3;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    saveState();
   }
-  try {
-    await liff.requestFriendship();
-  } catch (error) {
-    console.warn('LINE OA friendship prompt failed.', error?.name || 'unknown');
+
+  const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  const intent = parseCustomizationLoginIntent(rawIntent);
+  if (intent?.version === 2) {
+    const restored = await restoreDeferredLineCallbackBeforeReset(rawIntent);
+    if (restored.ok) clearLineOaFriendshipResumePending();
+    return restored.ok;
   }
-  await recheckLineOaFriendshipAndResume();
+
+  const friendship = await getLineOaFriendshipStatus();
+  if (!friendship.friendFlag || State.currentStep !== 3) return false;
+
+  lineOaFriendshipRequired = false;
+  clearLineOaFriendshipResumePending();
+  State.currentStep = 4;
+  return true;
 }
 
 function persistCustomizationLoginIntent(intent) {
@@ -2266,7 +2351,7 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
 
-  const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+  const canEnterStep4 = await canEnterOperationalStep4({ openAddFriend: true });
   if (!canEnterStep4) {
     return { ok: false, reason: 'line_oa_friendship_required' };
   }
@@ -2844,7 +2929,7 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 
 async function renderStepViews() {
   if (State.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4()) {
-    const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+    const canEnterStep4 = await canEnterOperationalStep4();
     if (!canEnterStep4) {
       State.currentStep = 3;
       renderStepper();
@@ -6661,7 +6746,7 @@ function renderOrderDetailErrorState(message) {
 
 async function renderStep4() {
   if (requiresLineOaFriendshipForOperationalStep4()) {
-    const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+    const canEnterStep4 = await canEnterOperationalStep4();
     if (!canEnterStep4) {
       State.currentStep = 3;
       renderStepper();
@@ -7233,7 +7318,7 @@ async function handleStripeCheckout() {
     return;
   }
 
-  const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+  const canEnterStep4 = await canEnterOperationalStep4();
   if (!canEnterStep4) return;
 
   const shippingInfo = validateShippingInfo();
@@ -8591,8 +8676,6 @@ function setupModalEvents() {
   DOM.btnInspirationGallery?.addEventListener('click', openInspirationGallery);
   DOM.btnInspirationGalleryClose?.addEventListener('click', closeInspirationGallery);
   DOM.btnInspirationGalleryBottomClose?.addEventListener('click', closeInspirationGallery);
-  DOM.btnLineOaAddFriend?.addEventListener('click', requestLineOaFriendship);
-  DOM.btnLineOaRecheck?.addEventListener('click', recheckLineOaFriendshipAndResume);
   DOM.inspirationGalleryModal?.addEventListener('click', (e) => {
     if (e.target === DOM.inspirationGalleryModal) {
       closeInspirationGallery();

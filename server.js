@@ -325,6 +325,33 @@ function getLineChannelSecret() {
   return getEnvValue("LINE_CHANNEL_SECRET");
 }
 
+let lineOaAddFriendUrlCache = { value: "", expiresAt: 0 };
+
+async function getConfiguredLineOaAddFriendUrl() {
+  if (lineOaAddFriendUrlCache.expiresAt > Date.now()) {
+    return lineOaAddFriendUrlCache.value || null;
+  }
+
+  const accessToken = getLineChannelAccessToken();
+  if (!accessToken) return null;
+
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/info", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(5000)
+    });
+    const payload = response.ok ? await response.json() : null;
+    const basicId = String(payload?.basicId || "").trim();
+    const value = /^@[A-Za-z0-9._-]+$/.test(basicId)
+      ? `https://line.me/R/ti/p/${encodeURIComponent(basicId)}`
+      : "";
+    lineOaAddFriendUrlCache = { value, expiresAt: Date.now() + (10 * 60 * 1000) };
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
 function getSafeOrigin(origin) {
   const fallbackOrigin = "https://customize.luckycolorstone.com";
   if (!origin) return fallbackOrigin;
@@ -3526,6 +3553,12 @@ async function handleApiRequest(req, res, urlObj) {
   if (pathname === '/api/deferred-login-qa-sessions/deactivate' && method === 'POST') {
     setDeferredLoginQaCookies(res);
     sendJson(res, 200, { enabled: false });
+    return true;
+  }
+
+  if (pathname === '/api/line-oa-add-friend' && method === 'GET') {
+    const url = await getConfiguredLineOaAddFriendUrl();
+    sendJson(res, url ? 200 : 503, url ? { url } : { error: 'LINE OA add-friend destination unavailable.' });
     return true;
   }
 

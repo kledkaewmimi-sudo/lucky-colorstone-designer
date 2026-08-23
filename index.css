@@ -3881,37 +3881,6 @@ button.stone-card {
   border-radius: 14px !important;
 }
 
-.line-oa-friendship-card {
-  max-width: 390px;
-}
-
-.line-oa-friendship-card h3 {
-  margin: 0 0 14px;
-  color: var(--color-navy-dark);
-  font-family: var(--font-ui-thai);
-  font-size: 20px;
-}
-
-.line-oa-friendship-card p {
-  margin: 0 0 20px;
-  color: var(--color-navy-muted);
-  font-family: var(--font-ui-thai);
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.line-oa-friendship-recheck {
-  width: 100%;
-  margin-top: 10px;
-  padding: 12px;
-  border: 0;
-  background: transparent;
-  color: var(--color-navy);
-  font-family: var(--font-ui-thai);
-  font-size: 14px;
-  cursor: pointer;
-}
-
 .brand-logo {
   font-family: var(--font-brand-latin) !important;
 }

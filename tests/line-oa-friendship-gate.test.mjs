@@ -11,15 +11,22 @@ test('deferred callback requires LINE OA friendship before consuming a handoff',
   assert.ok(restore.indexOf("reason: 'line_oa_friendship_required'") >= 0);
   assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
   assert.match(source, /liff\.getFriendship\(\)/);
+});
+
+test('friendship gate uses the official LINE destination instead of a custom website modal', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(html, /lineOaFriendshipModal|btnLineOaAddFriend|btnLineOaRecheck/);
+  assert.match(source, /fetch\('\/api\/line-oa-add-friend'/);
+  assert.match(source, /window\.location\.assign\(addFriendUrl\)/);
   assert.match(source, /liff\.requestFriendship\(\)/);
 });
 
-test('friendship gate has the required Thai copy and explicit add/recheck actions', async () => {
-  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /เพมเพอน LINE เพอดำเนนการตอ/);
-  assert.match(html, /กรณาเพม Lucky Colorstone เปนเพอนใน LINE เพอรบขอมลคำสงซอและการแจงเตอนหลงชำระเงน/);
-  assert.match(html, /เพมเพอน LINE/);
-  assert.match(html, /ตรวจสอบอกครง/);
+test('server resolves the direct OA add-friend destination from the configured Messaging API bot', async () => {
+  const server = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  assert.match(server, /https:\/\/api\.line\.me\/v2\/bot\/info/);
+  assert.match(server, /https:\/\/line\.me\/R\/ti\/p\//);
+  assert.match(server, /pathname === '\/api\/line-oa-add-friend' && method === 'GET'/);
 });
 
 test('buyer notification logs delivery outcome without logging LINE identity or credentials', async () => {
@@ -36,7 +43,7 @@ test('buyer notification logs delivery outcome without logging LINE identity or 
 test('every mobile operational Step 4 entry uses the centralized friendship guard', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   const gateStart = source.indexOf('async function canEnterOperationalStep4');
-  const gateEnd = source.indexOf('async function requestLineOaFriendship()', gateStart);
+  const gateEnd = source.indexOf('async function resumeLineOaFriendshipAfterReturn()', gateStart);
   const gate = source.slice(gateStart, gateEnd);
   const navigationStart = source.indexOf('async function goToStep(step)');
   const navigationEnd = source.indexOf('// Stepper bar rendering logic', navigationStart);
@@ -55,31 +62,42 @@ test('every mobile operational Step 4 entry uses the centralized friendship guar
   assert.match(gate, /const friendship = await getLineOaFriendshipStatus\(\)/);
   assert.match(gate, /if \(friendship\.friendFlag\) return true/);
   assert.match(gate, /lineOaFriendshipStep4ResumePending = queueStep3Resume && State\.currentStep === 3/);
-  assert.match(gate, /showLineOaFriendshipGate\(\)/);
+  assert.match(gate, /await openLineOaAddFriendExperience\(\)/);
   assert.ok(navigation.indexOf('await canEnterOperationalStep4') < navigation.indexOf('State.currentStep = step'));
   assert.match(render, /State\.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4\(\)/);
   assert.match(render, /State\.currentStep = 3/);
-  assert.match(step4, /const canEnterStep4 = await canEnterOperationalStep4\(\{ showGate: true \}\)/);
+  assert.match(step4, /const canEnterStep4 = await canEnterOperationalStep4\(\)/);
   assert.ok(checkout.indexOf('await canEnterOperationalStep4') < checkout.indexOf("fetch('/api/stripe/checkout-session'"));
 });
 
-test('existing add-friend recheck resumes the authenticated Step 4 continuation only after a true friendship result', async () => {
+test('friendship recheck resumes the authenticated Step 4 continuation only after a true friendship result', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   const start = source.indexOf('async function recheckLineOaFriendshipAndResume()');
-  const end = source.indexOf('async function requestLineOaFriendship()', start);
+  const end = source.indexOf('async function canEnterOperationalStep4', start);
   const recheck = source.slice(start, end);
 
   assert.ok(recheck.indexOf('if (!friendship.friendFlag)') < recheck.indexOf('if (lineOaFriendshipStep4ResumePending)'));
   assert.match(recheck, /if \(!isLineIdentityAvailable\(\) \|\| State\.currentStep !== 3\)/);
   assert.match(recheck, /lineOaFriendshipStep4ResumePending = false/);
   assert.match(recheck, /await goToStep\(4\)/);
-  assert.ok(recheck.indexOf('await goToStep(4)') < recheck.indexOf('restoreDeferredLineCallbackBeforeReset'));
 });
 
-test('deferred callback uses the centralized guard before handoff consume', async () => {
+test('return from the direct LINE screen restores the canonical design and rechecks friendship before Step 4', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function resumeLineOaFriendshipAfterReturn()');
+  const end = source.indexOf('function persistCustomizationLoginIntent', start);
+  const resume = source.slice(start, end);
+  assert.match(resume, /restoreGuestDesignSnapshot\(\)/);
+  assert.match(resume, /const friendship = await getLineOaFriendshipStatus\(\)/);
+  assert.match(resume, /if \(!friendship\.friendFlag \|\| State\.currentStep !== 3\) return false/);
+  assert.match(resume, /State\.currentStep = 4/);
+});
+
+test('deferred callback uses the centralized guard before handoff consume and opens the real add-friend route for non-friends', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   const start = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const end = source.indexOf('function persistLandingDismissed', start);
   const restore = source.slice(start, end);
   assert.ok(restore.indexOf('await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
+  assert.match(restore, /openAddFriend: true/);
 });
