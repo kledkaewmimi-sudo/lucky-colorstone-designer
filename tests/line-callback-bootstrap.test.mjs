@@ -10,10 +10,10 @@ const legacy = JSON.stringify({ ts: now, step: 1 });
 const v2 = JSON.stringify({ version: 2, ts: now, step: 3, targetStep: 4, handoffToken: token, mode: 'guest_design_handoff' });
 const snapshot = { version: 1, design: { components: [{ type: 'stone', id: 'beryl' }, { type: 'stone', id: 'beryl' }, { type: 'stone', id: 'beryl' }, { type: 'stone', id: 'beryl' }] } };
 
-test('legacy and normal startup plans remain unchanged while the production flag is off', () => {
+test('legacy and normal startup plans remain unchanged while the production flag is enabled', () => {
   assert.equal(planLineCallbackBootstrap({ rawIntent: null, now }).kind, 'normal');
   assert.equal(planLineCallbackBootstrap({ rawIntent: legacy, now }).kind, 'legacy');
-  assert.equal(planLineCallbackBootstrap({ rawIntent: v2, hasLineIdentity: true, now }).kind, 'legacy-safe-fallback');
+  assert.equal(planLineCallbackBootstrap({ rawIntent: v2, hasLineIdentity: true, now }).kind, 'v2-restore-before-reset');
 });
 
 test('dormant V2 path wins before reset and restores exactly once', async () => {

@@ -1,4 +1,6 @@
-export const DEFER_LINE_LOGIN_TO_STEP4 = false;
+// Production rollout switch. Set this to false and deploy to immediately restore
+// the legacy mobile LINE-before-Step-1 flow.
+export const DEFER_LINE_LOGIN_TO_STEP4 = true;
 export const LINE_REDIRECT_INTENT_VERSION = 2;
 
 // Test injection only: callers must pass this value directly in memory. It never

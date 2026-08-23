@@ -30,6 +30,6 @@ export function createInitialLineLoginGuard({
   };
 }
 
-// This is the only entry used by app.js. Its resolver has no runtime user input
-// path and therefore remains false in production.
+// This is the only entry used by app.js. Its resolver has no runtime user-input
+// path and reads only the shipped production rollout value.
 export const shouldBypassInitialLineLoginInProduction = createInitialLineLoginGuard();

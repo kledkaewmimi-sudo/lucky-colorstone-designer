@@ -20,8 +20,8 @@ test('server handoff payload is minimized, token is opaque, and TTL is twenty mi
   assert.equal(JSON.stringify(payload).includes('price'), false);
 });
 
-test('legacy and new intents parse safely while deferred login remains inactive', async () => {
-  assert.equal(DEFER_LINE_LOGIN_TO_STEP4, false);
+test('legacy and new intents parse safely while deferred login is enabled', async () => {
+  assert.equal(DEFER_LINE_LOGIN_TO_STEP4, true);
   assert.deepEqual(parseCustomizationLoginIntent(JSON.stringify({ ts: NOW, step: 1 }), { now: NOW }), { version: 1, ts: NOW, step: 1, targetStep: 1, mode: 'legacy' });
   const token = 'a'.repeat(43);
   const intent = parseCustomizationLoginIntent(JSON.stringify({ version: 2, ts: NOW, step: 3, targetStep: 4, handoffToken: token }), { now: NOW });
@@ -61,10 +61,10 @@ test('deferred initial-login decision is pure and fails safe to legacy behavior'
   assert.equal(shouldDeferInitialLineLogin(), false);
 });
 
-test('test-only flag resolver defaults false and accepts only explicit in-memory true', () => {
-  assert.equal(DEFER_LINE_LOGIN_TO_STEP4, false);
-  assert.equal(resolveDeferredLineLoginFlag(), false);
+test('production flag resolver defaults true and ignores non-boolean test input', () => {
+  assert.equal(DEFER_LINE_LOGIN_TO_STEP4, true);
+  assert.equal(resolveDeferredLineLoginFlag(), true);
   assert.equal(resolveDeferredLineLoginFlag({ testOverride: true }), true);
-  assert.equal(resolveDeferredLineLoginFlag({ testOverride: 'true' }), false);
+  assert.equal(resolveDeferredLineLoginFlag({ testOverride: 'true' }), true);
   assert.equal(shouldDeferInitialLineLogin({ featureEnabled: resolveDeferredLineLoginFlag({ testOverride: true }), requiresLineLogin: true, isCustomization: true }), true);
 });

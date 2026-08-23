@@ -1,7 +1,7 @@
 import { DEFER_LINE_LOGIN_TO_STEP4, parseCustomizationLoginIntent, restoreLineRedirectHandoff } from './line-redirect-restore.js';
 
-// Deliberately dormant in Phase 3A. Phase 3B will call this before the legacy
-// reset path only when the feature flag is enabled.
+// The callback planner runs before the legacy reset path. V2 restoration is
+// enabled only by the production rollout flag.
 export function planLineCallbackBootstrap({ rawIntent, hasLineIdentity = false, restoreAlreadyApplied = false, allowDormantV2 = false, featureEnabled = DEFER_LINE_LOGIN_TO_STEP4, now = Date.now() } = {}) {
   const intent = parseCustomizationLoginIntent(rawIntent, { now });
   if (!intent) return { kind: 'normal' };

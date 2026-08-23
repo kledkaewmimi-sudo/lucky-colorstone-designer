@@ -13,22 +13,22 @@ const mobileCustomization = {
   isCustomization: true
 };
 
-test('production adapter remains false and preserves the legacy initial login decision', () => {
-  assert.equal(shouldBypassInitialLineLoginInProduction(mobileCustomization), false);
+test('production adapter enables the deferred initial-login decision for mobile customization', () => {
+  assert.equal(shouldBypassInitialLineLoginInProduction(mobileCustomization), true);
 });
 
 test('the real guard wrapper can be constructed with a test-only true resolver', () => {
   const controlledGuard = createInitialLineLoginGuard({ resolveFeatureEnabled: () => true });
   assert.equal(controlledGuard(mobileCustomization), true);
-  assert.equal(shouldBypassInitialLineLoginInProduction(mobileCustomization), false);
+  assert.equal(shouldBypassInitialLineLoginInProduction(mobileCustomization), true);
   assert.equal(shouldBypassInitialLineLogin({ ...mobileCustomization, featureEnabled: false }), false);
 });
 
-test('removing the injected resolver immediately returns the same wrapper to production behavior', () => {
+test('a default wrapper follows the shipped production rollout value', () => {
   const controlledGuard = createInitialLineLoginGuard({ resolveFeatureEnabled: () => true });
   const defaultGuard = createInitialLineLoginGuard();
   assert.equal(controlledGuard(mobileCustomization), true);
-  assert.equal(defaultGuard(mobileCustomization), false);
+  assert.equal(defaultGuard(mobileCustomization), true);
 });
 
 test('desktop, authenticated, non-customization, and malformed contexts fail safe', () => {
