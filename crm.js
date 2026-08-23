@@ -33,6 +33,7 @@ import {
   , getSharedPurchaseEntries, getSharedPurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry
 } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
+import { buildCopyReadyShippingLabel, getOrderFinalBraceletPreviewImage } from './crm-order-details.js';
 
 const CLEAN_EDGE_STONE_IDS = new Set([BERYL_STONE_ID, 'sunstone', 'green_jade']);
 let orderBraceletPreviewInstance = 0;
@@ -3643,18 +3644,6 @@ function getOrderItemizedBilling(order = {}) {
   return Array.isArray(order.itemizedBilling) ? order.itemizedBilling : [];
 }
 
-function getOrderSavedBraceletPreviewImage(order = {}) {
-  const candidates = [
-    order.braceletPreviewImage,
-    order.braceletPreviewDataUrl,
-    order.braceletPreviewSnapshot,
-    order.checkoutSummary?.braceletPreviewImage,
-    order.checkoutSummary?.braceletPreviewDataUrl,
-    order.checkoutSummary?.braceletPreviewSnapshot
-  ];
-  return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
-}
-
 function getOrderBraceletSequence(order = {}) {
   if (Array.isArray(order.checkoutSummary?.braceletSequence) && order.checkoutSummary.braceletSequence.length > 0) {
     return order.checkoutSummary.braceletSequence;
@@ -3959,17 +3948,16 @@ function getOrderCharmOutwardOffsetPx(component = {}, scaleMmToPx = 0) {
 }
 
 function renderOrderBraceletPreview(order = {}, options = {}) {
-  const savedPreviewImage = getOrderSavedBraceletPreviewImage(order);
+  const savedPreviewImage = getOrderFinalBraceletPreviewImage(order);
   const size = Number(options.size || 150);
   const className = options.className || '';
   const title = options.title || 'Bracelet layout preview';
   const previewInstanceId = ++orderBraceletPreviewInstance;
 
-  const hasBeryl = getOrderBraceletSequence(order).some((item) => (
-    getOrderBraceletItemType(item) === 'stone'
-    && String(item?.stoneId || item?.id || '').trim() === BERYL_STONE_ID
-  ));
-  if (savedPreviewImage && !hasBeryl) {
+  // New orders persist the exact final Step 4 preview. It is authoritative for
+  // CRM display, including deterministic Beryl occurrences. The SVG below is
+  // retained only for legacy orders with no saved preview.
+  if (savedPreviewImage) {
     return `
       <div class="order-bracelet-preview order-bracelet-preview-snapshot ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
         <img class="order-bracelet-preview-img" src="${escapeHtml(savedPreviewImage)}" alt="${escapeHtml(title)}">
@@ -4060,7 +4048,7 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
         : ''}
       <g class="order-bracelet-preview-item order-bracelet-preview-stone">
         <title>${escapedLabel}</title>
-        <circle cx="${x}" cy="${y}" r="${radiusPx}" fill="${escapedColor}"${usesCleanImageEdge ? '' : ` stroke="#FFFFFF" stroke-width="${Math.max(0.7, size * 0.006)}"`}></circle>
+        <circle cx="${x}" cy="${y}" r="${radiusPx}" fill="${escapedColor}"></circle>
         ${escapedImage
           ? `<image href="${escapedImage}" x="${x - imageSize / 2}" y="${y - imageSize / 2}" width="${imageSize}" height="${imageSize}" preserveAspectRatio="xMidYMid slice"${usesCleanImageEdge ? ` clip-path="url(#${imageClipId})"` : ''}></image>`
           : ''}
@@ -4110,6 +4098,39 @@ function getOrderShippingInfo(order = {}) {
     province: shippingInfo.province || order.province || '',
     postalCode: shippingInfo.postalCode || order.postalCode || ''
   };
+}
+
+function renderCopyReadyShippingLabel(shippingInfo = {}) {
+  const shippingLabel = buildCopyReadyShippingLabel(shippingInfo);
+  return `
+    <div class="order-shipping-label-block">
+      <span class="order-shipping-label-title">\u0E17\u0E35\u0E48\u0E2D\u0E22\u0E39\u0E48\u0E08\u0E31\u0E14\u0E2A\u0E48\u0E07\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E04\u0E31\u0E14\u0E25\u0E2D\u0E01</span>
+      <pre class="order-shipping-label-text" data-order-shipping-label>${escapeHtml(shippingLabel)}</pre>
+      <button type="button" class="btn btn-outline order-copy-shipping-label">\u0E04\u0E31\u0E14\u0E25\u0E2D\u0E01\u0E17\u0E35\u0E48\u0E2D\u0E22\u0E39\u0E48\u0E08\u0E31\u0E14\u0E2A\u0E48\u0E07</button>
+    </div>
+  `;
+}
+
+async function copyOrderShippingLabel(shippingLabel) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shippingLabel);
+    } else {
+      const fallback = document.createElement('textarea');
+      fallback.value = shippingLabel;
+      fallback.setAttribute('readonly', '');
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.appendChild(fallback);
+      fallback.select();
+      const copied = document.execCommand('copy');
+      fallback.remove();
+      if (!copied) throw new Error('Clipboard copy unavailable');
+    }
+    showToast('\u0E04\u0E31\u0E14\u0E25\u0E2D\u0E01\u0E17\u0E35\u0E48\u0E2D\u0E22\u0E39\u0E48\u0E08\u0E31\u0E14\u0E2A\u0E48\u0E07\u0E41\u0E25\u0E49\u0E27');
+  } catch {
+    showToast('\u0E44\u0E21\u0E48\u0E2A\u0E32\u0E21\u0E32\u0E23\u0E16\u0E04\u0E31\u0E14\u0E25\u0E2D\u0E01\u0E17\u0E35\u0E48\u0E2D\u0E22\u0E39\u0E48\u0E08\u0E31\u0E14\u0E2A\u0E48\u0E07\u0E44\u0E14\u0E49');
+  }
 }
 
 function getOrderCharmDetailEntries(order = {}) {
@@ -4574,6 +4595,7 @@ async function openOrderDetailModal(orderId) {
 
       <section class="order-detail-section">
         <h4>Shipping Information</h4>
+        ${renderCopyReadyShippingLabel(shippingInfo)}
         ${renderOrderDetailFields([
           { label: 'Full Address', value: shippingInfo.addressLine },
           { label: 'Province', value: shippingInfo.province },
@@ -4636,6 +4658,9 @@ async function openOrderDetailModal(orderId) {
       </section>
     </div>
   `;
+  const copyShippingLabelButton = DOM.orderDetailBody.querySelector('.order-copy-shipping-label');
+  const shippingLabel = buildCopyReadyShippingLabel(shippingInfo);
+  copyShippingLabelButton?.addEventListener('click', () => copyOrderShippingLabel(shippingLabel));
 
   DOM.orderDetailModal.classList.add('show');
 }

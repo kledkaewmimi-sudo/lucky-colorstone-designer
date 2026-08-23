@@ -2629,7 +2629,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .order-bracelet-preview-snapshot {
-  background-color: var(--color-card-bg);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .order-bracelet-preview-img {
@@ -2959,6 +2962,35 @@ h1, h2, h3, h4, h5, h6 {
 .order-detail-section h4 {
   margin-bottom: 12px;
   font-size: 14px;
+}
+
+.order-shipping-label-block {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--color-navy-border);
+  border-radius: 10px;
+  background: var(--color-card-bg);
+}
+
+.order-shipping-label-title {
+  color: var(--color-navy-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.order-shipping-label-text {
+  margin: 0;
+  color: var(--color-navy-dark);
+  font: 500 13px/1.7 var(--font-ui-thai);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.order-copy-shipping-label {
+  justify-self: start;
 }
 
 .order-detail-field {
