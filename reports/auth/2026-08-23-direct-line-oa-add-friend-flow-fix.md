@@ -61,6 +61,18 @@ Passed locally:
   25 passing / 0 failing
 - `git diff --check`
 
+Backend verification passed after commit `00a5f09`:
+
+- `GET /api/line-oa-add-friend` returned HTTP 200 with a server-derived,
+  approved `line.me` OA destination.
+- Public `GET /api/deferred-login-qa-sessions/current` returned
+  `{"enabled":false}`. The broad deferred-login default remains off.
+
+At the time of this report, Vercel static hosting was still serving a stale
+`app.js` artifact that did not contain this commit's direct-add-friend function
+or the already-deployed hard friendship guard. Do not begin the real-device
+retest until the static deployment serves the current revision.
+
 Browser automation is unavailable in this environment. The deployed official
 LINE destination and the complete native add-friend round trip require owner
 real-device verification after deployment.
