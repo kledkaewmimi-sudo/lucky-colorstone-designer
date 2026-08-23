@@ -2409,6 +2409,7 @@ function setupLandingEvents() {
     persistLandingDismissed();
     markStartupPerformance('T3_minimum_designer_ready');
     await renderApp();
+    trackStepView(1);
     markStartupPerformance('T4_step1_rendered');
     window.requestAnimationFrame(() => markStartupPerformance('T5_step1_interactive'));
     trackMetaViewContent();

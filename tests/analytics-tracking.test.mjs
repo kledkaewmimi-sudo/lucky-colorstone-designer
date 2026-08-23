@@ -98,3 +98,11 @@ test('LINE/OA funnel tracking is emitted only by the verified-friend path', asyn
   assert.ok(gate.indexOf('trackVerifiedLineOaConnection()') > gate.indexOf('if (friendship.friendFlag)'));
   assert.match(gate, /trackAnalyticsEvent\('oa_friend_required'/);
 });
+
+test('landing start records the resolved Step 1 stage after rendering', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf("function setupLandingEvents()");
+  const handlerEnd = source.indexOf("function updateLiffProfileDisplay", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  assert.ok(handler.indexOf('await renderApp();') < handler.indexOf('trackStepView(1);'));
+});

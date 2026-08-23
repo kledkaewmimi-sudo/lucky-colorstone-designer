@@ -36,6 +36,7 @@ No analytics row was migrated, rewritten, or deleted. The summary explicitly ret
 ## Files changed
 
 - `server.js` — v2-only summary aggregation, unique stage/session sets, latest active-stage calculation, first-touch owner channels, and webhook-linked `payment_success` conversion recognition.
+- `app.js` — fixes the demonstrated Landing CTA instrumentation gap by recording `step_1_view` immediately after the real Step 1 render. Navigation and customer UI are unchanged.
 - `crm.html` — Daily Trends table separates Checkout from Paid Orders.
 - `crm.js` — Current-stage display accepts the new named stages; Daily Trends renders Checkout and Paid separately and labels v2 summary status.
 - `tests/analytics-v2-server.test.mjs` — deterministic summary regression coverage.
@@ -47,7 +48,7 @@ Passed:
 
 ```text
 node --test tests/analytics-tracking.test.mjs tests/analytics-v2-server.test.mjs tests/analytics-visitor-summary.test.mjs
-11 passed, 0 failed
+12 passed, 0 failed
 
 node --check server.js
 node --check crm.js
