@@ -4,6 +4,7 @@ import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitFor
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { parseCustomizationLoginIntent } from './line-redirect-restore.js';
 import { shouldBypassInitialLineLoginInProduction } from './deferred-initial-line-login.js';
+import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { planLineCallbackBootstrap } from './line-callback-bootstrap.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -1602,11 +1603,20 @@ async function syncLineProfileFromLiff() {
   }
 }
 
+function persistCustomizationLoginIntent(intent) {
+  try {
+    localStorage.setItem(CUSTOMIZATION_LOGIN_INTENT_KEY, JSON.stringify(intent));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function rememberCustomizationLoginIntent() {
-  localStorage.setItem(CUSTOMIZATION_LOGIN_INTENT_KEY, JSON.stringify({
+  return persistCustomizationLoginIntent({
     ts: Date.now(),
     step: 1
-  }));
+  });
 }
 
 function hasCustomizationLoginIntent() {
@@ -1620,7 +1630,11 @@ function hasCustomizationLoginIntent() {
 }
 
 function clearCustomizationLoginIntent() {
-  localStorage.removeItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  try {
+    localStorage.removeItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  } catch {
+    // A blocked storage context must not turn a recoverable LINE-start failure into a crash.
+  }
 }
 
 function restoreCustomizationIntentAfterLogin() {
@@ -1653,8 +1667,8 @@ async function completeCustomizationStartResume() {
   if (loader) loader.style.display = 'none';
 }
 
-function startLiffLoginForCustomization() {
-  if (getRequestedOrderId()) return true;
+function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+  if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
     return false;
@@ -1665,7 +1679,7 @@ function startLiffLoginForCustomization() {
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_login_start');
-  rememberCustomizationLoginIntent();
+  if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
@@ -1675,7 +1689,7 @@ function startLiffLoginForCustomization() {
 
   try {
     liff.login({ redirectUri: getLiffRedirectUri() });
-    return false;
+    return returnStartStatus ? true : false;
   } catch (loginErr) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
@@ -1689,13 +1703,13 @@ function startLiffLoginForCustomization() {
   }
 }
 
-function openLineConnectEntryForCustomization() {
-  if (getRequestedOrderId()) return true;
+function openLineConnectEntryForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+  if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) return false;
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_login_start', { method: 'entry_url' });
-  rememberCustomizationLoginIntent();
+  if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
@@ -1704,7 +1718,7 @@ function openLineConnectEntryForCustomization() {
 
   try {
     window.location.assign(getLiffEntryUrl());
-    return false;
+    return returnStartStatus ? true : false;
   } catch (entryErr) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
@@ -1750,6 +1764,56 @@ async function requireLineLoginForCustomization(options = {}) {
   }
 
   return false;
+}
+
+function getDeferredLineAuthAnalyticsContinuity() {
+  const source = analyticsFirstSource || getCurrentAnalyticsSource();
+  return {
+    visitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
+    sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+    attribution: {
+      source: source?.utm_source || '',
+      medium: source?.utm_medium || '',
+      campaign: source?.utm_campaign || '',
+      content: source?.utm_content || '',
+      term: source?.utm_term || ''
+    }
+  };
+}
+
+async function createDeferredLineAuthHandoff(payload) {
+  try {
+    const response = await fetch('/api/auth-handoffs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json().catch(() => null);
+    return response.ok && typeof result?.token === 'string' ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+function startDeferredLineLoginWithPersistedIntent() {
+  if (canUseLiffLoginFromCurrentBrowser()) {
+    return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
+  }
+  return openLineConnectEntryForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
+}
+
+async function beginDeferredStep3AuthBoundary() {
+  const boundary = createDeferredStep3AuthBoundary({
+    requiresLineLogin: requiresLineLoginForCustomization,
+    isAuthenticated: isLineIdentityAvailable,
+    saveSnapshot: saveGuestDesignSnapshot,
+    createHandoff: createDeferredLineAuthHandoff,
+    persistIntent: persistCustomizationLoginIntent,
+    clearIntent: clearCustomizationLoginIntent,
+    startLineLogin: startDeferredLineLoginWithPersistedIntent,
+    getAnalyticsContinuity: getDeferredLineAuthAnalyticsContinuity
+  });
+  return boundary();
 }
 
 // LIFF Initialization
@@ -2732,6 +2796,13 @@ function setupNavigationEvents() {
         }
         const hasStock = await validateCurrentDesignStockWithLatestCatalog();
         if (!hasStock) return;
+        const deferredAuth = await beginDeferredStep3AuthBoundary();
+        if (deferredAuth.handled) {
+          if (!deferredAuth.ok) {
+            showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
+          }
+          return;
+        }
         trackAnalyticsEvent('bracelet_completed', {
           item_count: getSelectedStoneItems().length
         });

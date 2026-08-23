@@ -34,8 +34,8 @@ export function parseCustomizationLoginIntent(rawIntent, { now = Date.now(), ttl
   }
 }
 
-export function createLineRedirectIntent({ handoffToken, targetStep = 4, now = Date.now() } = {}) {
-  if (!DEFER_LINE_LOGIN_TO_STEP4 || !ALLOWED_TARGET_STEPS.has(targetStep) || !HANDOFF_TOKEN_PATTERN.test(String(handoffToken || ''))) return null;
+export function createLineRedirectIntent({ handoffToken, targetStep = 4, now = Date.now(), featureEnabled = DEFER_LINE_LOGIN_TO_STEP4 } = {}) {
+  if (featureEnabled !== true || !ALLOWED_TARGET_STEPS.has(targetStep) || !HANDOFF_TOKEN_PATTERN.test(String(handoffToken || ''))) return null;
   return { version: LINE_REDIRECT_INTENT_VERSION, ts: Number(now), step: 3, targetStep, handoffToken, mode: 'guest_design_handoff' };
 }
 
