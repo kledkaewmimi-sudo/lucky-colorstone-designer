@@ -32,3 +32,33 @@ test('buyer notification logs delivery outcome without logging LINE identity or 
   assert.match(buyer, /\[buyer-line-notify\] failure order=.*category=/);
   assert.doesNotMatch(buyer, /lineUserId|LINE_CHANNEL_ACCESS_TOKEN/);
 });
+
+test('authenticated deferred Step 3 fast path requires friendship before Step 4', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const navigationStart = source.indexOf('function setupNavigationEvents()');
+  const navigationEnd = source.indexOf('// Home Button clicks', navigationStart);
+  const navigation = source.slice(navigationStart, navigationEnd);
+  const gateStart = source.indexOf('async function requireLineOaFriendshipBeforeAuthenticatedStep4()');
+  const gateEnd = source.indexOf('// LIFF Initialization', gateStart);
+  const gate = source.slice(gateStart, gateEnd);
+
+  assert.match(gate, /const friendship = await getLineOaFriendshipStatus\(\)/);
+  assert.match(gate, /if \(friendship\.friendFlag\) return true/);
+  assert.match(gate, /lineOaFriendshipStep4ResumePending = true/);
+  assert.match(gate, /showLineOaFriendshipGate\(\)/);
+  assert.match(navigation, /isDeferredLineLoginEffectivelyEnabled\(\) && isLineIdentityAvailable\(\)/);
+  assert.ok(navigation.indexOf('requireLineOaFriendshipBeforeAuthenticatedStep4()') < navigation.indexOf('await goToStep(State.currentStep + 1)'));
+});
+
+test('existing add-friend recheck resumes the authenticated Step 4 continuation only after a true friendship result', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function recheckLineOaFriendshipAndResume()');
+  const end = source.indexOf('async function requestLineOaFriendship()', start);
+  const recheck = source.slice(start, end);
+
+  assert.ok(recheck.indexOf('if (!friendship.friendFlag)') < recheck.indexOf('if (lineOaFriendshipStep4ResumePending)'));
+  assert.match(recheck, /if \(!isLineIdentityAvailable\(\) \|\| State\.currentStep !== 3\)/);
+  assert.match(recheck, /lineOaFriendshipStep4ResumePending = false/);
+  assert.match(recheck, /await goToStep\(4\)/);
+  assert.ok(recheck.indexOf('await goToStep(4)') < recheck.indexOf('restoreDeferredLineCallbackBeforeReset'));
+});

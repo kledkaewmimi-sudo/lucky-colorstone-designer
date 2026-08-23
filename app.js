@@ -246,6 +246,7 @@ const lineCallbackRestoreGuard = createLineCallbackRestoreGuard();
 let deferredLoginQaEnabled = false;
 let lineOaFriendshipRequired = false;
 let lineOaFriendshipRecheckInFlight = false;
+let lineOaFriendshipStep4ResumePending = false;
 const shouldBypassInitialLineLoginForApp = createInitialLineLoginGuard({
   resolveFeatureEnabled: () => isDeferredLineLoginEffectivelyEnabled()
 });
@@ -1661,6 +1662,17 @@ async function recheckLineOaFriendshipAndResume() {
       return;
     }
     lineOaFriendshipRequired = false;
+    if (lineOaFriendshipStep4ResumePending) {
+      if (!isLineIdentityAvailable() || State.currentStep !== 3) {
+        lineOaFriendshipRequired = true;
+        showToast('ไม่สามารถดำเนินการต่อได้ โปรดลองอีกครั้ง');
+        return;
+      }
+      lineOaFriendshipStep4ResumePending = false;
+      hideLineOaFriendshipGate();
+      await goToStep(4);
+      return;
+    }
     const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
     const restored = await restoreDeferredLineCallbackBeforeReset(rawIntent);
     if (!restored.ok) {
@@ -1673,6 +1685,18 @@ async function recheckLineOaFriendshipAndResume() {
   } finally {
     lineOaFriendshipRecheckInFlight = false;
   }
+}
+
+async function requireLineOaFriendshipBeforeAuthenticatedStep4() {
+  const friendship = await getLineOaFriendshipStatus();
+  if (friendship.friendFlag) return true;
+
+  // This path has no V2 handoff to consume. Keep the in-memory continuation
+  // narrowly scoped to the current Step 3 session and reuse the existing gate.
+  lineOaFriendshipStep4ResumePending = true;
+  lineOaFriendshipRequired = true;
+  showLineOaFriendshipGate();
+  return false;
 }
 
 async function requestLineOaFriendship() {
@@ -2980,6 +3004,10 @@ function setupNavigationEvents() {
             showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
           }
           return;
+        }
+        if (isDeferredLineLoginEffectivelyEnabled() && isLineIdentityAvailable()) {
+          const friendshipReady = await requireLineOaFriendshipBeforeAuthenticatedStep4();
+          if (!friendshipReady) return;
         }
         trackAnalyticsEvent('bracelet_completed', {
           item_count: getSelectedStoneItems().length
