@@ -1778,9 +1778,9 @@ async function openLineOaAddFriendExperience() {
   if (canUseNativeLineOaFriendshipPrompt()) {
     showLineOaFriendshipTransition();
     try {
-      const request = liff.requestFriendship();
-      hideLineOaFriendshipTransition();
-      await request;
+      await liff.requestFriendship();
+      // Keep the existing transition state mounted until the following current
+      // friendship check has either rendered final Step 4 or failed closed.
       return { opened: true, source: 'liff_request_friendship' };
     } catch (error) {
       hideLineOaFriendshipTransition();
@@ -1817,35 +1817,42 @@ async function openLineOaAddFriendExperience() {
 }
 
 async function recheckLineOaFriendshipAndResume() {
-  if (lineOaFriendshipRecheckInFlight) return;
+  if (lineOaFriendshipRecheckInFlight) return false;
   lineOaFriendshipRecheckInFlight = true;
+  const shouldHoldCallbackUi = lineOaFriendshipRequired
+    || lineOaFriendshipStep4ResumePending
+    || hasLineOaFriendshipResumePending();
+  const releaseCallbackHold = shouldHoldCallbackUi && !callbackBootstrapHoldActive;
+  if (releaseCallbackHold) setCallbackBootstrapHold(true);
   try {
     const friendship = await getLineOaFriendshipStatus();
     if (!friendship.friendFlag) {
-      return;
+      return false;
     }
     lineOaFriendshipRequired = false;
     if (lineOaFriendshipStep4ResumePending) {
       if (!isLineIdentityAvailable() || State.currentStep !== 3) {
         lineOaFriendshipRequired = true;
         showToast('ไม่สามารถดำเนินการต่อได้ โปรดลองอีกครั้ง');
-        return;
+        return false;
       }
       lineOaFriendshipStep4ResumePending = false;
       clearLineOaFriendshipResumePending();
-      await goToStep(4);
-      return;
+      return await goToStep(4);
     }
     const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
     const restored = await restoreDeferredLineCallbackBeforeReset(rawIntent);
     if (!restored.ok) {
       lineOaFriendshipRequired = true;
-      return;
+      return false;
     }
     clearLineOaFriendshipResumePending();
     await renderApp();
+    return true;
   } finally {
     lineOaFriendshipRecheckInFlight = false;
+    hideLineOaFriendshipTransition();
+    if (releaseCallbackHold) setCallbackBootstrapHold(false);
   }
 }
 
@@ -1914,7 +1921,12 @@ async function resumeLineOaFriendshipAfterReturn() {
 
   const friendship = await getLineOaFriendshipStatus();
   if (!friendship.friendFlag || State.currentStep !== 3) {
-    if (State.currentStep === 3) await openLineOaAddFriendExperience();
+    if (State.currentStep === 3) {
+      const addFriend = await openLineOaAddFriendExperience();
+      if (addFriend.source === 'liff_request_friendship') {
+        return await recheckLineOaFriendshipAndResume();
+      }
+    }
     return false;
   }
 
@@ -6953,7 +6965,6 @@ async function renderStep4() {
   braceletShowcaseRenderKey = currentPreviewKey;
   const heroPreview = document.getElementById('exportHeroPreview');
   const heroLoading = document.getElementById('exportHeroLoading');
-  const btnHero = document.getElementById('btnDownloadHero');
   const savedPreviewImage = State.orderDetailMode && State.orderDetailSnapshot
     ? getSavedOrderBraceletPreviewImage(State.orderDetailSnapshot)
     : '';
@@ -6964,17 +6975,14 @@ async function renderStep4() {
     heroPreview.style.display = 'block';
     heroPreview.dataset.previewKey = currentPreviewKey;
     if (heroLoading) heroLoading.style.display = 'none';
-    if (btnHero) btnHero.disabled = false;
   }
   const isPreviewReady = heroPreview && heroPreview.dataset.previewKey === currentPreviewKey && heroPreview.src;
 
   if (isPreviewReady) {
     if (heroLoading) heroLoading.style.display = 'none';
-    if (btnHero) btnHero.disabled = false;
   } else if (!braceletShowcaseGenerationInFlight) {
     if (heroPreview) heroPreview.style.display = 'none';
     if (heroLoading) heroLoading.style.display = 'block';
-    if (btnHero) btnHero.disabled = true;
   }
   
   // Specs boxes
@@ -7144,25 +7152,21 @@ async function renderStep4() {
     DOM.meaningsList.appendChild(createMeaningItemElement(entry));
   });
 
-  // Trigger HTML5 Canvas image compilation in the background asynchronously
+  // The callback hold keeps the customer shell hidden until this real preview
+  // work completes. Do not expose a partial Step 4 and replace it later.
   if (isPreviewReady) {
     return;
   }
 
   braceletShowcaseGenerationInFlight = true;
-  setTimeout(async () => {
-    try {
-      await generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, currentPreviewKey);
-    } catch (e) {
-      console.error("Canvas compilation failed", e);
-      renderBraceletShowcaseFallback(currentPreviewKey);
-    } finally {
-      braceletShowcaseGenerationInFlight = false;
-      if (braceletShowcaseRenderKey !== currentPreviewKey) {
-        await renderStep4();
-      }
-    }
-  }, 100);
+  try {
+    await generateImageExports(subtotal, discount, finalPrice, aggregatedStones, uniqueStoneIds, currentPreviewKey);
+  } catch (e) {
+    console.error("Canvas compilation failed", e);
+    renderBraceletShowcaseFallback(currentPreviewKey);
+  } finally {
+    braceletShowcaseGenerationInFlight = false;
+  }
 }
 
 function buildDesignConfigurationCode() {
@@ -7577,10 +7581,7 @@ async function handleStripeCheckout() {
 }
 
 function renderBraceletShowcaseCard() {
-  const step4 = document.getElementById('stepView4');
-  if (!step4) return;
-
-  const showcaseCard = step4.querySelector('.billing-card');
+  const showcaseCard = document.getElementById('braceletShowcaseCard');
   if (!showcaseCard || showcaseCard.dataset.braceletShowcaseReady === '1') return;
 
   showcaseCard.classList.add('bracelet-showcase-card');

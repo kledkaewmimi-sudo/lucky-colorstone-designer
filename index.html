@@ -483,41 +483,8 @@
             </div>
           </div>
 
-          <!-- Image Exports Card -->
-          <div class="billing-card">
-            <h4 class="billing-title">📷 Bracelet Design & LINE Receipt Export</h4>
-            <p style="font-size: 12px; color: var(--color-navy-muted); margin-bottom: 12px;">
-              คุณสามารถดาวน์โหลดรูปภาพออกแบบ 3D และใบสั่งซื้อแบบยาวเพื่อส่งเข้า LINE ได้ทันที
-            </p>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-              <div style="text-align: center;">
-                <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">Hero Shot (1080x1080)</div>
-                <div
-                  style="aspect-ratio: 1; background-color: var(--color-bg-cream); border-radius: 8px; border: 1px solid var(--color-gray-border); overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                  <img id="exportHeroPreview" style="max-width: 100%; max-height: 100%; display: none;"
-                    alt="Hero Shot Preview">
-                  <span id="exportHeroLoading"
-                    style="font-size: 11px; color: var(--color-navy-muted);">Generating...</span>
-                </div>
-                <button type="button" class="btn btn-outline" id="btnDownloadHero"
-                  style="width: 100%; padding: 8px; font-size: 12px; margin-top: 8px; border-color: var(--color-velvet-red); color: var(--color-velvet-red);"
-                  disabled>Download</button>
-              </div>
-              <div style="text-align: center;">
-                <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">LINE Receipt Image</div>
-                <div
-                  style="aspect-ratio: 1; background-color: var(--color-bg-cream); border-radius: 8px; border: 1px solid var(--color-gray-border); overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                  <img id="exportReceiptPreview" style="max-width: 100%; max-height: 100%; display: none;"
-                    alt="Receipt Preview">
-                  <span id="exportReceiptLoading"
-                    style="font-size: 11px; color: var(--color-navy-muted);">Generating...</span>
-                </div>
-                <button type="button" class="btn btn-outline" id="btnDownloadReceipt"
-                  style="width: 100%; padding: 8px; font-size: 12px; margin-top: 8px; border-color: var(--color-velvet-red); color: var(--color-velvet-red);"
-                  disabled>Download</button>
-              </div>
-            </div>
-          </div>
+          <!-- Customer bracelet preview. Legacy receipt/download controls are not part of checkout. -->
+          <div class="bracelet-showcase-card" id="braceletShowcaseCard" aria-live="polite"></div>
 
           <!-- Itemized Billing Card -->
           <div class="billing-card">

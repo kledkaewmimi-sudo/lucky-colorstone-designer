@@ -86,6 +86,9 @@ test('friendship recheck resumes the authenticated Step 4 continuation only afte
   assert.match(recheck, /if \(!isLineIdentityAvailable\(\) \|\| State\.currentStep !== 3\)/);
   assert.match(recheck, /lineOaFriendshipStep4ResumePending = false/);
   assert.match(recheck, /await goToStep\(4\)/);
+  assert.match(recheck, /setCallbackBootstrapHold\(true\)/);
+  assert.match(recheck, /hideLineOaFriendshipTransition\(\)/);
+  assert.ok(recheck.indexOf('await goToStep(4)') < recheck.indexOf('setCallbackBootstrapHold(false)'));
 });
 
 test('return from a LIFF friendship route restores the canonical design and rechecks friendship before Step 4', async () => {
@@ -99,6 +102,7 @@ test('return from a LIFF friendship route restores the canonical design and rech
   assert.match(resume, /if \(!friendship\.friendFlag \|\| State\.currentStep !== 3\)/);
   assert.match(resume, /await openLineOaAddFriendExperience\(\)/);
   assert.match(resume, /State\.currentStep = 4/);
+  assert.match(resume, /return await recheckLineOaFriendshipAndResume\(\)/);
 });
 
 test('native friendship prompt automatically rechecks and resumes while cancellation remains on Step 3', async () => {
@@ -118,4 +122,28 @@ test('deferred callback uses the centralized guard before handoff consume and op
   const restore = source.slice(start, end);
   assert.ok(restore.indexOf('await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
   assert.match(restore, /openAddFriend: true/);
+});
+
+test('customer Step 4 does not mount the legacy export/download controls', async () => {
+  const [html, source] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8')
+  ]);
+  assert.doesNotMatch(html, /Bracelet Design & LINE Receipt Export/);
+  assert.doesNotMatch(html, /btnDownloadHero|btnDownloadReceipt|exportReceiptPreview/);
+  assert.match(html, /id="braceletShowcaseCard"/);
+  const showcaseStart = source.indexOf('function renderBraceletShowcaseCard()');
+  const showcaseEnd = source.indexOf('function getBraceletShowcaseRenderKey()', showcaseStart);
+  const showcase = source.slice(showcaseStart, showcaseEnd);
+  assert.match(showcase, /getElementById\('braceletShowcaseCard'\)/);
+  assert.doesNotMatch(showcase, /querySelector\('\.billing-card'\)/);
+});
+
+test('Step 4 preview preparation completes before callback hold can release', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const step4Start = source.indexOf('async function renderStep4()');
+  const step4End = source.indexOf('function buildDesignConfigurationCode()', step4Start);
+  const step4 = source.slice(step4Start, step4End);
+  assert.match(step4, /await generateImageExports\(/);
+  assert.doesNotMatch(step4, /setTimeout\(async/);
 });
