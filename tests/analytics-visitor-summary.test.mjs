@@ -38,7 +38,13 @@ try {
         eventName: 'landing_view',
         timestamp: '2026-08-12T03:00:00.000Z',
         source: { utm_source: source, utm_campaign: campaign, platform_guess: source },
-        properties: { started_at: '2026-08-12T03:00:00.000Z' }
+        properties: {
+          started_at: '2026-08-12T03:00:00.000Z',
+          schema_version: 2,
+          funnel_version: 2,
+          funnel_stage: 'landing_view',
+          funnel_stage_key: `v2:${sessionId}:landing_view`
+        }
       })
     });
     assert.equal(response.status, 202);

@@ -1200,8 +1200,7 @@ function renderAnalyticsStepDistribution(rows = []) {
     `;
   }).join('');
   if (DOM.analyticsStepInsight) {
-    const stuckRows = safeRows.filter((row) => row.step !== 'converted');
-    const top = stuckRows.sort((a, b) => Number(b.sessions || 0) - Number(a.sessions || 0))[0];
+    const top = safeRows.slice().sort((a, b) => Number(b.sessions || 0) - Number(a.sessions || 0))[0];
     DOM.analyticsStepInsight.textContent = top ? `ค้างมากสุด: ${top.label} (${Number(top.sessions || 0).toLocaleString()})` : 'ยังไม่มีลูกค้าค้างใน Step';
   }
 }
@@ -1223,7 +1222,8 @@ function renderAnalyticsDailyTrend(rows = []) {
             </div>
             <div class="analytics-progress"><span style="width:${width}%"></span></div>
             <div class="analytics-day-meta">
-              <span>Orders ${Number(row.orders || 0).toLocaleString()}</span>
+              <span>Checkout ${Number(row.checkoutStarted || 0).toLocaleString()}</span>
+              <span>Paid ${Number(row.orders || 0).toLocaleString()}</span>
               <span>${formatAnalyticsPercent(row.conversionRate || 0)}</span>
               <span>${formatAnalyticsMoney(row.revenue || 0)}</span>
             </div>
@@ -1237,13 +1237,14 @@ function renderAnalyticsDailyTrend(rows = []) {
       <tr>
         <td data-label="Date">${escapeHtml(row.date || '-')}</td>
         <td data-label="Sessions">${Number(row.sessions || 0).toLocaleString()}</td>
-        <td data-label="Orders">${Number(row.orders || 0).toLocaleString()}</td>
+        <td data-label="Checkout">${Number(row.checkoutStarted || 0).toLocaleString()}</td>
+        <td data-label="Paid Orders">${Number(row.orders || 0).toLocaleString()}</td>
         <td data-label="CVR">${formatAnalyticsPercent(row.conversionRate || 0)}</td>
         <td data-label="Revenue">${formatAnalyticsMoney(row.revenue || 0)}</td>
       </tr>
     `).join('');
   } else {
-    renderAnalyticsTableEmpty(DOM.analyticsDailyTrendTableBody, 5, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
+    renderAnalyticsTableEmpty(DOM.analyticsDailyTrendTableBody, 6, 'ยังไม่มีข้อมูลในช่วงเวลานี้');
   }
 }
 
@@ -1322,6 +1323,10 @@ function renderAnalyticsSummary(summary = {}) {
   if (DOM.analyticsErrorsCount) DOM.analyticsErrorsCount.textContent = `Errors: ${totals.errors.toLocaleString()}`;
   if (DOM.analyticsStatus && totals.sessions > 0) {
     DOM.analyticsStatus.textContent = `${DOM.analyticsStatus.textContent} • Visitor tracking covers ${totals.visitorTrackedSessions.toLocaleString()} of ${totals.sessions.toLocaleString()} sessions`;
+  }
+
+  if (DOM.analyticsStatus && summary.legacyExcluded) {
+    DOM.analyticsStatus.textContent = `${DOM.analyticsStatus.textContent} • v2 funnel; legacy records excluded`;
   }
 
   const bySource = Array.isArray(summary.sourceDetails) ? summary.sourceDetails : Array.isArray(summary.channels) ? summary.channels : Array.isArray(summary.sources) ? summary.sources : Array.isArray(summary.bySource) ? summary.bySource : [];

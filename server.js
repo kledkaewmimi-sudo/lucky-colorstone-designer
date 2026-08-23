@@ -2105,7 +2105,7 @@ async function upsertAnalyticsSession(payload) {
     last_seen_at: nowIso,
     current_step: payload.step,
     order_id: payload.orderId || null,
-    converted: Boolean(payload.properties?.converted || payload.eventName === "order_created"),
+    converted: Boolean(payload.properties?.converted || payload.eventName === "order_created" || payload.eventName === "payment_success"),
     revenue: toNumericOrNull(payload.properties?.revenue ?? payload.properties?.finalPrice ?? payload.properties?.totalPrice),
     user_agent: payload.userAgent || null
   };
@@ -2299,19 +2299,20 @@ async function linkAnalyticsOrderConversion(order = {}) {
 
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
 const ANALYTICS_FUNNEL_STAGES = Object.freeze([
-  ["landing_view", "\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01\u0E01\u0E32\u0E23\u0E40\u0E02\u0E49\u0E32\u0E2B\u0E19\u0E49\u0E32\u0E41\u0E23\u0E01"],
-  ["start_designer", "\u0E01\u0E14\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
-  ["step_1_view", "\u0E16\u0E36\u0E07 Step 1"],
-  ["step_2_view", "\u0E16\u0E36\u0E07 Step 2"],
-  ["step_3_view", "\u0E16\u0E36\u0E07 Step 3"],
-  ["step_4_view", "\u0E16\u0E36\u0E07 Step 4"],
+  ["landing_view", "\u0E40\u0E02\u0E49\u0E32\u0E40\u0E27\u0E47\u0E1A\u0E44\u0E0B\u0E15\u0E4C"],
+  ["start_design", "\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
+  ["step_1_view", "Step 1"],
+  ["step_2_view", "Step 2"],
+  ["step_3_view", "Step 3"],
+  ["line_connected", "\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D LINE"],
+  ["step_4_view", "Step 4"],
   ["checkout_started", "\u0E40\u0E23\u0E34\u0E48\u0E21\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19"],
   ["payment_success", "\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08"]
 ]);
 
 const ANALYTICS_FUNNEL_EVENT_ALIASES = Object.freeze({
-  start_customize_click: "start_designer",
-  start_design: "start_designer",
+  start_customize_click: "start_design",
+  start_designer: "start_design",
   payment_click: "checkout_started",
   order_created: "payment_success"
 });
@@ -2466,7 +2467,9 @@ function normalizeAnalyticsChannel(source, platformGuess) {
 const OWNER_ANALYTICS_CHANNELS = Object.freeze([
   { key: "instagram", label: "Instagram" },
   { key: "line", label: "LINE" },
-  { key: "facebook", label: "Facebook" },
+  { key: "google", label: "Google" },
+  { key: "tiktok", label: "TikTok" },
+  { key: "direct", label: "Direct / Unknown" },
   { key: "others", label: "Others" }
 ]);
 
@@ -2474,8 +2477,10 @@ function getOwnerAnalyticsChannel(source, platformGuess) {
   const channel = normalizeAnalyticsChannel(source, platformGuess).channel;
   if (channel === "Instagram") return OWNER_ANALYTICS_CHANNELS[0];
   if (channel === "LINE") return OWNER_ANALYTICS_CHANNELS[1];
-  if (channel === "Facebook") return OWNER_ANALYTICS_CHANNELS[2];
-  return OWNER_ANALYTICS_CHANNELS[3];
+  if (channel === "Google") return OWNER_ANALYTICS_CHANNELS[2];
+  if (channel === "TikTok") return OWNER_ANALYTICS_CHANNELS[3];
+  if (channel === "Direct / Unknown") return OWNER_ANALYTICS_CHANNELS[4];
+  return OWNER_ANALYTICS_CHANNELS[5];
 }
 
 function getOwnerAnalyticsBreakdownLabel(ownerChannel, session = {}) {
@@ -2526,6 +2531,12 @@ function getAnalyticsDateKey(value) {
 
 function isAnalyticsSessionConverted(session = {}) {
   return Boolean(session.converted || session.order_id || session.orderId);
+}
+
+function isAnalyticsV2Event(event = {}) {
+  const properties = parseAnalyticsProperties(event.properties);
+  return Number(properties.schema_version) === ANALYTICS_SCHEMA_VERSION
+    && Number(properties.funnel_version) === ANALYTICS_FUNNEL_VERSION;
 }
 
 function getAnalyticsSessionRevenue(session = {}) {
@@ -2583,425 +2594,185 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const rangeInfo = normalizeAnalyticsRangeParams(searchParams);
   const analyticsRows = await readAnalyticsRowsForSummary(rangeInfo);
   const includeTest = searchParams.get("include_test") === "1";
-  const internalTestSessionIds = new Set((analyticsRows.sessions || [])
+  const testSessionIds = new Set((analyticsRows.sessions || [])
     .filter((session) => String(session.first_campaign || session.firstCampaign || "").trim().toLowerCase() === "prelaunch_test")
-    .map((session) => getAnalyticsSessionId(session)));
-  const allSessions = includeTest ? analyticsRows.sessions : analyticsRows.sessions.filter((session) => !internalTestSessionIds.has(getAnalyticsSessionId(session)));
-  const sessions = allSessions.filter((session) => isAnalyticsRowInRange(session, rangeInfo, ["started_at"]));
-  const events = includeTest ? analyticsRows.events : analyticsRows.events.filter((event) => !internalTestSessionIds.has(getAnalyticsSessionId(event)));
-  const errors = includeTest ? analyticsRows.errors : analyticsRows.errors.filter((error) => !internalTestSessionIds.has(getAnalyticsSessionId(error)));
-  const sessionById = new Map();
-  allSessions.forEach((session) => {
-    const sessionId = getAnalyticsSessionId(session);
-    if (sessionId) sessionById.set(sessionId, session);
+    .map(getAnalyticsSessionId));
+  const allSessions = (includeTest ? analyticsRows.sessions : analyticsRows.sessions.filter((row) => !testSessionIds.has(getAnalyticsSessionId(row)))) || [];
+  const allEvents = (includeTest ? analyticsRows.events : analyticsRows.events.filter((row) => !testSessionIds.has(getAnalyticsSessionId(row)))) || [];
+  const events = allEvents.filter(isAnalyticsV2Event);
+  const errors = (includeTest ? analyticsRows.errors : analyticsRows.errors.filter((row) => !testSessionIds.has(getAnalyticsSessionId(row)))) || [];
+  const sessionById = new Map(allSessions.map((session) => [getAnalyticsSessionId(session), session]).filter(([id]) => id));
+  const stageSets = new Map(ANALYTICS_FUNNEL_STAGES.map(([key]) => [key, new Set()]));
+  const eventBySession = new Map();
+  const stageRank = new Map(ANALYTICS_FUNNEL_STAGES.map(([key], index) => [key, index + 1]));
+  const linePendingEvents = new Set(["line_auth_started", "line_auth_success", "oa_friend_required", "oa_friend_cancelled", "line_callback_resume"]);
+
+  events.forEach((event) => {
+    const sessionId = getAnalyticsSessionId(event);
+    const eventName = getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(event));
+    if (!sessionId) return;
+    if (stageSets.has(eventName)) stageSets.get(eventName).add(sessionId);
+    if (!eventBySession.has(sessionId)) eventBySession.set(sessionId, []);
+    eventBySession.get(sessionId).push({ eventName, time: getAnalyticsRowTime(event, ["created_at", "timestamp"]) });
   });
-  const channelStats = new Map();
-  const sourceDetailStats = new Map();
-  const ownerChannelStats = new Map(OWNER_ANALYTICS_CHANNELS.map((definition) => [definition.key, createOwnerAnalyticsChannelRow(definition)]));
-  const dailyStats = new Map();
-  const channelDayStats = new Map();
-  const funnelSessionSets = new Map(ANALYTICS_FUNNEL_STAGES.map(([eventName]) => [eventName, new Set()]));
+
   const timeStepTotals = {};
   const timeStepCounts = {};
   const beadSizeCounts = {};
   const itemCounts = {};
   const categoryCounts = {};
-  const stepDistributionCounts = { 1: 0, 2: 0, 3: 0, 4: 0, converted: 0 };
-  const visitorIds = new Set();
-  let visitorTrackedSessions = 0;
-
-  sessions.forEach((session) => {
-    const sessionId = getAnalyticsSessionId(session);
-    const visitorId = getAnalyticsVisitorId(session);
-    if (sessionId) sessionById.set(sessionId, session);
-    const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
-    const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
-    const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
-    const ownerBreakdownRow = getOwnerAnalyticsBreakdownRow(ownerChannelRow, session);
-    const channel = channelInfo.channel;
-    const source = normalizeAnalyticsDimension(channelInfo.source, "direct/unknown");
-    const medium = normalizeAnalyticsDimension(session.first_medium || session.firstMedium);
-    const campaign = normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign);
-    const sourceDetailKey = `${source}\u0000${medium}\u0000${campaign}`;
-    if (!sourceDetailStats.has(sourceDetailKey)) {
-      sourceDetailStats.set(sourceDetailKey, {
-        channel: channelInfo.channel,
-        source,
-        medium,
-        campaign,
-        sessions: 0,
-        orders: 0,
-        revenue: 0,
-        conversionRate: 0,
-        aov: 0
-      });
-    }
-    const sourceDetailRow = sourceDetailStats.get(sourceDetailKey);
-    sourceDetailRow.sessions += 1;
-    if (!channelStats.has(channel)) {
-      channelStats.set(channel, {
-        channel,
-        source,
-        medium,
-        campaign,
-        sessions: 0,
-        step3Sessions: 0,
-        braceletCompleted: 0,
-        orders: 0,
-        revenue: 0,
-        conversionRate: 0,
-        aov: 0
-      });
-    }
-    const channelRow = channelStats.get(channel);
-    channelRow.sessions += 1;
-    ownerChannelRow.sessions += 1;
-    ownerBreakdownRow.sessions += 1;
-    if (visitorId) {
-      visitorIds.add(visitorId);
-      visitorTrackedSessions += 1;
-      ownerChannelRow.visitorIds.add(visitorId);
-      ownerBreakdownRow.visitorIds.add(visitorId);
-    }
-    if (channelRow.source === "direct/unknown" && source !== "direct/unknown") channelRow.source = source;
-    if (channelRow.medium === "-" && medium !== "-") channelRow.medium = medium;
-    if (channelRow.campaign === "-" && campaign !== "-") channelRow.campaign = campaign;
-
-    const currentStep = Number(session.current_step ?? session.currentStep);
-    if ([1, 2, 3, 4].includes(currentStep)) {
-      stepDistributionCounts[currentStep] += 1;
-    }
-
-    const dateKey = getAnalyticsDateKey(session.started_at || session.startedAt || session.last_seen_at || session.lastSeenAt);
-    if (dateKey) {
-      if (!dailyStats.has(dateKey)) {
-        dailyStats.set(dateKey, { date: dateKey, sessions: 0, orders: 0, revenue: 0, conversionRate: 0 });
-      }
-      const dayRow = dailyStats.get(dateKey);
-      dayRow.sessions += 1;
-
-      const channelDayKey = `${dateKey}\u0000${channel}`;
-      if (!channelDayStats.has(channelDayKey)) {
-        channelDayStats.set(channelDayKey, { date: dateKey, channel, sessions: 0, orders: 0, revenue: 0 });
-      }
-      const channelDayRow = channelDayStats.get(channelDayKey);
-      channelDayRow.sessions += 1;
-    }
-  });
-
   events.forEach((event) => {
-    const eventName = getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(event));
-    const sessionId = getAnalyticsSessionId(event);
+    const eventName = getAnalyticsEventName(event);
     const properties = parseAnalyticsProperties(event.properties);
-    if (eventName !== "payment_success" && funnelSessionSets.has(eventName) && sessionId) {
-      funnelSessionSets.get(eventName).add(sessionId);
-    }
-
     if (eventName === "step_duration") {
-      const fromStep = properties.from_step || properties.fromStep || event.step || "unknown";
-      const durationMs = Number(properties.duration_ms || properties.durationMs || 0);
-      if (Number.isFinite(durationMs) && durationMs > 0) {
-        incrementCount(timeStepTotals, fromStep, durationMs);
-        incrementCount(timeStepCounts, fromStep, 1);
-      }
+      const step = properties.from_step || properties.fromStep || event.step || "unknown";
+      const duration = Number(properties.duration_ms || properties.durationMs || 0);
+      if (Number.isFinite(duration) && duration > 0) { incrementCount(timeStepTotals, step, duration); incrementCount(timeStepCounts, step); }
     }
-
-    if (eventName === "bead_size_selected" && (properties.bead_size || properties.beadSize)) {
-      addAnalyticsCount(beadSizeCounts, `${properties.bead_size || properties.beadSize}mm`, "beadSize");
-    }
+    if (eventName === "bead_size_selected" && (properties.bead_size || properties.beadSize)) addAnalyticsCount(beadSizeCounts, `${properties.bead_size || properties.beadSize}mm`, "beadSize");
     if (eventName === "item_added") {
       if (properties.size_mm || properties.sizeMm) addAnalyticsCount(beadSizeCounts, `${properties.size_mm || properties.sizeMm}mm`, "beadSize");
       if (properties.item_id || properties.itemId) addAnalyticsCount(itemCounts, properties.item_id || properties.itemId, "item");
-      if (properties.category || properties.item_type || properties.itemType) {
-        addAnalyticsCount(categoryCounts, properties.category || properties.item_type || properties.itemType, "category");
-      }
+      if (properties.category || properties.item_type || properties.itemType) addAnalyticsCount(categoryCounts, properties.category || properties.item_type || properties.itemType, "category");
     }
-    if (eventName === "category_changed" && (properties.category || properties.section)) {
-      addAnalyticsCount(categoryCounts, properties.category || properties.section, "category");
-    }
+    if (eventName === "category_changed" && (properties.category || properties.section)) addAnalyticsCount(categoryCounts, properties.category || properties.section, "category");
   });
 
-  // Paid conversion/revenue are authoritative webhook-linked sessions. Use the conversion
-  // timestamp (last_seen_at) for the selected period rather than the session start date.
-  const paidSessionTimes = new Map();
-  allSessions.forEach((session) => {
-    const sessionId = getAnalyticsSessionId(session);
-    if (!sessionId || !isAnalyticsSessionConverted(session)) return;
-    if (!isAnalyticsRowInRange(session, rangeInfo, ["last_seen_at", "started_at"])) return;
-    paidSessionTimes.set(sessionId, getAnalyticsRowTime(session, ["last_seen_at", "started_at"]));
-  });
-  events.forEach((event) => {
-    const sessionId = getAnalyticsSessionId(event);
-    const session = sessionById.get(sessionId);
-    const rawEventName = getAnalyticsEventName(event);
-    if (!sessionId || !session || !isAnalyticsSessionConverted(session)) return;
-    if (rawEventName === "order_created") {
-      paidSessionTimes.set(sessionId, getAnalyticsRowTime(event, ["created_at", "timestamp"]));
-    }
-  });
-
-  paidSessionTimes.forEach((paymentTime, sessionId) => {
-    const session = sessionById.get(sessionId);
-    if (!session) return;
-    const revenue = getAnalyticsSessionRevenue(session);
+  const landingSessionIds = stageSets.get("landing_view");
+  const sessions = Array.from(landingSessionIds).map((id) => sessionById.get(id)).filter(Boolean);
+  const visitorIds = new Set(sessions.map(getAnalyticsVisitorId).filter(Boolean));
+  const ownerChannels = new Map(OWNER_ANALYTICS_CHANNELS.map((definition) => [definition.key, createOwnerAnalyticsChannelRow(definition)]));
+  const sourceDetails = new Map();
+  const dailyStats = new Map();
+  const channelByDay = new Map();
+  const getSourceRow = (session = {}) => {
     const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
-    const ownerChannel = getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
-    const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
-    const ownerBreakdownRow = getOwnerAnalyticsBreakdownRow(ownerChannelRow, session);
     const source = normalizeAnalyticsDimension(channelInfo.source, "direct/unknown");
     const medium = normalizeAnalyticsDimension(session.first_medium || session.firstMedium);
     const campaign = normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign);
-    const sourceDetailKey = `${source}\u0000${medium}\u0000${campaign}`;
-    if (!sourceDetailStats.has(sourceDetailKey)) {
-      sourceDetailStats.set(sourceDetailKey, { channel: channelInfo.channel, source, medium, campaign, sessions: 0, orders: 0, revenue: 0, conversionRate: 0, aov: 0 });
-    }
-    const sourceDetailRow = sourceDetailStats.get(sourceDetailKey);
-    if (!channelStats.has(channelInfo.channel)) {
-      channelStats.set(channelInfo.channel, { channel: channelInfo.channel, source, medium, campaign, sessions: 0, step3Sessions: 0, braceletCompleted: 0, orders: 0, revenue: 0, conversionRate: 0, aov: 0 });
-    }
-    const channelRow = channelStats.get(channelInfo.channel);
-    sourceDetailRow.orders += 1;
-    sourceDetailRow.revenue += revenue;
-    channelRow.orders += 1;
-    channelRow.revenue += revenue;
-    ownerChannelRow.orders += 1;
-    ownerChannelRow.paid += 1;
-    ownerChannelRow.revenue += revenue;
-    ownerBreakdownRow.orders += 1;
-    ownerBreakdownRow.paid += 1;
-    ownerBreakdownRow.revenue += revenue;
-    stepDistributionCounts.converted += 1;
-    funnelSessionSets.get("payment_success")?.add(sessionId);
+    const key = `${source}\u0000${medium}\u0000${campaign}`;
+    if (!sourceDetails.has(key)) sourceDetails.set(key, { channel: channelInfo.channel, source, medium, campaign, sessions: 0, checkoutStarted: 0, orders: 0, revenue: 0 });
+    return sourceDetails.get(key);
+  };
+  const getOwnerRow = (session = {}) => ownerChannels.get(getOwnerAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).key);
+  const ensureDaily = (date) => {
+    if (!dailyStats.has(date)) dailyStats.set(date, { date, visitors: new Set(), sessions: new Set(), checkoutStarted: new Set(), paid: new Set(), revenue: 0 });
+    return dailyStats.get(date);
+  };
+  const ensureChannelDay = (date, channel) => {
+    const key = `${date}\u0000${channel}`;
+    if (!channelByDay.has(key)) channelByDay.set(key, { date, channel, sessions: new Set(), checkoutStarted: new Set(), paid: new Set(), revenue: 0 });
+    return channelByDay.get(key);
+  };
 
-    const dateKey = getAnalyticsDateKey(paymentTime ? new Date(paymentTime).toISOString() : null);
-    if (dateKey) {
-      if (!dailyStats.has(dateKey)) dailyStats.set(dateKey, { date: dateKey, sessions: 0, orders: 0, revenue: 0, conversionRate: 0 });
-      const dayRow = dailyStats.get(dateKey);
-      dayRow.orders += 1;
-      dayRow.revenue += revenue;
-      const channelDayKey = `${dateKey}\u0000${channelInfo.channel}`;
-      if (!channelDayStats.has(channelDayKey)) channelDayStats.set(channelDayKey, { date: dateKey, channel: channelInfo.channel, sessions: 0, orders: 0, revenue: 0 });
-      const channelDayRow = channelDayStats.get(channelDayKey);
-      channelDayRow.orders += 1;
-      channelDayRow.revenue += revenue;
+  sessions.forEach((session) => {
+    const sessionId = getAnalyticsSessionId(session);
+    const owner = getOwnerRow(session);
+    const breakdown = getOwnerAnalyticsBreakdownRow(owner, session);
+    const source = getSourceRow(session);
+    owner.sessions += 1;
+    breakdown.sessions += 1;
+    source.sessions += 1;
+    const visitorId = getAnalyticsVisitorId(session);
+    if (visitorId) { owner.visitorIds.add(visitorId); breakdown.visitorIds.add(visitorId); }
+    const landingEvent = events.find((event) => getAnalyticsSessionId(event) === sessionId && getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(event)) === "landing_view");
+    const date = getAnalyticsDateKey(landingEvent?.created_at || landingEvent?.timestamp || session.started_at);
+    if (date) {
+      const day = ensureDaily(date);
+      day.sessions.add(sessionId);
+      if (visitorId) day.visitors.add(visitorId);
+      ensureChannelDay(date, normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel).sessions.add(sessionId);
     }
   });
 
-  const step3SessionIds = funnelSessionSets.get("step_3_view") || new Set();
-  const startedDesignerSessionIds = funnelSessionSets.get("start_designer") || new Set();
-  const checkoutSessionIds = funnelSessionSets.get("checkout_started") || new Set();
-  const paidSessionIds = funnelSessionSets.get("payment_success") || new Set();
-  checkoutSessionIds.forEach((sessionId) => {
+  const checkoutIds = stageSets.get("checkout_started");
+  checkoutIds.forEach((sessionId) => {
     const session = sessionById.get(sessionId);
-    const ownerChannel = getOwnerAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess);
-    const ownerChannelRow = ownerChannelStats.get(ownerChannel.key);
-    ownerChannelRow.checkoutStarted += 1;
-    getOwnerAnalyticsBreakdownRow(ownerChannelRow, session || {}).checkoutStarted += 1;
-  });
-  channelStats.forEach((row) => {
-    let step3Count = 0;
-    let startedDesignerCount = 0;
-    let checkoutCount = 0;
-    let paidCount = 0;
-    step3SessionIds.forEach((sessionId) => {
-      const session = sessionById.get(sessionId);
-      const sessionChannel = normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel;
-      if (sessionChannel === row.channel) step3Count += 1;
-    });
-    startedDesignerSessionIds.forEach((sessionId) => {
-      const session = sessionById.get(sessionId);
-      const sessionChannel = normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel;
-      if (sessionChannel === row.channel) startedDesignerCount += 1;
-    });
-    checkoutSessionIds.forEach((sessionId) => {
-      const session = sessionById.get(sessionId);
-      if (normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel === row.channel) checkoutCount += 1;
-    });
-    paidSessionIds.forEach((sessionId) => {
-      const session = sessionById.get(sessionId);
-      if (normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess).channel === row.channel) paidCount += 1;
-    });
-    row.step3Sessions = step3Count;
-    row.startedDesigner = startedDesignerCount;
-    row.checkoutStarted = checkoutCount;
-    row.paid = paidCount;
+    if (!session) return;
+    const owner = getOwnerRow(session);
+    const breakdown = getOwnerAnalyticsBreakdownRow(owner, session);
+    getSourceRow(session).checkoutStarted += 1;
+    owner.checkoutStarted += 1;
+    breakdown.checkoutStarted += 1;
+    const event = events.find((row) => getAnalyticsSessionId(row) === sessionId && getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(row)) === "checkout_started");
+    const date = getAnalyticsDateKey(event?.created_at || event?.timestamp);
+    if (date) {
+      ensureDaily(date).checkoutStarted.add(sessionId);
+      ensureChannelDay(date, normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel).checkoutStarted.add(sessionId);
+    }
   });
 
-  const stepDurations = Object.entries(timeStepTotals).map(([step, totalMs]) => ({
-    step,
-    averageMs: Math.round(totalMs / Math.max(1, timeStepCounts[step] || 1)),
-    samples: timeStepCounts[step] || 0
-  })).sort((a, b) => String(a.step).localeCompare(String(b.step), undefined, { numeric: true }));
+  const paidIds = new Set(Array.from(stageSets.get("payment_success")).filter((id) => isAnalyticsSessionConverted(sessionById.get(id))));
+  const paidSessions = Array.from(paidIds).map((id) => sessionById.get(id)).filter(Boolean);
+  paidSessions.forEach((session) => {
+    const sessionId = getAnalyticsSessionId(session);
+    const revenue = getAnalyticsSessionRevenue(session);
+    const owner = getOwnerRow(session);
+    const breakdown = getOwnerAnalyticsBreakdownRow(owner, session);
+    const source = getSourceRow(session);
+    owner.orders += 1; owner.paid += 1; owner.revenue += revenue;
+    breakdown.orders += 1; breakdown.paid += 1; breakdown.revenue += revenue;
+    source.orders += 1; source.revenue += revenue;
+    const event = events.find((row) => getAnalyticsSessionId(row) === sessionId && getCanonicalAnalyticsFunnelEvent(getAnalyticsEventName(row)) === "payment_success");
+    const date = getAnalyticsDateKey(event?.created_at || event?.timestamp || session.last_seen_at);
+    if (date) {
+      const day = ensureDaily(date); day.paid.add(sessionId); day.revenue += revenue;
+      const channelDay = ensureChannelDay(date, normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel); channelDay.paid.add(sessionId); channelDay.revenue += revenue;
+    }
+  });
 
-  const paidSessions = Array.from(paidSessionIds)
-    .map((sessionId) => sessionById.get(sessionId))
-    .filter((session) => session && isAnalyticsSessionConverted(session));
+  const activeCutoff = Date.now() - (30 * 60 * 1000);
+  const currentCounts = new Map([["landing_view", 0], ["start_design", 0], ["step_1_view", 0], ["step_2_view", 0], ["step_3_view", 0], ["line_oa", 0], ["step_4_view", 0], ["checkout_started", 0]]);
+  allSessions.forEach((session) => {
+    const sessionId = getAnalyticsSessionId(session);
+    if (!sessionId || isAnalyticsSessionConverted(session) || getAnalyticsRowTime(session, ["last_seen_at"]) < activeCutoff) return;
+    const history = eventBySession.get(sessionId) || [];
+    let latest = null;
+    history.forEach(({ eventName, time }) => {
+      const stage = stageRank.has(eventName) ? eventName : (linePendingEvents.has(eventName) ? "line_oa" : null);
+      const rank = stage === "line_oa" ? stageRank.get("line_connected") : stageRank.get(stage);
+      if (stage && (!latest || rank > latest.rank || (rank === latest.rank && time > latest.time))) latest = { stage, rank, time };
+    });
+    if (latest?.stage && currentCounts.has(latest.stage)) currentCounts.set(latest.stage, currentCounts.get(latest.stage) + 1);
+  });
+
+  const landingCount = stageSets.get("landing_view").size;
+  let previous = null;
+  const funnel = ANALYTICS_FUNNEL_STAGES.map(([key, label]) => {
+    const count = stageSets.get(key).size;
+    const dropoff = previous == null || previous <= 0 ? 0 : ((previous - count) / previous) * 100;
+    previous = count;
+    return { key, eventName: key, label, sessions: count, dropoffFromPrevious: dropoff, dropoffRate: dropoff, percentFromLanding: landingCount ? (count / landingCount) * 100 : 0, landingConversionRate: landingCount ? (count / landingCount) * 100 : 0 };
+  });
   const totalOrders = paidSessions.length;
-  const totalSessions = sessions.length;
-  const revenue = paidSessions.reduce((sum, session) => sum + getAnalyticsSessionRevenue(session), 0);
-  const channels = Array.from(channelStats.values())
-    .map((row) => ({
-      ...row,
-      conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0,
-      aov: row.orders ? row.revenue / row.orders : 0
-    }))
-    .sort((a, b) => b.revenue - a.revenue || b.sessions - a.sessions);
-  const ownerChannels = OWNER_ANALYTICS_CHANNELS.map((definition) => {
-    const row = ownerChannelStats.get(definition.key);
-    return {
-      key: row.key,
-      channel: row.channel,
-      uniqueVisitors: row.visitorIds.size,
-      sessions: row.sessions,
-      checkoutStarted: row.checkoutStarted,
-      orders: row.orders,
-      paid: row.paid,
-      revenue: row.revenue,
-      conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0,
-      aov: row.orders ? row.revenue / row.orders : 0,
-      breakdown: Array.from(row.breakdownMap.values())
-        .map((breakdown) => ({
-          label: breakdown.label,
-          uniqueVisitors: breakdown.visitorIds.size,
-          sessions: breakdown.sessions,
-          checkoutStarted: breakdown.checkoutStarted,
-          orders: breakdown.orders,
-          paid: breakdown.paid,
-          revenue: breakdown.revenue,
-          conversionRate: breakdown.sessions ? (breakdown.orders / breakdown.sessions) * 100 : 0
-        }))
-        .sort((a, b) => b.sessions - a.sessions || a.label.localeCompare(b.label))
-    };
+  const revenue = paidSessions.reduce((total, session) => total + getAnalyticsSessionRevenue(session), 0);
+  const serializeOwner = (row) => ({
+    key: row.key, channel: row.channel, uniqueVisitors: row.visitorIds.size, sessions: row.sessions, checkoutStarted: row.checkoutStarted, orders: row.orders, paid: row.paid, revenue: row.revenue,
+    conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0, aov: row.orders ? row.revenue / row.orders : 0,
+    breakdown: Array.from(row.breakdownMap.values()).map((item) => ({ ...item, uniqueVisitors: item.visitorIds.size, conversionRate: item.sessions ? (item.orders / item.sessions) * 100 : 0 })).sort((a, b) => b.sessions - a.sessions)
   });
-  const sourceDetails = Array.from(sourceDetailStats.values())
-    .map((row) => ({
-      ...row,
-      conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0,
-      aov: row.orders ? row.revenue / row.orders : 0
-    }))
-    .sort((a, b) => b.sessions - a.sessions || b.revenue - a.revenue || a.source.localeCompare(b.source));
-  const landingSessions = funnelSessionSets.get("landing_view")?.size || 0;
-  let previousCount = null;
-  const funnel = ANALYTICS_FUNNEL_STAGES.map(([eventName, label]) => {
-    const count = funnelSessionSets.get(eventName)?.size || 0;
-    const dropoffRate = previousCount == null || previousCount <= 0 ? 0 : Math.max(0, ((previousCount - count) / previousCount) * 100);
-    previousCount = count;
-    return {
-      key: eventName,
-      eventName,
-      label,
-      sessions: count,
-      dropoffRate,
-      dropoffFromPrevious: dropoffRate,
-      landingConversionRate: landingSessions ? (count / landingSessions) * 100 : 0,
-      percentFromLanding: landingSessions ? (count / landingSessions) * 100 : 0
-    };
-  });
-  const stepDistribution = [
-    { step: 1, label: "Step 1", sessions: stepDistributionCounts[1] },
-    { step: 2, label: "Step 2", sessions: stepDistributionCounts[2] },
-    { step: 3, label: "Step 3", sessions: stepDistributionCounts[3] },
-    { step: 4, label: "Step 4", sessions: stepDistributionCounts[4] },
-    { step: "converted", label: "\u0E2A\u0E31\u0E48\u0E07\u0E0B\u0E37\u0E49\u0E2D\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08", sessions: stepDistributionCounts.converted }
-  ];
-  const dailyTrend = Array.from(dailyStats.values())
-    .map((row) => ({ ...row, conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0 }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const channelByDay = Array.from(channelDayStats.values())
-    .sort((a, b) => b.date.localeCompare(a.date) || b.revenue - a.revenue || b.sessions - a.sessions)
-    .slice(0, 200);
-  const recentErrors = errors
-    .slice()
-    .sort((a, b) => getAnalyticsRowTime(b, ["created_at"]) - getAnalyticsRowTime(a, ["created_at"]))
-    .slice(0, 20)
-    .map((error) => {
-      const session = sessionById.get(getAnalyticsSessionId(error));
-      const channelInfo = normalizeAnalyticsChannel(session?.first_source || session?.firstSource, session?.platform_guess || session?.platformGuess);
-      return {
-        time: error.created_at || error.timestamp || null,
-        sessionId: getAnalyticsSessionId(error),
-        source: channelInfo.channel,
-        errorType: error.error_type || error.errorType || error.event_name || "error",
-        step: error.step ?? null,
-        message: error.message || parseAnalyticsProperties(error.properties).message || "",
-        url: error.url || ""
-      };
-    });
-  const recentSessions = sessions
-    .sort((a, b) => getAnalyticsRowTime(b, ["last_seen_at", "started_at"]) - getAnalyticsRowTime(a, ["last_seen_at", "started_at"]))
-    .slice(0, 20)
-    .map((session) => {
-      const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
-      return {
-        time: session.last_seen_at || session.started_at || null,
-        source: channelInfo.channel,
-        rawSource: normalizeAnalyticsDimension(channelInfo.source, "direct/unknown"),
-        medium: normalizeAnalyticsDimension(session.first_medium || session.firstMedium),
-        campaign: normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign),
-        orderId: session.order_id || session.orderId || "",
-        revenue: getAnalyticsSessionRevenue(session),
-        currentStep: session.current_step ?? session.currentStep ?? null
-      };
-    });
-  const sortCountRows = (rows) => Object.values(rows)
-    .sort((a, b) => b.count - a.count || String(a.item || a.beadSize || a.category).localeCompare(String(b.item || b.beadSize || b.category)))
-    .slice(0, 10);
+  const dailyTrend = Array.from(dailyStats.values()).map((row) => ({ date: row.date, visitors: row.visitors.size, sessions: row.sessions.size, checkoutStarted: row.checkoutStarted.size, orders: row.paid.size, revenue: row.revenue, conversionRate: row.sessions.size ? (row.paid.size / row.sessions.size) * 100 : 0 })).sort((a, b) => a.date.localeCompare(b.date));
+  const channelDays = Array.from(channelByDay.values()).map((row) => ({ date: row.date, channel: row.channel, sessions: row.sessions.size, checkoutStarted: row.checkoutStarted.size, orders: row.paid.size, revenue: row.revenue })).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 200);
+  const currentStage = [
+    ["landing_view", "Landing"], ["start_design", "Start Design"], ["step_1_view", "Step 1"], ["step_2_view", "Step 2"], ["step_3_view", "Step 3"], ["line_oa", "LINE/OA"], ["step_4_view", "Step 4"], ["checkout_started", "Checkout"]
+  ].map(([key, label]) => ({ step: key, label, sessions: currentCounts.get(key) || 0 }));
+  const sortCountRows = (rows) => Object.values(rows).sort((a, b) => b.count - a.count).slice(0, 10);
+  const stepDurations = Object.entries(timeStepTotals).map(([step, total]) => ({ step, averageMs: Math.round(total / Math.max(1, timeStepCounts[step] || 1)), samples: timeStepCounts[step] || 0 }));
+  const recentErrors = errors.slice().sort((a, b) => getAnalyticsRowTime(b, ["created_at"]) - getAnalyticsRowTime(a, ["created_at"])).slice(0, 20).map((error) => ({
+    time: error.created_at || error.timestamp || null, sessionId: getAnalyticsSessionId(error), errorType: error.error_type || error.errorType || error.event_name || "error", step: error.step ?? null, message: error.message || parseAnalyticsProperties(error.properties).message || "", url: error.url || ""
+  }));
+  const recentSessions = sessions.slice().sort((a, b) => getAnalyticsRowTime(b, ["last_seen_at", "started_at"]) - getAnalyticsRowTime(a, ["last_seen_at", "started_at"])).slice(0, 20).map((session) => ({
+    time: session.last_seen_at || session.started_at || null, source: normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel, campaign: normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign), orderId: session.order_id || session.orderId || "", revenue: getAnalyticsSessionRevenue(session), currentStep: session.current_step ?? session.currentStep ?? null
+  }));
 
   return {
-    success: true,
-    range: rangeInfo.range,
-    start: rangeInfo.startIso,
-    end: rangeInfo.endIso,
-    generatedAt: new Date().toISOString(),
-    totals: {
-      sessions: totalSessions,
-      uniqueVisitors: visitorIds.size,
-      visitorTrackedSessions,
-      legacySessionsWithoutVisitorId: Math.max(0, totalSessions - visitorTrackedSessions),
-      orders: totalOrders,
-      conversionRate: totalSessions ? (totalOrders / totalSessions) * 100 : 0,
-      revenue,
-      aov: totalOrders ? revenue / totalOrders : 0,
-      errors: errors.length
-    },
-    channels,
-    ownerChannels,
-    sourceDetails,
-    sources: channels,
-    bySource: channels,
-    funnel,
-    stepDistribution,
-    dailyTrend,
-    channelByDay,
-    insights: {
-      completedNoPayment: Math.max(0, (funnelSessionSets.get("bracelet_completed")?.size || 0) - totalOrders)
-    },
-    stepDurations,
-    averageTimePerStep: stepDurations.map((row) => ({ step: row.step, average_ms: row.averageMs, samples: row.samples })),
-    popularBeadSizes: sortCountRows(beadSizeCounts),
-    popularItems: sortCountRows(itemCounts),
-    popularCategories: sortCountRows(categoryCounts),
-    recentErrors,
-    recentOrders: paidSessions
-      .map((session) => {
-        const sessionId = getAnalyticsSessionId(session);
-        const channelInfo = normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess);
-        return {
-          time: paidSessionTimes.get(sessionId) ? new Date(paidSessionTimes.get(sessionId)).toISOString() : (session.last_seen_at || session.started_at || null),
-          source: channelInfo.channel,
-          rawSource: normalizeAnalyticsDimension(channelInfo.source, "direct/unknown"),
-          medium: normalizeAnalyticsDimension(session.first_medium || session.firstMedium),
-          campaign: normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign),
-          orderId: session.order_id || session.orderId || "",
-          revenue: getAnalyticsSessionRevenue(session),
-          currentStep: session.current_step ?? session.currentStep ?? null
-        };
-      })
-      .sort((a, b) => getAnalyticsRowTime(b, ["time"]) - getAnalyticsRowTime(a, ["time"]))
-      .slice(0, 20),
-    recentSessions,
-    testCampaignExcluded: true,
-    paymentSuccessAuthority: "stripe_webhook_authoritative"
+    success: true, modelVersion: ANALYTICS_FUNNEL_VERSION, legacyExcluded: true, range: rangeInfo.range, start: rangeInfo.startIso, end: rangeInfo.endIso, generatedAt: new Date().toISOString(),
+    totals: { sessions: sessions.length, uniqueVisitors: visitorIds.size, visitorTrackedSessions: sessions.filter((session) => getAnalyticsVisitorId(session)).length, legacySessionsWithoutVisitorId: sessions.filter((session) => !getAnalyticsVisitorId(session)).length, orders: totalOrders, conversionRate: landingCount ? (totalOrders / landingCount) * 100 : 0, revenue, aov: totalOrders ? revenue / totalOrders : 0, errors: errors.length },
+    ownerChannels: OWNER_ANALYTICS_CHANNELS.map((definition) => serializeOwner(ownerChannels.get(definition.key))),
+    sourceDetails: Array.from(sourceDetails.values()).map((row) => ({ ...row, conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0, aov: row.orders ? row.revenue / row.orders : 0 })).sort((a, b) => b.sessions - a.sessions || b.revenue - a.revenue),
+    funnel, stepDistribution: currentStage, dailyTrend, channelByDay: channelDays,
+    insights: { completedNoPayment: Math.max(0, checkoutIds.size - totalOrders), activeWindowMinutes: 30 },
+    channels: [], sources: [], bySource: [], stepDurations, averageTimePerStep: stepDurations.map((row) => ({ step: row.step, average_ms: row.averageMs, samples: row.samples })), popularBeadSizes: sortCountRows(beadSizeCounts), popularItems: sortCountRows(itemCounts), popularCategories: sortCountRows(categoryCounts), recentErrors, recentOrders: [], recentSessions, testCampaignExcluded: true, paymentSuccessAuthority: "stripe_webhook_authoritative"
   };
 }
 

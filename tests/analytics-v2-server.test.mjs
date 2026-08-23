@@ -86,6 +86,45 @@ try {
     assert.match(link, /eventName: funnelVersion === ANALYTICS_FUNNEL_VERSION \? 'payment_success' : 'order_created'/);
     assert.match(link, /await upsertAnalyticsSession\(payload\)/);
   });
+
+  await test('v2 CRM summary uses unique sessions, verified LINE connection, and one active latest stage', async () => {
+    const sessionId = 'session_summary_v2_123456';
+    const visitorId = '22222222-2222-4222-8222-222222222222';
+    const now = new Date().toISOString();
+    const postStage = async (eventName, properties = {}) => {
+      const response = await fetch(`http://127.0.0.1:${port}/api/analytics/event`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId, visitorId, eventName, timestamp: now,
+          source: { utm_source: 'instagram', utm_medium: 'paid', utm_campaign: 'launch', platform_guess: 'instagram' },
+          properties: { started_at: now, schema_version: 2, funnel_version: 2, funnel_stage: eventName, funnel_stage_key: `v2:${sessionId}:${eventName}`, ...properties }
+        })
+      });
+      assert.equal(response.status, 202);
+    };
+    for (const stage of ['landing_view', 'start_design', 'step_1_view', 'step_2_view', 'step_3_view', 'line_connected', 'step_4_view', 'checkout_started']) await postStage(stage);
+    await postStage('step_3_view');
+
+    const waitingSession = 'session_summary_line_pending_123456';
+    const waitingResponse = await fetch(`http://127.0.0.1:${port}/api/analytics/event`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: waitingSession, visitorId: '33333333-3333-4333-8333-333333333333', eventName: 'oa_friend_required', timestamp: now,
+        source: { utm_source: 'instagram', utm_medium: 'paid', platform_guess: 'instagram' },
+        properties: { started_at: now, schema_version: 2, funnel_version: 2, reason: 'not_friend' }
+      })
+    });
+    assert.equal(waitingResponse.status, 202);
+
+    const summary = await fetch(`http://127.0.0.1:${port}/api/analytics/summary?range=all`).then((response) => response.json());
+    assert.equal(summary.modelVersion, 2);
+    assert.equal(summary.funnel.find((row) => row.key === 'line_connected').sessions, 1);
+    assert.equal(summary.funnel.find((row) => row.key === 'step_3_view').sessions, 2);
+    assert.equal(summary.funnel.find((row) => row.key === 'checkout_started').sessions, 1);
+    assert.equal(summary.ownerChannels.find((row) => row.channel === 'Instagram').sessions >= 1, true);
+    assert.equal(summary.stepDistribution.find((row) => row.step === 'checkout_started').sessions, 1);
+    assert.equal(summary.stepDistribution.find((row) => row.step === 'line_oa').sessions, 1);
+  });
 } finally {
   server.kill();
   await rm(dataDir, { recursive: true, force: true });
