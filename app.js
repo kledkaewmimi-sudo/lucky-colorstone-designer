@@ -1,11 +1,11 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
-import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { parseCustomizationLoginIntent } from './line-redirect-restore.js';
+import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
+import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { shouldBypassInitialLineLoginInProduction } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
-import { planLineCallbackBootstrap } from './line-callback-bootstrap.js';
+import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -238,6 +238,7 @@ let landingReassuranceUnmountTimer = null;
 let landingReassuranceGapTimer = null;
 let landingReassuranceActive = false;
 let customizationResumeInProgress = false;
+const lineCallbackRestoreGuard = createLineCallbackRestoreGuard();
 let resolveCustomerStartupBootstrap;
 let rejectCustomerStartupBootstrap;
 const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
@@ -1000,11 +1001,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
-  // Phase 3B.1 keeps V2 dormant; only the existing legacy intent may resume here.
+  // A valid flagged V2 callback is held until LIFF identity is available below.
+  const startupRawCustomizationIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  const startupDeferredFeatureEnabled = resolveDeferredLineLoginFlag();
   const startupCallbackPlan = planLineCallbackBootstrap({
-    rawIntent: localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY)
+    rawIntent: startupRawCustomizationIntent,
+    featureEnabled: startupDeferredFeatureEnabled
   });
   const shouldResumeCustomizationStart = !returnParams.has('orderId') && startupCallbackPlan.kind === 'legacy';
+  const shouldHoldForDeferredCallback = !returnParams.has('orderId')
+    && (startupCallbackPlan.kind === 'v2-wait-for-identity' || startupCallbackPlan.kind === 'v2-restore-before-reset');
   startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
   // Show loading overlay during LIFF boot
@@ -1026,6 +1032,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     persistLandingDismissed();
     resetStep3DesignState('customization-login-resume');
     setLiffLoadingMessage('เข้าสู่ระบบสำเร็จ กำลังพาไปเริ่มออกแบบ...');
+  } else if (shouldHoldForDeferredCallback) {
+    // Preserve pre-login canonical state until the V2 recovery controller has
+    // verified LINE identity and reconciled the handoff below.
   } else {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
@@ -1071,7 +1080,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initLIFF();
   markStartupPerformance('T1_liff_ready');
   clearOAuthQueryParams();
-  restoreCustomizationIntentAfterLogin();
+  if (shouldHoldForDeferredCallback) {
+    await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
+  } else {
+    restoreCustomizationIntentAfterLogin();
+  }
 
   await loadOrderDetailFromUrlIfNeeded();
   await handleStripeReturnIfNeeded();
@@ -2078,6 +2091,80 @@ function restoreGuestDesignSnapshot() {
 
 function clearGuestDesignSnapshot() {
   return clearStoredGuestDesignSnapshot();
+}
+
+function applyCanonicalGuestDesignSnapshot(snapshot, { targetStep = 4 } = {}) {
+  const reconciled = reconcileGuestDesignSnapshot(snapshot, getGuestDesignSnapshotCatalog());
+  if (!reconciled.ok) return reconciled;
+
+  const { design } = reconciled.snapshot;
+  State.wristSize = design.wristSize;
+  State.beadSize = design.beadSize;
+  State.mixedPlacingSize = getCurrentBeadSizeMm();
+  State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
+  syncSelectedCharmState();
+  State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
+    if (component.type === 'empty') return null;
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: getCurrentBeadSizeMm() };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
+    return { componentType: 'spacer', spacerId: component.id };
+  }));
+  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
+  State.uniqueCounter = State.selectedStones.length;
+  normalizeSelectedStoneSizes();
+  State.currentStep = targetStep === 4 ? 4 : 3;
+  State.landingDismissed = true;
+  persistLandingDismissed();
+  syncShellVisibility();
+  try {
+    saveState();
+  } catch (error) {
+    console.warn('Unable to persist restored guest design state.', error);
+  }
+  return { ok: true, snapshot: reconciled.snapshot, skipped: reconciled.skipped };
+}
+
+async function consumeDeferredLineAuthHandoff(token) {
+  try {
+    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}/consume`, {
+      method: 'POST'
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.payload?.designSnapshot) return null;
+    return { ok: true, snapshot: result.payload.designSnapshot };
+  } catch {
+    return null;
+  }
+}
+
+async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
+  const featureEnabled = resolveDeferredLineLoginFlag();
+  const plan = planLineCallbackBootstrap({
+    rawIntent,
+    hasLineIdentity: isLineIdentityAvailable(),
+    restoreAlreadyApplied: lineCallbackRestoreGuard.has(parseCustomizationLoginIntent(rawIntent)?.handoffToken),
+    featureEnabled
+  });
+  if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
+
+  await startCustomerCatalogWarmup();
+  const restored = await runDormantV2CallbackRestore({
+    rawIntent,
+    hasLineIdentity: isLineIdentityAvailable(),
+    guard: lineCallbackRestoreGuard,
+    featureEnabled,
+    consumeServerHandoff: consumeDeferredLineAuthHandoff,
+    restoreLocalSnapshot: () => readGuestDesignSnapshot({ catalog: getGuestDesignSnapshotCatalog() }),
+    applyCanonicalDesign: async (snapshot, { targetStep }) => {
+      const applied = applyCanonicalGuestDesignSnapshot(snapshot, { targetStep });
+      if (!applied.ok) throw new Error('Unable to reconcile restored guest design.');
+    }
+  });
+  if (restored.ok) {
+    clearCustomizationLoginIntent();
+    clearGuestDesignSnapshot();
+  }
+  return restored;
 }
 
 function persistLandingDismissed() {
