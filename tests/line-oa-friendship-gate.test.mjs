@@ -66,7 +66,7 @@ test('every mobile operational Step 4 entry uses the centralized friendship guar
 
   assert.match(gate, /if \(!isLineIdentityAvailable\(\)\) return false/);
   assert.match(gate, /const friendship = await getLineOaFriendshipStatus\(\)/);
-  assert.match(gate, /if \(friendship\.friendFlag\) return true/);
+  assert.match(gate, /if \(friendship\.friendFlag\) \{\s*trackVerifiedLineOaConnection\(\);\s*return true;\s*\}/);
   assert.match(gate, /lineOaFriendshipStep4ResumePending = queueStep3Resume && State\.currentStep === 3/);
   assert.match(gate, /await openLineOaAddFriendExperience\(\)/);
   assert.ok(navigation.indexOf('await canEnterOperationalStep4') < navigation.indexOf('State.currentStep = step'));

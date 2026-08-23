@@ -12,10 +12,12 @@ const NOW = 1_760_000_000_000;
 const snapshot = { version: 1, savedAt: NOW, expiresAt: NOW + 7_200_000, step: 3, design: { wristSize: 16, beadSize: '6', selectedCharmIds: [], components: [{ type: 'stone', id: 'beryl' }] } };
 
 test('server handoff payload is minimized, token is opaque, and TTL is twenty minutes', () => {
-  const payload = helper.normalizeHandoffPayload({ targetStep: 4, designSnapshot: snapshot, analyticsContinuity: { visitorId: 'visitor_12345678', sessionId: 'session_12345678', attribution: { source: 'instagram', campaign: 'launch', rawIp: 'blocked' } } }, NOW);
+  const payload = helper.normalizeHandoffPayload({ targetStep: 4, designSnapshot: snapshot, analyticsContinuity: { visitorId: 'visitor_12345678', sessionId: 'session_12345678', startedAt: new Date(NOW - 300000).toISOString(), lastSeenAt: new Date(NOW).toISOString(), attribution: { source: 'instagram', campaign: 'launch', platform: 'instagram', rawIp: 'blocked' } } }, NOW);
   assert.equal(helper.HANDOFF_TTL_MS, 20 * 60 * 1000);
   assert.equal(payload.targetStep, 4);
   assert.equal(payload.analyticsContinuity.attribution.rawIp, undefined);
+  assert.equal(payload.analyticsContinuity.attribution.platform, 'instagram');
+  assert.equal(payload.analyticsContinuity.sessionId, 'session_12345678');
   assert.match(helper.createHandoffToken(), helper.TOKEN_PATTERN);
   assert.equal(JSON.stringify(payload).includes('price'), false);
 });

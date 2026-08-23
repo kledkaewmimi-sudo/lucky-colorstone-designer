@@ -2059,6 +2059,13 @@ function normalizeAnalyticsSource(source = {}) {
   };
 }
 
+const ANALYTICS_SCHEMA_VERSION = 2;
+const ANALYTICS_FUNNEL_VERSION = 2;
+const ANALYTICS_V2_FUNNEL_STAGES = new Set([
+  'landing_view', 'start_design', 'step_1_view', 'step_2_view', 'step_3_view',
+  'line_connected', 'step_4_view', 'checkout_started', 'payment_success'
+]);
+
 function normalizeAnalyticsEventPayload(payload = {}, req = null) {
   const source = normalizeAnalyticsSource(payload.source || {});
   const eventName = truncateText(payload.eventName || payload.event_name || "", 120);
@@ -2165,18 +2172,53 @@ async function saveAnalyticsEvent(payload) {
     created_at: payload.timestamp || new Date().toISOString()
   };
 
+  if (await hasSavedV2FunnelStage(eventRow)) return false;
+
   if (isSupabaseConfigured()) {
     await supabaseRequest("analytics_events", {
       method: "POST",
       body: eventRow,
       prefer: "return=minimal"
     });
-    return;
+    return true;
   }
 
   const events = readJsonArray("analyticsEvents");
   events.push({ id: crypto.randomUUID(), ...eventRow });
   writeJsonFile(dataFiles.analyticsEvents, events.slice(-5000));
+  return true;
+}
+
+function isV2FunnelStageEvent(eventRow = {}) {
+  const properties = parseAnalyticsProperties(eventRow.properties);
+  return Number(properties.funnel_version) === ANALYTICS_FUNNEL_VERSION
+    && Number(properties.schema_version) === ANALYTICS_SCHEMA_VERSION
+    && properties.funnel_stage === eventRow.event_name
+    && ANALYTICS_V2_FUNNEL_STAGES.has(eventRow.event_name)
+    && typeof properties.funnel_stage_key === 'string'
+    && properties.funnel_stage_key.length <= 180;
+}
+
+async function hasSavedV2FunnelStage(eventRow = {}) {
+  if (!isV2FunnelStageEvent(eventRow)) return false;
+  const isSameStage = (row) => {
+    const properties = parseAnalyticsProperties(row?.properties);
+    return row?.session_id === eventRow.session_id
+      && row?.event_name === eventRow.event_name
+      && properties.funnel_stage_key === parseAnalyticsProperties(eventRow.properties).funnel_stage_key;
+  };
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('analytics_events', {
+      params: {
+        select: 'session_id,event_name,properties',
+        session_id: `eq.${eventRow.session_id}`,
+        event_name: `eq.${eventRow.event_name}`,
+        limit: '20'
+      }
+    });
+    return Array.isArray(rows) && rows.some(isSameStage);
+  }
+  return readJsonArray('analyticsEvents').some(isSameStage);
 }
 
 async function saveAnalyticsError(payload) {
@@ -2224,15 +2266,25 @@ async function linkAnalyticsOrderConversion(order = {}) {
 
   const source = normalizeAnalyticsSource(order.analyticsSource || {});
   const revenue = toNumericOrNull(order.finalPrice ?? order.totalPrice ?? order.netPrice ?? order.checkoutSummary?.finalPrice) || 0;
+  const funnelVersion = Number(order.analyticsFunnelVersion || order.analytics_funnel_version) === ANALYTICS_FUNNEL_VERSION
+    ? ANALYTICS_FUNNEL_VERSION
+    : 1;
   const payload = normalizeAnalyticsEventPayload({
     sessionId,
-    eventName: "order_created",
+    eventName: funnelVersion === ANALYTICS_FUNNEL_VERSION ? 'payment_success' : 'order_created',
     step: 4,
     source,
     properties: {
       converted: true,
       revenue,
-      paymentMethod: order.paymentMethod || ""
+      paymentMethod: order.paymentMethod || "",
+      ...(funnelVersion === ANALYTICS_FUNNEL_VERSION ? {
+        schema_version: ANALYTICS_SCHEMA_VERSION,
+        funnel_version: ANALYTICS_FUNNEL_VERSION,
+        funnel_stage: 'payment_success',
+        funnel_stage_key: `v${ANALYTICS_FUNNEL_VERSION}:${sessionId}:payment_success`,
+        current_stage: 'payment_success'
+      } : {})
     },
     timestamp: new Date().toISOString(),
     url: "",
@@ -2242,6 +2294,7 @@ async function linkAnalyticsOrderConversion(order = {}) {
   });
 
   await upsertAnalyticsSession(payload);
+  if (funnelVersion === ANALYTICS_FUNNEL_VERSION) await saveAnalyticsEvent(payload);
 }
 
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
@@ -2258,6 +2311,7 @@ const ANALYTICS_FUNNEL_STAGES = Object.freeze([
 
 const ANALYTICS_FUNNEL_EVENT_ALIASES = Object.freeze({
   start_customize_click: "start_designer",
+  start_design: "start_designer",
   payment_click: "checkout_started",
   order_created: "payment_success"
 });

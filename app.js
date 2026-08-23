@@ -7,6 +7,7 @@ import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
+import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -36,6 +37,9 @@ const ANALYTICS_VISITOR_ID_KEY = 'lucky_colorstone_visitor_id';
 const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
 const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
 const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
+const ANALYTICS_LAST_SEEN_AT_KEY = 'lucky_analytics_last_seen_at';
+const ANALYTICS_CURRENT_STAGE_KEY = 'lucky_analytics_current_stage';
+const ANALYTICS_FUNNEL_STAGE_KEYS_KEY = 'lucky_analytics_funnel_v2_stage_keys';
 const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
 const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.get('showStep3InfoHint') === '1';
 const LIFF_ID = '2010525799-qImIuhla';
@@ -283,6 +287,9 @@ let analyticsSessionId = '';
 let analyticsVisitorId = '';
 let analyticsFirstSource = null;
 let analyticsStartedAt = '';
+let analyticsLastSeenAt = '';
+let analyticsCurrentStage = '';
+let analyticsFunnelStageKeys = new Set();
 let analyticsLastStep = null;
 let analyticsStepEnteredAt = 0;
 let analyticsHeartbeatTimer = null;
@@ -1041,6 +1048,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
     && (shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
+  // A cross-context V2 callback must apply validated handoff continuity before
+  // the first analytics event can create a replacement browser session.
+  const deferAnalyticsUntilCallbackRestore = shouldHoldForDeferredCallback;
   setCallbackBootstrapHold(shouldHoldForCallbackBootstrap);
   startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
@@ -1078,12 +1088,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // The landing CTA must be interactive before LIFF and catalog bootstrapping finish.
   // Its handler waits for this bootstrap promise and continues the original first tap.
   setupLandingEvents();
-  initAnalytics();
-  if (!State.landingDismissed) {
-    trackAnalyticsEvent('landing_view');
-  } else if (State.currentStep >= 1 && State.currentStep <= 4) {
-    trackStepView(State.currentStep);
-    if (State.currentStep < 4) trackMetaViewContent();
+  if (!deferAnalyticsUntilCallbackRestore) {
+    initAnalytics();
+    if (!State.landingDismissed) {
+      trackAnalyticsEvent('landing_view');
+    } else if (State.currentStep >= 1 && State.currentStep <= 4) {
+      trackStepView(State.currentStep);
+      if (State.currentStep < 4) trackMetaViewContent();
+    }
   }
   
   // Auto-login/bypass for testing
@@ -1116,8 +1128,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initLIFF();
   markStartupPerformance('T1_liff_ready');
   clearOAuthQueryParams();
+  let restored = null;
   if (shouldHoldForDeferredCallback) {
-    const restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
+    restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
     const handoffToken = parseCustomizationLoginIntent(startupRawCustomizationIntent)?.handoffToken;
     const restoreAlreadyApplied = Boolean(handoffToken && lineCallbackRestoreGuard.has(handoffToken));
     if (!restored?.ok && restored?.reason === 'handoff_not_found') {
@@ -1135,6 +1148,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadOrderDetailFromUrlIfNeeded();
   await handleStripeReturnIfNeeded();
+  if (deferAnalyticsUntilCallbackRestore) {
+    initAnalytics();
+    if (restored?.ok) {
+      trackAnalyticsEvent('line_callback_resume');
+      if (restored.lineOaFriendshipVerified) trackVerifiedLineOaConnection();
+    }
+    if (State.currentStep >= 1 && State.currentStep <= 4) {
+      trackStepView(State.currentStep);
+      if (State.currentStep < 4) trackMetaViewContent();
+    }
+  }
   
   // Perform the first render without waiting for catalog hydration.
   await renderApp();
@@ -1282,14 +1306,86 @@ function getCurrentAnalyticsSource() {
   return source;
 }
 
+function readAnalyticsFunnelStageKeys() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ANALYTICS_FUNNEL_STAGE_KEYS_KEY) || '[]');
+    return new Set(Array.isArray(stored) ? stored.filter((value) => typeof value === 'string' && value.length <= 180) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistAnalyticsSessionState() {
+  try {
+    if (analyticsSessionId) localStorage.setItem(ANALYTICS_SESSION_ID_KEY, analyticsSessionId);
+    if (analyticsStartedAt) localStorage.setItem(ANALYTICS_STARTED_AT_KEY, analyticsStartedAt);
+    if (analyticsLastSeenAt) localStorage.setItem(ANALYTICS_LAST_SEEN_AT_KEY, analyticsLastSeenAt);
+    if (analyticsCurrentStage) localStorage.setItem(ANALYTICS_CURRENT_STAGE_KEY, analyticsCurrentStage);
+    localStorage.setItem(ANALYTICS_FUNNEL_STAGE_KEYS_KEY, JSON.stringify(Array.from(analyticsFunnelStageKeys).slice(-24)));
+  } catch {
+    // Analytics persistence is best-effort and must never block customization.
+  }
+}
+
+function getAnalyticsAttributionFromContinuity(continuity) {
+  const attribution = continuity?.attribution || {};
+  const source = {
+    utm_source: attribution.source || '',
+    utm_medium: attribution.medium || '',
+    utm_campaign: attribution.campaign || '',
+    utm_content: attribution.content || '',
+    utm_term: attribution.term || '',
+    referrer: '',
+    landing_url: '',
+    user_agent: navigator.userAgent || '',
+    platform_guess: attribution.platform || ''
+  };
+  if (!source.platform_guess) source.platform_guess = getAnalyticsPlatformGuess(source);
+  return source;
+}
+
+function applyDeferredLineAuthAnalyticsContinuity(rawContinuity) {
+  const continuity = normalizeAnalyticsContinuity(rawContinuity, { now: Date.now() });
+  if (!continuity) return false;
+  const currentLastSeen = Date.parse(analyticsLastSeenAt || localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '');
+  const incomingLastSeen = Date.parse(continuity.lastSeenAt);
+  const hasNewerActiveSession = analyticsSessionId
+    && analyticsSessionId !== continuity.sessionId
+    && Number.isFinite(currentLastSeen)
+    && Date.now() - currentLastSeen < ANALYTICS_SESSION_TIMEOUT_MS
+    && currentLastSeen > incomingLastSeen;
+  if (hasNewerActiveSession) return false;
+
+  analyticsSessionId = continuity.sessionId;
+  analyticsVisitorId = continuity.visitorId;
+  analyticsStartedAt = continuity.startedAt;
+  analyticsLastSeenAt = new Date().toISOString();
+  analyticsFirstSource = getAnalyticsAttributionFromContinuity(continuity);
+  analyticsCurrentStage = '';
+  analyticsFunnelStageKeys = readAnalyticsFunnelStageKeys();
+  try {
+    localStorage.setItem(ANALYTICS_VISITOR_ID_KEY, analyticsVisitorId);
+    localStorage.setItem(ANALYTICS_SOURCE_KEY, JSON.stringify(analyticsFirstSource));
+  } catch {
+    // The server handoff still restores the canonical design if browser storage is unavailable.
+  }
+  persistAnalyticsSessionState();
+  return true;
+}
+
 function initAnalytics() {
   try {
-    analyticsSessionId = localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || createAnalyticsSessionId();
-    localStorage.setItem(ANALYTICS_SESSION_ID_KEY, analyticsSessionId);
+    const resolvedSession = resolveAnalyticsSession({
+      sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+      startedAt: analyticsStartedAt || localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '',
+      lastSeenAt: analyticsLastSeenAt || localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '',
+      createSessionId: createAnalyticsSessionId
+    });
+    analyticsSessionId = resolvedSession.sessionId;
+    analyticsStartedAt = resolvedSession.startedAt;
+    analyticsLastSeenAt = resolvedSession.lastSeenAt;
     analyticsVisitorId = localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || createAnalyticsVisitorId();
     if (analyticsVisitorId) localStorage.setItem(ANALYTICS_VISITOR_ID_KEY, analyticsVisitorId);
-    analyticsStartedAt = localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || new Date().toISOString();
-    localStorage.setItem(ANALYTICS_STARTED_AT_KEY, analyticsStartedAt);
 
     const storedSource = localStorage.getItem(ANALYTICS_SOURCE_KEY);
     analyticsFirstSource = storedSource ? JSON.parse(storedSource) : null;
@@ -1298,6 +1394,11 @@ function initAnalytics() {
       localStorage.setItem(ANALYTICS_SOURCE_KEY, JSON.stringify(analyticsFirstSource));
     }
     localStorage.setItem(ANALYTICS_LATEST_SOURCE_KEY, JSON.stringify(getCurrentAnalyticsSource()));
+    analyticsCurrentStage = resolvedSession.continued
+      ? (localStorage.getItem(ANALYTICS_CURRENT_STAGE_KEY) || '')
+      : '';
+    analyticsFunnelStageKeys = resolvedSession.continued ? readAnalyticsFunnelStageKeys() : new Set();
+    persistAnalyticsSessionState();
 
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
@@ -1342,7 +1443,9 @@ function getAnalyticsOrderFields() {
   return {
     analyticsSessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
     analyticsVisitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
-    analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource()
+    analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource(),
+    analyticsSchemaVersion: 2,
+    analyticsFunnelVersion: 2
   };
 }
 
@@ -1367,14 +1470,33 @@ function sendAnalyticsPayload(payload, { beacon = false } = {}) {
 
 function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
   if (!analyticsSessionId) return;
-  const safeProperties = {
-    ...properties,
-    started_at: analyticsStartedAt
-  };
+  const canonicalEventName = eventName === 'start_customize_click' ? 'start_design' : eventName;
+  const isFunnelStage = isCanonicalFunnelStage(canonicalEventName);
+  if (isFunnelStage) {
+    const decision = shouldTrackFunnelStage({
+      trackedStageKeys: analyticsFunnelStageKeys,
+      sessionId: analyticsSessionId,
+      eventName: canonicalEventName
+    });
+    if (!decision.shouldTrack) return;
+    analyticsFunnelStageKeys.add(decision.key);
+    if ((ANALYTICS_STAGE_RANK[canonicalEventName] || 0) >= (ANALYTICS_STAGE_RANK[analyticsCurrentStage] || 0)) {
+      analyticsCurrentStage = canonicalEventName;
+    }
+  }
+  analyticsLastSeenAt = new Date().toISOString();
+  persistAnalyticsSessionState();
+  const safeProperties = createAnalyticsEventProperties({
+    sessionId: analyticsSessionId,
+    eventName: canonicalEventName,
+    startedAt: analyticsStartedAt,
+    currentStage: analyticsCurrentStage,
+    properties
+  });
   sendAnalyticsPayload({
     sessionId: analyticsSessionId,
     visitorId: analyticsVisitorId,
-    eventName,
+    eventName: canonicalEventName,
     step: Number(State.currentStep) || null,
     source: analyticsFirstSource || getCurrentAnalyticsSource(),
     properties: safeProperties,
@@ -1675,11 +1797,11 @@ async function syncLineProfileFromLiff() {
       DOM.braceletOwnerName.value = profile.displayName;
     }
     saveState();
-    trackAnalyticsEvent('line_login_success');
+    trackAnalyticsEvent('line_auth_success');
     return isLineIdentityAvailable();
   } catch (profileErr) {
     console.warn("LIFF profile fetch failed. LINE identity is unavailable.", profileErr);
-    trackAnalyticsEvent('line_login_error', {
+    trackAnalyticsEvent('line_auth_error', {
       message: profileErr?.message || String(profileErr || '')
     });
     return false;
@@ -1697,6 +1819,12 @@ async function getLineOaFriendshipStatus() {
     console.warn('LINE OA friendship check unavailable.', error?.name || 'unknown');
     return { ok: false, friendFlag: false };
   }
+}
+
+function trackVerifiedLineOaConnection() {
+  if (!isLineIdentityAvailable()) return;
+  trackAnalyticsEvent('oa_friend_verified');
+  trackAnalyticsEvent('line_connected');
 }
 
 function setLineOaFriendshipResumePending() {
@@ -1827,8 +1955,10 @@ async function recheckLineOaFriendshipAndResume() {
   try {
     const friendship = await getLineOaFriendshipStatus();
     if (!friendship.friendFlag) {
+      trackAnalyticsEvent('oa_friend_cancelled', { reason: friendship.ok ? 'not_friend' : 'unavailable' });
       return false;
     }
+    trackVerifiedLineOaConnection();
     lineOaFriendshipRequired = false;
     if (lineOaFriendshipStep4ResumePending) {
       if (!isLineIdentityAvailable() || State.currentStep !== 3) {
@@ -1869,7 +1999,11 @@ async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFrien
   if (!isLineIdentityAvailable()) return false;
 
   const friendship = await getLineOaFriendshipStatus();
-  if (friendship.friendFlag) return true;
+  if (friendship.friendFlag) {
+    trackVerifiedLineOaConnection();
+    return true;
+  }
+  trackAnalyticsEvent('oa_friend_required', { reason: friendship.ok ? 'not_friend' : 'unavailable' });
 
   if (queueStep3Resume) {
     lineOaFriendshipStep4ResumePending = queueStep3Resume && State.currentStep === 3;
@@ -1931,6 +2065,7 @@ async function resumeLineOaFriendshipAfterReturn() {
   }
 
   lineOaFriendshipRequired = false;
+  trackVerifiedLineOaConnection();
   clearLineOaFriendshipResumePending();
   State.currentStep = 4;
   return true;
@@ -2011,7 +2146,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   }
 
   const loader = DOM.liffLoadingOverlay;
-  trackAnalyticsEvent('line_login_start');
+  trackAnalyticsEvent('line_auth_started');
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
@@ -2028,7 +2163,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LIFF customization login failed to start.", loginErr);
-    trackAnalyticsEvent('line_login_error', {
+    trackAnalyticsEvent('line_auth_error', {
       message: loginErr?.message || String(loginErr || '')
     });
     resetLandingStartAfterFailure();
@@ -2041,7 +2176,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   if (liffLoginInProgress) return false;
 
   const loader = DOM.liffLoadingOverlay;
-  trackAnalyticsEvent('line_login_start', { method: 'entry_url' });
+  trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
@@ -2057,7 +2192,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     console.warn("LINE connect entry failed to open.", entryErr);
-    trackAnalyticsEvent('line_login_error', {
+    trackAnalyticsEvent('line_auth_error', {
       message: entryErr?.message || String(entryErr || ''),
       method: 'entry_url'
     });
@@ -2104,12 +2239,15 @@ function getDeferredLineAuthAnalyticsContinuity() {
   return {
     visitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
     sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+    startedAt: analyticsStartedAt || localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '',
+    lastSeenAt: analyticsLastSeenAt || localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '',
     attribution: {
       source: source?.utm_source || '',
       medium: source?.utm_medium || '',
       campaign: source?.utm_campaign || '',
       content: source?.utm_content || '',
-      term: source?.utm_term || ''
+      term: source?.utm_term || '',
+      platform: source?.platform_guess || ''
     }
   };
 }
@@ -2190,10 +2328,10 @@ async function initLIFF() {
           State.ownerName = profile.displayName;
           DOM.braceletOwnerName.value = profile.displayName;
         }
-        trackAnalyticsEvent('line_login_success');
+        trackAnalyticsEvent('line_auth_success');
       } catch (profileErr) {
         console.warn("LIFF profile fetch failed. Continuing as guest.", profileErr);
-        trackAnalyticsEvent('line_login_error', {
+        trackAnalyticsEvent('line_auth_error', {
           message: profileErr?.message || String(profileErr || '')
         });
       }
@@ -2201,7 +2339,7 @@ async function initLIFF() {
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
-    trackAnalyticsEvent('line_login_unavailable', {
+    trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
       });
   } finally {
@@ -2513,7 +2651,11 @@ async function consumeDeferredLineAuthHandoff(token) {
     if (!response.ok || !result?.payload?.designSnapshot) {
       return { ok: false, reason: response.status === 404 ? 'not_found' : 'unavailable' };
     }
-    return { ok: true, snapshot: result.payload.designSnapshot };
+    return {
+      ok: true,
+      snapshot: result.payload.designSnapshot,
+      analyticsContinuity: result.payload.analyticsContinuity || null
+    };
   } catch {
     return { ok: false, reason: 'unavailable' };
   }
@@ -2548,9 +2690,11 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
     }
   });
   if (restored.ok) {
+    applyDeferredLineAuthAnalyticsContinuity(restored.analyticsContinuity);
     lineOaFriendshipRequired = false;
     clearCustomizationLoginIntent();
     clearGuestDesignSnapshot();
+    restored.lineOaFriendshipVerified = true;
   }
   return restored;
 }

@@ -5,7 +5,7 @@ const HANDOFF_TTL_MS = 20 * 60 * 1000;
 const MAX_HANDOFF_BYTES = 16 * 1024;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const ATTRIBUTION_FIELDS = ['source', 'medium', 'campaign', 'content', 'term'];
+const ATTRIBUTION_FIELDS = ['source', 'medium', 'campaign', 'content', 'term', 'platform'];
 
 function normalizeId(value) {
   const id = typeof value === 'string' ? value.trim() : '';
@@ -41,6 +41,8 @@ function normalizeDesignSnapshot(value) {
 function normalizeContinuity(value = {}) {
   const visitorId = ID_PATTERN.test(String(value.visitorId || '')) ? String(value.visitorId) : '';
   const sessionId = ID_PATTERN.test(String(value.sessionId || '')) ? String(value.sessionId) : '';
+  const startedAt = typeof value.startedAt === 'string' && Number.isFinite(Date.parse(value.startedAt)) ? new Date(value.startedAt).toISOString() : '';
+  const lastSeenAt = typeof value.lastSeenAt === 'string' && Number.isFinite(Date.parse(value.lastSeenAt)) ? new Date(value.lastSeenAt).toISOString() : '';
   const attribution = {};
   ATTRIBUTION_FIELDS.forEach((key) => {
     const text = typeof value?.attribution?.[key] === 'string' ? value.attribution[key].trim() : '';
@@ -49,6 +51,8 @@ function normalizeContinuity(value = {}) {
   return {
     ...(visitorId ? { visitorId } : {}),
     ...(sessionId ? { sessionId } : {}),
+    ...(startedAt ? { startedAt } : {}),
+    ...(lastSeenAt ? { lastSeenAt } : {}),
     ...(Object.keys(attribution).length ? { attribution } : {})
   };
 }
