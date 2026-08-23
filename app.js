@@ -25,6 +25,8 @@ const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
 const LINE_OA_FRIENDSHIP_RESUME_KEY = 'lucky_colorstone_line_oa_friendship_resume';
+const LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY = 'lucky_colorstone_line_oa_friendship_resume_fallback';
+const LINE_OA_FRIENDSHIP_RESUME_TTL_MS = 20 * 60 * 1000;
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
 const STEP3_INFO_HINT_SEEN_KEY = 'lucky_step3_info_hint_seen';
@@ -1525,9 +1527,27 @@ function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
 }
 
 function setLiffLoadingMessage(message = '') {
-  const loadingText = DOM.liffLoadingOverlay?.querySelector('.loading-text');
+  const loadingText = DOM.liffLoadingOverlay?.querySelector('#liffLoadingText, .loading-text');
   if (!loadingText) return;
   loadingText.textContent = message || 'กำลังเชื่อมต่อกับ LINE...';
+}
+
+function setLiffTransitionState({ title = '', body = '' } = {}) {
+  const loadingTitle = DOM.liffLoadingOverlay?.querySelector('#liffLoadingTitle, .loading-title');
+  if (loadingTitle) loadingTitle.textContent = title || 'กำลังเชื่อมต่อ LINE';
+  setLiffLoadingMessage(body || 'กำลังเตรียมข้อมูล...');
+}
+
+function showLineOaFriendshipTransition() {
+  setLiffTransitionState({
+    title: 'กำลังเชื่อมต่อ LINE',
+    body: 'เพิ่มเพื่อน Lucky Colorstone เพื่อรับข้อมูลคำสั่งซื้อและดำเนินการต่อ'
+  });
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'flex';
+}
+
+function hideLineOaFriendshipTransition() {
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
 }
 
 function setLandingSubtitleMessage(message = '') {
@@ -1641,20 +1661,38 @@ async function getLineOaFriendshipStatus() {
 }
 
 function setLineOaFriendshipResumePending() {
+  let saved = false;
   try {
     sessionStorage.setItem(LINE_OA_FRIENDSHIP_RESUME_KEY, '1');
-    return true;
+    saved = true;
   } catch {
-    return false;
+    // Some browser-to-LIFF transitions use a different sessionStorage context.
   }
+  try {
+    localStorage.setItem(LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY, JSON.stringify({
+      expiresAt: Date.now() + LINE_OA_FRIENDSHIP_RESUME_TTL_MS
+    }));
+    saved = true;
+  } catch {
+    // The in-memory hard gate remains fail-closed when storage is unavailable.
+  }
+  return saved;
 }
 
 function hasLineOaFriendshipResumePending() {
   try {
-    return sessionStorage.getItem(LINE_OA_FRIENDSHIP_RESUME_KEY) === '1';
+    if (sessionStorage.getItem(LINE_OA_FRIENDSHIP_RESUME_KEY) === '1') return true;
   } catch {
-    return false;
+    // Check the bounded cross-context marker below.
   }
+  try {
+    const stored = JSON.parse(localStorage.getItem(LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY) || 'null');
+    if (Number.isFinite(stored?.expiresAt) && stored.expiresAt > Date.now()) return true;
+    localStorage.removeItem(LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY);
+  } catch {
+    // Treat malformed or unavailable storage as no resumable friendship flow.
+  }
+  return false;
 }
 
 function clearLineOaFriendshipResumePending() {
@@ -1662,6 +1700,11 @@ function clearLineOaFriendshipResumePending() {
     sessionStorage.removeItem(LINE_OA_FRIENDSHIP_RESUME_KEY);
   } catch {
     // Storage can be unavailable in an in-app browser. The Step 4 hard gate remains fail-closed.
+  }
+  try {
+    localStorage.removeItem(LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY);
+  } catch {
+    // Best-effort cleanup only; the marker has a short expiration.
   }
 }
 
@@ -1684,23 +1727,51 @@ async function getLineOaAddFriendUrl() {
   }
 }
 
-async function openLineOaAddFriendExperience() {
-  const addFriendUrl = await getLineOaAddFriendUrl();
-  if (addFriendUrl) {
-    window.location.assign(addFriendUrl);
-    return { opened: true, source: 'official_add_friend_url' };
-  }
+function canUseNativeLineOaFriendshipPrompt() {
+  if (!isLiffInClient() || typeof liff === 'undefined' || typeof liff.requestFriendship !== 'function') return false;
+  const liffContext = typeof liff.getContext === 'function' ? liff.getContext() : null;
+  return liffContext?.viewType === 'full';
+}
 
-  // LINE documents this API as a full-size LIFF browser feature. It remains a
-  // constrained official fallback only when no verified direct OA link is available.
-  const liffContext = typeof liff !== 'undefined' && typeof liff.getContext === 'function' ? liff.getContext() : null;
-  if (isLiffInClient() && liffContext?.viewType === 'full' && typeof liff !== 'undefined' && typeof liff.requestFriendship === 'function') {
+async function openLineOaAddFriendExperience() {
+  // requestFriendship keeps the customer inside LIFF and returns control after
+  // the official LINE add-friend/unblock subwindow closes. It is the primary path.
+  if (canUseNativeLineOaFriendshipPrompt()) {
+    showLineOaFriendshipTransition();
     try {
-      await liff.requestFriendship();
+      const request = liff.requestFriendship();
+      hideLineOaFriendshipTransition();
+      await request;
       return { opened: true, source: 'liff_request_friendship' };
     } catch (error) {
-      console.warn('LINE OA friendship prompt failed.', error?.name || 'unknown');
+      hideLineOaFriendshipTransition();
+      console.warn('LINE OA friendship prompt failed.', error?.code || error?.name || 'unknown');
+      return { opened: false, source: 'liff_request_friendship_failed' };
     }
+  }
+
+  // An external browser must enter the normal LIFF lifecycle before using the
+  // native friendship API. Do not send it to the standalone OA profile first.
+  if (!isLiffInClient()) {
+    showLineOaFriendshipTransition();
+    try {
+      window.location.assign(getLiffEntryUrl());
+      return { opened: true, source: 'liff_entry' };
+    } catch (error) {
+      hideLineOaFriendshipTransition();
+      console.warn('Unable to open LIFF for LINE OA friendship.', error?.name || 'unknown');
+      return { opened: false, source: 'liff_entry_failed' };
+    }
+  }
+
+  // Only after a customer is already inside LIFF and the native API is not
+  // supported (for example, a non-Full LIFF configuration) may we use the
+  // official OA URL as a fail-closed last resort.
+  const addFriendUrl = await getLineOaAddFriendUrl();
+  if (addFriendUrl) {
+    showLineOaFriendshipTransition();
+    window.location.assign(addFriendUrl);
+    return { opened: true, source: 'official_add_friend_url_fallback' };
   }
 
   return { opened: false, source: 'unavailable' };
@@ -1765,7 +1836,6 @@ async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFrien
     setLineOaFriendshipResumePending();
     const addFriend = await openLineOaAddFriendExperience();
     if (!addFriend.opened) {
-      showToast('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e40\u0e1b\u0e34\u0e14 LINE \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e14\u0e49 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
       clearLineOaFriendshipResumePending();
     } else if (addFriend.source === 'liff_request_friendship') {
       await recheckLineOaFriendshipAndResume();
@@ -1773,7 +1843,10 @@ async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFrien
   } else if (openAddFriend) {
     lineOaFriendshipRequired = true;
     setLineOaFriendshipResumePending();
-    await openLineOaAddFriendExperience();
+    const addFriend = await openLineOaAddFriendExperience();
+    if (addFriend.source === 'liff_request_friendship') {
+      await recheckLineOaFriendshipAndResume();
+    }
   }
   return false;
 }
@@ -1785,6 +1858,7 @@ async function resumeLineOaFriendshipAfterReturn() {
   const restoredSnapshot = restoreGuestDesignSnapshot();
   if (restoredSnapshot?.ok) {
     State.currentStep = 3;
+    lineOaFriendshipStep4ResumePending = true;
     State.landingDismissed = true;
     persistLandingDismissed();
     syncShellVisibility();
@@ -1800,7 +1874,10 @@ async function resumeLineOaFriendshipAfterReturn() {
   }
 
   const friendship = await getLineOaFriendshipStatus();
-  if (!friendship.friendFlag || State.currentStep !== 3) return false;
+  if (!friendship.friendFlag || State.currentStep !== 3) {
+    if (State.currentStep === 3) await openLineOaAddFriendExperience();
+    return false;
+  }
 
   lineOaFriendshipRequired = false;
   clearLineOaFriendshipResumePending();

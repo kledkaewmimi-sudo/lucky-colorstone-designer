@@ -4260,6 +4260,20 @@ button.stone-card {
   color: var(--color-navy);
 }
 
+.loading-title {
+  font-family: var(--font-ui-thai);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-navy);
+  line-height: 1.35;
+}
+
+.loading-title + .loading-text {
+  margin-top: 4px;
+  text-align: center;
+  line-height: 1.5;
+}
+
 @keyframes spin {
   0% {
     transform: rotate(0deg);
