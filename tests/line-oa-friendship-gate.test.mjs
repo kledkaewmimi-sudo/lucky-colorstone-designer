@@ -7,9 +7,9 @@ test('deferred callback requires LINE OA friendship before consuming a handoff',
   const restoreStart = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const restoreEnd = source.indexOf('function persistLandingDismissed', restoreStart);
   const restore = source.slice(restoreStart, restoreEnd);
-  assert.ok(restore.indexOf('const friendship = await getLineOaFriendshipStatus()') >= 0);
+  assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') >= 0);
   assert.ok(restore.indexOf("reason: 'line_oa_friendship_required'") >= 0);
-  assert.ok(restore.indexOf('const friendship = await getLineOaFriendshipStatus()') < restore.indexOf('runDormantV2CallbackRestore'));
+  assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
   assert.match(source, /liff\.getFriendship\(\)/);
   assert.match(source, /liff\.requestFriendship\(\)/);
 });
@@ -33,21 +33,34 @@ test('buyer notification logs delivery outcome without logging LINE identity or 
   assert.doesNotMatch(buyer, /lineUserId|LINE_CHANNEL_ACCESS_TOKEN/);
 });
 
-test('authenticated deferred Step 3 fast path requires friendship before Step 4', async () => {
+test('every mobile operational Step 4 entry uses the centralized friendship guard', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
-  const navigationStart = source.indexOf('function setupNavigationEvents()');
-  const navigationEnd = source.indexOf('// Home Button clicks', navigationStart);
-  const navigation = source.slice(navigationStart, navigationEnd);
-  const gateStart = source.indexOf('async function requireLineOaFriendshipBeforeAuthenticatedStep4()');
-  const gateEnd = source.indexOf('// LIFF Initialization', gateStart);
+  const gateStart = source.indexOf('async function canEnterOperationalStep4');
+  const gateEnd = source.indexOf('async function requestLineOaFriendship()', gateStart);
   const gate = source.slice(gateStart, gateEnd);
+  const navigationStart = source.indexOf('async function goToStep(step)');
+  const navigationEnd = source.indexOf('// Stepper bar rendering logic', navigationStart);
+  const navigation = source.slice(navigationStart, navigationEnd);
+  const renderStart = source.indexOf('async function renderStepViews()');
+  const renderEnd = source.indexOf('// Navigate to step', renderStart);
+  const render = source.slice(renderStart, renderEnd);
+  const checkoutStart = source.indexOf('async function handleStripeCheckout()');
+  const checkoutEnd = source.indexOf('async function submitOrderToCRM', checkoutStart);
+  const checkout = source.slice(checkoutStart, checkoutEnd);
+  const step4Start = source.indexOf('async function renderStep4()');
+  const step4End = source.indexOf('function renderStep4PriceSummary', step4Start);
+  const step4 = source.slice(step4Start, step4End);
 
+  assert.match(gate, /if \(!isLineIdentityAvailable\(\)\) return false/);
   assert.match(gate, /const friendship = await getLineOaFriendshipStatus\(\)/);
   assert.match(gate, /if \(friendship\.friendFlag\) return true/);
-  assert.match(gate, /lineOaFriendshipStep4ResumePending = true/);
+  assert.match(gate, /lineOaFriendshipStep4ResumePending = queueStep3Resume && State\.currentStep === 3/);
   assert.match(gate, /showLineOaFriendshipGate\(\)/);
-  assert.match(navigation, /isDeferredLineLoginEffectivelyEnabled\(\) && isLineIdentityAvailable\(\)/);
-  assert.ok(navigation.indexOf('requireLineOaFriendshipBeforeAuthenticatedStep4()') < navigation.indexOf('await goToStep(State.currentStep + 1)'));
+  assert.ok(navigation.indexOf('await canEnterOperationalStep4') < navigation.indexOf('State.currentStep = step'));
+  assert.match(render, /State\.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4\(\)/);
+  assert.match(render, /State\.currentStep = 3/);
+  assert.match(step4, /const canEnterStep4 = await canEnterOperationalStep4\(\{ showGate: true \}\)/);
+  assert.ok(checkout.indexOf('await canEnterOperationalStep4') < checkout.indexOf("fetch('/api/stripe/checkout-session'"));
 });
 
 test('existing add-friend recheck resumes the authenticated Step 4 continuation only after a true friendship result', async () => {
@@ -61,4 +74,12 @@ test('existing add-friend recheck resumes the authenticated Step 4 continuation 
   assert.match(recheck, /lineOaFriendshipStep4ResumePending = false/);
   assert.match(recheck, /await goToStep\(4\)/);
   assert.ok(recheck.indexOf('await goToStep(4)') < recheck.indexOf('restoreDeferredLineCallbackBeforeReset'));
+});
+
+test('deferred callback uses the centralized guard before handoff consume', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
+  const end = source.indexOf('function persistLandingDismissed', start);
+  const restore = source.slice(start, end);
+  assert.ok(restore.indexOf('await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
 });

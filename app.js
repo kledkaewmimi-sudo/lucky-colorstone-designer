@@ -1687,15 +1687,26 @@ async function recheckLineOaFriendshipAndResume() {
   }
 }
 
-async function requireLineOaFriendshipBeforeAuthenticatedStep4() {
+function requiresLineOaFriendshipForOperationalStep4() {
+  // Desktop intentionally retains its existing non-LIFF bypass. Paid returns and
+  // order-detail views are not new operational checkout entry points.
+  return requiresLineLoginForCustomization()
+    && !State.orderDetailMode
+    && !State.paymentCompletedView;
+}
+
+async function canEnterOperationalStep4({ queueStep3Resume = false, showGate = true } = {}) {
+  if (!requiresLineOaFriendshipForOperationalStep4()) return true;
+  if (!isLineIdentityAvailable()) return false;
+
   const friendship = await getLineOaFriendshipStatus();
   if (friendship.friendFlag) return true;
 
-  // This path has no V2 handoff to consume. Keep the in-memory continuation
-  // narrowly scoped to the current Step 3 session and reuse the existing gate.
-  lineOaFriendshipStep4ResumePending = true;
-  lineOaFriendshipRequired = true;
-  showLineOaFriendshipGate();
+  if (showGate) {
+    lineOaFriendshipStep4ResumePending = queueStep3Resume && State.currentStep === 3;
+    lineOaFriendshipRequired = true;
+    showLineOaFriendshipGate();
+  }
   return false;
 }
 
@@ -2255,9 +2266,8 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
 
-  const friendship = await getLineOaFriendshipStatus();
-  if (!friendship.friendFlag) {
-    lineOaFriendshipRequired = true;
+  const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+  if (!canEnterStep4) {
     return { ok: false, reason: 'line_oa_friendship_required' };
   }
 
@@ -2833,6 +2843,14 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 }
 
 async function renderStepViews() {
+  if (State.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4()) {
+    const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+    if (!canEnterStep4) {
+      State.currentStep = 3;
+      renderStepper();
+      return renderStepViews();
+    }
+  }
   if (State.currentStep !== 3) {
     stopBerylCatalogRotation();
   }
@@ -2891,6 +2909,10 @@ async function renderStepViews() {
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
+  if (step === 4) {
+    const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: State.currentStep === 3 });
+    if (!canEnterStep4) return false;
+  }
   if (State.currentStep === 3 && step !== 3) {
     dismissStep3CategoryHint();
     dismissStep3InfoHint();
@@ -2901,6 +2923,7 @@ async function goToStep(step) {
   State.currentStep = step;
   await renderApp();
   trackStepView(step);
+  return true;
 }
 
 function configureFooterNavigation() {
@@ -3004,10 +3027,6 @@ function setupNavigationEvents() {
             showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
           }
           return;
-        }
-        if (isDeferredLineLoginEffectivelyEnabled() && isLineIdentityAvailable()) {
-          const friendshipReady = await requireLineOaFriendshipBeforeAuthenticatedStep4();
-          if (!friendshipReady) return;
         }
         trackAnalyticsEvent('bracelet_completed', {
           item_count: getSelectedStoneItems().length
@@ -6641,6 +6660,15 @@ function renderOrderDetailErrorState(message) {
 }
 
 async function renderStep4() {
+  if (requiresLineOaFriendshipForOperationalStep4()) {
+    const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+    if (!canEnterStep4) {
+      State.currentStep = 3;
+      renderStepper();
+      await renderStepViews();
+      return;
+    }
+  }
   if (State.orderDetailLoadError) {
     renderOrderDetailErrorState(State.orderDetailLoadError);
     return;
@@ -7204,6 +7232,9 @@ async function handleStripeCheckout() {
   if (!hasLineLogin) {
     return;
   }
+
+  const canEnterStep4 = await canEnterOperationalStep4({ showGate: true });
+  if (!canEnterStep4) return;
 
   const shippingInfo = validateShippingInfo();
   if (!shippingInfo) {
