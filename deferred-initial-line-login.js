@@ -16,11 +16,20 @@ export function shouldBypassInitialLineLogin({
   });
 }
 
-// This is the only entry used by app.js. Its feature value has no runtime user
-// input path and therefore remains false in production.
-export function shouldBypassInitialLineLoginInProduction(context = {}) {
-  return shouldBypassInitialLineLogin({
-    ...context,
-    featureEnabled: resolveDeferredLineLoginFlag()
-  });
+// The same wrapper is constructed once for production and can be constructed
+// with an in-memory resolver by isolated Node tests. No app runtime path can
+// replace the production resolver.
+export function createInitialLineLoginGuard({
+  resolveFeatureEnabled = resolveDeferredLineLoginFlag
+} = {}) {
+  return function shouldBypassInitialLineLoginForGuard(context = {}) {
+    return shouldBypassInitialLineLogin({
+      ...context,
+      featureEnabled: resolveFeatureEnabled() === true
+    });
+  };
 }
+
+// This is the only entry used by app.js. Its resolver has no runtime user input
+// path and therefore remains false in production.
+export const shouldBypassInitialLineLoginInProduction = createInitialLineLoginGuard();

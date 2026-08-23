@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  createInitialLineLoginGuard,
   shouldBypassInitialLineLogin,
   shouldBypassInitialLineLoginInProduction
 } from '../deferred-initial-line-login.js';
@@ -16,16 +17,27 @@ test('production adapter remains false and preserves the legacy initial login de
   assert.equal(shouldBypassInitialLineLoginInProduction(mobileCustomization), false);
 });
 
-test('pure adapter accepts an explicit test-only feature value', () => {
-  assert.equal(shouldBypassInitialLineLogin({ ...mobileCustomization, featureEnabled: true }), true);
+test('the real guard wrapper can be constructed with a test-only true resolver', () => {
+  const controlledGuard = createInitialLineLoginGuard({ resolveFeatureEnabled: () => true });
+  assert.equal(controlledGuard(mobileCustomization), true);
+  assert.equal(shouldBypassInitialLineLoginInProduction(mobileCustomization), false);
   assert.equal(shouldBypassInitialLineLogin({ ...mobileCustomization, featureEnabled: false }), false);
 });
 
+test('removing the injected resolver immediately returns the same wrapper to production behavior', () => {
+  const controlledGuard = createInitialLineLoginGuard({ resolveFeatureEnabled: () => true });
+  const defaultGuard = createInitialLineLoginGuard();
+  assert.equal(controlledGuard(mobileCustomization), true);
+  assert.equal(defaultGuard(mobileCustomization), false);
+});
+
 test('desktop, authenticated, non-customization, and malformed contexts fail safe', () => {
-  assert.equal(shouldBypassInitialLineLogin({ featureEnabled: true, requiresLineLogin: false, isCustomization: true }), false);
-  assert.equal(shouldBypassInitialLineLogin({ ...mobileCustomization, featureEnabled: true, isAuthenticated: true }), false);
-  assert.equal(shouldBypassInitialLineLogin({ featureEnabled: true, requiresLineLogin: true, isCustomization: false }), false);
-  assert.equal(shouldBypassInitialLineLogin(), false);
+  const controlledGuard = createInitialLineLoginGuard({ resolveFeatureEnabled: () => true });
+  assert.equal(controlledGuard({ requiresLineLogin: false, isCustomization: true }), false);
+  assert.equal(controlledGuard({ ...mobileCustomization, isAuthenticated: true }), false);
+  assert.equal(controlledGuard({ requiresLineLogin: true, isCustomization: false }), false);
+  assert.equal(controlledGuard(), false);
+  assert.equal(createInitialLineLoginGuard({ resolveFeatureEnabled: () => 'true' })(mobileCustomization), false);
 });
 
 test('app uses only the production adapter, not a customer-controlled feature source', async () => {
