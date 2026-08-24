@@ -106,6 +106,7 @@ The existing `npm start` command remains `node server.js`; no dependency or buil
 ## Rollout and rollback
 
 - Rollout has not occurred. The prepared code is committed/pushed only to `uat` after final verification.
+- UAT backend preparation commit: `140428d` (`Prepare fixture-only UAT backend`), pushed to `origin/uat` only.
 - UAT deployment rollout: deploy the Render UAT service first, verify the four GET fixture endpoints and 403 blocked routes, then configure the UAT frontend route in a later UAT-only task.
 - Rollback: disable/rollback only the UAT Render service or revert the UAT branch commit. Do not change production services, domains, credentials, data, or `main`.
 
@@ -117,4 +118,4 @@ The existing `npm start` command remains `node server.js`; no dependency or buil
 **Free Render compatible: YES.**
 **Production untouched: YES.**
 
-Next action: commit and push the intended UAT backend files only, then owner provisions the separate free Render UAT service with `APP_ENV=uat` and `UAT_BACKEND=true`.
+Next action: owner provisions the separate free Render UAT service with `APP_ENV=uat` and `UAT_BACKEND=true`, then verifies the read-only allowlist before UAT frontend routing is configured.
