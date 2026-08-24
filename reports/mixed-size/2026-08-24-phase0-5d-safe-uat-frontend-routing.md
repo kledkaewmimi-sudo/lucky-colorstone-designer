@@ -65,4 +65,4 @@ The failed endpoints were reached only at `https://lucky-colorstone-uat.onrender
 
 ## Final status
 
-**BLOCKED for UAT Vercel deployment** until the UAT backend restores all four read-only fixture endpoints. The UAT frontend routing and fail-closed client isolation changes are complete, locally validated, and ready to commit and push only to `origin/uat`.
+**BLOCKED for UAT Vercel deployment** until the UAT backend restores all four read-only fixture endpoints. The UAT frontend routing and fail-closed client isolation changes are complete, locally validated, committed as `770f59a04e0e2e387d22dc01a63adc52120e29db`, and pushed only to `origin/uat`.
