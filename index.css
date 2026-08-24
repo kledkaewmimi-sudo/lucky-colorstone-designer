@@ -71,6 +71,22 @@
   );
 }
 
+.uat-environment-banner {
+  position: fixed;
+  z-index: 9999;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border: 1px solid rgba(64, 48, 77, 0.25);
+  border-radius: 999px;
+  background: rgba(255, 250, 225, 0.96);
+  color: #40304d;
+  font: 600 11px/1.2 Arial, sans-serif;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
 /* Reset & Base Rules */
 * {
   margin: 0;

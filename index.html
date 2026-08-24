@@ -31,31 +31,12 @@
     }());
   </script>
 
-  <!-- Meta Pixel: public browser identifier; no access token is exposed here. -->
-  <script>
-    (function (f, b, e, v, n, t, s) {
-      if (f.fbq) return;
-      n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
-      if (!f._fbq) f._fbq = n;
-      n.push = n;
-      n.loaded = true;
-      n.version = '2.0';
-      n.queue = [];
-      t = b.createElement(e);
-      t.async = true;
-      t.src = v;
-      s = b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t, s);
-    })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '1573172861217430');
-    fbq('track', 'PageView');
-  </script>
-
-  <!-- LINE LIFF SDK -->
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- UAT intentionally omits production Meta Pixel and LINE LIFF SDK. -->
 </head>
 
 <body>
+
+  <div class="uat-environment-banner" role="status">UAT — checkout, LINE, and analytics are disabled</div>
 
   <div class="callback-bootstrap-overlay" id="callbackBootstrapOverlay" role="status" aria-live="polite" aria-hidden="true">
     <div class="callback-bootstrap-content">

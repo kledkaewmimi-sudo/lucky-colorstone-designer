@@ -7,24 +7,14 @@
       "has": [
         {
           "type": "host",
-          "value": "customize.luckycolorstone.com"
+          "value": "uat.customize.luckycolorstone.com"
         }
       ],
       "dest": "/index.html"
     },
     {
-      "src": "^/$",
-      "has": [
-        {
-          "type": "host",
-          "value": "crm.luckycolorstone.com"
-        }
-      ],
-      "dest": "/crm.html"
-    },
-    {
       "src": "/api/(.*)",
-      "dest": "https://lucky-colorstone-designer.onrender.com/api/$1"
+      "dest": "https://lucky-colorstone-uat.onrender.com/api/$1"
     },
     {
       "handle": "filesystem"

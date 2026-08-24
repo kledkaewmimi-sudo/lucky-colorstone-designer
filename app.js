@@ -42,7 +42,11 @@ const ANALYTICS_CURRENT_STAGE_KEY = 'lucky_analytics_current_stage';
 const ANALYTICS_FUNNEL_STAGE_KEYS_KEY = 'lucky_analytics_funnel_v2_stage_keys';
 const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
 const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.get('showStep3InfoHint') === '1';
-const LIFF_ID = '2010525799-qImIuhla';
+// This branch is deployed only to the isolated UAT environment. Keep the marker
+// explicit so every external integration can fail closed before making a request.
+const APP_ENV = 'uat';
+const IS_UAT_MODE = APP_ENV === 'uat';
+const LIFF_ID = '';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
@@ -1030,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
-  const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
+  const shouldOpenStep4FromUrl = !IS_UAT_MODE && (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId'));
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
   const startupRawCustomizationIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
@@ -1374,6 +1378,7 @@ function applyDeferredLineAuthAnalyticsContinuity(rawContinuity) {
 }
 
 function initAnalytics() {
+  if (IS_UAT_MODE) return;
   try {
     const resolvedSession = resolveAnalyticsSession({
       sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
@@ -1450,6 +1455,7 @@ function getAnalyticsOrderFields() {
 }
 
 function sendAnalyticsPayload(payload, { beacon = false } = {}) {
+  if (IS_UAT_MODE) return;
   try {
     const body = JSON.stringify(payload);
     if (beacon && navigator.sendBeacon) {
@@ -1469,6 +1475,7 @@ function sendAnalyticsPayload(payload, { beacon = false } = {}) {
 }
 
 function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
+  if (IS_UAT_MODE) return;
   if (!analyticsSessionId) return;
   const canonicalEventName = eventName === 'start_customize_click' ? 'start_design' : eventName;
   const isFunnelStage = isCanonicalFunnelStage(canonicalEventName);
@@ -1540,6 +1547,7 @@ function trackCheckoutStarted(checkoutSessionId) {
 }
 
 function trackMetaEvent(eventName, parameters = {}) {
+  if (IS_UAT_MODE) return;
   try {
     if (typeof window.fbq !== 'function') return;
     window.fbq('track', eventName, parameters);
@@ -1745,6 +1753,7 @@ function getLiffRedirectUri() {
 }
 
 function getLiffEntryUrl() {
+  if (IS_UAT_MODE) return '';
   return `https://liff.line.me/${LIFF_ID}`;
 }
 
@@ -1753,6 +1762,7 @@ function isLikelyMobileBrowser() {
 }
 
 function requiresLineLoginForCustomization() {
+  if (IS_UAT_MODE) return false;
   return isLiffInClient() || isLikelyMobileBrowser();
 }
 
@@ -2257,6 +2267,11 @@ function isDeferredLineLoginEffectivelyEnabled() {
 }
 
 async function initializeDeferredLoginQaSession() {
+  if (IS_UAT_MODE) {
+    deferredLoginQaActivationAttempted = false;
+    deferredLoginQaEnabled = false;
+    return false;
+  }
   const activation = await activateDeferredLoginQaSessionFromFragment();
   deferredLoginQaActivationAttempted = activation.attempted === true;
   const state = activation.attempted ? activation : await getValidatedDeferredLoginQaState();
@@ -2286,6 +2301,7 @@ function startDeferredLineLoginWithPersistedIntent() {
 }
 
 async function beginDeferredStep3AuthBoundary() {
+  if (IS_UAT_MODE) return { handled: false, ok: true };
   const boundary = createDeferredStep3AuthBoundary({
     resolveFeatureEnabled: isDeferredLineLoginEffectivelyEnabled,
     requiresLineLogin: requiresLineLoginForCustomization,
@@ -2303,6 +2319,11 @@ async function beginDeferredStep3AuthBoundary() {
 // LIFF Initialization
 async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
+  if (IS_UAT_MODE) {
+    State.liffInitialized = false;
+    if (loader) loader.style.display = 'none';
+    return;
+  }
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
@@ -2819,6 +2840,7 @@ async function fetchOrdersFromApiUrl(apiUrl) {
 }
 
 function getOrderDetailFallbackApiUrls() {
+  if (IS_UAT_MODE) return [];
   const urls = [];
   try {
     const currentOrigin = window.location.origin;
@@ -3083,6 +3105,7 @@ function hydrateStateFromOrder(order) {
 }
 
 async function loadOrderDetailFromUrlIfNeeded() {
+  if (IS_UAT_MODE) return false;
   const orderId = getRequestedOrderId();
   if (!orderId) return false;
 
@@ -3317,6 +3340,10 @@ async function renderStepViews() {
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
+  if (IS_UAT_MODE && step === 4) {
+    showToast('UAT: checkout and order creation are disabled.');
+    return false;
+  }
   if (step === 4) {
     const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: State.currentStep === 3 });
     if (!canEnterStep4) return false;
@@ -7539,6 +7566,7 @@ function activatePaymentCompletedView(savedOrder = null) {
 }
 
 async function handleStripeReturnIfNeeded() {
+  if (IS_UAT_MODE) return;
   const params = new URLSearchParams(window.location.search);
   const stripeState = params.get('stripe');
   if (!stripeState) return;
@@ -7623,6 +7651,10 @@ async function handleStripeReturnIfNeeded() {
 }
 
 async function handleStripeCheckout() {
+  if (IS_UAT_MODE) {
+    showToast('UAT: checkout and payment are disabled.');
+    return;
+  }
   if (State.orderDetailMode || State.paymentCompletedView) {
     showToast("This order has already been created.");
     return;
@@ -8576,6 +8608,10 @@ function renderBraceletShowcaseFallback(previewKey = '') {
 
 // Submit Order to CRM backend database
 async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
+  if (IS_UAT_MODE) {
+    if (showToastNotification) showToast('UAT: order creation is disabled.');
+    return null;
+  }
   ensureCurrentDesignMatchesBeadSize({ showToastNotification });
 
   if (getSelectedStoneItems().length === 0) {
@@ -8707,6 +8743,10 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
 
 // Generate Formatted LINE Order Message & Redirection
 async function handleLineOrder() {
+  if (IS_UAT_MODE) {
+    showToast('UAT: LINE notifications and order creation are disabled.');
+    return;
+  }
   // First, submit order to CRM database so it syncs immediately
   const savedOrder = await submitOrderToCRM(false);
   if (!savedOrder) return;
