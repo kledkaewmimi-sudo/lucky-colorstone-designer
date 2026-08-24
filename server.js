@@ -4,6 +4,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
+const { assertSafeUatEnvironment, isUatReadOnlyApiRequest } = require('./uat-backend-guard.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -14,6 +15,12 @@ const {
 
 const workspaceDir = __dirname;
 const bundledDataDir = path.join(workspaceDir, "data");
+const isFixtureOnlyUatBackend = true;
+const uatAllowedOrigin = 'https://uat.customize.luckycolorstone.com';
+
+// This branch is deployable only as the isolated fixture-backed UAT service.
+// Refuse startup unless the host declares that identity and carries no service credentials.
+assertSafeUatEnvironment();
 
 function resolveMutableDataDir() {
   const configuredDataDir = process.env.DATA_DIR || process.env.RENDER_PERSISTENT_DATA_DIR || "";
@@ -140,8 +147,8 @@ function restoreSeedData() {
 }
 
 function setCorsHeaders(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS, DELETE");
+  res.setHeader("Access-Control-Allow-Origin", isFixtureOnlyUatBackend ? uatAllowedOrigin : "*");
+  res.setHeader("Access-Control-Allow-Methods", isFixtureOnlyUatBackend ? "GET, OPTIONS" : "GET, POST, PUT, OPTIONS, DELETE");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
@@ -3260,6 +3267,13 @@ async function handleApiRequest(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = req.method;
 
+  if (isFixtureOnlyUatBackend && !isUatReadOnlyApiRequest(method, pathname)) {
+    sendJson(res, 403, {
+      error: 'UAT fixture backend allows only read-only catalog and settings endpoints.'
+    });
+    return true;
+  }
+
   if (pathname === "/api/line/webhook" && method === "POST") {
     const rawBodyBuffer = await readRequestBodyBuffer(req);
     const lineChannelSecret = getLineChannelSecret();
@@ -4179,7 +4193,15 @@ async function serveStaticFile(req, res, urlObj) {
   }
 }
 
-seedDatabase();
+if (isFixtureOnlyUatBackend) {
+  const requiredFixtureFiles = ['stones', 'charms', 'settings'];
+  const missingFixtureFiles = requiredFixtureFiles.filter((key) => !fs.existsSync(bundledDataFiles[key]));
+  if (missingFixtureFiles.length > 0) {
+    throw new Error(`Missing required UAT fixture files: ${missingFixtureFiles.join(', ')}`);
+  }
+} else {
+  seedDatabase();
+}
 
 const port = Number.parseInt(process.env.PORT || "8000", 10);
 
