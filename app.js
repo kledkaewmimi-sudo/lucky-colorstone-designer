@@ -5830,6 +5830,7 @@ function renderStep3StickyDebugOverlay() {
     `STICKY: appContent.scrollTop=${DOM.appContent.scrollTop.toFixed(1)} preview.rect.top=${previewRect.top.toFixed(1)} computed.top=${window.getComputedStyle(DOM.step3PreviewCard).top} expected.top=0 difference(preview-appContent)=${stickyDifference.toFixed(1)} geometry-sticky=${previewRect.top <= scrollRect.top + 1}`,
     hits,
     getStep3StickyRuntimeClassAudit(header, step3View),
+    `PAINT AUDIT:\n${getStep3StickyPaintAudit(step3View)}`,
     `ACTIVE MOBILE RULES:\n${getActiveStep3StickyMobileRules()}`,
     `HEADER ANCESTORS: ${getStackingContextAncestry(header)}`,
     `PREVIEW ANCESTORS: ${getStackingContextAncestry(DOM.step3PreviewCard)}`
@@ -5871,6 +5872,27 @@ function getStep3StickyRuntimeClassAudit(header, step3View) {
     ['PREVIEW', DOM.step3PreviewCard]
   ];
   return `RUNTIME CLASSES/STYLES:\n${entries.map(([label, element]) => `${label}: class=${element?.className || 'NONE'} inline=${element?.getAttribute('style') || 'NONE'}`).join('\n')}`;
+}
+
+function getStep3StickyPaintAudit(step3View) {
+  const preview = DOM.step3PreviewCard;
+  const paintTargets = [
+    ['PREVIEW ROOT', preview, null],
+    ['PREVIEW ::before', preview, '::before'],
+    ['PREVIEW ::after', preview, '::after'],
+    ['CANVAS CARD', step3View?.querySelector('.canvas-card'), null],
+    ['CANVAS CARD ::before', step3View?.querySelector('.canvas-card'), '::before'],
+    ['CANVAS CARD ::after', step3View?.querySelector('.canvas-card'), '::after'],
+    ['INFO ROW', step3View?.querySelector('.canvas-info-row'), null],
+    ['CANVAS CONTAINER', step3View?.querySelector('.canvas-container'), null],
+    ['BRACELET SVG', DOM.braceletSvg, null],
+    ['CONTROLS', step3View?.querySelector('.canvas-controls-bar'), null]
+  ];
+  return paintTargets.map(([label, element, pseudo]) => {
+    if (!element) return `${label}: MISSING`;
+    const style = window.getComputedStyle(element, pseudo);
+    return `${label}: bg=${style.backgroundColor}; bg-image=${style.backgroundImage}; opacity=${style.opacity}; blend=${style.mixBlendMode}; backdrop=${style.backdropFilter || style.webkitBackdropFilter}; filter=${style.filter}; mask=${style.maskImage || style.webkitMaskImage}; clip=${style.clipPath}; radius=${style.borderRadius}; shadow=${style.boxShadow}; content=${pseudo ? style.content : 'ELEMENT'}`;
+  }).join('\n');
 }
 
 function getActiveStep3StickyMobileRules() {

@@ -95,7 +95,7 @@ test('Step 3 uses one shared full-size sticky preview with the canonical rendere
   assert.match(css, /#stepView3\.step-view\.active \{\s*height: auto;\s*min-height: 100%;/);
   assert.match(css, /\.app-header \{[\s\S]*?z-index: 10;/);
   assert.match(css, /\.app-container\.step3-preview-covered \.app-header \{\s*pointer-events: none;/);
-  assert.match(css, /\.app-container\.step3-preview-covered #step3PreviewCard \{[\s\S]*?background-color: #FCFBFF;[\s\S]*?background-image: none;[\s\S]*?opacity: 1;[\s\S]*?border-radius: 0;/);
+  assert.match(css, /\.app-container\.step3-preview-covered #step3PreviewCard \{[\s\S]*?background: rgb\(252, 251, 255\) !important;[\s\S]*?background-clip: border-box;[\s\S]*?opacity: 1 !important;[\s\S]*?mix-blend-mode: normal;[\s\S]*?backdrop-filter: none;[\s\S]*?filter: none;[\s\S]*?mask: none;[\s\S]*?clip-path: none;[\s\S]*?border-radius: 0;/);
   assert.match(css, /#stepView3\.step-view \{[\s\S]*?animation: step3FadeIn[\s\S]*?transform: none;[\s\S]*?filter: none;[\s\S]*?isolation: auto;/);
   assert.match(css, /@keyframes step3FadeIn \{[\s\S]*?opacity: 0;[\s\S]*?opacity: 1;/);
   assert.doesNotMatch(css, /step3-preview-pinned/);
@@ -119,6 +119,10 @@ test('Step 3 runtime layer diagnostics are query-gated to UAT and capture actual
   assert.match(app, /window\.visualViewport\?\.addEventListener\('resize', schedule/);
   assert.match(app, /padding-top:env\(safe-area-inset-top\)/);
   assert.match(app, /function getActiveStep3StickyMobileRules\(\)/);
+  assert.match(app, /function getStep3StickyPaintAudit\(step3View\)/);
+  assert.match(app, /\['PREVIEW ROOT', preview, null\]/);
+  assert.match(app, /\['PREVIEW ::before', preview, '::before'\]/);
+  assert.match(app, /\['PREVIEW ::after', preview, '::after'\]/);
   assert.match(app, /window\.matchMedia\(rule\.conditionText\)\.matches/);
   assert.match(app, /function getStep3StickyRuntimeClassAudit\(header, step3View\)/);
   assert.match(app, /difference\(preview-appContent\)=\$\{stickyDifference\.toFixed\(1\)\}/);

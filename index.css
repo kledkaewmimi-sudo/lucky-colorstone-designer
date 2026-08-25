@@ -693,9 +693,16 @@ option {
    header stack. Keep its full existing dimensions, but paint the whole card
    with the normal opaque cream surface all the way to the viewport edge. */
 .app-container.step3-preview-covered #step3PreviewCard {
-  background-color: #FCFBFF;
-  background-image: none;
-  opacity: 1;
+  background: rgb(252, 251, 255) !important;
+  background-clip: border-box;
+  opacity: 1 !important;
+  mix-blend-mode: normal;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  filter: none;
+  mask: none;
+  -webkit-mask-image: none;
+  clip-path: none;
   border-radius: 0;
 }
 
