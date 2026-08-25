@@ -4126,6 +4126,11 @@ button.stone-card {
   gap: 7px;
 }
 
+/* The authored grid display must never override the semantic hidden state in fixed modes. */
+#stepView3 .mixed-size-selector-bar[hidden] {
+  display: none !important;
+}
+
 #stepView3 .mixed-label {
   font-size: 11px;
   font-weight: 700;

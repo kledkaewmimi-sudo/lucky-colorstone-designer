@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  MIXED_BEAD_SIZE_MODE,
   getMixedPlacementSizeForStone,
+  normalizeBraceletSizeMode,
   setMixedPlacingSize,
   stoneMatchesMixedSizeFilter,
   transitionBraceletSizeMode
@@ -42,6 +44,7 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
   assert.match(css, /#stepView3 \.mixed-size-selector-bar \{[\s\S]*?min-height: 34px[\s\S]*?margin: 0 0 3px/);
   assert.match(css, /#stepView3 \.mixed-toggle-btn \{[\s\S]*?border: 0;/);
   assert.match(css, /#stepView3 \.mixed-toggles \{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /#stepView3 \.mixed-size-selector-bar\[hidden\] \{\s*display: none !important;/);
 });
 
 for (const size of ['4', '6', '10']) {
@@ -54,10 +57,32 @@ for (const size of ['4', '6', '10']) {
   });
 }
 
-test('mixed selector remains visible across Step 3 tabs and restores an explicit size', () => {
+test('fixed modes hide the selector without layout space and mixed mode keeps it visible across Step 3 tabs', () => {
   assert.match(app, /DOM\.mixedSizeSelectorBar\.hidden = State\.beadSize !== MIXED_BEAD_SIZE_MODE/);
   assert.match(app, /if \(!\['4', '6', '10'\]\.includes\(String\(State\.mixedSizeFilter\)\)\)/);
   assert.match(app, /State\.mixedSizeFilter = String\(normalizeMixedPlacingSize\(State\.mixedPlacingSize\)\)/);
+  for (const fixedSize of ['4', '6', '10']) {
+    assert.notEqual(normalizeBraceletSizeMode(fixedSize), MIXED_BEAD_SIZE_MODE);
+  }
+  assert.equal(normalizeBraceletSizeMode('mixed'), MIXED_BEAD_SIZE_MODE);
+});
+
+test('fixed-to-mixed and mixed-to-fixed visibility follows the canonical transition mode', () => {
+  const fixedState = { beadSize: '6', mixedPlacingSize: 6, selectedStones: [{ componentType: 'stone', stoneId: 'all', size: 6 }] };
+  const intoMixed = transitionBraceletSizeMode(fixedState, 'mixed', catalog);
+  assert.equal(intoMixed.ok, true);
+  assert.equal(intoMixed.state.beadSize, MIXED_BEAD_SIZE_MODE);
+
+  const intoFixed = transitionBraceletSizeMode(intoMixed.state, '10', catalog);
+  assert.equal(intoFixed.ok, true);
+  assert.equal(intoFixed.state.beadSize, '10');
+});
+
+test('restored fixed and mixed modes normalize to the expected selector visibility state', () => {
+  const restoredFixed = normalizeBraceletSizeMode('4');
+  const restoredMixed = normalizeBraceletSizeMode('mixed');
+  assert.notEqual(restoredFixed, MIXED_BEAD_SIZE_MODE);
+  assert.equal(restoredMixed, MIXED_BEAD_SIZE_MODE);
 });
 
 for (const size of [4, 6, 10]) {
