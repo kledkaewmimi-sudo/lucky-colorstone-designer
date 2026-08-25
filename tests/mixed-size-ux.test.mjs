@@ -33,7 +33,7 @@ test('Step 2 keeps four compact vertical cards in the requested mixed-to-4mm ord
   assert.match(html, /bead-size-mixed-recommendation[\s\S]*?★/);
   assert.match(css, /#stepView2 \.bead-size-card-mixed \{[\s\S]*?box-shadow:/);
   assert.match(css, /#stepView2 \.bead-size-preview-mixed \{[\s\S]*?justify-content: flex-start;/);
-  assert.match(html, /data-bead-size="mixed"[\s\S]*?<h4>สนุก มิกซ์<\/h4>/);
+  assert.match(html, /data-bead-size="mixed"[\s\S]*?<h4>สนก มมต<\/h4>/);
 });
 
 test('fresh Step 2 has no default selection and keeps an explicit selection on return', () => {
@@ -82,11 +82,17 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
 test('Step 3 uses one shared full-size sticky preview with the canonical renderer for every size mode', () => {
   assert.match(html, /id="step3PreviewCard"[\s\S]*?id="braceletSvg"/);
   assert.equal((html.match(/id="braceletSvg"/g) || []).length, 1);
-  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: 0;\s*z-index: 120;/);
+  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: 0;\s*z-index: 20;[\s\S]*?pointer-events: auto;/);
   assert.match(css, /\.app-content \{[\s\S]*?padding: 0 16px var\(--step-content-bottom-clearance\) 16px;/);
   assert.match(css, /#stepView3\.step-view\.active \{\s*height: auto;\s*min-height: 100%;/);
+  assert.match(css, /\.app-header \{[\s\S]*?z-index: 10;/);
+  assert.match(css, /\.app-container\.step3-preview-covered \.app-header \{\s*pointer-events: none;/);
+  assert.match(css, /#stepView3\.step-view \{[\s\S]*?animation: step3FadeIn[\s\S]*?transform: none;[\s\S]*?filter: none;[\s\S]*?isolation: auto;/);
+  assert.match(css, /@keyframes step3FadeIn \{[\s\S]*?opacity: 0;[\s\S]*?opacity: 1;/);
   assert.doesNotMatch(css, /step3-preview-pinned/);
-  assert.doesNotMatch(app, /syncStep3PreviewOverlay|setupStep3PreviewOverlay/);
+  assert.match(app, /function syncStep3StickyLayer\(\)/);
+  assert.match(app, /previewTop <= scrollportTop \+ 1/);
+  assert.match(app, /classList\.remove\('step3-preview-covered'\)/);
   assert.doesNotMatch(css, /is-compact-sticky|step3-preview-sentinel/);
   assert.doesNotMatch(app, /setupStep3StickyPreview|is-compact-sticky|step3PreviewSentinel|scale\(/);
   assert.match(app, /renderBraceletCanvas\(resolvedLayout\)/);

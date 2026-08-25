@@ -126,6 +126,8 @@ let deferredLoginQaActivationAttempted = false;
 // 2. DOM Elements Selection
 // ==========================================
 const DOM = {
+  appContainer: document.querySelector('.app-container'),
+  appContent: document.querySelector('.app-content'),
   // Stepper Elements
   stepNodes: [
     document.getElementById('stepNode1'),
@@ -174,6 +176,7 @@ const DOM = {
   btnResetBracelet: document.getElementById('btnResetBracelet'),
   btnInspirationGallery: document.getElementById('btnInspirationGallery'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
+  step3PreviewCard: document.getElementById('step3PreviewCard'),
   mixedToggleBtns: document.querySelectorAll('.mixed-toggle-btn'),
   catalogTypeFilter: document.getElementById('catalogTypeFilter'),
   catalogTypeTabs: document.querySelectorAll('.catalog-type-tab'),
@@ -3383,6 +3386,7 @@ async function renderStepViews() {
   }
 
   configureFooterNavigation();
+  syncStep3StickyLayer();
 }
 
 // Navigate to step
@@ -5647,6 +5651,8 @@ function renderSpacerOptions() {
 // 8. Step 3: Interactive Canvas & Catalog
 // ==========================================
 function setupDesignerEvents() {
+  setupStep3StickyLayer();
+
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
     if (State.selectedStones.length > 0 || State.selectedCharmIds.length > 0) {
@@ -5688,6 +5694,35 @@ function setupDesignerEvents() {
   });
 
   setupStep3CategoryHintDismissEvents();
+}
+
+// This class changes hit testing only. The visual layering is native sticky
+// stacking; the header remains in place beneath the preview and is restored on
+// scroll-up without a layout or size transition.
+function setupStep3StickyLayer() {
+  if (!DOM.appContent || DOM.appContent.dataset.step3StickyLayerReady === 'true') return;
+  DOM.appContent.dataset.step3StickyLayerReady = 'true';
+
+  let framePending = false;
+  DOM.appContent.addEventListener('scroll', () => {
+    if (framePending) return;
+    framePending = true;
+    window.requestAnimationFrame(() => {
+      framePending = false;
+      syncStep3StickyLayer();
+    });
+  }, { passive: true });
+}
+
+function syncStep3StickyLayer() {
+  if (!DOM.appContainer || !DOM.appContent || !DOM.step3PreviewCard) return;
+  if (State.currentStep !== 3) {
+    DOM.appContainer.classList.remove('step3-preview-covered');
+    return;
+  }
+  const scrollportTop = DOM.appContent.getBoundingClientRect().top;
+  const previewTop = DOM.step3PreviewCard.getBoundingClientRect().top;
+  DOM.appContainer.classList.toggle('step3-preview-covered', previewTop <= scrollportTop + 1);
 }
 
 function setupStep3CategoryHintDismissEvents() {

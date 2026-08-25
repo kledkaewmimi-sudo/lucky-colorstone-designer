@@ -631,9 +631,15 @@ option {
   width: 100%;
   background-color: var(--color-white);
   border-bottom: 1px solid var(--color-gray-border);
-  z-index: 100;
+  z-index: 10;
   padding: 12px 16px 8px 16px;
   box-shadow: var(--shadow-sm);
+}
+
+/* Sticky preview stays visually above the header; disable only the covered
+   header hit target until the preview returns to its document position. */
+.app-container.step3-preview-covered .app-header {
+  pointer-events: none;
 }
 
 .header-top {
@@ -1210,6 +1216,20 @@ option {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* The generic fadeIn animation retains transform: translateY(0), which traps
+   a sticky descendant below sibling layers. Step 3 must stay transform-free. */
+#stepView3.step-view {
+  animation: step3FadeIn 0.4s ease-out forwards;
+  transform: none;
+  filter: none;
+  isolation: auto;
+}
+
+@keyframes step3FadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Step 3 must be tall enough to remain the sticky containing block while its
@@ -1922,8 +1942,9 @@ option {
 #stepView3 .canvas-card {
   position: sticky;
   top: 0;
-  z-index: 120;
-  isolation: isolate;
+  z-index: 20;
+  isolation: auto;
+  pointer-events: auto;
 }
 
 .canvas-reset-control {
