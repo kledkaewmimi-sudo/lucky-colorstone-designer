@@ -4040,19 +4040,18 @@ button.stone-card {
   color: var(--color-velvet-red);
 }
 
-/* UAT mixed-size polish: a balanced Step 2 grid and a thin Step 3 utility strip. */
+/* UAT mixed-size polish: restore the familiar vertical cards and refine the utility strip. */
 #stepView2 .bead-size-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding-block: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding-block: 11px;
 }
 
 #stepView2 .bead-size-card,
 #stepView2 .bead-size-card-recommended {
-  order: initial;
-  min-height: 112px;
-  padding: 10px;
+  min-height: 110px;
+  padding: 11px 12px;
   border-color: rgba(181, 169, 219, 0.24);
   background: var(--color-white);
   box-shadow: 0 6px 16px rgba(111, 85, 148, 0.08);
@@ -4067,18 +4066,27 @@ button.stone-card {
 
 #stepView2 .bead-size-content,
 #stepView2 .bead-size-card-recommended .bead-size-content {
-  grid-template-columns: 18px minmax(0, 1fr);
-  min-height: 90px;
-  gap: 8px;
+  grid-template-columns: 20px minmax(0, 1fr) 92px;
+  min-height: 88px;
+  gap: 10px;
 }
 
 #stepView2 .bead-size-hand-panel,
-#stepView2 .bead-size-card-recommended .bead-size-hand-panel,
 #stepView2 .bead-size-support-banner,
 #stepView2 .bead-size-popular-badge,
 #stepView2 .bead-size-featured-crown,
 #stepView2 .bead-size-recommendation {
   display: none;
+}
+
+#stepView2 .bead-size-hand-panel,
+#stepView2 .bead-size-card-recommended .bead-size-hand-panel {
+  display: flex;
+  height: 88px;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #f7f0fb, #fff8fc);
+  border-color: rgba(181, 169, 219, 0.18);
+  box-shadow: none;
 }
 
 #stepView2 .bead-size-label,
@@ -4101,40 +4109,54 @@ button.stone-card {
 }
 
 #stepView3 .mixed-size-selector-bar {
-  min-height: 40px;
-  margin: 6px 0 10px;
-  padding: 5px 8px 5px 10px;
-  border: 1px solid rgba(181, 169, 219, 0.28);
-  border-radius: 10px;
+  display: grid;
+  grid-template-columns: minmax(72px, 0.85fr) minmax(0, 2.15fr);
+  min-height: 36px;
+  margin: 3px 0 7px;
+  padding: 4px 7px 4px 10px;
+  border: 0;
+  border-radius: 9px;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.82);
-  gap: 8px;
+  background: rgba(239, 233, 248, 0.72);
+  gap: 7px;
 }
 
 #stepView3 .mixed-label {
-  flex: 1 1 auto;
   font-size: 11px;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
 
 #stepView3 .mixed-toggles {
-  flex: 0 0 auto;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
 }
 
 #stepView3 .mixed-toggle-btn {
-  min-width: 39px;
-  min-height: 28px;
-  padding: 3px 7px;
-  border-radius: 7px;
-  font-size: 11px;
+  min-width: 0;
+  min-height: 27px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #67537b;
+  font-size: 12px;
   line-height: 1;
+}
+
+#stepView3 .mixed-toggle-btn.active {
+  background: #7962a8;
+  border-color: transparent;
+  color: var(--color-white);
+  box-shadow: 0 2px 5px rgba(91, 62, 166, 0.18);
 }
 
 @media (max-width: 360px) {
   #stepView2 .bead-size-options {
-    gap: 8px;
+    gap: 9px;
   }
 
   #stepView2 .bead-size-card,
@@ -4144,13 +4166,13 @@ button.stone-card {
   }
 
   #stepView3 .mixed-size-selector-bar {
+    grid-template-columns: minmax(66px, 0.85fr) minmax(0, 2.15fr);
     padding-inline: 7px;
     gap: 5px;
   }
 
   #stepView3 .mixed-toggle-btn {
-    min-width: 36px;
-    padding-inline: 6px;
+    padding-inline: 4px;
   }
 }
 

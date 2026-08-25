@@ -20,10 +20,12 @@ const catalog = [
   { id: 'all', sizes: [4, 6, 10] }
 ];
 
-test('Step 2 keeps four equal-size controls including the exact approved mixed label', () => {
+test('Step 2 keeps four consistent vertical cards with right-side wrist images', () => {
   ['data-bead-size="4"', 'data-bead-size="6"', 'data-bead-size="10"', 'data-bead-size="mixed"', mixedLabel].forEach((token) => assert.ok(html.includes(token)));
-  assert.match(css, /#stepView2 \.bead-size-options \{\s*display: grid;/);
-  assert.match(css, /#stepView2 \.bead-size-card,[\s\S]*?min-height: 112px/);
+  assert.match(css, /#stepView2 \.bead-size-options \{\s*display: flex;\s*flex-direction: column;/);
+  assert.match(css, /#stepView2 \.bead-size-card,[\s\S]*?min-height: 110px/);
+  assert.match(css, /#stepView2 \.bead-size-hand-panel,[\s\S]*?display: flex;/);
+  assert.match(html, /data-bead-size="mixed"[\s\S]*?src="\/assets\/hand\/hand_06\.png"/);
   assert.match(css, /#stepView2 \.bead-size-card-recommended \{[\s\S]*?background: var\(--color-white\)/);
 });
 
@@ -36,7 +38,9 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
   assert.doesNotMatch(html, /data-size="all"/);
   assert.doesNotMatch(html, /mixedSpaceText|mixed-space-container|Remaining Space/);
   assert.doesNotMatch(html, new RegExp(allSizesLabel, 'u'));
-  assert.match(css, /#stepView3 \.mixed-size-selector-bar \{[\s\S]*?min-height: 40px/);
+  assert.match(css, /#stepView3 \.mixed-size-selector-bar \{[\s\S]*?grid-template-columns: minmax\(72px, 0\.85fr\) minmax\(0, 2\.15fr\)/);
+  assert.match(css, /#stepView3 \.mixed-toggle-btn \{[\s\S]*?border: 0;/);
+  assert.match(css, /#stepView3 \.mixed-toggles \{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 });
 
 for (const size of ['4', '6', '10']) {
