@@ -51,6 +51,17 @@ Result: 33 tests passed, 0 failed. The existing Node module-type warning was the
 
 The test suite continues to cover fixed-size regressions, mixed placement initialization, filter isolation and non-mutation, explicit placement size/no 6mm fallback, mixed-to-fixed validation, UAT Step 4 block, checkout block, and frontend/backend UAT safety guards.
 
-## Deployment status
+## Live UAT static verification
 
-The UAT-only commit will be pushed to `origin/uat`. A post-deploy read-only fetch will verify the same numeric Unicode sequences in the deployed UAT document. Interactive browser clicking is not claimed by this report.
+Commit `54ade04` was pushed only to `origin/uat`. After the UAT deployment, a read-only fetch of `https://lucky-colorstone-uat.vercel.app/` confirmed:
+
+```text
+Step 2: U+0E04 U+0E25 U+0E30 U+0E44 U+0E0B U+0E2A U+0E4C
+Step 3: U+0E17 U+0E31 U+0E49 U+0E07 U+0E2B U+0E21 U+0E14
+required mixed label present: true
+required all-sizes label present: true
+deprecated mixed label standalone occurrences: 0
+deprecated all-sizes label occurrences: 0
+```
+
+The deployed static source passes the exact Unicode check. Interactive browser clicking is not claimed by this report; it remains the owner click-through step.
