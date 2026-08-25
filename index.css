@@ -634,14 +634,6 @@ option {
   z-index: 100;
   padding: 12px 16px 8px 16px;
   box-shadow: var(--shadow-sm);
-  transition: opacity 180ms ease, transform 220ms ease;
-}
-
-/* The single Step 3 preview takes over the top edge only while it is sticky. */
-.app-container.step3-preview-pinned .app-header {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-100%);
 }
 
 .header-top {
@@ -767,7 +759,7 @@ option {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 110px 16px var(--step-content-bottom-clearance) 16px;
+  padding: 0 16px var(--step-content-bottom-clearance) 16px;
   scroll-padding-bottom: var(--step-content-bottom-clearance);
   display: flex;
   flex-direction: column;
@@ -775,6 +767,8 @@ option {
 
 .step-view {
   display: none;
+  box-sizing: border-box;
+  padding-top: 110px;
   animation: fadeIn 0.4s ease-out forwards;
   width: 100%;
   min-width: 0;
@@ -1216,6 +1210,13 @@ option {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Step 3 must be tall enough to remain the sticky containing block while its
+   catalog scrolls; its top spacing is document content, not scrollport space. */
+#stepView3.step-view.active {
+  height: auto;
+  min-height: 100%;
 }
 
 .bead-size-preview-mixed .bead-preview-circle {
@@ -1920,10 +1921,9 @@ option {
 /* Shared Step 3 live preview: one full-size card for every fixed and mixed mode. */
 #stepView3 .canvas-card {
   position: sticky;
-  top: env(safe-area-inset-top, 0px);
+  top: 0;
   z-index: 120;
   isolation: isolate;
-  transition: box-shadow 180ms ease, border-radius 180ms ease;
 }
 
 .canvas-reset-control {

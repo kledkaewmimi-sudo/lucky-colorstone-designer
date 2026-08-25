@@ -33,7 +33,36 @@ test('Step 2 keeps four compact vertical cards in the requested mixed-to-4mm ord
   assert.match(html, /bead-size-mixed-recommendation[\s\S]*?★/);
   assert.match(css, /#stepView2 \.bead-size-card-mixed \{[\s\S]*?box-shadow:/);
   assert.match(css, /#stepView2 \.bead-size-preview-mixed \{[\s\S]*?justify-content: flex-start;/);
+  assert.match(html, /data-bead-size="mixed"[\s\S]*?<h4>สนุก มิกซ์<\/h4>/);
 });
+
+test('fresh Step 2 has no default selection and keeps an explicit selection on return', () => {
+  assert.match(app, /beadSize: null,/);
+  assert.match(app, /function hasExplicitBeadSizeSelection\(value = State\.beadSize\)/);
+  assert.match(app, /State\.beadSize = null;/);
+  assert.match(app, /const active = hasExplicitBeadSizeSelection\(\)[\s\S]*?c\.getAttribute\('data-bead-size'\) === State\.beadSize;/);
+  assert.match(app, /State\.beadSize = hasExplicitBeadSizeSelection\(parsed\.beadSize\)[\s\S]*?: null;/);
+  const backNavigation = app.slice(app.indexOf('async function goToStep(step)'), app.indexOf('function configureFooterNavigation()'));
+  assert.match(backNavigation, /if \(State\.currentStep === 3 && step < 3\) \{[\s\S]*?resetStep3DesignState/);
+  assert.doesNotMatch(backNavigation, /State\.beadSize\s*=/);
+});
+
+test('Step 2 blocks Next without an explicit selection and leaves every size selectable', () => {
+  assert.match(app, /State\.currentStep === 2 && !hasExplicitBeadSizeSelection\(\)/);
+  assert.match(app, /showToast\('กรุณาเลือกขนาดหินก่อน', 3000\);/);
+  assert.match(app, /const targetBeadSize = normalizeBeadSizeOption\(card\.getAttribute\('data-bead-size'\)\);/);
+  for (const size of ['mixed', '10', '6', '4']) {
+    assert.match(html, new RegExp(`data-bead-size="${size}"`));
+  }
+});
+
+for (const size of ['mixed', '10', '6', '4']) {
+  test(`a fresh Step 2 selection of ${size} becomes an explicit size choice`, () => {
+    const selected = transitionBraceletSizeMode({ beadSize: null, mixedPlacingSize: 6, selectedStones: [] }, size, catalog);
+    assert.equal(selected.ok, true);
+    assert.equal(selected.state.beadSize, size);
+  });
+}
 
 test('mixed selector is a compact three-button strip below the tab row', () => {
   const tabRowIndex = html.indexOf('id="catalogTypeFilter"');
@@ -53,13 +82,15 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
 test('Step 3 uses one shared full-size sticky preview with the canonical renderer for every size mode', () => {
   assert.match(html, /id="step3PreviewCard"[\s\S]*?id="braceletSvg"/);
   assert.equal((html.match(/id="braceletSvg"/g) || []).length, 1);
-  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: env\(safe-area-inset-top, 0px\);\s*z-index: 120;/);
-  assert.match(css, /\.app-container\.step3-preview-pinned \.app-header \{[\s\S]*?opacity: 0;/);
-  assert.match(app, /function syncStep3PreviewOverlay\(\)/);
-  assert.match(app, /State\.currentStep === 3 && previewTop <= 1/);
+  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: 0;\s*z-index: 120;/);
+  assert.match(css, /\.app-content \{[\s\S]*?padding: 0 16px var\(--step-content-bottom-clearance\) 16px;/);
+  assert.match(css, /#stepView3\.step-view\.active \{\s*height: auto;\s*min-height: 100%;/);
+  assert.doesNotMatch(css, /step3-preview-pinned/);
+  assert.doesNotMatch(app, /syncStep3PreviewOverlay|setupStep3PreviewOverlay/);
   assert.doesNotMatch(css, /is-compact-sticky|step3-preview-sentinel/);
-  assert.doesNotMatch(app, /setupStep3StickyPreview|is-compact-sticky|step3PreviewSentinel/);
+  assert.doesNotMatch(app, /setupStep3StickyPreview|is-compact-sticky|step3PreviewSentinel|scale\(/);
   assert.match(app, /renderBraceletCanvas\(resolvedLayout\)/);
+  assert.match(css, /\.app-header \{[\s\S]*?z-index: 100;/);
   for (const mode of ['4', '6', '10', 'mixed']) {
     assert.ok(['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(normalizeBraceletSizeMode(mode)));
   }

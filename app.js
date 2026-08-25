@@ -79,7 +79,7 @@ const DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE = Object.freeze({
 const State = {
   currentStep: 1,
   wristSize: 16.0,          // Default wrist size in cm
-  beadSize: '6',            // '4', '6', '10', or the mixed design mode
+  beadSize: null,           // Explicit customer choice: '4', '6', '10', or mixed
   mixedPlacingSize: 6,      // Current catalog filter/placement size in mixed mode
   mixedSizeFilter: '6',     // Mixed-mode catalog filter only; never a physical size when 'all'
   ownerName: '',            // Personalized bracelet owner name
@@ -126,8 +126,6 @@ let deferredLoginQaActivationAttempted = false;
 // 2. DOM Elements Selection
 // ==========================================
 const DOM = {
-  appContainer: document.querySelector('.app-container'),
-  appContent: document.querySelector('.app-content'),
   // Stepper Elements
   stepNodes: [
     document.getElementById('stepNode1'),
@@ -176,7 +174,6 @@ const DOM = {
   btnResetBracelet: document.getElementById('btnResetBracelet'),
   btnInspirationGallery: document.getElementById('btnInspirationGallery'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
-  step3PreviewCard: document.getElementById('step3PreviewCard'),
   mixedToggleBtns: document.querySelectorAll('.mixed-toggle-btn'),
   catalogTypeFilter: document.getElementById('catalogTypeFilter'),
   catalogTypeTabs: document.querySelectorAll('.catalog-type-tab'),
@@ -468,6 +465,10 @@ async function refreshCustomerSpacerCatalog() {
 
 function normalizeBeadSizeOption(value) {
   return normalizeBraceletSizeMode(value);
+}
+
+function hasExplicitBeadSizeSelection(value = State.beadSize) {
+  return ['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(String(value ?? ''));
 }
 
 function getCurrentBeadSizeMm() {
@@ -2484,8 +2485,10 @@ function loadPersistedState() {
     try {
       const parsed = JSON.parse(savedState);
       State.wristSize = parsed.wristSize || 16.0;
-      State.beadSize = normalizeBeadSizeOption(parsed.beadSize || '6');
-      State.mixedPlacingSize = normalizeMixedPlacingSize(parsed.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
+      State.beadSize = hasExplicitBeadSizeSelection(parsed.beadSize)
+        ? normalizeBeadSizeOption(parsed.beadSize)
+        : null;
+      State.mixedPlacingSize = normalizeMixedPlacingSize(parsed.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : (State.beadSize || '6'));
       State.mixedSizeFilter = normalizeMixedSizeFilter(parsed.mixedSizeFilter, String(State.mixedPlacingSize));
       State.ownerName = parsed.ownerName || '';
       State.lineUserId = typeof parsed.lineUserId === 'string' ? parsed.lineUserId : '';
@@ -2542,7 +2545,7 @@ function resetCustomizationSessionForFreshEntry({ preserveCurrentLineIdentity = 
   }
 
   State.wristSize = 16.0;
-  State.beadSize = '6';
+  State.beadSize = null;
   State.mixedPlacingSize = 6;
   State.mixedSizeFilter = '6';
   State.ownerName = currentOwnerName;
@@ -3380,7 +3383,6 @@ async function renderStepViews() {
   }
 
   configureFooterNavigation();
-  syncStep3PreviewOverlay();
 }
 
 // Navigate to step
@@ -3498,6 +3500,10 @@ function setupNavigationEvents() {
       if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
+      if (State.currentStep === 2 && !hasExplicitBeadSizeSelection()) {
+        showToast('กรุณาเลือกขนาดหินก่อน', 3000);
+        return;
+      }
       if (State.currentStep === 3) {
         ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
         const validationState = syncStep3NextValidationUI();
@@ -4085,7 +4091,8 @@ function adjustBeadsToNewCapacity() {
 
 function renderStep2() {
   DOM.beadSizeCards.forEach(c => {
-    const active = c.getAttribute('data-bead-size') === State.beadSize;
+    const active = hasExplicitBeadSizeSelection()
+      && c.getAttribute('data-bead-size') === State.beadSize;
     c.classList.toggle('active', active);
     c.setAttribute('aria-checked', active ? 'true' : 'false');
   });
@@ -5640,8 +5647,6 @@ function renderSpacerOptions() {
 // 8. Step 3: Interactive Canvas & Catalog
 // ==========================================
 function setupDesignerEvents() {
-  setupStep3PreviewOverlay();
-
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
     if (State.selectedStones.length > 0 || State.selectedCharmIds.length > 0) {
@@ -5683,31 +5688,6 @@ function setupDesignerEvents() {
   });
 
   setupStep3CategoryHintDismissEvents();
-}
-
-// The full-size Step 3 preview remains the only renderer. Once it reaches the
-// scrollport's top edge, hide the separate navigation layer so the preview can
-// occupy that space without introducing a second, compact preview state.
-function setupStep3PreviewOverlay() {
-  if (!DOM.appContent || DOM.appContent.dataset.step3PreviewOverlayReady === 'true') return;
-  DOM.appContent.dataset.step3PreviewOverlayReady = 'true';
-
-  let framePending = false;
-  DOM.appContent.addEventListener('scroll', () => {
-    if (framePending) return;
-    framePending = true;
-    window.requestAnimationFrame(() => {
-      framePending = false;
-      syncStep3PreviewOverlay();
-    });
-  }, { passive: true });
-}
-
-function syncStep3PreviewOverlay() {
-  if (!DOM.appContainer || !DOM.step3PreviewCard) return;
-  const previewTop = DOM.step3PreviewCard.getBoundingClientRect().top;
-  const isPinnedAtTop = State.currentStep === 3 && previewTop <= 1;
-  DOM.appContainer.classList.toggle('step3-preview-pinned', isPinnedAtTop);
 }
 
 function setupStep3CategoryHintDismissEvents() {
