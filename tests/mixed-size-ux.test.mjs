@@ -95,6 +95,7 @@ test('Step 3 uses one shared full-size sticky preview with the canonical rendere
   assert.match(css, /#stepView3\.step-view\.active \{\s*height: auto;\s*min-height: 100%;/);
   assert.match(css, /\.app-header \{[\s\S]*?z-index: 10;/);
   assert.match(css, /\.app-container\.step3-preview-covered \.app-header \{\s*pointer-events: none;/);
+  assert.match(css, /\.app-container\.step3-preview-covered #step3PreviewCard \{[\s\S]*?background-color: #FCFBFF;[\s\S]*?background-image: none;[\s\S]*?opacity: 1;[\s\S]*?border-radius: 0;/);
   assert.match(css, /#stepView3\.step-view \{[\s\S]*?animation: step3FadeIn[\s\S]*?transform: none;[\s\S]*?filter: none;[\s\S]*?isolation: auto;/);
   assert.match(css, /@keyframes step3FadeIn \{[\s\S]*?opacity: 0;[\s\S]*?opacity: 1;/);
   assert.doesNotMatch(css, /step3-preview-pinned/);

@@ -689,6 +689,16 @@ option {
   pointer-events: none;
 }
 
+/* At the sticky threshold the preview is the visual replacement for the
+   header stack. Keep its full existing dimensions, but paint the whole card
+   with the normal opaque cream surface all the way to the viewport edge. */
+.app-container.step3-preview-covered #step3PreviewCard {
+  background-color: #FCFBFF;
+  background-image: none;
+  opacity: 1;
+  border-radius: 0;
+}
+
 .header-top {
   display: flex;
   justify-content: space-between;
