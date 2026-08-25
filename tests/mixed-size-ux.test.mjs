@@ -30,6 +30,9 @@ test('Step 2 keeps four compact vertical cards in the requested mixed-to-4mm ord
   assert.match(css, /#stepView2 \.bead-size-hand-panel,[\s\S]*?display: flex;/);
   assert.match(html, /data-bead-size="mixed"[\s\S]*?src="\/assets\/hand\/hand_06\.png"/);
   assert.match(css, /#stepView2 \.bead-size-card-recommended \{[\s\S]*?background: var\(--color-white\)/);
+  assert.match(html, /bead-size-mixed-recommendation[\s\S]*?★/);
+  assert.match(css, /#stepView2 \.bead-size-card-mixed \{[\s\S]*?box-shadow:/);
+  assert.match(css, /#stepView2 \.bead-size-preview-mixed \{[\s\S]*?justify-content: flex-start;/);
 });
 
 test('mixed selector is a compact three-button strip below the tab row', () => {
@@ -50,13 +53,22 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
 test('Step 3 uses one shared full-size sticky preview with the canonical renderer for every size mode', () => {
   assert.match(html, /id="step3PreviewCard"[\s\S]*?id="braceletSvg"/);
   assert.equal((html.match(/id="braceletSvg"/g) || []).length, 1);
-  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: env\(safe-area-inset-top, 0px\);\s*z-index: 110;/);
+  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: env\(safe-area-inset-top, 0px\);\s*z-index: 120;/);
+  assert.match(css, /\.app-container\.step3-preview-pinned \.app-header \{[\s\S]*?opacity: 0;/);
+  assert.match(app, /function syncStep3PreviewOverlay\(\)/);
+  assert.match(app, /State\.currentStep === 3 && previewTop <= 1/);
   assert.doesNotMatch(css, /is-compact-sticky|step3-preview-sentinel/);
   assert.doesNotMatch(app, /setupStep3StickyPreview|is-compact-sticky|step3PreviewSentinel/);
   assert.match(app, /renderBraceletCanvas\(resolvedLayout\)/);
   for (const mode of ['4', '6', '10', 'mixed']) {
     assert.ok(['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(normalizeBraceletSizeMode(mode)));
   }
+});
+
+test('Step 3 uses a shorter mobile tab row and a tighter mixed strip gap', () => {
+  assert.match(css, /#stepView3 \.catalog-type-filter \{\s*min-height: 53px;/);
+  assert.match(css, /#stepView3 \.catalog-type-tab \{\s*gap: 2px;\s*min-height: 45px;/);
+  assert.match(css, /#stepView3 \.catalog-type-filter \+ \.mixed-size-selector-bar \{\s*margin-top: -5px;/);
 });
 
 test('full-size sticky preview does not reset catalog scroll on renderer updates', () => {

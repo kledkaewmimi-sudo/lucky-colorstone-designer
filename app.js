@@ -126,6 +126,8 @@ let deferredLoginQaActivationAttempted = false;
 // 2. DOM Elements Selection
 // ==========================================
 const DOM = {
+  appContainer: document.querySelector('.app-container'),
+  appContent: document.querySelector('.app-content'),
   // Stepper Elements
   stepNodes: [
     document.getElementById('stepNode1'),
@@ -174,6 +176,7 @@ const DOM = {
   btnResetBracelet: document.getElementById('btnResetBracelet'),
   btnInspirationGallery: document.getElementById('btnInspirationGallery'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
+  step3PreviewCard: document.getElementById('step3PreviewCard'),
   mixedToggleBtns: document.querySelectorAll('.mixed-toggle-btn'),
   catalogTypeFilter: document.getElementById('catalogTypeFilter'),
   catalogTypeTabs: document.querySelectorAll('.catalog-type-tab'),
@@ -3377,6 +3380,7 @@ async function renderStepViews() {
   }
 
   configureFooterNavigation();
+  syncStep3PreviewOverlay();
 }
 
 // Navigate to step
@@ -5636,6 +5640,8 @@ function renderSpacerOptions() {
 // 8. Step 3: Interactive Canvas & Catalog
 // ==========================================
 function setupDesignerEvents() {
+  setupStep3PreviewOverlay();
+
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
     if (State.selectedStones.length > 0 || State.selectedCharmIds.length > 0) {
@@ -5677,6 +5683,31 @@ function setupDesignerEvents() {
   });
 
   setupStep3CategoryHintDismissEvents();
+}
+
+// The full-size Step 3 preview remains the only renderer. Once it reaches the
+// scrollport's top edge, hide the separate navigation layer so the preview can
+// occupy that space without introducing a second, compact preview state.
+function setupStep3PreviewOverlay() {
+  if (!DOM.appContent || DOM.appContent.dataset.step3PreviewOverlayReady === 'true') return;
+  DOM.appContent.dataset.step3PreviewOverlayReady = 'true';
+
+  let framePending = false;
+  DOM.appContent.addEventListener('scroll', () => {
+    if (framePending) return;
+    framePending = true;
+    window.requestAnimationFrame(() => {
+      framePending = false;
+      syncStep3PreviewOverlay();
+    });
+  }, { passive: true });
+}
+
+function syncStep3PreviewOverlay() {
+  if (!DOM.appContainer || !DOM.step3PreviewCard) return;
+  const previewTop = DOM.step3PreviewCard.getBoundingClientRect().top;
+  const isPinnedAtTop = State.currentStep === 3 && previewTop <= 1;
+  DOM.appContainer.classList.toggle('step3-preview-pinned', isPinnedAtTop);
 }
 
 function setupStep3CategoryHintDismissEvents() {

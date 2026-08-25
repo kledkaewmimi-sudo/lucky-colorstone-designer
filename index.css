@@ -634,6 +634,14 @@ option {
   z-index: 100;
   padding: 12px 16px 8px 16px;
   box-shadow: var(--shadow-sm);
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+
+/* The single Step 3 preview takes over the top edge only while it is sticky. */
+.app-container.step3-preview-pinned .app-header {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
 }
 
 .header-top {
@@ -1913,8 +1921,9 @@ option {
 #stepView3 .canvas-card {
   position: sticky;
   top: env(safe-area-inset-top, 0px);
-  z-index: 110;
+  z-index: 120;
   isolation: isolate;
+  transition: box-shadow 180ms ease, border-radius 180ms ease;
 }
 
 .canvas-reset-control {
@@ -4084,6 +4093,69 @@ button.stone-card {
   gap: 8px;
 }
 
+/* Keep every Step 2 label on one shared text column; the mixed beads receive
+   enough real width to remain left of the label instead of spilling into it. */
+#stepView2 .bead-size-copy {
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+#stepView2 .bead-size-preview {
+  min-width: 52px;
+}
+
+#stepView2 .bead-size-preview-mixed {
+  justify-content: flex-start;
+  gap: 2px;
+  padding-top: 1px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-sm {
+  width: 11px;
+  height: 11px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-md {
+  width: 15px;
+  height: 15px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-lg {
+  width: 19px;
+  height: 19px;
+}
+
+#stepView2 .bead-size-card-mixed {
+  border-color: rgba(216, 169, 59, 0.38);
+  background: linear-gradient(135deg, #fffdf8, #fff 68%, #fbf6ea);
+  box-shadow: 0 8px 18px rgba(184, 145, 51, 0.11);
+}
+
+#stepView2 .bead-size-card-mixed.active {
+  border-color: rgba(181, 137, 36, 0.56);
+  box-shadow: 0 9px 20px rgba(184, 145, 51, 0.16);
+}
+
+#stepView2 .bead-size-mixed-recommendation {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+  padding: 2px 6px;
+  border: 1px solid rgba(216, 169, 59, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 252, 241, 0.92);
+  color: #a97817;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 7px rgba(154, 111, 22, 0.12);
+}
+
 #stepView2 .bead-size-hand-panel,
 #stepView2 .bead-size-support-banner,
 #stepView2 .bead-size-popular-badge,
@@ -4132,6 +4204,10 @@ button.stone-card {
   box-shadow: none;
   background: rgba(239, 233, 248, 0.72);
   gap: 7px;
+}
+
+#stepView3 .catalog-type-filter + .mixed-size-selector-bar {
+  margin-top: -5px;
 }
 
 /* The authored grid display must never override the semantic hidden state in fixed modes. */
@@ -4188,6 +4264,15 @@ button.stone-card {
     grid-template-columns: 17px minmax(0, 1fr) 70px;
     min-height: 64px;
     gap: 7px;
+  }
+
+  #stepView2 .bead-size-copy {
+    grid-template-columns: 48px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  #stepView2 .bead-size-preview {
+    min-width: 48px;
   }
 
   #stepView2 .bead-size-hand-panel,
@@ -4638,17 +4723,17 @@ html.callback-bootstrap-hold .app-container {
   }
 
   #stepView3 .catalog-type-filter {
-    min-height: 66px;
+    min-height: 53px;
     padding: 4px;
-    border-radius: 21px;
+    border-radius: 17px;
   }
 
   #stepView3 .catalog-type-tab {
-    gap: 3px;
-    min-height: 56px;
-    padding: 5px 6px 7px;
-    border-radius: 18px;
-    font-size: 14px;
+    gap: 2px;
+    min-height: 45px;
+    padding: 4px 6px 5px;
+    border-radius: 14px;
+    font-size: 13px;
   }
 
   #stepView3 .catalog-type-tab::after {
@@ -4657,13 +4742,13 @@ html.callback-bootstrap-hold .app-container {
   }
 
   #stepView3 .catalog-type-icon {
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
   }
 
   #stepView3 .charm-amulet-icon {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
   }
 
   #stepView3 .catalog-container {
