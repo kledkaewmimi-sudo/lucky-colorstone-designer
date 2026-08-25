@@ -32,6 +32,10 @@ Result: 25 tests passed, 0 failed. Existing Node module-type warnings only.
 
 No interactive browser is available in this session, so owner mobile verification remains required for rendered sticky spacing and tap comfort after deployment.
 
+## Deployed UAT static verification
+
+Read-only checks against `https://lucky-colorstone-uat.vercel.app` confirmed the deployed source has one bracelet SVG, the sticky and compact preview rules, the existing canonical renderer call, passive scroll scheduling, and the fixed-mode mixed-selector hidden rule.
+
 ## Status
 
 - STICKY PREVIEW IMPLEMENTED: YES
@@ -43,4 +47,6 @@ No interactive browser is available in this session, so owner mobile verificatio
 - NO SCROLL RESET ON ADD/REMOVE: YES
 - RECENT STEP 2/3 UI FIXES PRESERVED: YES
 - UAT STEP 4 BLOCK PRESERVED: YES
+- UAT BRANCH PUSHED: YES (`0122254`)
+- UAT DEPLOYED STATIC SOURCE: PASS
 - PRODUCTION UNTOUCHED: YES
