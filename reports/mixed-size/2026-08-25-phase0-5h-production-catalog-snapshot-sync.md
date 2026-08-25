@@ -64,4 +64,10 @@ No runtime production Supabase or production Render request was introduced. The 
 
 ## Deployment and live validation
 
-Populate after the `uat`-only push and the corresponding UAT deployment checks. Browser-driven UI validation could not be initialized in this execution environment; deployment validation therefore uses the affected public API routes plus the repository's UAT safety checks. No production service is in scope.
+Commit `bef6ac2` was pushed only to `origin/uat`. After the UAT Render deployment settled, both UAT public surfaces returned the expected record counts: 32 stones, 14 charms, eight spacers, and five settings fields.
+
+The live Vercel API responses at `https://lucky-colorstone-uat.vercel.app/api/*` were parsed and compared directly with the captured production snapshot. Stones, charms, spacers, and settings each matched exactly. Both direct Render and Vercel-routed mutation requests returned 403 for orders, analytics, and catalog/settings mutations.
+
+The live landing document still contains the visible UAT banner. Its deployed JavaScript contains the explicit UAT Step 4 block and the UAT guards for LIFF, analytics, Meta, order creation, and checkout/payment. The live document/JavaScript contains no production Render host, production Supabase host, production LINE SDK, or Meta SDK reference.
+
+Browser-driven clicking through Landing and Steps 1–3 could not be initialized because no browser was available in this execution environment. The affected live API data, deployed UAT safety guards, and Step 4 block were verified; no production service is in scope.
