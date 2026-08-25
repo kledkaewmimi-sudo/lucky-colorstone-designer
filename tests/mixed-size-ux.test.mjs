@@ -21,6 +21,17 @@ test('Step 2 renders the fixed 4/6/10 controls and the คละไซส option
   ['data-bead-size="4"', 'data-bead-size="6"', 'data-bead-size="10"', 'data-bead-size="mixed"', 'คละไซส'].forEach((token) => assert.ok(html.includes(token)));
 });
 
+test('customer-facing mixed-size labels exactly match the approved Thai copy', () => {
+  assert.match(html, /data-bead-size="mixed"[\s\S]*?aria-label="คละไซส"/);
+  assert.match(html, /<span class="bead-size-label">คละไซส<\/span>/);
+  assert.match(
+    html,
+    /data-size="all" aria-pressed="false">ทงหมด<\/button>[\s\S]*?data-size="4"[\s\S]*?data-size="6"[\s\S]*?data-size="10"/
+  );
+  assert.equal([...html.matchAll(/คละไซส/g)].length, 2);
+  assert.equal([...html.matchAll(/ทงหมด/g)].length, 1);
+});
+
 for (const size of ['4', '6', '10']) {
   test(`selecting mixed from fixed ${size} uses canonical mixed mode and matching initial placement size`, () => {
     const state = { beadSize: size, mixedPlacingSize: Number(size), selectedStones: [{ componentType: 'stone', stoneId: 'all', size: Number(size) }] };
