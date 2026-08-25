@@ -41,6 +41,20 @@ Result: 64 tests passed, 0 failed. Existing Node module-type warnings only.
 
 Browser-based visual click-through could not be performed because no in-app browser is available in this session. Static source checks and the focused suite verify the requested structure and behavior; owner visual confirmation remains required after the UAT deployment settles.
 
+## Deployed UAT static verification
+
+Read-only checks against `https://lucky-colorstone-uat.vercel.app` after the `uat` deployment confirmed:
+
+- mixed card contains the restored right-side `/assets/hand/hand_06.png` image;
+- four Step 2 wrist-image elements are present;
+- deployed CSS uses the vertical Step 2 layout and the balanced Step 3 proportional grid;
+- the mixed selector contains 4mm, 6mm, and 10mm only;
+- no all-sizes control or remaining-space markup is deployed;
+- the UAT environment banner remains present; and
+- deployed `app.js` contains no `lucky-colorstone-designer.onrender.com` target.
+
+The in-app browser is unavailable in this session, so a visual owner click-through remains the final confirmation of the rendered spacing and tap experience.
+
 ## Status
 
 - STEP 2 BUTTONS EQUALIZED: YES
@@ -54,3 +68,6 @@ Browser-based visual click-through could not be performed because no in-app brow
 - MIXED LOGIC PRESERVED: YES
 - UAT STEP 4 BLOCK PRESERVED: YES
 - PRODUCTION UNTOUCHED: YES
+- UAT BRANCH PUSHED: YES (`10ef52d`)
+- UAT DEPLOYED STATIC SOURCE: PASS
+- OWNER VISUAL CLICK-THROUGH: REQUIRED
