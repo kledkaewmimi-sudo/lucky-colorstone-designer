@@ -64,7 +64,25 @@ Use `https://lucky-colorstone-uat.vercel.app`. Do not attempt payment or order c
 
 ## Live UAT validation status
 
-Browser automation is unavailable in this environment. The manual script above is required for visual click-through acceptance. Static/API safety checks are recorded after the UAT-only deployment; they verify deployed code, catalog access, UAT blocks, and no production integration target.
+Commit `48420f9` was pushed only to `origin/uat`. Static/API checks confirmed:
+
+```text
+frontend response: 200
+mixed UI markup present: true
+transition trim module/import present: true
+transition trim integration present: true
+UAT Step 4 block present: true
+production Render backend reference: false
+GET /api/stones: 200
+GET /api/charms: 200
+GET /api/spacers: 200
+GET /api/settings: 200
+POST /api/orders: 403
+POST /api/stripe/checkout-session: 403
+POST /api/analytics/event: 403
+```
+
+No order, payment, analytics write, or production request was made. Browser automation is unavailable in this environment, so the manual script above is required for visual click-through acceptance.
 
 ## Production promotion readiness audit (no promotion performed)
 
