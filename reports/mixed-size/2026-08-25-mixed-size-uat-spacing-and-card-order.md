@@ -30,6 +30,19 @@ Result: 21 tests passed, 0 failed. Existing Node module-type warnings only.
 
 No interactive browser was available in this session. The deployed UAT source will be checked read-only after the `uat` deployment finishes; owner visual confirmation remains required for the final rendered spacing.
 
+## Deployed UAT static verification
+
+Read-only checks against `https://lucky-colorstone-uat.vercel.app` confirm the deployed source has:
+
+- the 34px mixed-size strip with `0 0 3px` outer margin;
+- the compact Step 2 card dimensions;
+- the visual order Mixed Size, 10mm, 6mm, 4mm;
+- all four right-side wrist-image elements;
+- exactly the three 4mm, 6mm, and 10mm controls, with no all-sizes control; and
+- the visible UAT environment banner.
+
+The browser connection remains unavailable, so owner visual confirmation is still needed for rendered spacing and tap comfort.
+
 ## Status
 
 - STEP 3 SPACING TIGHTENED: YES
@@ -38,4 +51,6 @@ No interactive browser was available in this session. The deployed UAT source wi
 - RIGHT-SIDE WRIST IMAGES PRESERVED: YES
 - MIXED LOGIC PRESERVED: YES
 - UAT STEP 4 BLOCK PRESERVED: YES
+- UAT BRANCH PUSHED: YES (`54fee7e`)
+- UAT DEPLOYED STATIC SOURCE: PASS
 - PRODUCTION UNTOUCHED: YES
