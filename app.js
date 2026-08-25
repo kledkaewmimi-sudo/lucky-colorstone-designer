@@ -5,6 +5,7 @@ import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGu
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
 import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
+import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
@@ -3991,6 +3992,21 @@ function initBeadSizeOptions() {
       if (!transition.ok) {
         showToast('Some selected stones do not support this bead size.');
         return;
+      }
+      if (convertingFromMixed) {
+        const trimResult = trimTrailingOverflowAfterFixedConversion({
+          state: State,
+          targetLengthMm: getBraceletLengthMm(),
+          getComponentLengthMm: getLoopItemLengthMm
+        });
+        Object.assign(State, trimResult.state);
+        if (trimResult.removedComponents.length > 0) {
+          const removedIds = trimResult.removedComponents
+            .map((component) => component.uniqueId || component.stoneId || component.spacerId || component.charmId || 'component')
+            .join(', ');
+          console.info('[mixed-to-fixed-trim]', { targetBeadSize, removedComponents: trimResult.removedComponents });
+          showToast(`Removed trailing components to fit ${targetBeadSize}mm: ${removedIds}`);
+        }
       }
       trackAnalyticsEvent('bead_size_selected', {
         bead_size: targetBeadSize
