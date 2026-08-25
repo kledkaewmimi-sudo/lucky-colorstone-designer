@@ -47,13 +47,14 @@ Coverage confirms:
 
 ## Live static check
 
-Read-only request to `https://lucky-colorstone-uat.vercel.app/` returned the deployed document with:
+The UAT-only commits `9cb4af7` (label verification) and its report follow-up were pushed to `origin/uat`. A final read-only request to `https://lucky-colorstone-uat.vercel.app/` returned the deployed document with:
 
 ```text
 คละไซส occurrences: 2
 ทงหมด occurrences: 1
 mixed card present: true
 all-size filter button present: true
+production Render backend reference present: false
 ```
 
 An interactive browser was unavailable in this environment. Therefore this report deliberately records only static deployment confirmation; the owner click-through is the remaining interactive validation.
