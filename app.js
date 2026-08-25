@@ -170,8 +170,6 @@ const DOM = {
   braceletSvg: document.getElementById('braceletSvg'),
   canvasCenterValue: document.getElementById('canvasCenterValue'),
   canvasCenterSub: document.getElementById('canvasCenterSub'),
-  step3PreviewCard: document.getElementById('step3PreviewCard'),
-  step3PreviewSentinel: document.getElementById('step3PreviewSentinel'),
   btnBackToSteps: document.getElementById('btnBackToSteps'),
   btnResetBracelet: document.getElementById('btnResetBracelet'),
   btnInspirationGallery: document.getElementById('btnInspirationGallery'),
@@ -5730,38 +5728,6 @@ function setupStep3CategoryHintDismissEvents() {
   step3View.dataset.categoryHintEventsReady = 'true';
 }
 
-let step3PreviewScrollFrame = null;
-
-function syncStep3StickyPreviewState() {
-  const previewCard = DOM.step3PreviewCard;
-  const sentinel = DOM.step3PreviewSentinel;
-  if (!previewCard || !sentinel) return;
-
-  const shouldCompact = State.currentStep === 3 && sentinel.getBoundingClientRect().top < 0;
-  previewCard.classList.toggle('is-compact-sticky', shouldCompact);
-}
-
-function scheduleStep3StickyPreviewState() {
-  if (step3PreviewScrollFrame !== null) return;
-  step3PreviewScrollFrame = window.requestAnimationFrame(() => {
-    step3PreviewScrollFrame = null;
-    syncStep3StickyPreviewState();
-  });
-}
-
-function setupStep3StickyPreview() {
-  const previewCard = DOM.step3PreviewCard;
-  if (!previewCard) return;
-
-  if (previewCard.dataset.stickyPreviewEventsReady !== 'true') {
-    window.addEventListener('scroll', scheduleStep3StickyPreviewState, { passive: true });
-    window.addEventListener('resize', scheduleStep3StickyPreviewState, { passive: true });
-    previewCard.dataset.stickyPreviewEventsReady = 'true';
-  }
-
-  scheduleStep3StickyPreviewState();
-}
-
 function syncCatalogSectionFilter() {
   const activeSection = ['stones', 'charms', 'spacer'].includes(State.activeCatalogSection)
     ? State.activeCatalogSection
@@ -6958,7 +6924,6 @@ function createSvgDefs() {
 
 // Render step 3 workspace elements
 function renderStep3() {
-  setupStep3StickyPreview();
   ensureCurrentDesignMatchesBeadSize();
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);

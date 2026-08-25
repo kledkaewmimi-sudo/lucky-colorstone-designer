@@ -1909,92 +1909,12 @@ option {
   position: relative;
 }
 
-/* Shared Step 3 live preview: sticky for every fixed and mixed size mode. */
-#stepView3 .step3-preview-sentinel {
-  height: 1px;
-  margin-top: -1px;
-  pointer-events: none;
-}
-
+/* Shared Step 3 live preview: one full-size card for every fixed and mixed mode. */
 #stepView3 .canvas-card {
   position: sticky;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-  z-index: 20;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 110;
   isolation: isolate;
-  transition: padding 160ms ease, border-radius 160ms ease, box-shadow 160ms ease;
-}
-
-#stepView3 .canvas-card.is-compact-sticky {
-  padding: 6px 8px;
-  border-radius: 14px;
-  box-shadow: 0 7px 16px rgba(98, 80, 145, 0.14);
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-stats-row {
-  margin-top: 0;
-  gap: 8px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-stat-label {
-  font-size: 8px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-stat-val {
-  font-size: 12px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-info-row {
-  min-height: 18px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .helper-tooltip,
-#stepView3 .canvas-card.is-compact-sticky .inspiration-trigger-row {
-  display: none;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-container {
-  width: min(160px, 44vw);
-  height: min(160px, 44vw);
-  margin: 2px 0;
-}
-
-#stepView3 .canvas-card.is-compact-sticky #braceletSvg {
-  width: 100%;
-  height: 100%;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-center-info {
-  width: 66px;
-  height: 66px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .center-title,
-#stepView3 .canvas-card.is-compact-sticky .center-subvalue {
-  font-size: 8px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .center-value {
-  font-size: 13px;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-reset-control {
-  right: 7px;
-  bottom: 7px;
-  min-height: 30px;
-  padding: 5px 7px;
-  font-size: 0;
-}
-
-#stepView3 .canvas-card.is-compact-sticky .canvas-reset-control svg {
-  width: 14px;
-  height: 14px;
-}
-
-@media (max-width: 360px) {
-  #stepView3 .canvas-card.is-compact-sticky .canvas-container {
-    width: min(146px, 43vw);
-    height: min(146px, 43vw);
-  }
 }
 
 .canvas-reset-control {

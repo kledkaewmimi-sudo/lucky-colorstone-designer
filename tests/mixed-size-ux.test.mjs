@@ -47,22 +47,21 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
   assert.match(css, /#stepView3 \.mixed-size-selector-bar\[hidden\] \{\s*display: none !important;/);
 });
 
-test('Step 3 uses one shared compact sticky preview with the canonical renderer for every size mode', () => {
-  assert.match(html, /id="step3PreviewSentinel"[\s\S]*?id="step3PreviewCard"[\s\S]*?id="braceletSvg"/);
+test('Step 3 uses one shared full-size sticky preview with the canonical renderer for every size mode', () => {
+  assert.match(html, /id="step3PreviewCard"[\s\S]*?id="braceletSvg"/);
   assert.equal((html.match(/id="braceletSvg"/g) || []).length, 1);
-  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;[\s\S]*?z-index: 20;/);
-  assert.match(css, /#stepView3 \.canvas-card\.is-compact-sticky \{[\s\S]*?padding: 6px 8px/);
-  assert.match(app, /function setupStep3StickyPreview\(\)/);
-  assert.match(app, /window\.addEventListener\('scroll', scheduleStep3StickyPreviewState, \{ passive: true \}\)/);
+  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;\s*top: env\(safe-area-inset-top, 0px\);\s*z-index: 110;/);
+  assert.doesNotMatch(css, /is-compact-sticky|step3-preview-sentinel/);
+  assert.doesNotMatch(app, /setupStep3StickyPreview|is-compact-sticky|step3PreviewSentinel/);
   assert.match(app, /renderBraceletCanvas\(resolvedLayout\)/);
   for (const mode of ['4', '6', '10', 'mixed']) {
     assert.ok(['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(normalizeBraceletSizeMode(mode)));
   }
 });
 
-test('sticky preview state is presentation-only and does not reset catalog scroll on renderer updates', () => {
-  assert.doesNotMatch(app, /function setupStep3StickyPreview[\s\S]*?scrollTo\(/);
-  assert.match(app, /function renderStep3\(\) \{\s*setupStep3StickyPreview\(\);[\s\S]*?renderBraceletCanvas\(resolvedLayout\)/);
+test('full-size sticky preview does not reset catalog scroll on renderer updates', () => {
+  assert.doesNotMatch(app, /scrollTo\(/);
+  assert.match(app, /function renderStep3\(\) \{[\s\S]*?renderBraceletCanvas\(resolvedLayout\)/);
 });
 
 for (const size of ['4', '6', '10']) {
