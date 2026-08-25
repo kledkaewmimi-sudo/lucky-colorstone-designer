@@ -3,6 +3,7 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
+import { createBraceletGeometry, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
@@ -4392,11 +4393,15 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
   const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
   const anchoredCharmFootprintMm = loopComponents
     .filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType))
-    .reduce((sum, component) => sum + (component.footprintMm || component.sizeMm || 0), 0);
+    .reduce((sum, component) => sum + getComponentPhysicalLengthMm(component), 0);
   const sequencedLengthMm = loopComponents
     .filter((component) => component.type !== 'charm' || isSlotPlaceableCharmType(component.charmType))
-    .reduce((sum, component) => sum + component.sizeMm, 0);
-  const totalUsedLengthMm = anchoredCharmFootprintMm + sequencedLengthMm;
+    .reduce((sum, component) => sum + getComponentPhysicalLengthMm(component), 0);
+  const geometry = createBraceletGeometry({
+    components: loopComponents.filter((component) => component.type !== 'empty'),
+    targetLengthMm: braceletConfig.braceletLengthMm
+  });
+  const totalUsedLengthMm = geometry.usedLengthMm;
   const braceletLengthMm = braceletConfig.braceletLengthMm;
   const usableBeadLengthMm = Math.max(0, braceletLengthMm - anchoredCharmFootprintMm);
   const remainingLengthMm = braceletLengthMm - totalUsedLengthMm;
@@ -4409,6 +4414,9 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
     charmFootprintMm: anchoredCharmFootprintMm,
     stoneLengthMm: sequencedLengthMm,
     totalUsedLengthMm,
+    differenceMm: geometry.differenceMm,
+    fitStatus: geometry.fitStatus,
+    isWithinTolerance: geometry.isWithinTolerance,
     usableBeadLengthMm,
     remainingLengthMm,
     uniformCapacity,
@@ -6385,6 +6393,9 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
         charmFootprintMm: capacityMetrics.charmFootprintMm,
         stoneLengthMm: capacityMetrics.stoneLengthMm,
         totalUsedLengthMm: capacityMetrics.totalUsedLengthMm,
+        differenceMm: capacityMetrics.differenceMm,
+        fitStatus: capacityMetrics.fitStatus,
+        isWithinTolerance: capacityMetrics.isWithinTolerance,
         usableBeadLengthMm: capacityMetrics.usableBeadLengthMm,
         uniformCapacity: capacityMetrics.uniformCapacity,
         sumPlacedDiameter,
@@ -6429,6 +6440,9 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       charmFootprintMm: capacityMetrics.charmFootprintMm,
       stoneLengthMm: capacityMetrics.stoneLengthMm,
       totalUsedLengthMm: capacityMetrics.totalUsedLengthMm,
+      differenceMm: capacityMetrics.differenceMm,
+      fitStatus: capacityMetrics.fitStatus,
+      isWithinTolerance: capacityMetrics.isWithinTolerance,
       usableBeadLengthMm: capacityMetrics.usableBeadLengthMm,
       uniformCapacity: capacityMetrics.uniformCapacity,
       sumPlacedDiameter,
