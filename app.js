@@ -5732,6 +5732,7 @@ function syncStep3StickyLayer() {
 let step3StickyDebugOverlay = null;
 let step3StickyDebugOutput = null;
 let step3StickyDebugFramePending = false;
+let step3StickyDebugSafeAreaProbe = null;
 
 function setupStep3StickyDebugOverlay() {
   if (!STICKY_DEBUG_ENABLED || step3StickyDebugOverlay) return;
@@ -5748,6 +5749,10 @@ function setupStep3StickyDebugOverlay() {
   `;
   document.body.appendChild(step3StickyDebugOverlay);
   step3StickyDebugOutput = step3StickyDebugOverlay.querySelector('.step3-sticky-debug-output');
+  step3StickyDebugSafeAreaProbe = document.createElement('div');
+  step3StickyDebugSafeAreaProbe.setAttribute('aria-hidden', 'true');
+  step3StickyDebugSafeAreaProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);';
+  document.body.appendChild(step3StickyDebugSafeAreaProbe);
 
   step3StickyDebugOverlay.querySelector('.step3-sticky-debug-copy').addEventListener('click', async () => {
     if (!step3StickyDebugOutput) return;
@@ -5761,6 +5766,8 @@ function setupStep3StickyDebugOverlay() {
   const schedule = () => scheduleStep3StickyDebugUpdate();
   DOM.appContent?.addEventListener('scroll', schedule, { passive: true });
   window.addEventListener('resize', schedule, { passive: true });
+  window.visualViewport?.addEventListener('resize', schedule, { passive: true });
+  window.visualViewport?.addEventListener('scroll', schedule, { passive: true });
   const step3View = document.getElementById('stepView3');
   if (step3View) {
     step3View.addEventListener('transitionend', schedule, { passive: true });
@@ -5788,38 +5795,110 @@ function renderStep3StickyDebugOverlay() {
   if (!isStep3 || !DOM.appContent || !DOM.step3PreviewCard) return;
 
   const header = document.querySelector('.app-header');
-  const describe = (element, label) => {
-    if (!element) return `${label}: MISSING`;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return [
-      `${label}:`,
-      `  position=${style.position} top=${style.top} z=${style.zIndex}`,
-      `  transform=${style.transform} opacity=${style.opacity}`,
-      `  isolation=${style.isolation} pointer=${style.pointerEvents}`,
-      `  rect.top=${rect.top.toFixed(1)} rect.bottom=${rect.bottom.toFixed(1)}`
-    ].join('\n');
-  };
+  const step3View = document.getElementById('stepView3');
+  const workspace = step3View?.querySelector('.designer-workspace');
   const scrollStyle = window.getComputedStyle(DOM.appContent);
   const scrollRect = DOM.appContent.getBoundingClientRect();
+  const previewRect = DOM.step3PreviewCard.getBoundingClientRect();
+  const visualViewport = window.visualViewport;
   const describeElement = (element) => {
     if (!element) return 'NONE';
     const className = typeof element.className === 'string' && element.className ? `.${element.className.trim().replace(/\s+/g, '.')}` : '';
     return `${element.tagName}${element.id ? `#${element.id}` : ''}${className}`;
   };
-  const hits = [5, 20, 50, 100]
+  const hits = [5, 20, 50, 100, 110, 130]
     .map((y) => `hit y=${y}: ${describeElement(document.elementFromPoint(Math.floor(window.innerWidth / 2), y))}`)
     .join('\n');
+  const viewport = [
+    `VIEWPORT: inner=${window.innerWidth}x${window.innerHeight} client=${document.documentElement.clientWidth}x${document.documentElement.clientHeight} window.scrollY=${window.scrollY.toFixed(1)}`,
+    visualViewport
+      ? `VISUAL VIEWPORT: ${visualViewport.width.toFixed(1)}x${visualViewport.height.toFixed(1)} offsetTop=${visualViewport.offsetTop.toFixed(1)} pageTop=${visualViewport.pageTop.toFixed(1)} scale=${visualViewport.scale}`
+      : 'VISUAL VIEWPORT: UNSUPPORTED'
+  ].join('\n');
+  const stickyDifference = previewRect.top - scrollRect.top;
 
   step3StickyDebugOutput.textContent = [
     'debugSticky=1 | reads only',
-    describe(header, 'HEADER'),
-    describe(DOM.step3PreviewCard, 'PREVIEW'),
-    `SCROLL: top=${DOM.appContent.scrollTop.toFixed(1)} overflow-y=${scrollStyle.overflowY} rect.top=${scrollRect.top.toFixed(1)}`,
+    viewport,
+    getStep3StickySafeAreaAndOffsetDebug(scrollStyle),
+    describeStep3StickyRuntimeElement(DOM.appContainer, 'APP CONTAINER'),
+    describeStep3StickyRuntimeElement(DOM.appContent, 'APP CONTENT'),
+    describeStep3StickyRuntimeElement(header, 'HEADER'),
+    describeStep3StickyRuntimeElement(step3View, 'STEP 3'),
+    describeStep3StickyRuntimeElement(workspace, 'WORKSPACE'),
+    describeStep3StickyRuntimeElement(DOM.step3PreviewCard, 'PREVIEW'),
+    `STICKY: appContent.scrollTop=${DOM.appContent.scrollTop.toFixed(1)} preview.rect.top=${previewRect.top.toFixed(1)} computed.top=${window.getComputedStyle(DOM.step3PreviewCard).top} expected.top=0 difference(preview-appContent)=${stickyDifference.toFixed(1)} geometry-sticky=${previewRect.top <= scrollRect.top + 1}`,
     hits,
+    getStep3StickyRuntimeClassAudit(header, step3View),
+    `ACTIVE MOBILE RULES:\n${getActiveStep3StickyMobileRules()}`,
     `HEADER ANCESTORS: ${getStackingContextAncestry(header)}`,
     `PREVIEW ANCESTORS: ${getStackingContextAncestry(DOM.step3PreviewCard)}`
   ].join('\n');
+}
+
+function describeStep3StickyRuntimeElement(element, label) {
+  if (!element) return `${label}: MISSING`;
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  return [
+    `${label}:`,
+    `  position=${style.position} top=${style.top} margin-top=${style.marginTop} padding-top=${style.paddingTop}`,
+    `  transform=${style.transform} z=${style.zIndex} overflow=${style.overflow}/${style.overflowY}/${style.overflowX}`,
+    `  opacity=${style.opacity} isolation=${style.isolation} pointer=${style.pointerEvents}`,
+    `  rect.top=${rect.top.toFixed(1)} rect.bottom=${rect.bottom.toFixed(1)} offsetTop=${element.offsetTop}`
+  ].join('\n');
+}
+
+function getStep3StickySafeAreaAndOffsetDebug(contentStyle) {
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const safeProbeStyle = step3StickyDebugSafeAreaProbe ? window.getComputedStyle(step3StickyDebugSafeAreaProbe) : null;
+  const customOffsets = ['--mobile-safe-bottom', '--sticky-footer-height', '--step-content-bottom-clearance']
+    .map((name) => `${name}=${rootStyle.getPropertyValue(name).trim() || 'UNSET'}`)
+    .join(' ');
+  const appRect = DOM.appContainer?.getBoundingClientRect();
+  return [
+    `SAFE AREA: top=${safeProbeStyle?.paddingTop || 'UNAVAILABLE'} bottom=${safeProbeStyle?.paddingBottom || 'UNAVAILABLE'} ${customOffsets}`,
+    `APP OFFSET: app.rect.top=${appRect ? appRect.top.toFixed(1) : 'MISSING'} content.padding-top=${contentStyle.paddingTop} content.margin-top=${contentStyle.marginTop} content.scroll-padding-top=${contentStyle.scrollPaddingTop}`
+  ].join('\n');
+}
+
+function getStep3StickyRuntimeClassAudit(header, step3View) {
+  const entries = [
+    ['BODY', document.body],
+    ['APP CONTAINER', DOM.appContainer],
+    ['APP CONTENT', DOM.appContent],
+    ['STEP 3', step3View],
+    ['PREVIEW', DOM.step3PreviewCard]
+  ];
+  return `RUNTIME CLASSES/STYLES:\n${entries.map(([label, element]) => `${label}: class=${element?.className || 'NONE'} inline=${element?.getAttribute('style') || 'NONE'}`).join('\n')}`;
+}
+
+function getActiveStep3StickyMobileRules() {
+  const targets = ['.app-content', '.app-header', '#stepView3', '.designer-workspace', '.canvas-card', '#step3PreviewCard'];
+  const properties = ['position', 'top', 'margin-top', 'padding-top', 'height', 'min-height', 'transform', 'overflow', 'overflow-y', 'overflow-x', 'z-index'];
+  const matches = [];
+  const collect = (rules, mediaText = '') => {
+    Array.from(rules || []).forEach((rule) => {
+      if (rule.type === CSSRule.MEDIA_RULE) {
+        if (window.matchMedia(rule.conditionText).matches) collect(rule.cssRules, rule.conditionText);
+        return;
+      }
+      if (!mediaText || rule.type !== CSSRule.STYLE_RULE || !targets.some((target) => rule.selectorText?.includes(target))) return;
+      const declarations = properties
+        .filter((property) => rule.style.getPropertyValue(property))
+        .map((property) => `${property}=${rule.style.getPropertyValue(property).trim()}`)
+        .join(', ');
+      if (declarations) matches.push(`${mediaText} | ${rule.selectorText} | ${declarations}`);
+    });
+  };
+  Array.from(document.styleSheets).forEach((sheet) => {
+    try {
+      collect(sheet.cssRules);
+    } catch {
+      // Cross-origin stylesheets (for example font imports) do not expose cssRules.
+    }
+  });
+  return matches.length > 0 ? matches.join('\n') : 'NONE';
 }
 
 function getStackingContextAncestry(element) {

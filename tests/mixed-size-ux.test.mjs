@@ -111,10 +111,17 @@ test('Step 3 uses one shared full-size sticky preview with the canonical rendere
   }
 });
 
-test('Step 3 runtime layer diagnostics are query-gated to UAT and read layout only', () => {
+test('Step 3 runtime layer diagnostics are query-gated to UAT and capture actual-mobile offsets read-only', () => {
   assert.match(app, /const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams\.get\('debugSticky'\) === '1';/);
   assert.match(app, /function setupStep3StickyDebugOverlay\(\) \{\s*if \(!STICKY_DEBUG_ENABLED \|\| step3StickyDebugOverlay\) return;/);
   assert.match(app, /document\.elementFromPoint\(Math\.floor\(window\.innerWidth \/ 2\), y\)/);
+  assert.match(app, /const hits = \[5, 20, 50, 100, 110, 130\]/);
+  assert.match(app, /window\.visualViewport\?\.addEventListener\('resize', schedule/);
+  assert.match(app, /padding-top:env\(safe-area-inset-top\)/);
+  assert.match(app, /function getActiveStep3StickyMobileRules\(\)/);
+  assert.match(app, /window\.matchMedia\(rule\.conditionText\)\.matches/);
+  assert.match(app, /function getStep3StickyRuntimeClassAudit\(header, step3View\)/);
+  assert.match(app, /difference\(preview-appContent\)=\$\{stickyDifference\.toFixed\(1\)\}/);
   assert.match(app, /getStackingContextAncestry\(header\)/);
   assert.match(app, /getStackingContextAncestry\(DOM\.step3PreviewCard\)/);
   assert.match(app, /window\.requestAnimationFrame\(\(\) => \{/);
