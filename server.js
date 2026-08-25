@@ -5,6 +5,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
 const { assertSafeUatEnvironment, isUatReadOnlyApiRequest } = require('./uat-backend-guard.js');
+const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -1044,11 +1045,6 @@ function getStripeWebhookSecret() {
   return getEnvValue("STRIPE_WEBHOOK_SECRET");
 }
 
-function getStoneSellingPrice(stone, size) {
-  const price = Number(stone?.[`p${Number(size)}`]);
-  return Number.isFinite(price) && price >= 0 ? price : null;
-}
-
 function getCatalogSellingPrice(item) {
   const price = Number(item?.pricing?.base ?? item?.price);
   return Number.isFinite(price) && price >= 0 ? price : null;
@@ -1069,9 +1065,9 @@ async function buildAuthoritativeStripeOrder(clientOrder = {}) {
     let unitPrice;
     let size = null;
     if (type === 'stone') {
-      size = Number(component.size || component.sizeMm || clientOrder.beadSize);
-      if (!Array.isArray(item.sizes) || !item.sizes.map(Number).includes(size)) throw new Error("The selected stone size is unavailable.");
-      unitPrice = getStoneSellingPrice(item, size);
+      const variant = getAuthoritativeStoneVariant(component, item);
+      size = variant.size;
+      unitPrice = variant.unitPrice;
     } else {
       unitPrice = getCatalogSellingPrice(item);
     }

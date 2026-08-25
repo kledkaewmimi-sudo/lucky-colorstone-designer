@@ -52,3 +52,15 @@ export function createBraceletGeometry({ components = [], targetLengthMm = 0, to
     isWithinTolerance: fitStatus === 'within_tolerance'
   };
 }
+
+export function getCheckoutFitEligibility(geometry = {}) {
+  const fitStatus = geometry.fitStatus || getFitStatus(geometry.differenceMm);
+  if (fitStatus === 'within_tolerance') {
+    return { eligible: true, reason: null, fitStatus };
+  }
+  return {
+    eligible: false,
+    reason: fitStatus === 'overflow' ? 'Bracelet exceeds the 1.0mm fit tolerance.' : 'Bracelet is below the 1.0mm fit tolerance.',
+    fitStatus
+  };
+}

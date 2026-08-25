@@ -3,7 +3,8 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
+import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
+import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
@@ -3243,6 +3244,11 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
   };
 }
 
+function getCurrentCheckoutFitEligibility() {
+  const summary = createCurrentBraceletResolvedLayout().summary;
+  return getCheckoutFitEligibility(summary);
+}
+
 function ensureStep3WarningElement() {
   let warningEl = document.getElementById('step3NextWarning');
   if (warningEl) return warningEl;
@@ -3380,6 +3386,11 @@ async function goToStep(step) {
     return false;
   }
   if (step === 4) {
+    const fitEligibility = getCurrentCheckoutFitEligibility();
+    if (!fitEligibility.eligible) {
+      showToast(fitEligibility.reason);
+      return false;
+    }
     const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: State.currentStep === 3 });
     if (!canEnterStep4) return false;
   }
@@ -5142,7 +5153,7 @@ function buildCheckoutSummary() {
   const selectedStoneItems = getSelectedStoneItems();
   const charmData = buildSelectedCharmOrderData();
   const spacerData = buildSelectedSpacerOrderData();
-  const aggregatedStones = {};
+  let aggregatedStones = {};
   const uniqueStoneIds = new Set();
 
   selectedStoneItems.forEach((placedBead) => {
@@ -5173,6 +5184,10 @@ function buildCheckoutSummary() {
     aggregatedStones[key].count += 1;
     aggregatedStones[key].totalPrice += price;
   });
+
+  // Canonical variant aggregation keeps same-stone 4/6/10 components distinct.
+  aggregatedStones = aggregateStoneVariants(selectedStoneItems, STONES, getStonePriceForSize);
+  const stoneVariants = createStoneVariantPayload(aggregatedStones);
 
   const aggregatedSpacers = spacerData.spacers.reduce((spacerMap, spacer) => {
     const key = `${spacer.spacerId}_${spacer.effectiveLengthMm}`;
@@ -5290,6 +5305,7 @@ function buildCheckoutSummary() {
   return applyEffectiveDiscountToCheckoutSummary({
     selectedStoneItems,
     aggregatedStones,
+    stoneVariants,
     aggregatedSpacers,
     uniqueStoneIds,
     itemizedBilling: [
@@ -7570,6 +7586,7 @@ function buildCurrentOrderPayload(overrides = {}) {
         size: stone.size
       };
     }),
+    stoneVariants: createStoneVariantPayload(pricing.aggregatedStones),
     subtotal: pricing.subtotal,
     discountPercent: pricing.discountPercent,
     discountAmount: pricing.discountAmount,
@@ -7735,6 +7752,12 @@ async function handleStripeCheckout() {
   }
 
   ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
+
+  const fitEligibility = getCurrentCheckoutFitEligibility();
+  if (!fitEligibility.eligible) {
+    showToast(fitEligibility.reason);
+    return;
+  }
 
   if (getSelectedStoneItems().length === 0) {
     showToast("Bracelet is empty!");
