@@ -48,4 +48,8 @@ No mixed geometry, overflow trimming, renderer-layout change, checkout, order, p
 
 ## Deployment and live validation
 
-Populate after the UAT-only push and deployment check.
+Commit `db5fb5c` was pushed only to `origin/uat`.
+
+Read-only checks against `https://lucky-colorstone-uat.vercel.app` confirmed that deployed HTML contains the `คละไซส` Step 2 card and the `ทงหมด`/4mm/6mm/10mm filter controls. The deployed JavaScript contains the mixed filter/explicit placement guard and still contains the UAT Step 4 block. The UAT catalog endpoint returned 32 stones, and the deployed JavaScript contains no production Render host reference.
+
+Interactive clicks through Step 2 and Step 3 could not be run because no browser surface is available in this execution environment. Therefore the required deployed click-through verification remains outstanding; no claim is made that the live interaction check passed.
