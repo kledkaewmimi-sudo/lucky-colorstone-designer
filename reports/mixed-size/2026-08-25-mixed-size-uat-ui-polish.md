@@ -41,7 +41,24 @@ Focused UI assertions cover equal Step 2 card layout, matching 10mm base backgro
 
 ## Live verification status
 
-Browser automation is unavailable in this environment. After the UAT-only push, static deployed-source checks will verify the compact markup/CSS/logic and existing UAT safety markers. Owner visual click-through remains the final confirmation of tap comfort and exact mobile appearance.
+Commit `3d41d71` was pushed only to `origin/uat`. Read-only deployed-source checks confirmed:
+
+```text
+frontend response: 200
+Step 2 equal-card grid rule present: true
+Step 2 equal height rule present: true
+10mm base background matches standard card family: true
+mixed selector appears after tab row: true
+mixed selector size values: 4,6,10
+mixed selector button count: 3
+browse-all button present: false
+remaining-space selector markup present: false
+cross-tab mixed selector visibility rule present: true
+UAT Step 4 block present: true
+production Render backend reference: false
+```
+
+Browser automation is unavailable in this environment. Owner visual click-through remains the final confirmation of tap comfort and exact mobile appearance.
 
 ## Required results
 
