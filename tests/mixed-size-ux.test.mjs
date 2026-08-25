@@ -14,6 +14,12 @@ const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const css = await readFile(new URL('../index.css', import.meta.url), 'utf8');
 const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 const mixedLabel = String.fromCodePoint(0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a, 0x0e4c);
+const mixedDescription = String.fromCodePoint(0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34);
+const malformedMixedDescriptions = [
+  String.fromCodePoint(0x0e2a, 0x0e19, 0x0e01, 0x0020, 0x0e21, 0x0e21, 0x0e15),
+  String.fromCodePoint(0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e21, 0x0e15),
+  String.fromCodePoint(0x0e2a, 0x0e19, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34)
+];
 const allSizesLabel = String.fromCodePoint(0x0e17, 0x0e31, 0x0e49, 0x0e07, 0x0e2b, 0x0e21, 0x0e14);
 const catalog = [
   { id: 'four', sizes: [4] },
@@ -33,7 +39,9 @@ test('Step 2 keeps four compact vertical cards in the requested mixed-to-4mm ord
   assert.match(html, /bead-size-mixed-recommendation[\s\S]*?★/);
   assert.match(css, /#stepView2 \.bead-size-card-mixed \{[\s\S]*?box-shadow:/);
   assert.match(css, /#stepView2 \.bead-size-preview-mixed \{[\s\S]*?justify-content: flex-start;/);
-  assert.match(html, /data-bead-size="mixed"[\s\S]*?<h4>สนก มมต<\/h4>/);
+  assert.match(html, new RegExp(`data-bead-size="mixed"[\\s\\S]*?<h4>${mixedDescription}<\\/h4>`, 'u'));
+  assert.deepEqual([...mixedDescription].map((char) => char.codePointAt(0)), [0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34]);
+  malformedMixedDescriptions.forEach((value) => assert.doesNotMatch(html, new RegExp(`<h4>${value}<\\/h4>`, 'u')));
 });
 
 test('fresh Step 2 has no default selection and keeps an explicit selection on return', () => {
