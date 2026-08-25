@@ -33,6 +33,7 @@ const dataDir = resolveMutableDataDir();
 const dataFileNames = {
   stones: "stones.json",
   charms: "charms.json",
+  spacers: "spacers.json",
   orders: "orders.json",
   settings: "settings.json",
   analyticsSessions: "analytics_sessions.json",
@@ -49,6 +50,7 @@ const bundledDataFiles = Object.fromEntries(
 const defaultFileText = {
   stones: "[]",
   charms: "[]",
+  spacers: "[]",
   orders: "[]",
   settings: "{\"globalDiscountPercent\":20,\"discountEnabled\":true,\"showDiscountBanner\":true}",
   analyticsSessions: "[]",
@@ -126,6 +128,7 @@ function seedDatabase() {
   ensureDataDirectory();
   ensureDataFile(dataFiles.stones, defaultFileText.stones, bundledDataFiles.stones);
   ensureDataFile(dataFiles.charms, defaultFileText.charms, bundledDataFiles.charms);
+  ensureDataFile(dataFiles.spacers, defaultFileText.spacers, bundledDataFiles.spacers);
   ensureDataFile(dataFiles.orders, defaultFileText.orders, bundledDataFiles.orders);
   ensureDataFile(dataFiles.settings, defaultFileText.settings, bundledDataFiles.settings);
   ensureDataFile(dataFiles.analyticsSessions, defaultFileText.analyticsSessions, bundledDataFiles.analyticsSessions);
@@ -2887,7 +2890,7 @@ async function readSpacersForApi() {
   return readSupabasePayloadTable(
     "catalog_spacers",
     "/api/spacers",
-    () => [],
+    () => readJsonArray("spacers"),
     { order: "display_order.asc,id.asc" }
   );
 }
@@ -4194,7 +4197,7 @@ async function serveStaticFile(req, res, urlObj) {
 }
 
 if (isFixtureOnlyUatBackend) {
-  const requiredFixtureFiles = ['stones', 'charms', 'settings'];
+  const requiredFixtureFiles = ['stones', 'charms', 'spacers', 'settings'];
   const missingFixtureFiles = requiredFixtureFiles.filter((key) => !fs.existsSync(bundledDataFiles[key]));
   if (missingFixtureFiles.length > 0) {
     throw new Error(`Missing required UAT fixture files: ${missingFixtureFiles.join(', ')}`);
