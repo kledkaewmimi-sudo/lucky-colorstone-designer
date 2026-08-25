@@ -49,7 +49,18 @@ The focused geometry tests cover fixed 4/6/10 regression, mixed 4/6/10 = 20mm, r
 
 ## Live validation status
 
-Browser automation is unavailable in this environment. After the UAT-only deployment, a read-only static fetch will confirm the deployment remains reachable and production-independent. Owner manual renderer confirmation remains required for visible mixed 4/6/10 scaling, order, add/remove rendering, and fixed-mode visual regression.
+Commit `6af9c45` was pushed only to `origin/uat`. A read-only fetch of the deployed UAT document and `app.js` confirmed:
+
+```text
+UAT response: 200
+geometry module import present: true
+per-component physical footprint call present: true
+derived fit status exposed: true
+UAT Step 4 block present: true
+production Render backend reference: false
+```
+
+Browser automation is unavailable in this environment. Owner manual renderer confirmation remains required for visible mixed 4/6/10 scaling, order, add/remove rendering, and fixed-mode visual regression.
 
 ## Deferred items
 
