@@ -9,36 +9,34 @@ import {
 } from '../mixed-size-state.js';
 
 const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+const css = await readFile(new URL('../index.css', import.meta.url), 'utf8');
 const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+const mixedLabel = String.fromCodePoint(0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a, 0x0e4c);
+const allSizesLabel = String.fromCodePoint(0x0e17, 0x0e31, 0x0e49, 0x0e07, 0x0e2b, 0x0e21, 0x0e14);
 const catalog = [
   { id: 'four', sizes: [4] },
   { id: 'six', sizes: [6] },
   { id: 'ten', sizes: [10] },
   { id: 'all', sizes: [4, 6, 10] }
 ];
-const MIXED_LABEL_CODE_POINTS = [0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a, 0x0e4c];
-const ALL_SIZES_LABEL_CODE_POINTS = [0x0e17, 0x0e31, 0x0e49, 0x0e07, 0x0e2b, 0x0e21, 0x0e14];
-const deprecatedMixedLabel = String.fromCodePoint(0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a);
-const deprecatedAllSizesLabel = String.fromCodePoint(0x0e17, 0x0e07, 0x0e2b, 0x0e21, 0x0e14);
-const toCodePoints = (value) => Array.from(value, (character) => character.codePointAt(0));
 
-test('Step 2 renders the fixed 4/6/10 controls and the คละไซส์ option', () => {
-  ['data-bead-size="4"', 'data-bead-size="6"', 'data-bead-size="10"', 'data-bead-size="mixed"', 'คละไซส์'].forEach((token) => assert.ok(html.includes(token)));
+test('Step 2 keeps four equal-size controls including the exact approved mixed label', () => {
+  ['data-bead-size="4"', 'data-bead-size="6"', 'data-bead-size="10"', 'data-bead-size="mixed"', mixedLabel].forEach((token) => assert.ok(html.includes(token)));
+  assert.match(css, /#stepView2 \.bead-size-options \{\s*display: grid;/);
+  assert.match(css, /#stepView2 \.bead-size-card,[\s\S]*?min-height: 112px/);
+  assert.match(css, /#stepView2 \.bead-size-card-recommended \{[\s\S]*?background: var\(--color-white\)/);
 });
 
-test('customer-facing mixed-size labels exactly match the approved Thai copy', () => {
-  assert.match(html, /data-bead-size="mixed"[\s\S]*?aria-label="คละไซส์"/);
-  assert.match(html, /<span class="bead-size-label">คละไซส์<\/span>/);
-  assert.match(
-    html,
-    /data-size="all" aria-pressed="false">ทั้งหมด<\/button>[\s\S]*?data-size="4"[\s\S]*?data-size="6"[\s\S]*?data-size="10"/
-  );
-  assert.equal([...html.matchAll(/คละไซส์/g)].length, 2);
-  assert.equal([...html.matchAll(/ทั้งหมด/g)].length, 1);
-  assert.equal(new RegExp(`${deprecatedMixedLabel}(?!\\u0e4c)`, 'u').test(html), false);
-  assert.equal(html.includes(deprecatedAllSizesLabel), false);
-  assert.deepEqual(toCodePoints('คละไซส์'), MIXED_LABEL_CODE_POINTS);
-  assert.deepEqual(toCodePoints('ทั้งหมด'), ALL_SIZES_LABEL_CODE_POINTS);
+test('mixed selector is a compact three-button strip below the tab row', () => {
+  const tabRowIndex = html.indexOf('id="catalogTypeFilter"');
+  const mixedBarIndex = html.indexOf('id="mixedSizeSelectorBar"');
+  const catalogIndex = html.indexOf('<!-- Stone Catalog Section -->');
+  assert.ok(tabRowIndex >= 0 && mixedBarIndex > tabRowIndex && catalogIndex > mixedBarIndex);
+  assert.match(html, /id="mixedSizeSelectorBar" hidden[\s\S]*?data-size="4"[\s\S]*?data-size="6"[\s\S]*?data-size="10"/);
+  assert.doesNotMatch(html, /data-size="all"/);
+  assert.doesNotMatch(html, /mixedSpaceText|mixed-space-container|Remaining Space/);
+  assert.doesNotMatch(html, new RegExp(allSizesLabel, 'u'));
+  assert.match(css, /#stepView3 \.mixed-size-selector-bar \{[\s\S]*?min-height: 40px/);
 });
 
 for (const size of ['4', '6', '10']) {
@@ -51,10 +49,10 @@ for (const size of ['4', '6', '10']) {
   });
 }
 
-test('mixed filter is mixed-only and exposes all requested labels', () => {
-  assert.match(html, /id="mixedSizeSelectorBar" hidden/);
-  assert.match(app, /State\.beadSize !== MIXED_BEAD_SIZE_MODE \|\| safeActiveSection !== 'stones'/);
-  ['ทั้งหมด', '4mm', '6mm', '10mm'].forEach((label) => assert.ok(html.includes(label)));
+test('mixed selector remains visible across Step 3 tabs and restores an explicit size', () => {
+  assert.match(app, /DOM\.mixedSizeSelectorBar\.hidden = State\.beadSize !== MIXED_BEAD_SIZE_MODE/);
+  assert.match(app, /if \(!\['4', '6', '10'\]\.includes\(String\(State\.mixedSizeFilter\)\)\)/);
+  assert.match(app, /State\.mixedSizeFilter = String\(normalizeMixedPlacingSize\(State\.mixedPlacingSize\)\)/);
 });
 
 for (const size of [4, 6, 10]) {
@@ -63,12 +61,10 @@ for (const size of [4, 6, 10]) {
   });
 }
 
-test('ทั้งหมด browsing and filter switches do not mutate existing placed stones', () => {
+test('switching explicit mixed placement sizes does not mutate existing components', () => {
   const state = { beadSize: 'mixed', mixedPlacingSize: 6, selectedStones: [{ stoneId: 'all', size: 4 }, { stoneId: 'all', size: 10 }] };
   const before = structuredClone(state.selectedStones);
-  const allMatches = catalog.filter((stone) => stoneMatchesMixedSizeFilter(stone, 'all'));
   const switched = setMixedPlacingSize(state, 10);
-  assert.equal(allMatches.length, 4);
   assert.deepEqual(state.selectedStones, before);
   assert.deepEqual(switched.selectedStones, before);
 });

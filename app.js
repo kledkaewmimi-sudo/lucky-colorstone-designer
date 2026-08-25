@@ -5755,7 +5755,10 @@ function syncCatalogSectionFilter() {
   }
 
   if (DOM.mixedSizeSelectorBar) {
-    DOM.mixedSizeSelectorBar.hidden = State.beadSize !== MIXED_BEAD_SIZE_MODE || safeActiveSection !== 'stones';
+    if (!['4', '6', '10'].includes(String(State.mixedSizeFilter))) {
+      State.mixedSizeFilter = String(normalizeMixedPlacingSize(State.mixedPlacingSize));
+    }
+    DOM.mixedSizeSelectorBar.hidden = State.beadSize !== MIXED_BEAD_SIZE_MODE;
     DOM.mixedToggleBtns.forEach((button) => {
       const active = button.getAttribute('data-size') === State.mixedSizeFilter;
       button.classList.toggle('active', active);
@@ -6969,12 +6972,6 @@ function renderStep3() {
   
   const remainingSpaceText = `เหลือ ${remainingSpace.toFixed(1)} mm`;
   DOM.canvasSpaceText.textContent = remainingSpaceText;
-  
-  // Update mixed space context if exists
-  const mixedSpaceText = document.getElementById('mixedSpaceText');
-  if (mixedSpaceText) {
-    mixedSpaceText.textContent = remainingSpaceText;
-  }
   
   // Update wrist context label
   const wristContext = document.getElementById('canvasWristContext');

@@ -378,23 +378,6 @@
             </button>
           </div>
 
-          <!-- Mixed Size Selector - Visible only when "mixed" bead size is selected -->
-          <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" hidden>
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-              <span class="mixed-label">ขนาดหิน</span>
-              <div class="mixed-toggles" role="group" aria-label="Mixed stone size filter">
-                <button class="mixed-toggle-btn" type="button" data-size="all" aria-pressed="false">ทั้งหมด</button>
-                <button class="mixed-toggle-btn" type="button" data-size="4" aria-pressed="false">4mm</button>
-                <button class="mixed-toggle-btn active" type="button" data-size="6" aria-pressed="true">6mm</button>
-                <button class="mixed-toggle-btn" type="button" data-size="10" aria-pressed="false">10mm</button>
-              </div>
-            </div>
-            <div class="mixed-space-container">
-              <span class="mixed-space-label">Remaining Space</span>
-              <span class="mixed-space-val" id="mixedSpaceText">เหลือ 175.0 mm</span>
-            </div>
-          </div>
-
           <div class="catalog-type-filter" id="catalogTypeFilter" role="tablist" aria-label="Catalog type">
             <button class="catalog-type-tab active" type="button" role="tab" aria-selected="true" data-catalog-section="stones">
               <svg class="catalog-type-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -435,6 +418,16 @@
               </svg>
               <span>ชาร์ม</span>
             </button>
+          </div>
+
+          <!-- Mixed Size Selector: placement size stays available across every Step 3 tab. -->
+          <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" hidden>
+            <span class="mixed-label">ขนาดหิน</span>
+            <div class="mixed-toggles" role="group" aria-label="Mixed stone placement size">
+              <button class="mixed-toggle-btn" type="button" data-size="4" aria-pressed="false">4mm</button>
+              <button class="mixed-toggle-btn active" type="button" data-size="6" aria-pressed="true">6mm</button>
+              <button class="mixed-toggle-btn" type="button" data-size="10" aria-pressed="false">10mm</button>
+            </div>
           </div>
 
           <!-- Stone Catalog Section -->
