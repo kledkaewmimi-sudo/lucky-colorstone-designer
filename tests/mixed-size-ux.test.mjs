@@ -47,6 +47,24 @@ test('mixed selector is a compact three-button strip below the tab row', () => {
   assert.match(css, /#stepView3 \.mixed-size-selector-bar\[hidden\] \{\s*display: none !important;/);
 });
 
+test('Step 3 uses one shared compact sticky preview with the canonical renderer for every size mode', () => {
+  assert.match(html, /id="step3PreviewSentinel"[\s\S]*?id="step3PreviewCard"[\s\S]*?id="braceletSvg"/);
+  assert.equal((html.match(/id="braceletSvg"/g) || []).length, 1);
+  assert.match(css, /#stepView3 \.canvas-card \{\s*position: sticky;[\s\S]*?z-index: 20;/);
+  assert.match(css, /#stepView3 \.canvas-card\.is-compact-sticky \{[\s\S]*?padding: 6px 8px/);
+  assert.match(app, /function setupStep3StickyPreview\(\)/);
+  assert.match(app, /window\.addEventListener\('scroll', scheduleStep3StickyPreviewState, \{ passive: true \}\)/);
+  assert.match(app, /renderBraceletCanvas\(resolvedLayout\)/);
+  for (const mode of ['4', '6', '10', 'mixed']) {
+    assert.ok(['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(normalizeBraceletSizeMode(mode)));
+  }
+});
+
+test('sticky preview state is presentation-only and does not reset catalog scroll on renderer updates', () => {
+  assert.doesNotMatch(app, /function setupStep3StickyPreview[\s\S]*?scrollTo\(/);
+  assert.match(app, /function renderStep3\(\) \{\s*setupStep3StickyPreview\(\);[\s\S]*?renderBraceletCanvas\(resolvedLayout\)/);
+});
+
 for (const size of ['4', '6', '10']) {
   test(`selecting mixed from fixed ${size} uses canonical mixed mode and matching initial placement size`, () => {
     const state = { beadSize: size, mixedPlacingSize: Number(size), selectedStones: [{ componentType: 'stone', stoneId: 'all', size: Number(size) }] };
