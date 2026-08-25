@@ -35,6 +35,10 @@ Focused source checks confirm: no compact sticky class/sentinel/scroll helper re
 
 No production workspace, branch, configuration, deployment, data, service, or integration was accessed or modified.
 
+## Deployed UAT static verification
+
+Read-only checks against `https://lucky-colorstone-uat.vercel.app` confirmed the top-edge full-size sticky rule is deployed, compact CSS and compact scroll helper code are absent, one canonical bracelet SVG remains, and the fixed-mode mixed-selector hidden rule is still present.
+
 ## Status
 
 - COMPACT STICKY MODE REMOVED: YES
@@ -48,4 +52,6 @@ No production workspace, branch, configuration, deployment, data, service, or in
 - LIVE RENDER UPDATES PRESERVED: YES
 - RECENT STEP 2/3 FIXES PRESERVED: YES
 - UAT STEP 4 BLOCK PRESERVED: YES
+- UAT BRANCH PUSHED: YES (`b83b0e8`)
+- UAT DEPLOYED STATIC SOURCE: PASS
 - PRODUCTION UNTOUCHED: YES
