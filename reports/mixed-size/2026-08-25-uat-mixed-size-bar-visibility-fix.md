@@ -48,6 +48,10 @@ Result: 23 tests passed, 0 failed. Existing Node module-type warnings only.
 
 No production workspace, branch, configuration, deployment, data, service, or integration was accessed or modified.
 
+## Deployed UAT static verification
+
+Read-only checks against `https://lucky-colorstone-uat.vercel.app` confirmed that the deployed stylesheet contains the explicit hidden-state rule and the deployed app still uses the canonical mixed-mode condition. This verifies that fixed modes remove the selector from layout rather than merely disabling it.
+
 ## Status
 
 - FIXED 4MM BAR HIDDEN: PASS
@@ -58,4 +62,6 @@ No production workspace, branch, configuration, deployment, data, service, or in
 - NO EMPTY SPACE IN FIXED MODE: PASS
 - MIXED LOGIC PRESERVED: YES
 - UAT STEP 4 BLOCK PRESERVED: YES
+- UAT BRANCH PUSHED: YES (`f7723b5`)
+- UAT DEPLOYED STATIC SOURCE: PASS
 - PRODUCTION UNTOUCHED: YES
