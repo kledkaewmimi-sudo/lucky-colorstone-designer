@@ -68,6 +68,19 @@ git diff --check
 
 Result: 58 tests passed, 0 failed. Existing Node module-type warnings were the only warnings.
 
-## Live validation status
+## Live UAT static/safe validation
 
-After the UAT-only push, read-only static checks will confirm the deployed pricing module, UAT Step 4 block, blocked checkout/order routes, catalog access, and absence of production backend references. No order or payment will be created.
+Commit `2f83ab2` was pushed only to `origin/uat`. Read-only/static checks of `https://lucky-colorstone-uat.vercel.app` and the isolated UAT backend confirmed:
+
+```text
+frontend response: 200
+mixed pricing module import present: true
+fit gate present: true
+UAT Step 4 block present: true
+production Render backend reference: false
+GET /api/stones: 200 (32 fixtures)
+POST /api/orders with empty body: 403
+POST /api/stripe/checkout-session with empty body: 403
+```
+
+No order or payment was created. Browser automation remains unavailable, so this is static/unit/safety validation rather than an interactive owner click-through.
