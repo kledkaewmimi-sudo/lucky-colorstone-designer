@@ -1282,18 +1282,15 @@ option {
   gap: 4px;
 }
 
-/* The generic fadeIn animation retains transform: translateY(0), which traps
-   a sticky descendant below sibling layers. Step 3 must stay transform-free. */
+/* A filled opacity animation can retain a stacking context even at opacity 1.
+   Step 3 must stay animation-free and transform-free so its sticky child can
+   participate directly in the app-root stacking order. */
 #stepView3.step-view {
-  animation: step3FadeIn 0.4s ease-out forwards;
+  animation: none;
+  opacity: 1;
   transform: none;
   filter: none;
   isolation: auto;
-}
-
-@keyframes step3FadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 /* Step 3 must be tall enough to remain the sticky containing block while its

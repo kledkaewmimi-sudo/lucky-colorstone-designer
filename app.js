@@ -5828,8 +5828,9 @@ function renderStep3StickyDebugOverlay() {
     describeStep3StickyRuntimeElement(workspace, 'WORKSPACE'),
     describeStep3StickyRuntimeElement(DOM.step3PreviewCard, 'PREVIEW'),
     `STICKY: appContent.scrollTop=${DOM.appContent.scrollTop.toFixed(1)} preview.rect.top=${previewRect.top.toFixed(1)} computed.top=${window.getComputedStyle(DOM.step3PreviewCard).top} expected.top=0 difference(preview-appContent)=${stickyDifference.toFixed(1)} geometry-sticky=${previewRect.top <= scrollRect.top + 1}`,
-    hits,
+    `HIT TESTS (pointer-events filtered; not paint-order proof):\n${hits}`,
     getStep3StickyRuntimeClassAudit(header, step3View),
+    getStep3AnimationDebug(step3View),
     `PAINT AUDIT:\n${getStep3StickyPaintAudit(step3View)}`,
     `ACTIVE MOBILE RULES:\n${getActiveStep3StickyMobileRules()}`,
     `HEADER ANCESTORS: ${getStackingContextAncestry(header)}`,
@@ -5872,6 +5873,12 @@ function getStep3StickyRuntimeClassAudit(header, step3View) {
     ['PREVIEW', DOM.step3PreviewCard]
   ];
   return `RUNTIME CLASSES/STYLES:\n${entries.map(([label, element]) => `${label}: class=${element?.className || 'NONE'} inline=${element?.getAttribute('style') || 'NONE'}`).join('\n')}`;
+}
+
+function getStep3AnimationDebug(step3View) {
+  if (!step3View) return 'STEP 3 ANIMATION: MISSING';
+  const style = window.getComputedStyle(step3View);
+  return `STEP 3 ANIMATION: name=${style.animationName}; duration=${style.animationDuration}; fill=${style.animationFillMode}; play-state=${style.animationPlayState}; timeline=${style.animationTimeline || 'UNSUPPORTED'}; transition=${style.transition}; opacity=${style.opacity}; transform=${style.transform}`;
 }
 
 function getStep3StickyPaintAudit(step3View) {
