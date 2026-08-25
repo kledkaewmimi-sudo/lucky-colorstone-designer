@@ -1,11 +1,12 @@
 // Guest-design persistence is intentionally isolated from the normal application state.
 // It is dormant until a future, feature-flagged LINE handoff flow explicitly calls it.
 
+import { MIXED_BEAD_SIZE_MODE, normalizeMixedPlacingSize } from './mixed-size-state.js';
+
 export const GUEST_DESIGN_SNAPSHOT_STORAGE_KEY = 'lucky_colorstone_guest_design_snapshot';
 export const GUEST_DESIGN_SNAPSHOT_VERSION = 1;
 export const GUEST_DESIGN_SNAPSHOT_TTL_MS = 2 * 60 * 60 * 1000;
 
-const ALLOWED_BEAD_SIZES = new Set(['4', '6', '10']);
 const ALLOWED_STEPS = new Set([1, 2, 3]);
 const ALLOWED_COMPONENT_TYPES = new Set(['empty', 'stone', 'charm', 'spacer']);
 const MAX_COMPONENTS = 240;
@@ -31,10 +32,10 @@ function normalizeWristSize(value) {
 
 function normalizeBeadSize(value) {
   const beadSize = String(value || '').trim();
-  return ALLOWED_BEAD_SIZES.has(beadSize) ? beadSize : '';
+  return beadSize === MIXED_BEAD_SIZE_MODE || ['4', '6', '10'].includes(beadSize) ? beadSize : '';
 }
 
-function normalizeCanonicalComponent(component) {
+function normalizeCanonicalComponent(component, beadSize) {
   if (component === null) return { type: 'empty' };
   if (!component || typeof component !== 'object') return null;
   const type = String(component.type || component.componentType || '').trim().toLowerCase();
@@ -46,7 +47,13 @@ function normalizeCanonicalComponent(component) {
       : type === 'charm' ? component.id || component.charmId
         : component.id || component.spacerId
   );
-  return id ? { type, id } : null;
+  if (!id) return null;
+  if (type !== 'stone') return { type, id };
+
+  const fallbackSize = beadSize === MIXED_BEAD_SIZE_MODE ? '' : beadSize;
+  const size = String(component.size ?? component.sizeMm ?? fallbackSize).trim();
+  if (!['4', '6', '10'].includes(size)) return null;
+  return { type, id, size: Number(size) };
 }
 
 function normalizeCanonicalDesign(input = {}) {
@@ -59,7 +66,7 @@ function normalizeCanonicalDesign(input = {}) {
       : null;
   if (wristSize === null || !beadSize || !rawComponents || rawComponents.length > MAX_COMPONENTS) return null;
 
-  const components = rawComponents.map(normalizeCanonicalComponent);
+  const components = rawComponents.map((component) => normalizeCanonicalComponent(component, beadSize));
   if (components.some((component) => component === null)) return null;
 
   const selectedCharmIds = Array.isArray(input.selectedCharmIds) ? input.selectedCharmIds : [];
@@ -70,6 +77,7 @@ function normalizeCanonicalDesign(input = {}) {
   return {
     wristSize,
     beadSize,
+    mixedPlacingSize: normalizeMixedPlacingSize(input.mixedPlacingSize, beadSize === MIXED_BEAD_SIZE_MODE ? '6' : beadSize),
     selectedCharmIds: normalizedCharmIds,
     components
   };

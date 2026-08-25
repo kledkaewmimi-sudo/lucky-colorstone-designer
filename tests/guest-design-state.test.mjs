@@ -43,8 +43,8 @@ test('guest design snapshot round-trips a simple canonical design without pricin
   });
   assert.equal(result.ok, true);
   assert.deepEqual(result.snapshot.design, {
-    wristSize: 16, beadSize: '6', selectedCharmIds: [],
-    components: [{ type: 'stone', id: 'clear-quartz' }, { type: 'stone', id: 'amethyst' }]
+    wristSize: 16, beadSize: '6', mixedPlacingSize: 6, selectedCharmIds: [],
+    components: [{ type: 'stone', id: 'clear-quartz', size: 6 }, { type: 'stone', id: 'amethyst', size: 6 }]
   });
   assert.equal(JSON.stringify(result.snapshot).includes('must-not-persist'), false);
   assert.equal(Object.hasOwn(result.snapshot.design, 'total'), false);
@@ -64,9 +64,9 @@ test('guest design snapshot preserves complex component order and anchored charm
   });
   assert.equal(result.ok, true);
   assert.deepEqual(result.snapshot.design.components, [
-    { type: 'stone', id: 'beryl' }, { type: 'spacer', id: 'silver-spacer' },
+    { type: 'stone', id: 'beryl', size: 10 }, { type: 'spacer', id: 'silver-spacer' },
     { type: 'charm', id: 'bee-heart' }, { type: 'empty' },
-    { type: 'stone', id: 'beryl' }, { type: 'stone', id: 'amethyst' }
+    { type: 'stone', id: 'beryl', size: 10 }, { type: 'stone', id: 'amethyst', size: 10 }
   ]);
   assert.deepEqual(result.snapshot.design.selectedCharmIds, ['gold-anchor']);
 });
@@ -100,7 +100,7 @@ test('corrupt, expired, unsupported, unknown, and unavailable-storage snapshots 
     selectedStones: [{ componentType: 'stone', stoneId: 'missing-stone' }, { componentType: 'stone', stoneId: 'beryl' }]
   });
   assert.equal(unknown.ok, true);
-  assert.deepEqual(unknown.snapshot.design.components, [{ type: 'stone', id: 'beryl' }]);
+  assert.deepEqual(unknown.snapshot.design.components, [{ type: 'stone', id: 'beryl', size: 6 }]);
   assert.deepEqual(unknown.snapshot.design.selectedCharmIds, []);
   assert.equal(unknown.skipped.length, 2);
 
