@@ -274,6 +274,28 @@
             </div>
           </div>
 
+          <div class="bead-size-card bead-size-card-mixed" data-bead-size="mixed" role="radio" aria-checked="false" aria-label="คละไซส">
+            <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
+              <div class="bead-size-copy">
+                <div class="bead-size-preview bead-size-preview-mixed" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-sm"></div>
+                  <div class="bead-preview-circle bead-preview-circle-md"></div>
+                  <div class="bead-preview-circle bead-preview-circle-lg"></div>
+                </div>
+                <div class="bead-size-details">
+                  <span class="bead-size-label">คละไซส</span>
+                  <h4>เลือกขนาดหินแต่ละเม็ดได้</h4>
+                </div>
+              </div>
+              <div class="bead-size-hand-panel bead-size-mixed-panel" aria-hidden="true">
+                <span>4</span><span>6</span><span>10</span>
+              </div>
+            </div>
+          </div>
+
         </div>
         <div class="bead-size-guide-card">
           <div class="bead-size-guide-header">
@@ -357,13 +379,14 @@
           </div>
 
           <!-- Mixed Size Selector - Visible only when "mixed" bead size is selected -->
-          <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" style="display: none;">
+          <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" hidden>
             <div style="display: flex; flex-direction: column; gap: 4px;">
-              <span class="mixed-label">Placing Bead Size:</span>
-              <div class="mixed-toggles">
-                <button class="mixed-toggle-btn" data-size="4">4mm</button>
-                <button class="mixed-toggle-btn active" data-size="6">6mm</button>
-                <button class="mixed-toggle-btn" data-size="10">10mm</button>
+              <span class="mixed-label">ขนาดหิน</span>
+              <div class="mixed-toggles" role="group" aria-label="Mixed stone size filter">
+                <button class="mixed-toggle-btn" type="button" data-size="all" aria-pressed="false">ทงหมด</button>
+                <button class="mixed-toggle-btn" type="button" data-size="4" aria-pressed="false">4mm</button>
+                <button class="mixed-toggle-btn active" type="button" data-size="6" aria-pressed="true">6mm</button>
+                <button class="mixed-toggle-btn" type="button" data-size="10" aria-pressed="false">10mm</button>
               </div>
             </div>
             <div class="mixed-space-container">

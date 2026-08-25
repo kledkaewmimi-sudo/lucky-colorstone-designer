@@ -28,6 +28,23 @@ export function stoneSupportsSize(stone, size) {
   return getStoneSupportedSizes(stone).includes(normalizeMixedPlacingSize(size));
 }
 
+export function normalizeMixedSizeFilter(value, fallback = '6') {
+  const filter = String(value ?? '').trim();
+  return filter === 'all' || FIXED_BEAD_SIZES.includes(filter) ? filter : fallback;
+}
+
+export function stoneMatchesMixedSizeFilter(stone, filter) {
+  const normalizedFilter = normalizeMixedSizeFilter(filter, 'all');
+  return normalizedFilter === 'all'
+    ? getStoneSupportedSizes(stone).length > 0
+    : stoneSupportsSize(stone, normalizedFilter);
+}
+
+export function getMixedPlacementSizeForStone(stone, mixedPlacingSize) {
+  const size = normalizeMixedPlacingSize(mixedPlacingSize);
+  return stoneSupportsSize(stone, size) ? size : null;
+}
+
 function getSelectedStoneItems(selectedStones = []) {
   return Array.isArray(selectedStones)
     ? selectedStones.filter((item) => item && String(item.componentType || item.type || 'stone').toLowerCase() === 'stone')

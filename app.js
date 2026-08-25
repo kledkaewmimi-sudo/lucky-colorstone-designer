@@ -2,7 +2,7 @@ import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCha
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { MIXED_BEAD_SIZE_MODE, normalizeBraceletSizeMode, normalizeMixedPlacingSize, setMixedPlacingSize as withMixedPlacingSize, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
+import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
@@ -78,6 +78,7 @@ const State = {
   wristSize: 16.0,          // Default wrist size in cm
   beadSize: '6',            // '4', '6', '10', or the mixed design mode
   mixedPlacingSize: 6,      // Current catalog filter/placement size in mixed mode
+  mixedSizeFilter: '6',     // Mixed-mode catalog filter only; never a physical size when 'all'
   ownerName: '',            // Personalized bracelet owner name
   lineUserId: '',           // LIFF profile user identifier
   shippingInfo: {
@@ -421,6 +422,11 @@ function isStoneAvailableForCurrentBeadSize(stone) {
   return stoneSupportsSize(stone, getCurrentBeadSizeMm());
 }
 
+function isStoneVisibleForCurrentSizeFilter(stone) {
+  if (State.beadSize !== MIXED_BEAD_SIZE_MODE) return isStoneAvailableForCurrentBeadSize(stone);
+  return stoneMatchesMixedSizeFilter(stone, State.mixedSizeFilter);
+}
+
 function adaptSpacerRecordForCustomer(record) {
   if (!record || typeof record !== 'object') return null;
   const stockQty = normalizeStockQtyForCustomer(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty);
@@ -467,7 +473,9 @@ function getCurrentBeadSizeMm() {
 
 function getAllowedDesignerCategories(beadSize = State.beadSize) {
   const mode = normalizeBeadSizeOption(beadSize);
-  const normalizedSize = mode === MIXED_BEAD_SIZE_MODE ? String(normalizeMixedPlacingSize(State.mixedPlacingSize)) : mode;
+  // The mixed filter controls stone visibility only; it must not hide the existing
+  // charm/spacer tabs when the user browses a 4mm or 6mm stone subset.
+  const normalizedSize = mode === MIXED_BEAD_SIZE_MODE ? '10' : mode;
   return DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE[normalizedSize] || DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE['10'];
 }
 
@@ -560,10 +568,20 @@ function setCurrentMixedPlacingSize(size) {
   State.mixedPlacingSize = withMixedPlacingSize(State, size).mixedPlacingSize;
 }
 
+function setMixedStoneSizeFilter(size) {
+  const nextFilter = normalizeMixedSizeFilter(size, State.mixedSizeFilter);
+  State.mixedSizeFilter = nextFilter;
+  if (nextFilter !== 'all') setCurrentMixedPlacingSize(nextFilter);
+}
+
 function applyBraceletSizeModeTransition(targetMode) {
+  const previousMode = State.beadSize;
   const transition = transitionBraceletSizeMode(State, targetMode, STONES);
   if (!transition.ok) return transition;
   Object.assign(State, transition.state);
+  if (State.beadSize === MIXED_BEAD_SIZE_MODE && previousMode !== MIXED_BEAD_SIZE_MODE) {
+    State.mixedSizeFilter = String(State.mixedPlacingSize);
+  }
   return transition;
 }
 
@@ -2462,6 +2480,7 @@ function loadPersistedState() {
       State.wristSize = parsed.wristSize || 16.0;
       State.beadSize = normalizeBeadSizeOption(parsed.beadSize || '6');
       State.mixedPlacingSize = normalizeMixedPlacingSize(parsed.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
+      State.mixedSizeFilter = normalizeMixedSizeFilter(parsed.mixedSizeFilter, String(State.mixedPlacingSize));
       State.ownerName = parsed.ownerName || '';
       State.lineUserId = typeof parsed.lineUserId === 'string' ? parsed.lineUserId : '';
       State.shippingInfo = normalizeShippingInfo(parsed.shippingInfo);
@@ -2519,6 +2538,7 @@ function resetCustomizationSessionForFreshEntry({ preserveCurrentLineIdentity = 
   State.wristSize = 16.0;
   State.beadSize = '6';
   State.mixedPlacingSize = 6;
+  State.mixedSizeFilter = '6';
   State.ownerName = currentOwnerName;
   State.lineUserId = currentLineUserId;
   State.shippingInfo = {
@@ -2600,6 +2620,7 @@ function getCanonicalGuestDesignState() {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
+    mixedSizeFilter: State.mixedSizeFilter,
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
     selectedStones: getSelectedLoopItems()
   };
@@ -3932,10 +3953,27 @@ function startStep2SupportRotation() {
 
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
       const targetBeadSize = normalizeBeadSizeOption(card.getAttribute('data-bead-size'));
       
       if (State.beadSize === targetBeadSize) return;
+      const convertingFromMixed = State.beadSize === MIXED_BEAD_SIZE_MODE && targetBeadSize !== MIXED_BEAD_SIZE_MODE;
+
+      if (convertingFromMixed && State.selectedStones.length > 0) {
+        const preview = transitionBraceletSizeMode(State, targetBeadSize, STONES);
+        if (!preview.ok) {
+          const names = preview.unsupportedStones
+            .map(({ stoneId }) => STONES.find((stone) => stone.id === stoneId)?.nameTh || stoneId)
+            .join(', ');
+          showToast(`Cannot convert to ${targetBeadSize}mm. Unsupported stones: ${names}`);
+          return;
+        }
+        const confirmed = await showCustomConfirm(
+          `Convert every placed stone to ${targetBeadSize}mm?`,
+          'Convert bead size'
+        );
+        if (!confirmed) return;
+      }
 
       const transition = applyBraceletSizeModeTransition(targetBeadSize);
       if (!transition.ok) {
@@ -3945,19 +3983,19 @@ function initBeadSizeOptions() {
       trackAnalyticsEvent('bead_size_selected', {
         bead_size: targetBeadSize
       });
-      removeInvalidDesignerItemsForBeadSize({ showToastNotification: true });
+      if (!convertingFromMixed) {
+        removeInvalidDesignerItemsForBeadSize({ showToastNotification: true });
+      }
       
       DOM.beadSizeCards.forEach(c => {
-        if (c.getAttribute('data-bead-size') === State.beadSize) {
-          c.classList.add('active');
-        } else {
-          c.classList.remove('active');
-        }
+        const active = c.getAttribute('data-bead-size') === State.beadSize;
+        c.classList.toggle('active', active);
+        c.setAttribute('aria-checked', active ? 'true' : 'false');
       });
       
       updateEstimationText();
       
-      if (State.selectedStones.length > 0) {
+      if (State.selectedStones.length > 0 && !convertingFromMixed) {
         const newSize = getCurrentBeadSizeMm();
         State.selectedStones.forEach((item) => {
           if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
@@ -4015,11 +4053,9 @@ function adjustBeadsToNewCapacity() {
 
 function renderStep2() {
   DOM.beadSizeCards.forEach(c => {
-    if (c.getAttribute('data-bead-size') === State.beadSize) {
-      c.classList.add('active');
-    } else {
-      c.classList.remove('active');
-    }
+    const active = c.getAttribute('data-bead-size') === State.beadSize;
+    c.classList.toggle('active', active);
+    c.setAttribute('aria-checked', active ? 'true' : 'false');
   });
   startStep2SupportRotation();
   updateEstimationText();
@@ -5585,10 +5621,10 @@ function setupDesignerEvents() {
   // Size toggles in mixed mode
   DOM.mixedToggleBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      DOM.mixedToggleBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      setCurrentMixedPlacingSize(btn.getAttribute('data-size'));
+      if (State.beadSize !== MIXED_BEAD_SIZE_MODE) return;
+      setMixedStoneSizeFilter(btn.getAttribute('data-size'));
       renderStep3();
+      saveState();
     });
   });
 
@@ -5679,7 +5715,12 @@ function syncCatalogSectionFilter() {
   }
 
   if (DOM.mixedSizeSelectorBar) {
-    DOM.mixedSizeSelectorBar.hidden = safeActiveSection !== 'stones';
+    DOM.mixedSizeSelectorBar.hidden = State.beadSize !== MIXED_BEAD_SIZE_MODE || safeActiveSection !== 'stones';
+    DOM.mixedToggleBtns.forEach((button) => {
+      const active = button.getAttribute('data-size') === State.mixedSizeFilter;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   if (DOM.charmSectionMount) {
@@ -5751,7 +5792,7 @@ function renderCatalogGrid() {
   
   // Filter out of stock items
   const availableStones = applyCatalogLayoutOrder(
-    STONES.filter((stone) => isCustomerCatalogItemAvailable(stone) && isStoneAvailableForCurrentBeadSize(stone)),
+    STONES.filter((stone) => isCustomerCatalogItemAvailable(stone) && isStoneVisibleForCurrentSizeFilter(stone)),
     'stones'
   );
   
@@ -5761,8 +5802,9 @@ function renderCatalogGrid() {
     
   let berylCatalogPreview = null;
   filtered.forEach(stone => {
-    const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-    const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
+    const catalogCurrentSize = getCurrentBeadSizeMm();
+    const hasExplicitPlacementSize = State.beadSize !== MIXED_BEAD_SIZE_MODE || stoneSupportsSize(stone, catalogCurrentSize);
+    const catalogPrice = hasExplicitPlacementSize ? getStonePriceForSize(stone, catalogCurrentSize) : null;
     const selectedCount = selectedStoneCounts[stone.id] || 0;
     const card = buildStoneCard({
       dataAttributeName: 'stone-id',
@@ -5773,7 +5815,7 @@ function renderCatalogGrid() {
       imageAlt: stone.name,
       nameTh: stone.nameTh,
       nameEn: stone.name,
-      priceText: formatDisplayPrice(catalogPrice),
+      priceText: catalogPrice === null ? 'Select a size' : formatDisplayPrice(catalogPrice),
       isSelected: selectedCount > 0,
       selectedClassName: 'stone-card-selected',
       onCardClick: () => addStoneToBracelet(stone.id),
@@ -5834,6 +5876,10 @@ function placeLoopItemInFirstAvailableSlot(loopItem) {
 function fillEntireBracelet(stoneId) {
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
+  if (State.beadSize === MIXED_BEAD_SIZE_MODE && getMixedPlacementSizeForStone(stoneData, State.mixedPlacingSize) === null) {
+    showToast(`Select a supported 4mm, 6mm, or 10mm size for ${stoneData.nameTh || stoneId}.`);
+    return;
+  }
   if (!isCustomerCatalogItemAvailable(stoneData) || !isStoneAvailableForCurrentBeadSize(stoneData)) {
     trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId, source: 'fill_all' });
     showToast(STOCK_UNAVAILABLE_TOAST);
@@ -6839,9 +6885,7 @@ function renderStep3() {
   const totalDiameter = validationState.totalDiameter;
   const remainingSpace = validationState.remainingSpace;
   
-  if (DOM.mixedSizeSelectorBar) {
-    DOM.mixedSizeSelectorBar.style.display = 'none';
-  }
+  syncCatalogSectionFilter();
   
   // Render statistics text
   DOM.canvasPriceText.textContent = `฿${pricing.subtotal.toLocaleString()}`;

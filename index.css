@@ -1202,6 +1202,37 @@ option {
 .bead-size-card[data-bead-size="6"] { order: 1; }
 .bead-size-card[data-bead-size="10"] { order: 2; }
 .bead-size-card[data-bead-size="4"] { order: 3; }
+.bead-size-card[data-bead-size="mixed"] { order: 4; }
+
+.bead-size-preview-mixed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bead-size-preview-mixed .bead-preview-circle {
+  position: static;
+  flex: 0 0 auto;
+}
+
+.bead-size-mixed-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--color-velvet-red);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bead-size-mixed-panel span {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: rgba(181, 169, 219, 0.18);
+}
 
 .bead-size-content {
   grid-template-columns: 20px minmax(0, 1fr) 92px;
