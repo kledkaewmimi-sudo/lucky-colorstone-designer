@@ -50,6 +50,7 @@ const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.ge
 // explicit so every external integration can fail closed before making a request.
 const APP_ENV = 'uat';
 const IS_UAT_MODE = APP_ENV === 'uat';
+const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('debugSticky') === '1';
 const LIFF_ID = '';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
@@ -5652,6 +5653,7 @@ function renderSpacerOptions() {
 // ==========================================
 function setupDesignerEvents() {
   setupStep3StickyLayer();
+  setupStep3StickyDebugOverlay();
 
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
@@ -5723,6 +5725,119 @@ function syncStep3StickyLayer() {
   const scrollportTop = DOM.appContent.getBoundingClientRect().top;
   const previewTop = DOM.step3PreviewCard.getBoundingClientRect().top;
   DOM.appContainer.classList.toggle('step3-preview-covered', previewTop <= scrollportTop + 1);
+}
+
+// Temporary UAT-only runtime instrumentation. It is inert unless the explicit
+// debug query is present, and reads layout data only.
+let step3StickyDebugOverlay = null;
+let step3StickyDebugOutput = null;
+let step3StickyDebugFramePending = false;
+
+function setupStep3StickyDebugOverlay() {
+  if (!STICKY_DEBUG_ENABLED || step3StickyDebugOverlay) return;
+
+  step3StickyDebugOverlay = document.createElement('aside');
+  step3StickyDebugOverlay.id = 'step3StickyDebugOverlay';
+  step3StickyDebugOverlay.className = 'step3-sticky-debug-overlay';
+  step3StickyDebugOverlay.setAttribute('aria-label', 'UAT Step 3 sticky layer debug');
+  step3StickyDebugOverlay.hidden = true;
+  step3StickyDebugOverlay.innerHTML = `
+    <div class="step3-sticky-debug-heading">UAT sticky debug</div>
+    <button type="button" class="step3-sticky-debug-copy">Copy Debug</button>
+    <pre class="step3-sticky-debug-output"></pre>
+  `;
+  document.body.appendChild(step3StickyDebugOverlay);
+  step3StickyDebugOutput = step3StickyDebugOverlay.querySelector('.step3-sticky-debug-output');
+
+  step3StickyDebugOverlay.querySelector('.step3-sticky-debug-copy').addEventListener('click', async () => {
+    if (!step3StickyDebugOutput) return;
+    try {
+      await navigator.clipboard.writeText(step3StickyDebugOutput.textContent);
+    } catch {
+      // Clipboard availability differs by WebView; the text remains selectable.
+    }
+  });
+
+  const schedule = () => scheduleStep3StickyDebugUpdate();
+  DOM.appContent?.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule, { passive: true });
+  const step3View = document.getElementById('stepView3');
+  if (step3View) {
+    step3View.addEventListener('transitionend', schedule, { passive: true });
+    new MutationObserver(schedule).observe(step3View, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  }
+  schedule();
+}
+
+function scheduleStep3StickyDebugUpdate() {
+  if (!STICKY_DEBUG_ENABLED || !step3StickyDebugOverlay || step3StickyDebugFramePending) return;
+  step3StickyDebugFramePending = true;
+  window.requestAnimationFrame(() => {
+    step3StickyDebugFramePending = false;
+    renderStep3StickyDebugOverlay();
+  });
+}
+
+function renderStep3StickyDebugOverlay() {
+  if (!step3StickyDebugOverlay || !step3StickyDebugOutput) return;
+  const isStep3 = State.currentStep === 3;
+  step3StickyDebugOverlay.hidden = !isStep3;
+  if (!isStep3 || !DOM.appContent || !DOM.step3PreviewCard) return;
+
+  const header = document.querySelector('.app-header');
+  const describe = (element, label) => {
+    if (!element) return `${label}: MISSING`;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return [
+      `${label}:`,
+      `  position=${style.position} top=${style.top} z=${style.zIndex}`,
+      `  transform=${style.transform} opacity=${style.opacity}`,
+      `  isolation=${style.isolation} pointer=${style.pointerEvents}`,
+      `  rect.top=${rect.top.toFixed(1)} rect.bottom=${rect.bottom.toFixed(1)}`
+    ].join('\n');
+  };
+  const scrollStyle = window.getComputedStyle(DOM.appContent);
+  const scrollRect = DOM.appContent.getBoundingClientRect();
+  const describeElement = (element) => {
+    if (!element) return 'NONE';
+    const className = typeof element.className === 'string' && element.className ? `.${element.className.trim().replace(/\s+/g, '.')}` : '';
+    return `${element.tagName}${element.id ? `#${element.id}` : ''}${className}`;
+  };
+  const hits = [5, 20, 50, 100]
+    .map((y) => `hit y=${y}: ${describeElement(document.elementFromPoint(Math.floor(window.innerWidth / 2), y))}`)
+    .join('\n');
+
+  step3StickyDebugOutput.textContent = [
+    'debugSticky=1 | reads only',
+    describe(header, 'HEADER'),
+    describe(DOM.step3PreviewCard, 'PREVIEW'),
+    `SCROLL: top=${DOM.appContent.scrollTop.toFixed(1)} overflow-y=${scrollStyle.overflowY} rect.top=${scrollRect.top.toFixed(1)}`,
+    hits,
+    `HEADER ANCESTORS: ${getStackingContextAncestry(header)}`,
+    `PREVIEW ANCESTORS: ${getStackingContextAncestry(DOM.step3PreviewCard)}`
+  ].join('\n');
+}
+
+function getStackingContextAncestry(element) {
+  const contexts = [];
+  for (let current = element?.parentElement; current; current = current.parentElement) {
+    const style = window.getComputedStyle(current);
+    const reasons = [];
+    if (style.transform !== 'none') reasons.push('transform');
+    if (style.filter !== 'none') reasons.push('filter');
+    if (Number(style.opacity) < 1) reasons.push('opacity');
+    if (style.isolation === 'isolate') reasons.push('isolation');
+    if (style.contain !== 'none') reasons.push('contain');
+    if (style.willChange !== 'auto') reasons.push('will-change');
+    if (style.perspective !== 'none') reasons.push('perspective');
+    if (style.position !== 'static' && style.zIndex !== 'auto') reasons.push(`position+z(${style.zIndex})`);
+    if (reasons.length > 0) contexts.push(`${current.tagName}${current.id ? `#${current.id}` : ''}${current.className ? `.${String(current.className).trim().replace(/\s+/g, '.')}` : ''}[${reasons.join(',')}]`);
+  }
+  return contexts.length > 0 ? contexts.join(' > ') : 'NONE';
 }
 
 function setupStep3CategoryHintDismissEvents() {

@@ -87,6 +87,53 @@
   pointer-events: none;
 }
 
+/* UAT query-gated runtime diagnostic surface; no markup is created outside UAT debug mode. */
+.step3-sticky-debug-overlay {
+  position: fixed;
+  z-index: 10001;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: min(90vw, 430px);
+  max-height: 45vh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #75f5b7;
+  border-radius: 8px;
+  background: rgba(5, 13, 29, 0.96);
+  color: #eafff4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.step3-sticky-debug-overlay[hidden] {
+  display: none;
+}
+
+.step3-sticky-debug-heading {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: #75f5b7;
+  font-weight: 700;
+}
+
+.step3-sticky-debug-copy {
+  float: right;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid #75f5b7;
+  border-radius: 4px;
+  background: #142944;
+  color: #eafff4;
+  font: inherit;
+}
+
+.step3-sticky-debug-output {
+  clear: both;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Reset & Base Rules */
 * {
   margin: 0;

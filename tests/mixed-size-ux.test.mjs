@@ -110,6 +110,17 @@ test('Step 3 uses one shared full-size sticky preview with the canonical rendere
   }
 });
 
+test('Step 3 runtime layer diagnostics are query-gated to UAT and read layout only', () => {
+  assert.match(app, /const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams\.get\('debugSticky'\) === '1';/);
+  assert.match(app, /function setupStep3StickyDebugOverlay\(\) \{\s*if \(!STICKY_DEBUG_ENABLED \|\| step3StickyDebugOverlay\) return;/);
+  assert.match(app, /document\.elementFromPoint\(Math\.floor\(window\.innerWidth \/ 2\), y\)/);
+  assert.match(app, /getStackingContextAncestry\(header\)/);
+  assert.match(app, /getStackingContextAncestry\(DOM\.step3PreviewCard\)/);
+  assert.match(app, /window\.requestAnimationFrame\(\(\) => \{/);
+  assert.match(css, /\.step3-sticky-debug-overlay \{[\s\S]*?position: fixed;[\s\S]*?bottom:/);
+  assert.match(app, /if \(IS_UAT_MODE && step === 4\)/);
+});
+
 test('Step 3 uses a shorter mobile tab row and a tighter mixed strip gap', () => {
   assert.match(css, /#stepView3 \.catalog-type-filter \{\s*min-height: 53px;/);
   assert.match(css, /#stepView3 \.catalog-type-tab \{\s*gap: 2px;\s*min-height: 45px;/);
