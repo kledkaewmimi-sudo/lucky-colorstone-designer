@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { establishLineIdentityBeforeDesign } from '../line-identity-before-design.js';
+import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from '../line-identity-before-design.js';
+
+test('initial identity callback recognises both direct and LIFF-wrapped markers', () => {
+  assert.equal(isInitialLineIdentityCallback('?line_auth=identity'), true);
+  assert.equal(isInitialLineIdentityCallback('?liff.state=%3Fline_auth%3Didentity'), true);
+  assert.equal(isInitialLineIdentityCallback('?liff.state=%3Fline_auth%3Didentity%26other%3Dvalue'), true);
+  assert.equal(isInitialLineIdentityCallback(''), false);
+  assert.equal(isInitialLineIdentityCallback('?line_auth=other'), false);
+});
 
 test('existing canonical identity enters Step 1 without a redundant login', async () => {
   let loginCalls = 0;
@@ -40,10 +48,10 @@ test('a first-time user starts LIFF login without any design handoff', async () 
 
 test('UAT app source gates Landing Start before Step 1 and retires Step 3 first-auth', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
-  assert.match(source, /import \{ establishLineIdentityBeforeDesign \} from '\.\/line-identity-before-design\.js';/);
+  assert.match(source, /import \{ establishLineIdentityBeforeDesign, isInitialLineIdentityCallback \} from '\.\/line-identity-before-design\.js';/);
   assert.match(source, /requireLineLoginForCustomization\(\{ showLandingPrompt: true \}\)/);
   assert.doesNotMatch(source, /allowDeferredInitialLogin: true/);
-  assert.match(source, /returnParams\.get\('line_auth'\) === 'identity'/);
+  assert.match(source, /isInitialLineIdentityCallback\(window\.location\.search\)/);
   assert.match(source, /getLiffRedirectUri\(\{ initialIdentity: !preserveExistingIntent \}\)/);
   assert.match(source, /clearInitialLineIdentityCallbackMarker\(\)/);
   assert.match(source, /if \(!isLineIdentityAvailable\(\)\) \{\s*return \{ handled: true, ok: false, reason: 'line_identity_required' \};/);
@@ -61,6 +69,7 @@ test('initial identity callback is recognized before fresh-entry rendering and r
   assert.ok(startup.indexOf('const shouldResumeInitialIdentityCallback') < startup.indexOf('resetCustomizationSessionForFreshEntry()'));
   assert.ok(startup.indexOf('await initLIFF()') < startup.indexOf('if (shouldResumeInitialIdentityCallback) {', startup.indexOf('await initLIFF()')));
   assert.match(startup, /if \(isLineIdentityAvailable\(\)\) \{\s*State\.currentStep = 1;/);
+  assert.match(startup, /State\.landingDismissed = true;\s*persistLandingDismissed\(\);\s*clearInitialLineIdentityCallbackMarker\(\);/);
 });
 
 test('Step 3 keeps the OA-friendship design handoff and blocks Step 4 without friendFlag', async () => {

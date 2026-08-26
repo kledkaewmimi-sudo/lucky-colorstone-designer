@@ -8,7 +8,7 @@ import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
-import { establishLineIdentityBeforeDesign } from './line-identity-before-design.js';
+import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from './line-identity-before-design.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
@@ -1077,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
-    && returnParams.get('line_auth') === 'identity';
+    && isInitialLineIdentityCallback(window.location.search);
   const shouldOpenStep4FromUrl = !IS_UAT_MODE && (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId'));
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
