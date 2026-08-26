@@ -15,11 +15,15 @@ assert.match(redirects, /https:\/\/lucky-colorstone-uat\.onrender\.com\/api\/:sp
 assert.doesNotMatch(JSON.stringify(vercel), /lucky-colorstone-designer\.onrender\.com/);
 assert.match(app, /const APP_ENV = 'uat';/);
 assert.match(app, /const IS_UAT_MODE = APP_ENV === 'uat';/);
-assert.match(app, /async function initLIFF\(\) \{[\s\S]*?if \(IS_UAT_MODE\) \{/);
+assert.match(app, /async function initLIFF\(\) \{[\s\S]*?await withTimeout\(liff\.init\(\{ liffId: LIFF_ID \}/);
 assert.match(app, /function sendAnalyticsPayload\(payload, \{ beacon = false \} = \{\}\) \{\s*if \(IS_UAT_MODE\) return;/);
 assert.match(app, /async function handleStripeCheckout\(\) \{\s*if \(IS_UAT_MODE\) \{/);
 assert.match(app, /async function submitOrderToCRM\(showToastNotification = true, overrides = \{\}\) \{\s*if \(IS_UAT_MODE\) \{/);
 assert.match(app, /async function handleLineOrder\(\) \{\s*if \(IS_UAT_MODE\) \{/);
-assert.doesNotMatch(html, /connect\.facebook\.net|static\.line-scdn\.net|1573172861217430|2010525799-qImIuhla/);
+assert.match(html, /https:\/\/static\.line-scdn\.net\/liff\/edge\/2\/sdk\.js/);
+assert.doesNotMatch(html, /connect\.facebook\.net|1573172861217430|2010525799-qImIuhla/);
+assert.doesNotMatch(app, /function getLiffEntryUrl\(\) \{\s*if \(IS_UAT_MODE\) return '';/);
+assert.match(app, /function getLiffEntryUrl\(\) \{\s*return LIFF_ID \? `https:\/\/liff\.line\.me\/\$\{LIFF_ID\}` : '';/);
+assert.doesNotMatch(html, /checkout, LINE, and analytics are disabled/);
 
 console.log('UAT frontend routing and external-integration guards passed.');

@@ -31,12 +31,13 @@
     }());
   </script>
 
-  <!-- UAT intentionally omits production Meta Pixel and LINE LIFF SDK. -->
+  <!-- UAT intentionally omits the production Meta Pixel. It uses its own LIFF app. -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 
 <body>
 
-  <div class="uat-environment-banner" role="status">UAT — checkout, LINE, and analytics are disabled</div>
+  <div class="uat-environment-banner" role="status">UAT — checkout and analytics are disabled</div>
 
   <div class="callback-bootstrap-overlay" id="callbackBootstrapOverlay" role="status" aria-live="polite" aria-hidden="true">
     <div class="callback-bootstrap-content">

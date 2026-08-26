@@ -1817,8 +1817,7 @@ function getLiffRedirectUri({ initialIdentity = false } = {}) {
 }
 
 function getLiffEntryUrl() {
-  if (IS_UAT_MODE) return '';
-  return `https://liff.line.me/${LIFF_ID}`;
+  return LIFF_ID ? `https://liff.line.me/${LIFF_ID}` : '';
 }
 
 function isLikelyMobileBrowser() {
@@ -2260,6 +2259,9 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) return false;
 
+  const entryUrl = getLiffEntryUrl();
+  if (!entryUrl) return false;
+
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
@@ -2270,7 +2272,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   liffLoginInProgress = true;
 
   try {
-    window.location.assign(getLiffEntryUrl());
+    window.location.assign(entryUrl);
     return returnStartStatus ? true : false;
   } catch (entryErr) {
     liffLoginInProgress = false;
