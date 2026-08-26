@@ -9,6 +9,8 @@ import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
 import { MIXED_BEAD_SIZE_MODE, getPhysicalStonePlacementSize, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
+import { createBraceletGeometry, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
+import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -666,6 +668,26 @@ function normalizeSelectedLoopItems(source = []) {
 
 function getSelectedLoopItems() {
   return normalizeSelectedLoopItems(State.selectedStones);
+}
+
+function createGeometryComponentForLoopItem(item) {
+  if (isSelectedSpacerItem(item)) {
+    const spacer = getSpacerCatalogEntry(item?.spacerId);
+    return { type: 'spacer', uniqueId: item?.uniqueId, effectiveLengthMm: spacer?.effectiveLengthMm };
+  }
+  if (isSelectedCharmItem(item)) {
+    const charm = getCharmCatalogEntry(item?.charmId);
+    return { type: 'charm', uniqueId: item?.uniqueId, footprintMm: charm ? getCharmFootprintMm(charm) : null };
+  }
+  return { type: 'stone', uniqueId: item?.uniqueId, size: item?.size };
+}
+
+function getAnchoredGeometryComponents() {
+  return getSelectedAnchoredCharmCatalogEntries().map((charm) => ({
+    type: 'charm',
+    uniqueId: `charm-${charm.id}-${charm.selectionIndex}`,
+    footprintMm: getCharmFootprintMm(charm)
+  }));
 }
 
 function isSelectedSpacerItem(item) {
@@ -3910,6 +3932,7 @@ function initBeadSizeOptions() {
       if (State.beadSize === targetBeadSize) return;
 
       const previousBeadSize = State.beadSize;
+      const convertingFromMixed = previousBeadSize === MIXED_BEAD_SIZE_MODE && targetBeadSize !== MIXED_BEAD_SIZE_MODE;
       const transition = transitionBraceletSizeMode(State, targetBeadSize, STONES);
       if (!transition.ok) {
         showToast('\u0e2b\u0e34\u0e19\u0e1a\u0e32\u0e07\u0e40\u0e21\u0e47\u0e14\u0e44\u0e21\u0e48\u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a\u0e02\u0e19\u0e32\u0e14\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01', 3000);
@@ -3917,6 +3940,19 @@ function initBeadSizeOptions() {
       }
 
       Object.assign(State, transition.state);
+      if (convertingFromMixed) {
+        const trimResult = trimTrailingOverflowAfterFixedConversion({
+          state: State,
+          targetLengthMm: getBraceletLengthMm(),
+          getComponentGeometry: createGeometryComponentForLoopItem,
+          fixedGeometryComponents: getAnchoredGeometryComponents()
+        });
+        Object.assign(State, trimResult.state);
+        if (trimResult.removedComponents.length > 0) {
+          console.info('[mixed-to-fixed-trim]', { targetBeadSize, removedComponents: trimResult.removedComponents, geometry: trimResult.geometry });
+          showToast('Removed trailing components to fit the selected bead size.');
+        }
+      }
       if (State.beadSize === MIXED_BEAD_SIZE_MODE && previousBeadSize !== MIXED_BEAD_SIZE_MODE) {
         State.mixedSizeFilter = String(State.mixedPlacingSize);
       }
@@ -4342,14 +4378,18 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
   const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
   const anchoredCharmFootprintMm = loopComponents
     .filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType))
-    .reduce((sum, component) => sum + (component.footprintMm || component.sizeMm || 0), 0);
+    .reduce((sum, component) => sum + (getComponentPhysicalLengthMm(component) || 0), 0);
   const sequencedLengthMm = loopComponents
     .filter((component) => component.type !== 'charm' || isSlotPlaceableCharmType(component.charmType))
-    .reduce((sum, component) => sum + component.sizeMm, 0);
-  const totalUsedLengthMm = anchoredCharmFootprintMm + sequencedLengthMm;
+    .reduce((sum, component) => sum + (getComponentPhysicalLengthMm(component) || 0), 0);
+  const geometry = createBraceletGeometry({
+    components: loopComponents.filter((component) => component.type !== 'empty'),
+    targetLengthMm: braceletConfig.braceletLengthMm
+  });
+  const totalUsedLengthMm = geometry.usedLengthMm;
   const braceletLengthMm = braceletConfig.braceletLengthMm;
   const usableBeadLengthMm = Math.max(0, braceletLengthMm - anchoredCharmFootprintMm);
-  const remainingLengthMm = braceletLengthMm - totalUsedLengthMm;
+  const remainingLengthMm = totalUsedLengthMm === null ? 0 : braceletLengthMm - totalUsedLengthMm;
   const uniformCapacity = braceletConfig.beadSizeMode === 'mixed'
     ? null
     : Math.floor(usableBeadLengthMm / braceletConfig.placingSizeMm);
@@ -4359,6 +4399,10 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
     charmFootprintMm: anchoredCharmFootprintMm,
     stoneLengthMm: sequencedLengthMm,
     totalUsedLengthMm,
+    differenceMm: geometry.differenceMm,
+    fitStatus: geometry.fitStatus,
+    isWithinTolerance: geometry.isWithinTolerance,
+    invalidComponents: geometry.invalidComponents,
     usableBeadLengthMm,
     remainingLengthMm,
     uniformCapacity,
@@ -6132,6 +6176,7 @@ function createBraceletComponentList() {
         layoutRole: 'loop',
         sourceIndex: index,
         stoneId: item.stoneId,
+        size: item.size,
         sizeMm: item.size,
         visualImage,
         uniqueId: item.uniqueId
