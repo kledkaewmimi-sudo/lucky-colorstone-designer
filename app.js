@@ -7,8 +7,8 @@ import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysical
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
-import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
+import { establishLineIdentityBeforeDesign } from './line-identity-before-design.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
@@ -54,6 +54,7 @@ const IS_UAT_MODE = APP_ENV === 'uat';
 const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('debugSticky') === '1';
 let LIFF_ID = '';
 let liffConfigurationReason = 'UAT_LIFF_CONFIG_MISSING';
+let lineIdentityFailureCode = '';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
@@ -272,9 +273,6 @@ let deferredLoginQaEnabled = false;
 let lineOaFriendshipRequired = false;
 let lineOaFriendshipRecheckInFlight = false;
 let lineOaFriendshipStep4ResumePending = false;
-const shouldBypassInitialLineLoginForApp = createInitialLineLoginGuard({
-  resolveFeatureEnabled: () => isDeferredLineLoginEffectivelyEnabled()
-});
 let resolveCustomerStartupBootstrap;
 let rejectCustomerStartupBootstrap;
 const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
@@ -1077,6 +1075,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
+  const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
+    && returnParams.get('line_auth') === 'identity';
   const shouldOpenStep4FromUrl = !IS_UAT_MODE && (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId'));
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
@@ -1091,9 +1091,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     && (startupCallbackPlan.kind === 'v2-wait-for-identity' || startupCallbackPlan.kind === 'v2-restore-before-reset');
   const shouldHoldForFriendshipResume = !returnParams.has('orderId')
     && hasLineOaFriendshipResumePending();
-  const shouldHoldForCallbackBootstrap = shouldHoldForDeferredCallback || shouldHoldForFriendshipResume;
+  const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
+    || shouldHoldForDeferredCallback
+    || shouldHoldForFriendshipResume;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
-    && (shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
+    && (shouldResumeInitialIdentityCallback || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
   // A cross-context V2 callback must apply validated handoff continuity before
   // the first analytics event can create a replacement browser session.
@@ -1107,7 +1109,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // A public/manual entry is deliberately a new design session. Only a bounded
   // active LINE callback/resume context may load prior customization state.
-  if (shouldStartFreshCustomization) {
+  if (shouldResumeInitialIdentityCallback) {
+    // Initial identity callbacks must never revive a stale bracelet. The marker
+    // is recognized before UI rendering, then the callback resumes a clean Step 1.
+    resetCustomizationSessionForFreshEntry();
+  } else if (shouldStartFreshCustomization) {
     resetCustomizationSessionForFreshEntry();
   } else {
     loadPersistedState();
@@ -1178,7 +1184,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   markStartupPerformance('T1_liff_ready');
   clearOAuthQueryParams();
   let restored = null;
-  if (shouldHoldForDeferredCallback) {
+  if (shouldResumeInitialIdentityCallback) {
+    if (isLineIdentityAvailable()) {
+      State.currentStep = 1;
+      State.landingDismissed = true;
+      persistLandingDismissed();
+      clearInitialLineIdentityCallbackMarker();
+    } else {
+      console.warn('[uat-line-identity]', { reason: lineIdentityFailureCode || 'INITIAL_IDENTITY_UNAVAILABLE' });
+      showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${lineIdentityFailureCode || 'F05E3'})`);
+    }
+  } else if (shouldHoldForDeferredCallback) {
     restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
     const handoffToken = parseCustomizationLoginIntent(startupRawCustomizationIntent)?.handoffToken;
     const restoreAlreadyApplied = Boolean(handoffToken && lineCallbackRestoreGuard.has(handoffToken));
@@ -1793,8 +1809,10 @@ function clearLineConnectPrompt() {
   setLandingSubtitleMessage('');
 }
 
-function getLiffRedirectUri() {
-  return `${window.location.origin}${window.location.pathname}`;
+function getLiffRedirectUri({ initialIdentity = false } = {}) {
+  const redirect = new URL(`${window.location.origin}${window.location.pathname}`);
+  if (initialIdentity) redirect.searchParams.set('line_auth', 'identity');
+  return redirect.toString();
 }
 
 function getLiffEntryUrl() {
@@ -1807,7 +1825,6 @@ function isLikelyMobileBrowser() {
 }
 
 function requiresLineLoginForCustomization() {
-  if (IS_UAT_MODE) return false;
   return isLiffInClient() || isLikelyMobileBrowser();
 }
 
@@ -1842,19 +1859,31 @@ function isLineIdentityAvailable() {
 }
 
 async function syncLineProfileFromLiff() {
-  if (!isLiffLoggedIn()) return false;
+  lineIdentityFailureCode = '';
+  if (!isLiffLoggedIn()) {
+    lineIdentityFailureCode = 'F05E3_NOT_LOGGED_IN';
+    return false;
+  }
 
   try {
     const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
-    State.lineUserId = String(profile.userId || '').trim();
+    const lineUserId = String(profile?.userId || '').trim();
+    if (!lineUserId) {
+      lineIdentityFailureCode = 'F05E3B';
+      return false;
+    }
+    State.lineUserId = lineUserId;
     if (profile.displayName) {
       State.ownerName = profile.displayName;
       DOM.braceletOwnerName.value = profile.displayName;
     }
     saveState();
     trackAnalyticsEvent('line_auth_success');
-    return isLineIdentityAvailable();
+    const synchronized = isLineIdentityAvailable();
+    if (!synchronized) lineIdentityFailureCode = 'F05E3C';
+    return synchronized;
   } catch (profileErr) {
+    lineIdentityFailureCode = 'F05E3A';
     console.warn("LIFF profile fetch failed. LINE identity is unavailable.", profileErr);
     trackAnalyticsEvent('line_auth_error', {
       message: profileErr?.message || String(profileErr || '')
@@ -2211,7 +2240,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   console.log("LIFF customization login start");
 
   try {
-    liff.login({ redirectUri: getLiffRedirectUri() });
+    liff.login({ redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }) });
     return returnStartStatus ? true : false;
   } catch (loginErr) {
     liffLoginInProgress = false;
@@ -2257,35 +2286,33 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { showLandingPrompt = false, allowDeferredInitialLogin = false } = options;
+  const { showLandingPrompt = false } = options;
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
   // Desktop remains independent of LIFF availability and login state.
   if (!requiresLineLoginForCustomization()) return true;
-  if (shouldBypassInitialLineLoginForApp({
-    requiresLineLogin: true,
-    isAuthenticated: isLineIdentityAvailable(),
-    isCustomization: allowDeferredInitialLogin
-  })) return true;
-  if (isLineIdentityAvailable()) return true;
-  if (isLiffLoggedIn()) {
-    const profileReady = await syncLineProfileFromLiff();
-    if (profileReady) return true;
-    showToast(LINE_CONNECT_RETRY_MESSAGE);
-    return false;
+  const identity = await establishLineIdentityBeforeDesign({
+    hasCanonicalIdentity: isLineIdentityAvailable,
+    isLiffLoggedIn,
+    synchronizeProfile: async () => ({
+      ok: await syncLineProfileFromLiff(),
+      reason: lineIdentityFailureCode || 'F05E3'
+    }),
+    startLogin: async () => {
+      if (canUseLiffLoginFromCurrentBrowser()) {
+        showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
+        return { started: startLiffLoginForCustomization({ returnStartStatus: true }) === true };
+      }
+      if (showLandingPrompt) {
+        return { started: openLineConnectEntryForCustomization({ returnStartStatus: true }) === true };
+      }
+      return { started: false, reason: 'LIFF_NOT_READY' };
+    }
+  });
+  if (identity.ok) return true;
+  if (identity.state === 'profile_sync_failed') {
+    showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${identity.reason})`);
   }
-
-  if (canUseLiffLoginFromCurrentBrowser()) {
-    showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
-    return startLiffLoginForCustomization();
-  }
-
-  if (showLandingPrompt) {
-    return openLineConnectEntryForCustomization();
-  } else {
-    showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
-  }
-
   return false;
 }
 
@@ -2346,6 +2373,11 @@ function startDeferredLineLoginWithPersistedIntent() {
 }
 
 async function beginDeferredStep3AuthBoundary() {
+  // Identity is now established at Landing Start. Step 3 only owns the later
+  // OA-friendship handoff, never a first-time LINE login/design handoff.
+  if (!isLineIdentityAvailable()) {
+    return { handled: true, ok: false, reason: 'line_identity_required' };
+  }
   if (IS_UAT_MODE) return { handled: false, ok: true };
   const boundary = createDeferredStep3AuthBoundary({
     resolveFeatureEnabled: isDeferredLineLoginEffectivelyEnabled,
@@ -2401,22 +2433,7 @@ async function initLIFF() {
     const isLoggedIn = liff.isLoggedIn();
     console.log("LIFF isLoggedIn:", isLoggedIn);
     if (isLoggedIn) {
-      try {
-        console.log("LIFF getProfile start");
-        const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
-        console.log("LIFF getProfile complete");
-        State.lineUserId = String(profile.userId || '').trim();
-        if (profile.displayName) {
-          State.ownerName = profile.displayName;
-          DOM.braceletOwnerName.value = profile.displayName;
-        }
-        trackAnalyticsEvent('line_auth_success');
-      } catch (profileErr) {
-        console.warn("LIFF profile fetch failed. Continuing as guest.", profileErr);
-        trackAnalyticsEvent('line_auth_error', {
-          message: profileErr?.message || String(profileErr || '')
-        });
-      }
+      await syncLineProfileFromLiff();
     }
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
@@ -2466,7 +2483,7 @@ function setupLandingEvents() {
     let canContinue = false;
     try {
       canContinue = await withTimeout(
-        requireLineLoginForCustomization({ showLandingPrompt: true, allowDeferredInitialLogin: true }),
+        requireLineLoginForCustomization({ showLandingPrompt: true }),
         8000,
         "Start customization"
       );
@@ -3273,6 +3290,14 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
     isFull,
     warningText: isFull ? '' : 'กรุณาเลือกหินให้เต็มวงกำไลก่อนดำเนินการต่อ'
   };
+}
+
+function clearInitialLineIdentityCallbackMarker() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('line_auth') !== 'identity') return;
+  params.delete('line_auth');
+  const cleanSearch = params.toString();
+  window.history.replaceState({}, document.title, `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`);
 }
 
 function getCurrentCheckoutFitEligibility() {

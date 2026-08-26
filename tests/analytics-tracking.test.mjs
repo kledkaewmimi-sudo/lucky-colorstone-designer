@@ -81,7 +81,7 @@ test('real callback path applies handoff continuity before deferred analytics in
   const startupEnd = source.indexOf("function createAnalyticsSessionId()", startupStart);
   const startup = source.slice(startupStart, startupEnd);
   assert.ok(startup.indexOf('const deferAnalyticsUntilCallbackRestore = shouldHoldForDeferredCallback') < startup.indexOf('await initLIFF()'));
-  assert.ok(startup.indexOf('restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent)') < startup.indexOf("if (deferAnalyticsUntilCallbackRestore) {\n    initAnalytics()"));
+  assert.ok(startup.indexOf('restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent)') < startup.lastIndexOf('if (deferAnalyticsUntilCallbackRestore)'));
 });
 
 test('LINE/OA funnel tracking is emitted only by the verified-friend path', async () => {
