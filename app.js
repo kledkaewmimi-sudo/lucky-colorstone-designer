@@ -553,7 +553,9 @@ function ensureCurrentDesignMatchesBeadSize({ showToastNotification = false } = 
 }
 
 function normalizeSelectedStoneSizes() {
+  if (State.beadSize === MIXED_BEAD_SIZE_MODE) return;
   const normalizedBeadSize = getCurrentBeadSizeMm();
+  if (![4, 6, 10].includes(normalizedBeadSize)) return;
   State.selectedStones.forEach((item) => {
     if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
     item.size = normalizedBeadSize;
@@ -648,7 +650,12 @@ function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSize
 
   const stoneId = String(item.stoneId || '').trim();
   if (!stoneId) return null;
-  const size = Number.isFinite(Number(item.size)) ? Number(item.size) : normalizedBeadSize;
+  const explicitSize = Number(item.size);
+  const fallbackSize = State.beadSize === MIXED_BEAD_SIZE_MODE ? null : normalizedBeadSize;
+  const size = [4, 6, 10].includes(explicitSize)
+    ? explicitSize
+    : [4, 6, 10].includes(fallbackSize) ? fallbackSize : null;
+  if (size === null) return null;
 
   return {
     componentType: 'stone',
@@ -2455,8 +2462,17 @@ function loadPersistedState() {
   if (savedState) {
     try {
       const parsed = JSON.parse(savedState);
+      const restoredBeadSize = hasExplicitBeadSizeSelection(parsed.beadSize) ? normalizeBeadSizeOption(parsed.beadSize) : null;
+      if (restoredBeadSize === MIXED_BEAD_SIZE_MODE) {
+        if (![4, 6, 10].includes(Number(parsed.mixedPlacingSize))) throw new Error('Invalid mixed placing size in persisted state');
+        const invalidMixedStone = (Array.isArray(parsed.selectedStones) ? parsed.selectedStones : []).find((item) => {
+          const type = String(item?.componentType || item?.type || 'stone').trim().toLowerCase();
+          return type === 'stone' && ![4, 6, 10].includes(Number(item?.size));
+        });
+        if (invalidMixedStone) throw new Error('Invalid physical stone size in persisted mixed state');
+      }
       State.wristSize = parsed.wristSize || 16.0;
-      State.beadSize = hasExplicitBeadSizeSelection(parsed.beadSize) ? normalizeBeadSizeOption(parsed.beadSize) : null;
+      State.beadSize = restoredBeadSize;
       State.mixedPlacingSize = normalizeMixedPlacingSize(parsed.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : (State.beadSize || '6'));
       State.mixedSizeFilter = normalizeMixedSizeFilter(parsed.mixedSizeFilter, String(State.mixedPlacingSize));
       State.ownerName = parsed.ownerName || '';
@@ -2598,6 +2614,7 @@ function getCanonicalGuestDesignState() {
     currentStep: State.currentStep,
     wristSize: State.wristSize,
     beadSize: State.beadSize,
+    mixedPlacingSize: State.mixedPlacingSize,
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
     selectedStones: getSelectedLoopItems()
   };
@@ -2614,17 +2631,17 @@ function restoreGuestDesignSnapshot() {
   const { design, step } = result.snapshot;
   State.wristSize = design.wristSize;
   State.beadSize = design.beadSize;
-  State.mixedPlacingSize = getCurrentBeadSizeMm();
+  State.mixedPlacingSize = design.mixedPlacingSize;
   State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
   syncSelectedCharmState();
   State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
-    if (component.type === 'empty') return null;
-    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: getCurrentBeadSizeMm() };
-    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
-    return { componentType: 'spacer', spacerId: component.id };
+    if (component.type === 'empty') return { componentType: 'empty', uniqueId: component.uniqueId };
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: component.size, uniqueId: component.uniqueId };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id, uniqueId: component.uniqueId };
+    return { componentType: 'spacer', spacerId: component.id, uniqueId: component.uniqueId };
   }));
-  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
-  State.uniqueCounter = State.selectedStones.length;
+  State.selectedStones.forEach((item, index) => { item.uniqueId = Number.isInteger(Number(item.uniqueId)) && Number(item.uniqueId) > 0 ? Number(item.uniqueId) : index + 1; });
+  State.uniqueCounter = State.selectedStones.reduce((max, item) => Math.max(max, Number(item.uniqueId) || 0), 0);
   normalizeSelectedStoneSizes();
   State.currentStep = step;
   return result;
@@ -2641,17 +2658,17 @@ function applyCanonicalGuestDesignSnapshot(snapshot, { targetStep = 4 } = {}) {
   const { design } = reconciled.snapshot;
   State.wristSize = design.wristSize;
   State.beadSize = design.beadSize;
-  State.mixedPlacingSize = getCurrentBeadSizeMm();
+  State.mixedPlacingSize = design.mixedPlacingSize;
   State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
   syncSelectedCharmState();
   State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
-    if (component.type === 'empty') return null;
-    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: getCurrentBeadSizeMm() };
-    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
-    return { componentType: 'spacer', spacerId: component.id };
+    if (component.type === 'empty') return { componentType: 'empty', uniqueId: component.uniqueId };
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: component.size, uniqueId: component.uniqueId };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id, uniqueId: component.uniqueId };
+    return { componentType: 'spacer', spacerId: component.id, uniqueId: component.uniqueId };
   }));
-  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
-  State.uniqueCounter = State.selectedStones.length;
+  State.selectedStones.forEach((item, index) => { item.uniqueId = Number.isInteger(Number(item.uniqueId)) && Number(item.uniqueId) > 0 ? Number(item.uniqueId) : index + 1; });
+  State.uniqueCounter = State.selectedStones.reduce((max, item) => Math.max(max, Number(item.uniqueId) || 0), 0);
   normalizeSelectedStoneSizes();
   State.currentStep = targetStep === 4 ? 4 : 3;
   State.landingDismissed = true;
