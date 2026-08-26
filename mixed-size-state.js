@@ -22,6 +22,12 @@ export function normalizeMixedPlacingSize(value, fallback = '6') {
   return Number(normalizeFixedBeadSize(value) || normalizeFixedBeadSize(fallback) || '6');
 }
 
+export function getPhysicalStonePlacementSize(beadSize, mixedPlacingSize) {
+  const mode = String(beadSize ?? '').trim();
+  if (mode === MIXED_BEAD_SIZE_MODE) return normalizeMixedPlacingSize(mixedPlacingSize);
+  return FIXED_BEAD_SIZES.includes(mode) ? Number(mode) : null;
+}
+
 export function getStoneSupportedSizes(stone) {
   if (!Array.isArray(stone?.sizes)) return [];
   return FIXED_BEAD_SIZES.map(Number).filter((size) => stone.sizes.map(Number).includes(size));
