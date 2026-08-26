@@ -44,13 +44,21 @@ export function createDeferredStep3AuthBoundary({
       targetStep: 4,
       featureEnabled: true
     });
-    if (!intent || !persistIntent(intent)) {
-      return { handled: true, ok: false, reason: 'intent_unavailable' };
+    if (!intent) return { handled: true, ok: false, reason: 'intent_unavailable' };
+
+    // The opaque intent is passed directly to the login redirect. Persisting it
+    // locally is a same-context optimization, not a prerequisite for the
+    // server-first recovery path after an iOS browser-context replacement.
+    let intentPersisted = false;
+    try {
+      intentPersisted = persistIntent(intent) === true;
+    } catch {
+      intentPersisted = false;
     }
 
     try {
       const started = await startLineLogin(intent);
-      if (started === true) return { handled: true, ok: true, intent };
+      if (started === true) return { handled: true, ok: true, intent, intentPersisted };
       clearIntent();
       return { handled: true, ok: false, reason: 'login_start_failed' };
     } catch {

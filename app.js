@@ -1,7 +1,7 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
-import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
+import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, createGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { createLineCallbackResumeUrl, parseCustomizationLoginIntent, parseLineCallbackResumeIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
@@ -2668,7 +2668,15 @@ function getCanonicalGuestDesignState() {
 }
 
 function saveGuestDesignSnapshot() {
-  return writeGuestDesignSnapshot(getCanonicalGuestDesignState());
+  const canonicalState = getCanonicalGuestDesignState();
+  const snapshot = createGuestDesignSnapshot(canonicalState);
+  if (!snapshot) return { ok: false, reason: 'invalid' };
+
+  // The server handoff is the recovery source for a cross-context LINE return.
+  // Safari storage failures must not prevent a valid Step 3 design from reaching
+  // that handoff; localStorage remains only a same-context fallback.
+  const persisted = writeGuestDesignSnapshot(canonicalState);
+  return persisted.ok ? persisted : { ok: true, snapshot, persistence: 'unavailable' };
 }
 
 function restoreGuestDesignSnapshot() {

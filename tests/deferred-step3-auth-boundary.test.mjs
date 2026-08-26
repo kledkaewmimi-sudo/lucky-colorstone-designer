@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import { createDeferredStep3AuthBoundary } from '../deferred-step3-auth-boundary.js';
 import { parseCustomizationLoginIntent } from '../line-redirect-restore.js';
+
+const require = createRequire(import.meta.url);
+const { normalizeHandoffPayload } = require('../line-auth-handoff.js');
 
 const token = 'a'.repeat(43);
 const snapshot = {
@@ -85,7 +89,7 @@ test('an asynchronously recovered LIFF identity skips handoff creation and login
   assert.deepEqual(order, []);
 });
 
-test('snapshot, handoff, and intent failures never invoke LINE login', async () => {
+test('snapshot and handoff failures never invoke LINE login', async () => {
   const scenarios = [
     {
       overrides: { saveSnapshot: () => ({ ok: false }) },
@@ -96,11 +100,6 @@ test('snapshot, handoff, and intent failures never invoke LINE login', async () 
       overrides: { createHandoff: async () => null },
       reason: 'handoff_unavailable',
       expected: ['snapshot']
-    },
-    {
-      overrides: { persistIntent: () => false },
-      reason: 'intent_unavailable',
-      expected: ['snapshot', 'handoff']
     }
   ];
 
@@ -111,6 +110,86 @@ test('snapshot, handoff, and intent failures never invoke LINE login', async () 
     assert.equal(result.ok, false);
     assert.equal(result.reason, scenario.reason);
     assert.deepEqual(order, scenario.expected);
+  }
+});
+
+test('a valid server handoff proceeds when iOS local intent persistence is unavailable', async () => {
+  const { boundary, order } = createControlledBoundary({
+    persistIntent: () => false
+  });
+  const result = await boundary();
+  assert.equal(result.ok, true);
+  assert.equal(result.intentPersisted, false);
+  assert.deepEqual(order, ['snapshot', 'handoff', 'login']);
+});
+
+test('mixed Step 3 snapshot passes server handoff normalization and proceeds to deferred LINE auth', async () => {
+  const mixedSnapshot = {
+    version: 1,
+    savedAt: 1_760_000_000_000,
+    expiresAt: 1_760_007_200_000,
+    step: 3,
+    design: {
+      wristSize: 16.5,
+      beadSize: 'mixed',
+      mixedPlacingSize: 10,
+      selectedCharmIds: ['gold-anchor'],
+      components: [
+        { type: 'stone', id: 'amethyst', size: 4, uniqueId: 1 },
+        { type: 'spacer', id: 'silver-spacer', uniqueId: 2 },
+        { type: 'stone', id: 'amethyst', size: 10, uniqueId: 3 },
+        { type: 'charm', id: 'heart-charm', uniqueId: 4 },
+        { type: 'stone', id: 'amethyst', size: 6, uniqueId: 5 }
+      ]
+    }
+  };
+  const normalized = normalizeHandoffPayload({ targetStep: 4, designSnapshot: mixedSnapshot }, 1_760_000_000_100);
+  assert.ok(normalized);
+  assert.equal(normalized.designSnapshot.design.beadSize, 'mixed');
+  assert.equal(normalized.designSnapshot.design.mixedPlacingSize, 10);
+  assert.deepEqual(normalized.designSnapshot.design.components.filter((item) => item.type === 'stone').map((item) => item.size), [4, 10, 6]);
+
+  const order = [];
+  const boundary = createDeferredStep3AuthBoundary({
+    resolveFeatureEnabled: () => true,
+    requiresLineLogin: () => true,
+    isAuthenticated: () => false,
+    saveSnapshot: () => ({ ok: true, snapshot: mixedSnapshot }),
+    createHandoff: async (payload) => {
+      order.push('handoff');
+      assert.ok(normalizeHandoffPayload(payload, 1_760_000_000_100));
+      return { token };
+    },
+    persistIntent: () => false,
+    startLineLogin: async (intent) => {
+      order.push('login');
+      assert.equal(intent.handoffToken, token);
+      return true;
+    }
+  });
+  const result = await boundary();
+  assert.equal(result.ok, true);
+  assert.equal(result.intentPersisted, false);
+  assert.deepEqual(order, ['handoff', 'login']);
+});
+
+test('fixed 4mm, 6mm, and 10mm snapshots remain valid server handoffs', () => {
+  for (const beadSize of ['4', '6', '10']) {
+    const fixedSnapshot = {
+      version: 1,
+      savedAt: 1_760_000_000_000,
+      expiresAt: 1_760_007_200_000,
+      step: 3,
+      design: {
+        wristSize: 16,
+        beadSize,
+        selectedCharmIds: [],
+        components: [{ type: 'stone', id: 'amethyst', uniqueId: 1 }]
+      }
+    };
+    const normalized = normalizeHandoffPayload({ targetStep: 4, designSnapshot: fixedSnapshot }, 1_760_000_000_100);
+    assert.ok(normalized, `${beadSize}mm handoff must normalize`);
+    assert.equal(normalized.designSnapshot.design.components[0].size, Number(beadSize));
   }
 });
 
@@ -142,4 +221,6 @@ test('the real Step 3 handler invokes the production boundary before navigation'
   assert.match(appSource, /async function resolveExistingLineIdentityForDeferredStep3Auth\(\)/);
   assert.match(appSource, /return isLiffLoggedIn\(\) \? await syncLineProfileFromLiff\(\) : false/);
   assert.match(appSource, /if \(isLiffLoggedIn\(\)\) return false;[\s\S]*canUseLiffLoginFromCurrentBrowser/);
+  assert.match(appSource, /createGuestDesignSnapshot\(canonicalState\)/);
+  assert.match(appSource, /return persisted\.ok \? persisted : \{ ok: true, snapshot, persistence: 'unavailable' \};/);
 });
