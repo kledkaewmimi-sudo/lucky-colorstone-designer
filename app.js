@@ -5,6 +5,7 @@ import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, createGuest
 import { createLineCallbackResumeUrl, parseCustomizationLoginIntent, parseLineCallbackResumeIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
+import { createLineAuthHandoffRequest } from './line-handoff-client.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
@@ -2227,7 +2228,12 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started');
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
-  saveState();
+  try {
+    saveState();
+  } catch {
+    if (!preserveExistingIntent) return false;
+    console.warn('[line-handoff]', { reason: 'LOCAL_SNAPSHOT_UNAVAILABLE' });
+  }
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
@@ -2257,7 +2263,12 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
-  saveState();
+  try {
+    saveState();
+  } catch {
+    if (!preserveExistingIntent) return false;
+    console.warn('[line-handoff]', { reason: 'LOCAL_SNAPSHOT_UNAVAILABLE' });
+  }
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
   if (loader) loader.style.display = 'flex';
@@ -2315,11 +2326,23 @@ async function requireLineLoginForCustomization(options = {}) {
 
 function getDeferredLineAuthAnalyticsContinuity() {
   const source = analyticsFirstSource || getCurrentAnalyticsSource();
+  let storedVisitorId = '';
+  let storedSessionId = '';
+  let storedStartedAt = '';
+  let storedLastSeenAt = '';
+  try {
+    storedVisitorId = localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '';
+    storedSessionId = localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '';
+    storedStartedAt = localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '';
+    storedLastSeenAt = localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '';
+  } catch {
+    console.warn('[line-handoff]', { reason: 'LOCAL_SNAPSHOT_UNAVAILABLE' });
+  }
   return {
-    visitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
-    sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
-    startedAt: analyticsStartedAt || localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '',
-    lastSeenAt: analyticsLastSeenAt || localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '',
+    visitorId: analyticsVisitorId || storedVisitorId,
+    sessionId: analyticsSessionId || storedSessionId,
+    startedAt: analyticsStartedAt || storedStartedAt,
+    lastSeenAt: analyticsLastSeenAt || storedLastSeenAt,
     attribution: {
       source: source?.utm_source || '',
       medium: source?.utm_medium || '',
@@ -2344,17 +2367,7 @@ async function initializeDeferredLoginQaSession() {
 }
 
 async function createDeferredLineAuthHandoff(payload) {
-  try {
-    const response = await fetch('/api/auth-handoffs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json().catch(() => null);
-    return response.ok && typeof result?.token === 'string' ? result : null;
-  } catch {
-    return null;
-  }
+  return createLineAuthHandoffRequest({ payload });
 }
 
 function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
@@ -2381,6 +2394,25 @@ async function beginDeferredStep3AuthBoundary() {
     getAnalyticsContinuity: getDeferredLineAuthAnalyticsContinuity
   });
   return boundary();
+}
+
+function reportLineHandoffFailure(result = {}) {
+  const allowedReasons = new Set([
+    'SNAPSHOT_CREATE_FAILED',
+    'LOCAL_SNAPSHOT_UNAVAILABLE',
+    'HANDOFF_POST_NETWORK_FAILED',
+    'HANDOFF_POST_HTTP_FAILED',
+    'HANDOFF_RESPONSE_INVALID',
+    'HANDOFF_TOKEN_MISSING',
+    'INTENT_PERSIST_FAILED',
+    'LOGIN_START_FAILED',
+    'LIFF_NOT_READY',
+    'UNKNOWN_BOUNDARY_FAILURE'
+  ]);
+  const reason = allowedReasons.has(result.reason) ? result.reason : 'UNKNOWN_BOUNDARY_FAILURE';
+  const details = { reason };
+  if (Number.isInteger(result.status)) details.status = result.status;
+  console.error('[line-handoff]', details);
 }
 
 // LIFF Initialization
@@ -3570,6 +3602,7 @@ function setupNavigationEvents() {
         const deferredAuth = await beginDeferredStep3AuthBoundary();
         if (deferredAuth.handled) {
           if (!deferredAuth.ok) {
+            reportLineHandoffFailure(deferredAuth);
             showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
           }
           return;

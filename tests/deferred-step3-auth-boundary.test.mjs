@@ -93,12 +93,12 @@ test('snapshot and handoff failures never invoke LINE login', async () => {
   const scenarios = [
     {
       overrides: { saveSnapshot: () => ({ ok: false }) },
-      reason: 'snapshot_unavailable',
+      reason: 'SNAPSHOT_CREATE_FAILED',
       expected: []
     },
     {
       overrides: { createHandoff: async () => null },
-      reason: 'handoff_unavailable',
+      reason: 'HANDOFF_TOKEN_MISSING',
       expected: ['snapshot']
     }
   ];
@@ -199,7 +199,7 @@ test('a LINE-start failure clears the just-persisted V2 intent and does not adva
     startLineLogin: async () => false,
     clearIntent: () => { cleared += 1; }
   });
-  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'login_start_failed' });
+  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'LOGIN_START_FAILED' });
   assert.deepEqual(order, ['snapshot', 'handoff', 'intent']);
   assert.equal(cleared, 1);
 });

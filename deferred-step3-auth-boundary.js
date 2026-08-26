@@ -24,7 +24,11 @@ export function createDeferredStep3AuthBoundary({
 
     const savedSnapshot = saveSnapshot();
     if (!savedSnapshot?.ok || !savedSnapshot.snapshot) {
-      return { handled: true, ok: false, reason: 'snapshot_unavailable' };
+      return {
+        handled: true,
+        ok: false,
+        reason: savedSnapshot?.reason === 'storage_unavailable' ? 'LOCAL_SNAPSHOT_UNAVAILABLE' : 'SNAPSHOT_CREATE_FAILED'
+      };
     }
 
     let handoff;
@@ -35,16 +39,23 @@ export function createDeferredStep3AuthBoundary({
         analyticsContinuity: getAnalyticsContinuity()
       });
     } catch {
-      return { handled: true, ok: false, reason: 'handoff_unavailable' };
+      return { handled: true, ok: false, reason: 'HANDOFF_POST_NETWORK_FAILED' };
     }
-    if (!handoff?.token) return { handled: true, ok: false, reason: 'handoff_unavailable' };
+    if (!handoff?.token) {
+      return {
+        handled: true,
+        ok: false,
+        reason: handoff?.reason || 'HANDOFF_TOKEN_MISSING',
+        ...(Number.isInteger(handoff?.status) ? { status: handoff.status } : {})
+      };
+    }
 
     const intent = createLineRedirectIntent({
       handoffToken: handoff.token,
       targetStep: 4,
       featureEnabled: true
     });
-    if (!intent) return { handled: true, ok: false, reason: 'intent_unavailable' };
+    if (!intent) return { handled: true, ok: false, reason: 'UNKNOWN_BOUNDARY_FAILURE' };
 
     // The opaque intent is passed directly to the login redirect. Persisting it
     // locally is a same-context optimization, not a prerequisite for the
@@ -60,10 +71,10 @@ export function createDeferredStep3AuthBoundary({
       const started = await startLineLogin(intent);
       if (started === true) return { handled: true, ok: true, intent, intentPersisted };
       clearIntent();
-      return { handled: true, ok: false, reason: 'login_start_failed' };
+      return { handled: true, ok: false, reason: 'LOGIN_START_FAILED' };
     } catch {
       clearIntent();
-      return { handled: true, ok: false, reason: 'login_start_failed' };
+      return { handled: true, ok: false, reason: 'LOGIN_START_FAILED' };
     }
   };
 }
