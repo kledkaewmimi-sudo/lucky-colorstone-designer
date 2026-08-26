@@ -1838,6 +1838,20 @@ async function consumeLineAuthHandoff(token) {
   return Array.isArray(rows) && rows[0]?.payload ? rows[0].payload : null;
 }
 
+async function readLineAuthHandoff(token) {
+  if (!isSupabaseConfigured() || !HANDOFF_TOKEN_PATTERN.test(String(token || ''))) return null;
+  const rows = await supabaseRequest('line_auth_handoffs', {
+    params: {
+      select: 'payload',
+      token: `eq.${token}`,
+      consumed_at: 'is.null',
+      expires_at: `gt.${new Date().toISOString()}`,
+      limit: '1'
+    }
+  });
+  return Array.isArray(rows) && rows[0]?.payload ? rows[0].payload : null;
+}
+
 async function createDeferredLoginQaSession() {
   if (!isSupabaseConfigured() || !getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET')) return null;
   const token = createDeferredLoginQaToken();
@@ -3388,6 +3402,21 @@ async function handleApiRequest(req, res, urlObj) {
         return true;
       }
       sendJson(res, 201, handoff);
+    } catch {
+      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+    }
+    return true;
+  }
+
+  const readHandoffMatch = pathname.match(/^\/api\/auth-handoffs\/([A-Za-z0-9_-]{43})$/);
+  if (readHandoffMatch && method === 'GET') {
+    try {
+      const payload = await readLineAuthHandoff(readHandoffMatch[1]);
+      if (!payload) {
+        sendJson(res, 404, { error: 'Handoff unavailable or expired.' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, payload });
     } catch {
       sendJson(res, 503, { error: 'Handoff storage unavailable.' });
     }

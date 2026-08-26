@@ -2,6 +2,9 @@
 // the legacy mobile LINE-before-Step-1 flow.
 export const DEFER_LINE_LOGIN_TO_STEP4 = true;
 export const LINE_REDIRECT_INTENT_VERSION = 2;
+export const LINE_CALLBACK_HANDOFF_PARAM = 'line_handoff';
+export const LINE_CALLBACK_RESUME_PARAM = 'line_resume';
+export const LINE_CALLBACK_RESUME_VALUE = 'guest_design_handoff';
 
 // Test injection only: callers must pass this value directly in memory. It never
 // reads a URL, local/session storage, DOM, or user-controlled production input.
@@ -39,6 +42,37 @@ export function parseCustomizationLoginIntent(rawIntent, { now = Date.now(), ttl
 export function createLineRedirectIntent({ handoffToken, targetStep = 4, now = Date.now(), featureEnabled = DEFER_LINE_LOGIN_TO_STEP4 } = {}) {
   if (featureEnabled !== true || !ALLOWED_TARGET_STEPS.has(targetStep) || !HANDOFF_TOKEN_PATTERN.test(String(handoffToken || ''))) return null;
   return { version: LINE_REDIRECT_INTENT_VERSION, ts: Number(now), step: 3, targetStep, handoffToken, mode: 'guest_design_handoff' };
+}
+
+// The URL contains only the opaque, short-lived server handoff token. It never
+// carries customer design data and cannot authorize Step 4 by itself.
+export function createLineCallbackResumeUrl(baseUrl, { handoffToken, targetStep = 4, now = Date.now(), featureEnabled = DEFER_LINE_LOGIN_TO_STEP4 } = {}) {
+  const intent = createLineRedirectIntent({ handoffToken, targetStep, now, featureEnabled });
+  if (!intent || typeof baseUrl !== 'string') return null;
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set(LINE_CALLBACK_HANDOFF_PARAM, intent.handoffToken);
+    url.searchParams.set(LINE_CALLBACK_RESUME_PARAM, LINE_CALLBACK_RESUME_VALUE);
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function parseLineCallbackResumeIntent(urlValue, { now = Date.now(), featureEnabled = DEFER_LINE_LOGIN_TO_STEP4 } = {}) {
+  if (typeof urlValue !== 'string') return null;
+  try {
+    const url = new URL(urlValue);
+    if (url.searchParams.get(LINE_CALLBACK_RESUME_PARAM) !== LINE_CALLBACK_RESUME_VALUE) return null;
+    return createLineRedirectIntent({
+      handoffToken: url.searchParams.get(LINE_CALLBACK_HANDOFF_PARAM),
+      targetStep: 4,
+      now,
+      featureEnabled
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function restoreLineRedirectHandoff({ intent, consumeServerHandoff, restoreLocalSnapshot } = {}) {

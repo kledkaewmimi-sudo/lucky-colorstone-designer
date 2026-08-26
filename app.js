@@ -2,7 +2,7 @@ import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCha
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
+import { createLineCallbackResumeUrl, parseCustomizationLoginIntent, parseLineCallbackResumeIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
@@ -1069,7 +1069,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
-  const startupRawCustomizationIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  const startupRawCustomizationIntent = getStartupCustomizationLoginIntent();
   const startupDeferredFeatureEnabled = isDeferredLineLoginEffectivelyEnabled();
   const startupCallbackPlan = planLineCallbackBootstrap({
     rawIntent: startupRawCustomizationIntent,
@@ -1170,6 +1170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const handoffToken = parseCustomizationLoginIntent(startupRawCustomizationIntent)?.handoffToken;
     const restoreAlreadyApplied = Boolean(handoffToken && lineCallbackRestoreGuard.has(handoffToken));
     if (!restored?.ok && restored?.reason === 'handoff_not_found') {
+      clearLineCallbackResumeParams();
       resetCustomizationSessionForFreshEntry();
     } else if (!restored?.ok && !restoreAlreadyApplied) {
       await restoreDeferredCallbackDesignToStep3Fallback();
@@ -1776,12 +1777,47 @@ function clearLineConnectPrompt() {
   setLandingSubtitleMessage('');
 }
 
+function getCallbackCustomizationLoginIntent() {
+  const intent = parseLineCallbackResumeIntent(window.location.href, {
+    featureEnabled: isDeferredLineLoginEffectivelyEnabled()
+  });
+  return intent ? JSON.stringify(intent) : '';
+}
+
+function getStartupCustomizationLoginIntent() {
+  const callbackIntent = getCallbackCustomizationLoginIntent();
+  if (callbackIntent) return callbackIntent;
+  try {
+    return localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
 function getLiffRedirectUri() {
-  return `${window.location.origin}${window.location.pathname}`;
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
+  let intent = null;
+  try {
+    intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
+  } catch {
+    // The server handoff remains the callback recovery source when storage is unavailable.
+  }
+  return intent?.version === 2
+    ? createLineCallbackResumeUrl(baseUrl, { handoffToken: intent.handoffToken, targetStep: intent.targetStep, featureEnabled: true }) || baseUrl
+    : baseUrl;
 }
 
 function getLiffEntryUrl() {
-  return `https://liff.line.me/${LIFF_ID}`;
+  const baseUrl = `https://liff.line.me/${LIFF_ID}`;
+  let intent = null;
+  try {
+    intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
+  } catch {
+    // The normal LIFF entry remains available without a recoverable design intent.
+  }
+  return intent?.version === 2
+    ? createLineCallbackResumeUrl(baseUrl, { handoffToken: intent.handoffToken, targetStep: intent.targetStep, featureEnabled: true }) || baseUrl
+    : baseUrl;
 }
 
 function isLikelyMobileBrowser() {
@@ -2692,11 +2728,9 @@ async function restoreDeferredCallbackDesignToStep3Fallback() {
   return applyCanonicalGuestDesignSnapshot(localSnapshot.snapshot, { targetStep: 3 }).ok;
 }
 
-async function consumeDeferredLineAuthHandoff(token) {
+async function readDeferredLineAuthHandoff(token) {
   try {
-    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}/consume`, {
-      method: 'POST'
-    });
+    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}`);
     const result = await response.json().catch(() => null);
     if (!response.ok || !result?.payload?.designSnapshot) {
       return { ok: false, reason: response.status === 404 ? 'not_found' : 'unavailable' };
@@ -2708,6 +2742,17 @@ async function consumeDeferredLineAuthHandoff(token) {
     };
   } catch {
     return { ok: false, reason: 'unavailable' };
+  }
+}
+
+async function consumeDeferredLineAuthHandoff(token) {
+  try {
+    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}/consume`, {
+      method: 'POST'
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -2732,7 +2777,8 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
     hasLineIdentity: isLineIdentityAvailable(),
     guard: lineCallbackRestoreGuard,
     featureEnabled,
-    consumeServerHandoff: consumeDeferredLineAuthHandoff,
+    retrieveServerHandoff: readDeferredLineAuthHandoff,
+    finalizeServerHandoff: consumeDeferredLineAuthHandoff,
     restoreLocalSnapshot: () => readGuestDesignSnapshot({ catalog: getGuestDesignSnapshotCatalog() }),
     applyCanonicalDesign: async (snapshot, { targetStep }) => {
       const applied = applyCanonicalGuestDesignSnapshot(snapshot, { targetStep });
@@ -2744,6 +2790,7 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
     lineOaFriendshipRequired = false;
     clearCustomizationLoginIntent();
     clearGuestDesignSnapshot();
+    clearLineCallbackResumeParams();
     restored.lineOaFriendshipVerified = true;
   }
   return restored;
@@ -2780,6 +2827,13 @@ function clearOAuthQueryParams() {
   const cleanSearch = cleanParams.toString();
   const nextUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`;
   window.history.replaceState({}, document.title, nextUrl);
+}
+
+function clearLineCallbackResumeParams() {
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete('line_handoff');
+  nextUrl.searchParams.delete('line_resume');
+  window.history.replaceState({}, document.title, `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
 }
 
 function getRequestedOrderId() {
