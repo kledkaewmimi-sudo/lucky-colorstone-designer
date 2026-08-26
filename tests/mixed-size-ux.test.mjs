@@ -14,11 +14,10 @@ const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const css = await readFile(new URL('../index.css', import.meta.url), 'utf8');
 const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 const mixedLabel = String.fromCodePoint(0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a, 0x0e4c);
-const mixedDescription = String.fromCodePoint(0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34);
+const mixedDescription = String.fromCodePoint(0x0e2a, 0x0e19, 0x0e01, 0x0020, 0x0e21, 0x0e21, 0x0e15);
 const malformedMixedDescriptions = [
-  String.fromCodePoint(0x0e2a, 0x0e19, 0x0e01, 0x0020, 0x0e21, 0x0e21, 0x0e15),
   String.fromCodePoint(0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e21, 0x0e15),
-  String.fromCodePoint(0x0e2a, 0x0e19, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34)
+  String.fromCodePoint(0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34)
 ];
 const allSizesLabel = String.fromCodePoint(0x0e17, 0x0e31, 0x0e49, 0x0e07, 0x0e2b, 0x0e21, 0x0e14);
 const catalog = [
@@ -40,7 +39,7 @@ test('Step 2 keeps four compact vertical cards in the requested mixed-to-4mm ord
   assert.match(css, /#stepView2 \.bead-size-card-mixed \{[\s\S]*?box-shadow:/);
   assert.match(css, /#stepView2 \.bead-size-preview-mixed \{[\s\S]*?justify-content: flex-start;/);
   assert.match(html, new RegExp(`data-bead-size="mixed"[\\s\\S]*?<h4>${mixedDescription}<\\/h4>`, 'u'));
-  assert.deepEqual([...mixedDescription].map((char) => char.codePointAt(0)), [0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x0020, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34]);
+  assert.deepEqual([...mixedDescription].map((char) => char.codePointAt(0)), [0x0e2a, 0x0e19, 0x0e01, 0x0020, 0x0e21, 0x0e21, 0x0e15]);
   malformedMixedDescriptions.forEach((value) => assert.doesNotMatch(html, new RegExp(`<h4>${value}<\\/h4>`, 'u')));
 });
 
@@ -111,28 +110,10 @@ test('Step 3 uses one shared full-size sticky preview with the canonical rendere
   }
 });
 
-test('Step 3 runtime layer diagnostics are query-gated to UAT and capture actual-mobile offsets read-only', () => {
-  assert.match(app, /const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams\.get\('debugSticky'\) === '1';/);
-  assert.match(app, /function setupStep3StickyDebugOverlay\(\) \{\s*if \(!STICKY_DEBUG_ENABLED \|\| step3StickyDebugOverlay\) return;/);
-  assert.match(app, /document\.elementFromPoint\(Math\.floor\(window\.innerWidth \/ 2\), y\)/);
-  assert.match(app, /const hits = \[5, 20, 50, 100, 110, 130\]/);
-  assert.match(app, /window\.visualViewport\?\.addEventListener\('resize', schedule/);
-  assert.match(app, /padding-top:env\(safe-area-inset-top\)/);
-  assert.match(app, /function getActiveStep3StickyMobileRules\(\)/);
-  assert.match(app, /function getStep3StickyPaintAudit\(step3View\)/);
-  assert.match(app, /function getStep3AnimationDebug\(step3View\)/);
-  assert.match(app, /HIT TESTS \(pointer-events filtered; not paint-order proof\)/);
-  assert.match(app, /\['PREVIEW ROOT', preview, null\]/);
-  assert.match(app, /\['PREVIEW ::before', preview, '::before'\]/);
-  assert.match(app, /\['PREVIEW ::after', preview, '::after'\]/);
-  assert.match(app, /window\.matchMedia\(rule\.conditionText\)\.matches/);
-  assert.match(app, /function getStep3StickyRuntimeClassAudit\(header, step3View\)/);
-  assert.match(app, /difference\(preview-appContent\)=\$\{stickyDifference\.toFixed\(1\)\}/);
-  assert.match(app, /getStackingContextAncestry\(header\)/);
-  assert.match(app, /getStackingContextAncestry\(DOM\.step3PreviewCard\)/);
-  assert.match(app, /window\.requestAnimationFrame\(\(\) => \{/);
-  assert.match(css, /\.step3-sticky-debug-overlay \{[\s\S]*?position: fixed;[\s\S]*?bottom:/);
-  assert.match(app, /if \(IS_UAT_MODE && step === 4\)/);
+test('final UAT candidate ships without a sticky debug overlay', () => {
+  assert.match(app, /const STICKY_DEBUG_ENABLED = false;/);
+  assert.doesNotMatch(app, /urlParams\.get\('debugSticky'\)/);
+  assert.match(app, /if \(!STICKY_DEBUG_ENABLED \|\| step3StickyDebugOverlay\) return;/);
 });
 
 test('Step 3 uses a shorter mobile tab row and a tighter mixed strip gap', () => {

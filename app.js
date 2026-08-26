@@ -51,7 +51,8 @@ const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.ge
 // explicit so every external integration can fail closed before making a request.
 const APP_ENV = 'uat';
 const IS_UAT_MODE = APP_ENV === 'uat';
-const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('debugSticky') === '1';
+// The accepted UAT candidate ships without the temporary sticky debug overlay.
+const STICKY_DEBUG_ENABLED = false;
 let LIFF_ID = '';
 let liffConfigurationReason = 'UAT_LIFF_CONFIG_MISSING';
 let lineIdentityFailureCode = '';
