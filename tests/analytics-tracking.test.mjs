@@ -72,7 +72,7 @@ test('canonical stages have stable per-session keys and are only tracked once lo
 });
 
 test('real callback path applies handoff continuity before deferred analytics initialization', async () => {
-  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const source = (await readFile(new URL('../app.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const restoreStart = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const restoreEnd = source.indexOf('function persistLandingDismissed', restoreStart);
   const restore = source.slice(restoreStart, restoreEnd);
