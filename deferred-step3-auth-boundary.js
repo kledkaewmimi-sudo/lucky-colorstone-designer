@@ -70,6 +70,9 @@ export function createDeferredStep3AuthBoundary({
 
     try {
       const started = await startLineLogin(intent);
+      if (started?.continueWithoutLogin === true && started.ok === true) {
+        return { handled: false, ok: true };
+      }
       if (started === true || started?.ok === true) return { handled: true, ok: true, intent, intentPersisted };
       clearIntent();
       return { handled: true, ok: false, reason: classifyLineLoginStarterResult(started) };

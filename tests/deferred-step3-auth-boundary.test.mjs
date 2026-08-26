@@ -211,6 +211,14 @@ test('a LIFF readiness failure is preserved as a safe F05 subtype', async () => 
   assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'LIFF_INIT_FAILED' });
 });
 
+test('a recovered authenticated LIFF profile continues to the existing Step 4 friendship gate without another login', async () => {
+  const { boundary, order } = createControlledBoundary({
+    startLineLogin: async () => ({ ok: true, continueWithoutLogin: true })
+  });
+  assert.deepEqual(await boundary(), { handled: false, ok: true });
+  assert.deepEqual(order, ['snapshot', 'handoff', 'intent']);
+});
+
 test('legacy intent parsing remains compatible', () => {
   assert.deepEqual(
     parseCustomizationLoginIntent(JSON.stringify({ ts: 1_760_000_000_000, step: 1 }), { now: 1_760_000_000_001 }),
@@ -227,7 +235,7 @@ test('the real Step 3 handler invokes the production boundary before navigation'
   assert.ok(navigation.indexOf('if (deferredAuth.handled)') < navigation.indexOf('await goToStep(State.currentStep + 1)'));
   assert.match(appSource, /async function resolveExistingLineIdentityForDeferredStep3Auth\(\)/);
   assert.match(appSource, /return isLiffLoggedIn\(\) \? await syncLineProfileFromLiff\(\) : false/);
-  assert.match(appSource, /await ensureLiffInitializedForDeferredLogin\(\);[\s\S]*if \(isLiffLoggedIn\(\)\) return \{ ok: false, reason: 'LIFF_LOGGED_IN_BUT_APP_IDENTITY_MISSING' \};/);
+  assert.match(appSource, /if \(isLiffLoggedIn\(\)\) \{[\s\S]*const profileReady = await syncLineProfileFromLiff\(\);[\s\S]*if \(profileReady\) return \{ ok: true, continueWithoutLogin: true \};/);
   assert.match(appSource, /createGuestDesignSnapshot\(canonicalState\)/);
   assert.match(appSource, /return persisted\.ok \? persisted : \{ ok: true, snapshot, persistence: 'unavailable' \};/);
   assert.match(appSource, /await ensureLiffInitializedForDeferredLogin\(\)/);

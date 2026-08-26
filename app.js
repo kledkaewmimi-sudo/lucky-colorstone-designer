@@ -7,6 +7,7 @@ import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { createLineAuthHandoffRequest } from './line-handoff-client.js';
 import { LINE_LOGIN_START_DIAGNOSTICS, getLineLoginStartDiagnostic } from './line-login-start-diagnostic.js';
+import { syncLiffProfileIdentity } from './line-liff-profile-sync.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
@@ -255,6 +256,7 @@ let liffLoginInProgress = false;
 let liffInitializationPromise = null;
 let liffInitializationFailureReason = '';
 let lastLiffLoginStartMetadata = null;
+let lastLineProfileSyncFailureReason = '';
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 let landingPressTimer = null;
@@ -1871,25 +1873,32 @@ async function resolveExistingLineIdentityForDeferredStep3Auth() {
 }
 
 async function syncLineProfileFromLiff() {
-  if (!isLiffLoggedIn()) return false;
-
-  try {
-    const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
-    State.lineUserId = String(profile.userId || '').trim();
-    if (profile.displayName) {
-      State.ownerName = profile.displayName;
-      DOM.braceletOwnerName.value = profile.displayName;
+  lastLineProfileSyncFailureReason = '';
+  const synced = await syncLiffProfileIdentity({
+    isLoggedIn: isLiffLoggedIn,
+    getProfile: () => withTimeout(liff.getProfile(), 5000, 'LIFF getProfile'),
+    applyIdentity: ({ lineUserId, displayName }) => {
+      State.lineUserId = lineUserId;
+      if (displayName) {
+        State.ownerName = displayName;
+        DOM.braceletOwnerName.value = displayName;
+      }
+      saveState();
+      return isLineIdentityAvailable();
     }
-    saveState();
+  });
+  if (synced.ok) {
     trackAnalyticsEvent('line_auth_success');
-    return isLineIdentityAvailable();
-  } catch (profileErr) {
-    console.warn("LIFF profile fetch failed. LINE identity is unavailable.", profileErr);
-    trackAnalyticsEvent('line_auth_error', {
-      message: profileErr?.message || String(profileErr || '')
-    });
-    return false;
+    return true;
   }
+  lastLineProfileSyncFailureReason = synced.reason;
+  if (synced.reason !== 'LIFF_PROFILE_SESSION_UNAVAILABLE') {
+    console.warn('[line-login-start]', { branch: synced.reason });
+    trackAnalyticsEvent('line_auth_error', {
+      message: synced.reason
+    });
+  }
+  return false;
 }
 
 async function getLineOaFriendshipStatus() {
@@ -2444,7 +2453,11 @@ async function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
   // verification must stay fail-closed on Step 3.
   const ready = await ensureLiffInitializedForDeferredLogin();
   if (!ready.ok) return ready;
-  if (isLiffLoggedIn()) return { ok: false, reason: 'LIFF_LOGGED_IN_BUT_APP_IDENTITY_MISSING' };
+  if (isLiffLoggedIn()) {
+    const profileReady = await syncLineProfileFromLiff();
+    if (profileReady) return { ok: true, continueWithoutLogin: true };
+    return { ok: false, reason: lastLineProfileSyncFailureReason || 'LIFF_LOGGED_IN_BUT_APP_IDENTITY_MISSING' };
+  }
   if (canUseLiffLoginFromCurrentBrowser()) {
     return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true, resumeIntent });
   }
