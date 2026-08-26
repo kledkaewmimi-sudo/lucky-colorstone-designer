@@ -93,7 +93,16 @@ The broad wildcard suite has unrelated existing UAT failures: the fixture-backen
 
 ## UAT Deployment
 
-Deploy only the UAT Vercel project after the committed `uat` branch is pushed. Production main, production Vercel/Render, production LIFF, and Stripe are not changed by this implementation.
+Committed UAT implementation: `3b5e3bc29b227e364b2d584cfe265abecfe02c5b` (`feat: gate UAT design flow on LINE identity`).
+
+The linked `lucky-colorstone-uat` Vercel project deployed this commit successfully:
+
+- Deployment ID: `dpl_Gr9wDmKHxeE4GBRsikmPd2Bw5Zhz`
+- Status: `READY`
+- Stable alias: `https://uat.customize.luckycolorstone.com/`
+- Verified `GET /api/liff-config`: HTTP 200 and `{ "environment": "uat", "liffId": "2010525799-Sw5UFc6E" }`
+
+Production main, production Vercel/Render, production LIFF, and Stripe were not changed.
 
 ## Owner Real-iPhone QA Matrix
 
@@ -111,7 +120,7 @@ Production promotion is blocked pending explicit owner approval after real-iPhon
 
 ## Final Status
 
-The UAT identity-before-design migration is implemented and the relevant automated checks pass. UAT deployment and owner real-iPhone verification are required before any production change.
+The UAT identity-before-design migration is deployed and the relevant automated checks pass. Owner real-iPhone verification is required before any production change.
 
 ## Next Action
 
