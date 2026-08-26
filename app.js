@@ -8,6 +8,7 @@ import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
+import { MIXED_BEAD_SIZE_MODE, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -71,8 +72,9 @@ const DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE = Object.freeze({
 const State = {
   currentStep: 1,
   wristSize: 16.0,          // Default wrist size in cm
-  beadSize: '6',            // '4', '6', or '10'
-  mixedPlacingSize: 6,      // Legacy persisted field, normalized to a supported size
+  beadSize: null,           // Explicit customer choice: '4', '6', '10', or mixed
+  mixedPlacingSize: 6,
+  mixedSizeFilter: '6',
   ownerName: '',            // Personalized bracelet owner name
   lineUserId: '',           // LIFF profile user identifier
   shippingInfo: {
@@ -117,6 +119,8 @@ let deferredLoginQaActivationAttempted = false;
 // 2. DOM Elements Selection
 // ==========================================
 const DOM = {
+  appContainer: document.querySelector('.app-container'),
+  appContent: document.querySelector('.app-content'),
   // Stepper Elements
   stepNodes: [
     document.getElementById('stepNode1'),
@@ -165,6 +169,7 @@ const DOM = {
   btnResetBracelet: document.getElementById('btnResetBracelet'),
   btnInspirationGallery: document.getElementById('btnInspirationGallery'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
+  step3PreviewCard: document.getElementById('step3PreviewCard'),
   mixedToggleBtns: document.querySelectorAll('.mixed-toggle-btn'),
   catalogTypeFilter: document.getElementById('catalogTypeFilter'),
   catalogTypeTabs: document.querySelectorAll('.catalog-type-tab'),
@@ -413,9 +418,11 @@ function isCustomerCatalogItemAvailable(item) {
 }
 
 function isStoneAvailableForCurrentBeadSize(stone) {
-  const selectedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : State.beadSize;
-  const beadSize = Number(normalizeBeadSizeOption(selectedSize));
-  return Array.isArray(stone?.sizes) && stone.sizes.map(Number).includes(beadSize);
+  return stoneSupportsSize(stone, getCurrentBeadSizeMm());
+}
+
+function hasExplicitBeadSizeSelection(value = State.beadSize) {
+  return ['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(String(value ?? ''));
 }
 
 function adaptSpacerRecordForCustomer(record) {
@@ -452,14 +459,14 @@ async function refreshCustomerSpacerCatalog() {
 }
 
 function normalizeBeadSizeOption(value) {
-  const beadSize = String(value || '').trim();
-  if (ALLOWED_BEAD_SIZES.includes(beadSize)) return beadSize;
-  if (beadSize === '8') return '10';
-  return '6';
+  return normalizeBraceletSizeMode(value);
 }
 
 function getCurrentBeadSizeMm() {
-  return parseInt(normalizeBeadSizeOption(State.beadSize), 10);
+  if (!hasExplicitBeadSizeSelection()) return null;
+  return State.beadSize === MIXED_BEAD_SIZE_MODE
+    ? normalizeMixedPlacingSize(State.mixedPlacingSize)
+    : Number(normalizeBeadSizeOption(State.beadSize));
 }
 
 function getAllowedDesignerCategories(beadSize = State.beadSize) {
@@ -534,6 +541,7 @@ function removeInvalidDesignerItemsForBeadSize({ showToastNotification = false }
 }
 
 function ensureCurrentDesignMatchesBeadSize({ showToastNotification = false } = {}) {
+  if (State.beadSize === MIXED_BEAD_SIZE_MODE) return false;
   const changed = removeInvalidDesignerItemsForBeadSize({ showToastNotification });
   if (changed) {
     adjustBeadsToNewCapacity();
@@ -2427,8 +2435,9 @@ function loadPersistedState() {
     try {
       const parsed = JSON.parse(savedState);
       State.wristSize = parsed.wristSize || 16.0;
-      State.beadSize = normalizeBeadSizeOption(parsed.beadSize || '6');
-      State.mixedPlacingSize = getCurrentBeadSizeMm();
+      State.beadSize = hasExplicitBeadSizeSelection(parsed.beadSize) ? normalizeBeadSizeOption(parsed.beadSize) : null;
+      State.mixedPlacingSize = normalizeMixedPlacingSize(parsed.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : (State.beadSize || '6'));
+      State.mixedSizeFilter = normalizeMixedSizeFilter(parsed.mixedSizeFilter, String(State.mixedPlacingSize));
       State.ownerName = parsed.ownerName || '';
       State.lineUserId = typeof parsed.lineUserId === 'string' ? parsed.lineUserId : '';
       State.shippingInfo = normalizeShippingInfo(parsed.shippingInfo);
@@ -2484,8 +2493,9 @@ function resetCustomizationSessionForFreshEntry({ preserveCurrentLineIdentity = 
   }
 
   State.wristSize = 16.0;
-  State.beadSize = '6';
+  State.beadSize = null;
   State.mixedPlacingSize = 6;
+  State.mixedSizeFilter = '6';
   State.ownerName = currentOwnerName;
   State.lineUserId = currentLineUserId;
   State.shippingInfo = {
@@ -2539,6 +2549,7 @@ function saveState() {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
+    mixedSizeFilter: State.mixedSizeFilter,
     ownerName: State.ownerName,
     lineUserId: State.lineUserId,
     shippingInfo: normalizeShippingInfo(State.shippingInfo),
@@ -3420,6 +3431,10 @@ function setupNavigationEvents() {
       if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
+      if (State.currentStep === 2 && !hasExplicitBeadSizeSelection()) {
+        showToast('\u0e01\u0e23\u0e38\u0e13\u0e32\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e02\u0e19\u0e32\u0e14\u0e2b\u0e34\u0e19\u0e01\u0e48\u0e2d\u0e19', 3000);
+        return;
+      }
       if (State.currentStep === 3) {
         ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
         const validationState = syncStep3NextValidationUI();
@@ -3894,16 +3909,30 @@ function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
     card.addEventListener('click', () => {
       const targetBeadSize = normalizeBeadSizeOption(card.getAttribute('data-bead-size'));
-      
       if (State.beadSize === targetBeadSize) return;
 
-      State.beadSize = targetBeadSize;
+      const previousBeadSize = State.beadSize;
+      const transition = transitionBraceletSizeMode(State, targetBeadSize, STONES);
+      if (!transition.ok) {
+        showToast('\u0e2b\u0e34\u0e19\u0e1a\u0e32\u0e07\u0e40\u0e21\u0e47\u0e14\u0e44\u0e21\u0e48\u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a\u0e02\u0e19\u0e32\u0e14\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01', 3000);
+        return;
+      }
+
+      Object.assign(State, transition.state);
+      if (State.beadSize === MIXED_BEAD_SIZE_MODE && previousBeadSize !== MIXED_BEAD_SIZE_MODE) {
+        State.mixedSizeFilter = String(State.mixedPlacingSize);
+      }
+
       trackAnalyticsEvent('bead_size_selected', {
-        bead_size: targetBeadSize
+        bead_size: State.beadSize
       });
-      State.mixedPlacingSize = getCurrentBeadSizeMm();
-      removeInvalidDesignerItemsForBeadSize({ showToastNotification: true });
-      
+
+      const enteringMixed = State.beadSize === MIXED_BEAD_SIZE_MODE;
+      const leavingMixed = previousBeadSize === MIXED_BEAD_SIZE_MODE && !enteringMixed;
+      if (!enteringMixed && !leavingMixed) {
+        removeInvalidDesignerItemsForBeadSize({ showToastNotification: true });
+      }
+
       DOM.beadSizeCards.forEach(c => {
         if (c.getAttribute('data-bead-size') === State.beadSize) {
           c.classList.add('active');
@@ -3914,7 +3943,7 @@ function initBeadSizeOptions() {
       
       updateEstimationText();
       
-      if (State.selectedStones.length > 0) {
+      if (State.selectedStones.length > 0 && !enteringMixed && !leavingMixed) {
         const newSize = getCurrentBeadSizeMm();
         State.selectedStones.forEach((item) => {
           if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
@@ -3943,9 +3972,13 @@ function updateEstimationText() {
   }
   
   const size = getCurrentBeadSizeMm();
-  const capacity = capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size);
+  const capacity = size
+    ? (capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size))
+    : null;
   if (DOM.estimationCapacityText) {
-    DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
+    DOM.estimationCapacityText.textContent = size
+      ? `Fits approximately ${capacity} beads (${size}mm).`
+      : '\u0e01\u0e23\u0e38\u0e13\u0e32\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e02\u0e19\u0e32\u0e14\u0e2b\u0e34\u0e19\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e14\u0e39\u0e08\u0e33\u0e19\u0e27\u0e19\u0e42\u0e14\u0e22\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13';
   }
 }
 
@@ -3972,11 +4005,9 @@ function adjustBeadsToNewCapacity() {
 
 function renderStep2() {
   DOM.beadSizeCards.forEach(c => {
-    if (c.getAttribute('data-bead-size') === State.beadSize) {
-      c.classList.add('active');
-    } else {
-      c.classList.remove('active');
-    }
+    const active = hasExplicitBeadSizeSelection() && c.getAttribute('data-bead-size') === State.beadSize;
+    c.classList.toggle('active', active);
+    c.setAttribute('aria-checked', active ? 'true' : 'false');
   });
   startStep2SupportRotation();
   updateEstimationText();
