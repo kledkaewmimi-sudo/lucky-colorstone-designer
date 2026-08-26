@@ -94,7 +94,7 @@ The existing funnel stages, Meta Pixel, and first-touch UTM behavior remain unch
 
 ## PROMOTION HEAD
 
-Pending final report commit.
+`86addb8` — final validation report/test commit; the reviewed implementation head immediately before that report commit is `ba5bbaa7aef27437d58b55ea1314ef309379f553`.
 
 ## Remaining release gates
 
