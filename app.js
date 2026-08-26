@@ -11,6 +11,7 @@ import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEven
 import { MIXED_BEAD_SIZE_MODE, getPhysicalStonePlacementSize, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
 import { createBraceletGeometry, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
+import { createStonePricingSummary } from './mixed-order-model.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -4403,6 +4404,7 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
     fitStatus: geometry.fitStatus,
     isWithinTolerance: geometry.isWithinTolerance,
     invalidComponents: geometry.invalidComponents,
+    geometry,
     usableBeadLengthMm,
     remainingLengthMm,
     uniformCapacity,
@@ -5097,7 +5099,12 @@ function buildOrderPricingFromSummary(summary) {
     charmData: summary.charmData,
     spacerData: summary.spacerData,
     itemizedBilling: summary.itemizedBilling,
-    braceletSequence: summary.braceletSequence
+    braceletSequence: summary.braceletSequence,
+    stoneVariants: summary.stoneVariants,
+    geometry: summary.geometry,
+    pricingValid: summary.pricingValid,
+    pricingIssues: summary.pricingIssues,
+    clientPriceAuthoritative: false
   };
 }
 
@@ -5110,6 +5117,14 @@ function getEffectiveDiscountPercent() {
 
 function applyEffectiveDiscountToCheckoutSummary(summary = {}) {
   const nextSummary = { ...summary };
+  if (nextSummary.pricingValid === false) {
+    nextSummary.discount = null;
+    nextSummary.discountAmount = null;
+    nextSummary.netPrice = null;
+    nextSummary.finalPrice = null;
+    nextSummary.totalPrice = null;
+    return nextSummary;
+  }
   const subtotal = Number(nextSummary.subtotal || 0);
   const discountPercent = getEffectiveDiscountPercent();
   const discountAmount = Math.round(subtotal * (discountPercent / 100));
@@ -5160,6 +5175,10 @@ function buildCheckoutSummary() {
     aggregatedStones[key].totalPrice += price;
   });
 
+  const stonePricing = createStonePricingSummary(selectedStoneItems, STONES);
+  Object.keys(aggregatedStones).forEach((key) => delete aggregatedStones[key]);
+  Object.assign(aggregatedStones, stonePricing.variants);
+
   const aggregatedSpacers = spacerData.spacers.reduce((spacerMap, spacer) => {
     const key = `${spacer.spacerId}_${spacer.effectiveLengthMm}`;
     if (!spacerMap[key]) {
@@ -5178,7 +5197,7 @@ function buildCheckoutSummary() {
     return spacerMap;
   }, {});
 
-  const stoneBilling = Object.values(aggregatedStones);
+  const stoneBilling = stonePricing.stoneBilling;
   const charmBilling = charmData.charms.map((charm) => ({
     type: 'charm',
     id: charm.id,
@@ -5197,13 +5216,13 @@ function buildCheckoutSummary() {
   }));
   const spacerBilling = Object.values(aggregatedSpacers);
 
-  const stonesSubtotal = stoneBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+  const stonesSubtotal = stonePricing.stonesSubtotal;
   const charmSubtotal = charmBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
   const spacerSubtotal = spacerBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
-  const subtotal = stonesSubtotal + spacerSubtotal + charmSubtotal;
+  const subtotal = stonePricing.valid ? stonesSubtotal + spacerSubtotal + charmSubtotal : null;
   const discountPercent = getEffectiveDiscountPercent();
-  const discount = Math.round(subtotal * (discountPercent / 100));
-  const finalPrice = subtotal - discount;
+  const discount = subtotal === null ? null : Math.round(subtotal * (discountPercent / 100));
+  const finalPrice = subtotal === null ? null : subtotal - discount;
   const braceletSequence = createBraceletComponentList().map((component, index) => {
     if (component.type === 'empty') {
       return {
@@ -5276,6 +5295,11 @@ function buildCheckoutSummary() {
   return applyEffectiveDiscountToCheckoutSummary({
     selectedStoneItems,
     aggregatedStones,
+    stoneVariants: stonePricing.stoneVariants,
+    pricingValid: stonePricing.valid,
+    pricingIssues: stonePricing.invalidComponents,
+    clientPriceAuthoritative: false,
+    geometry: getCurrentBraceletCapacityMetrics().geometry,
     aggregatedSpacers,
     uniqueStoneIds,
     itemizedBilling: [
