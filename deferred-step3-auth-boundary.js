@@ -14,7 +14,11 @@ export function createDeferredStep3AuthBoundary({
   getAnalyticsContinuity = () => ({})
 } = {}) {
   return async function beginDeferredStep3Auth() {
-    if (resolveFeatureEnabled() !== true || !requiresLineLogin() || isAuthenticated()) {
+    if (resolveFeatureEnabled() !== true || !requiresLineLogin()) {
+      return { handled: false, ok: true };
+    }
+    const authenticated = await isAuthenticated();
+    if (authenticated) {
       return { handled: false, ok: true };
     }
 

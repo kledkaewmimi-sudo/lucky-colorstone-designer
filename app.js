@@ -1858,6 +1858,13 @@ function isLineIdentityAvailable() {
   return true;
 }
 
+async function resolveExistingLineIdentityForDeferredStep3Auth() {
+  if (isLineIdentityAvailable()) return true;
+  // A LIFF session can survive while this page's in-memory profile has not yet
+  // been populated. Resolve that existing session before considering a redirect.
+  return isLiffLoggedIn() ? await syncLineProfileFromLiff() : false;
+}
+
 async function syncLineProfileFromLiff() {
   if (!isLiffLoggedIn()) return false;
 
@@ -2351,6 +2358,10 @@ async function createDeferredLineAuthHandoff(payload) {
 }
 
 function startDeferredLineLoginWithPersistedIntent() {
+  // Never invoke liff.login() over an existing LIFF session. The deferred
+  // boundary has already attempted to resolve its profile; a failed profile
+  // verification must stay fail-closed on Step 3.
+  if (isLiffLoggedIn()) return false;
   if (canUseLiffLoginFromCurrentBrowser()) {
     return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
   }
@@ -2361,7 +2372,7 @@ async function beginDeferredStep3AuthBoundary() {
   const boundary = createDeferredStep3AuthBoundary({
     resolveFeatureEnabled: isDeferredLineLoginEffectivelyEnabled,
     requiresLineLogin: requiresLineLoginForCustomization,
-    isAuthenticated: isLineIdentityAvailable,
+    isAuthenticated: resolveExistingLineIdentityForDeferredStep3Auth,
     saveSnapshot: saveGuestDesignSnapshot,
     createHandoff: createDeferredLineAuthHandoff,
     persistIntent: persistCustomizationLoginIntent,

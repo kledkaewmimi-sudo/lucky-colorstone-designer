@@ -77,6 +77,14 @@ test('disabled flag, authenticated mobile, and desktop retain their direct legac
   }
 });
 
+test('an asynchronously recovered LIFF identity skips handoff creation and login', async () => {
+  const { boundary, order } = createControlledBoundary({
+    isAuthenticated: async () => true
+  });
+  assert.deepEqual(await boundary(), { handled: false, ok: true });
+  assert.deepEqual(order, []);
+});
+
 test('snapshot, handoff, and intent failures never invoke LINE login', async () => {
   const scenarios = [
     {
@@ -131,4 +139,7 @@ test('the real Step 3 handler invokes the production boundary before navigation'
   const navigation = appSource.slice(navigationStart, navigationEnd);
   assert.ok(navigation.indexOf('const deferredAuth = await beginDeferredStep3AuthBoundary()') > navigation.indexOf('const hasStock = await validateCurrentDesignStockWithLatestCatalog()'));
   assert.ok(navigation.indexOf('if (deferredAuth.handled)') < navigation.indexOf('await goToStep(State.currentStep + 1)'));
+  assert.match(appSource, /async function resolveExistingLineIdentityForDeferredStep3Auth\(\)/);
+  assert.match(appSource, /return isLiffLoggedIn\(\) \? await syncLineProfileFromLiff\(\) : false/);
+  assert.match(appSource, /if \(isLiffLoggedIn\(\)\) return false;[\s\S]*canUseLiffLoginFromCurrentBrowser/);
 });
