@@ -2,9 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const source = await readFile(new URL('../beryl-visuals.js', import.meta.url), 'utf8');
 const appSource = await readFile(new URL('../app.js', import.meta.url), 'utf8');
-const catalogPreviewModule = await readFile(new URL('../beryl-catalog-preview.js', import.meta.url), 'utf8');
 const {
   BERYL_CATALOG_FADE_MS,
   BERYL_CATALOG_HOLD_MS,
@@ -12,11 +10,11 @@ const {
   advanceBerylCatalogSchedulerState,
   createBerylCatalogSchedulerState,
   validateBerylCatalogSchedulerSequence
-} = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+} = await import(new URL('../beryl-visuals.js', import.meta.url));
 const {
   createBerylCatalogPreview,
   createBerylCatalogPreviewController
-} = await import(`data:text/javascript,${encodeURIComponent(`${source}\n${catalogPreviewModule.replace(/import[\s\S]*?from '\.\/beryl-visuals\.js';\n/, '')}`)}`);
+} = await import(new URL('../beryl-catalog-preview.js', import.meta.url));
 
 class FakeTimers {
   constructor() {
