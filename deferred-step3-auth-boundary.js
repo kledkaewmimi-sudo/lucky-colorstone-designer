@@ -1,4 +1,5 @@
 import { createLineRedirectIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
+import { classifyLineLoginStarterResult } from './line-login-start-diagnostic.js';
 
 // This controller owns only the pre-redirect recovery sequence. It deliberately
 // does not consume a handoff, restore design state, or navigate to Step 4.
@@ -71,7 +72,7 @@ export function createDeferredStep3AuthBoundary({
       const started = await startLineLogin(intent);
       if (started === true || started?.ok === true) return { handled: true, ok: true, intent, intentPersisted };
       clearIntent();
-      return { handled: true, ok: false, reason: started?.reason || 'LOGIN_START_UNEXPECTED_RETURN' };
+      return { handled: true, ok: false, reason: classifyLineLoginStarterResult(started) };
     } catch {
       clearIntent();
       return { handled: true, ok: false, reason: 'LIFF_LOGIN_THROW' };

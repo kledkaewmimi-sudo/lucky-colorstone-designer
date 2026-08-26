@@ -199,7 +199,7 @@ test('a LINE-start failure clears the just-persisted V2 intent and does not adva
     startLineLogin: async () => false,
     clearIntent: () => { cleared += 1; }
   });
-  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'LOGIN_START_UNEXPECTED_RETURN' });
+  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'LOGIN_STARTER_RETURNED_FALSE' });
   assert.deepEqual(order, ['snapshot', 'handoff', 'intent']);
   assert.equal(cleared, 1);
 });
@@ -227,7 +227,7 @@ test('the real Step 3 handler invokes the production boundary before navigation'
   assert.ok(navigation.indexOf('if (deferredAuth.handled)') < navigation.indexOf('await goToStep(State.currentStep + 1)'));
   assert.match(appSource, /async function resolveExistingLineIdentityForDeferredStep3Auth\(\)/);
   assert.match(appSource, /return isLiffLoggedIn\(\) \? await syncLineProfileFromLiff\(\) : false/);
-  assert.match(appSource, /await ensureLiffInitializedForDeferredLogin\(\);[\s\S]*if \(isLiffLoggedIn\(\)\) return \{ ok: false, reason: 'LOGIN_START_UNEXPECTED_RETURN' \};/);
+  assert.match(appSource, /await ensureLiffInitializedForDeferredLogin\(\);[\s\S]*if \(isLiffLoggedIn\(\)\) return \{ ok: false, reason: 'LIFF_LOGGED_IN_BUT_APP_IDENTITY_MISSING' \};/);
   assert.match(appSource, /createGuestDesignSnapshot\(canonicalState\)/);
   assert.match(appSource, /return persisted\.ok \? persisted : \{ ok: true, snapshot, persistence: 'unavailable' \};/);
   assert.match(appSource, /await ensureLiffInitializedForDeferredLogin\(\)/);

@@ -6,6 +6,7 @@ import { createLineCallbackResumeUrl, createLineRedirectIntent, parseCustomizati
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { createLineAuthHandoffRequest } from './line-handoff-client.js';
+import { LINE_LOGIN_START_DIAGNOSTICS, getLineLoginStartDiagnostic } from './line-login-start-diagnostic.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
@@ -2249,10 +2250,10 @@ function getSafeLiffRedirectMetadata(redirectUri) {
 }
 
 function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false, resumeIntent = null } = {}) {
-  if (getRequestedOrderId()) return getLiffLoginStartFailure('LOGIN_START_UNEXPECTED_RETURN', returnStartStatus);
+  if (getRequestedOrderId()) return getLiffLoginStartFailure('ORDER_DETAIL_CONTEXT_BLOCK', returnStartStatus);
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
-    return getLiffLoginStartFailure('LOGIN_START_UNEXPECTED_RETURN', returnStartStatus);
+    return getLiffLoginStartFailure('LOGIN_ALREADY_IN_PROGRESS', returnStartStatus);
   }
   if (typeof liff === 'undefined') {
     return getLiffLoginStartFailure('LIFF_SDK_UNAVAILABLE', returnStartStatus);
@@ -2443,7 +2444,7 @@ async function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
   // verification must stay fail-closed on Step 3.
   const ready = await ensureLiffInitializedForDeferredLogin();
   if (!ready.ok) return ready;
-  if (isLiffLoggedIn()) return { ok: false, reason: 'LOGIN_START_UNEXPECTED_RETURN' };
+  if (isLiffLoggedIn()) return { ok: false, reason: 'LIFF_LOGGED_IN_BUT_APP_IDENTITY_MISSING' };
   if (canUseLiffLoginFromCurrentBrowser()) {
     return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true, resumeIntent });
   }
@@ -2479,10 +2480,27 @@ function reportLineHandoffFailure(result = {}) {
     'LIFF_INIT_FAILED',
     'REDIRECT_URI_INVALID',
     'LIFF_LOGIN_THROW',
-    'LOGIN_START_UNEXPECTED_RETURN',
+    ...Object.keys(LINE_LOGIN_START_DIAGNOSTICS),
     'UNKNOWN_BOUNDARY_FAILURE'
   ]);
   const reason = allowedReasons.has(result.reason) ? result.reason : 'UNKNOWN_BOUNDARY_FAILURE';
+  const loginStartDiagnostic = getLineLoginStartDiagnostic(reason);
+  if (loginStartDiagnostic) {
+    let liffLoggedIn = false;
+    try {
+      if (typeof liff !== 'undefined' && typeof liff.isLoggedIn === 'function') liffLoggedIn = Boolean(liff.isLoggedIn());
+    } catch {
+      // A diagnostic must not alter the customer-safe failure path.
+    }
+    console.error('[line-login-start]', {
+      code: loginStartDiagnostic.code,
+      branch: loginStartDiagnostic.branch,
+      liffReady: State.liffInitialized === true,
+      liffLoggedIn,
+      loginInProgress: liffLoginInProgress === true
+    });
+    return loginStartDiagnostic.code;
+  }
   const details = { reason };
   if (Number.isInteger(result.status)) details.status = result.status;
   if (reason.startsWith('LIFF_') || reason.startsWith('LOGIN_') || reason === 'REDIRECT_URI_INVALID') {
