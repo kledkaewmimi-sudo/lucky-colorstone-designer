@@ -2,7 +2,7 @@ import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCha
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, createGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { createLineCallbackResumeUrl, parseCustomizationLoginIntent, parseLineCallbackResumeIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
+import { createLineCallbackResumeUrl, createLineRedirectIntent, parseCustomizationLoginIntent, parseLineCallbackResumeIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { createLineAuthHandoffRequest } from './line-handoff-client.js';
@@ -1808,11 +1808,11 @@ function getLiffRedirectUri({ resumeIntent = null } = {}) {
     : baseUrl;
 }
 
-function getLiffEntryUrl() {
+function getLiffEntryUrl({ resumeIntent = null } = {}) {
   const baseUrl = `https://liff.line.me/${LIFF_ID}`;
-  let intent = null;
+  let intent = resumeIntent;
   try {
-    intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
+    if (!intent) intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
   } catch {
     // The normal LIFF entry remains available without a recoverable design intent.
   }
@@ -1980,7 +1980,7 @@ function canUseNativeLineOaFriendshipPrompt() {
   return liffContext?.viewType === 'full';
 }
 
-async function openLineOaAddFriendExperience() {
+async function openLineOaAddFriendExperience({ resumeIntent = null } = {}) {
   // requestFriendship keeps the customer inside LIFF and returns control after
   // the official LINE add-friend/unblock subwindow closes. It is the primary path.
   if (canUseNativeLineOaFriendshipPrompt()) {
@@ -2002,7 +2002,7 @@ async function openLineOaAddFriendExperience() {
   if (!isLiffInClient()) {
     showLineOaFriendshipTransition();
     try {
-      window.location.assign(getLiffEntryUrl());
+      window.location.assign(getLiffEntryUrl({ resumeIntent }));
       return { opened: true, source: 'liff_entry' };
     } catch (error) {
       hideLineOaFriendshipTransition();
@@ -2093,8 +2093,18 @@ async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFrien
       showToast('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e41\u0e1a\u0e1a\u0e01\u0e33\u0e44\u0e25\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e19 LINE \u0e44\u0e14\u0e49 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
       return false;
     }
+    let resumeIntent = null;
+    if (!isLiffInClient()) {
+      const prepared = await createLineOaFriendshipResumeIntent();
+      if (!prepared.ok) {
+        const code = reportLineHandoffFailure(prepared);
+        showToast(`ไม่สามารถบันทึกแบบกำไลเพื่อเพิ่มเพื่อน LINE ได้ กรุณาลองใหม่ (${code})`);
+        return false;
+      }
+      resumeIntent = prepared.intent;
+    }
     setLineOaFriendshipResumePending();
-    const addFriend = await openLineOaAddFriendExperience();
+    const addFriend = await openLineOaAddFriendExperience({ resumeIntent });
     if (!addFriend.opened) {
       clearLineOaFriendshipResumePending();
     } else if (addFriend.source === 'liff_request_friendship') {
@@ -2370,6 +2380,27 @@ async function createDeferredLineAuthHandoff(payload) {
   return createLineAuthHandoffRequest({ payload });
 }
 
+async function createLineOaFriendshipResumeIntent() {
+  const savedSnapshot = saveGuestDesignSnapshot();
+  if (!savedSnapshot?.ok || !savedSnapshot.snapshot) {
+    return { ok: false, reason: 'SNAPSHOT_CREATE_FAILED' };
+  }
+  const handoff = await createDeferredLineAuthHandoff({
+    targetStep: 4,
+    designSnapshot: savedSnapshot.snapshot,
+    analyticsContinuity: getDeferredLineAuthAnalyticsContinuity()
+  });
+  if (!handoff?.token) return { ok: false, reason: handoff?.reason || 'HANDOFF_TOKEN_MISSING', status: handoff?.status };
+  const intent = createLineRedirectIntent({ handoffToken: handoff.token, targetStep: 4, featureEnabled: true });
+  if (!intent) return { ok: false, reason: 'UNKNOWN_BOUNDARY_FAILURE' };
+  try {
+    persistCustomizationLoginIntent(intent);
+  } catch {
+    // The direct resume intent remains sufficient for the new LIFF context.
+  }
+  return { ok: true, intent };
+}
+
 function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
   // Never invoke liff.login() over an existing LIFF session. The deferred
   // boundary has already attempted to resolve its profile; a failed profile
@@ -2413,6 +2444,20 @@ function reportLineHandoffFailure(result = {}) {
   const details = { reason };
   if (Number.isInteger(result.status)) details.status = result.status;
   console.error('[line-handoff]', details);
+  return ({
+    SNAPSHOT_CREATE_FAILED: 'F01',
+    LOCAL_SNAPSHOT_UNAVAILABLE: 'F01',
+    HANDOFF_POST_NETWORK_FAILED: 'F02',
+    HANDOFF_POST_HTTP_FAILED: 'F03',
+    HANDOFF_RESPONSE_INVALID: 'F04',
+    HANDOFF_TOKEN_MISSING: 'F04',
+    LOGIN_START_FAILED: 'F05',
+    CALLBACK_MARKER_MISSING: 'F06',
+    HANDOFF_READ_FAILED: 'F07',
+    DESIGN_RESTORE_FAILED: 'F08',
+    LINE_IDENTITY_FAILED: 'F09',
+    FRIENDSHIP_CHECK_FAILED: 'F10'
+  })[reason] || 'F00';
 }
 
 // LIFF Initialization
@@ -3602,8 +3647,8 @@ function setupNavigationEvents() {
         const deferredAuth = await beginDeferredStep3AuthBoundary();
         if (deferredAuth.handled) {
           if (!deferredAuth.ok) {
-            reportLineHandoffFailure(deferredAuth);
-            showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
+            const code = reportLineHandoffFailure(deferredAuth);
+            showToast(`ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง (${code})`, 3500);
           }
           return;
         }

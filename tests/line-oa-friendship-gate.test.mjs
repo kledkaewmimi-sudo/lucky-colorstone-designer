@@ -17,13 +17,13 @@ test('friendship gate uses LIFF native friendship first and keeps the OA URL as 
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /lineOaFriendshipModal|btnLineOaAddFriend|btnLineOaRecheck/);
-  const start = source.indexOf('async function openLineOaAddFriendExperience()');
+  const start = source.indexOf('async function openLineOaAddFriendExperience({ resumeIntent = null } = {})');
   const end = source.indexOf('async function recheckLineOaFriendshipAndResume()', start);
   const flow = source.slice(start, end);
   assert.ok(flow.indexOf('canUseNativeLineOaFriendshipPrompt()') < flow.indexOf("source: 'liff_entry'"));
   assert.match(source, /liff\.requestFriendship\(\)/);
   assert.ok(flow.indexOf('liff.requestFriendship()') < flow.indexOf("source: 'official_add_friend_url_fallback'"));
-  assert.match(flow, /window\.location\.assign\(getLiffEntryUrl\(\)\)/);
+  assert.match(flow, /window\.location\.assign\(getLiffEntryUrl\(\{ resumeIntent \}\)\)/);
   assert.match(source, /fetch\('\/api\/line-oa-add-friend'/);
   assert.match(flow, /window\.location\.assign\(addFriendUrl\)/);
 });

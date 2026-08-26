@@ -98,6 +98,44 @@ test('new iOS browsing context restores the server handoff before a fresh reset'
   ]);
 });
 
+test('first-time non-friend iOS flow creates a fresh opaque handoff before external OA entry and resumes Step 4 after friendship', async () => {
+  const snapshot = createGuestDesignSnapshot(mixedState, { now: NOW });
+  const handoffPayload = normalizeHandoffPayload({ targetStep: 4, designSnapshot: snapshot }, NOW);
+  const friendshipToken = 'f'.repeat(43);
+  const friendshipEntryUrl = createLineCallbackResumeUrl('https://liff.line.me/123456', {
+    handoffToken: friendshipToken,
+    targetStep: 4,
+    now: NOW + 2,
+    featureEnabled: true
+  });
+  const friendshipIntent = parseLineCallbackResumeIntent(friendshipEntryUrl, { now: NOW + 3, featureEnabled: true });
+  assert.equal(friendshipIntent.handoffToken, friendshipToken);
+  assert.equal(new URL(friendshipEntryUrl).searchParams.get('line_resume'), 'guest_design_handoff');
+
+  const restored = await runDormantV2CallbackRestore({
+    rawIntent: JSON.stringify(friendshipIntent),
+    hasLineIdentity: true,
+    featureEnabled: true,
+    guard: createLineCallbackRestoreGuard(),
+    retrieveServerHandoff: async () => ({ ok: true, snapshot: handoffPayload.designSnapshot }),
+    finalizeServerHandoff: async () => true,
+    applyCanonicalDesign: async () => {},
+    now: NOW + 3
+  });
+  assert.equal(restored.ok, true);
+
+  const friendshipChecks = [false, true];
+  assert.equal(friendshipChecks.shift(), false, 'initial friendship check requires the OA flow');
+  assert.equal(friendshipChecks.shift(), true, 'post-add recheck authorizes Step 4');
+
+  const appSource = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const gateStart = appSource.indexOf('async function canEnterOperationalStep4');
+  const gate = appSource.slice(gateStart, appSource.indexOf('async function resumeLineOaFriendshipAfterReturn', gateStart));
+  assert.ok(gate.indexOf('createLineOaFriendshipResumeIntent') < gate.indexOf('openLineOaAddFriendExperience({ resumeIntent })'));
+  assert.match(appSource, /function getLiffEntryUrl\(\{ resumeIntent = null \} = \{\}\)/);
+  assert.match(appSource, /getLiffEntryUrl\(\{ resumeIntent \}\)/);
+});
+
 test('realistic logged-out iPhone auth carries the handoff through a new context and restores before friendship gating', async () => {
   const snapshot = createGuestDesignSnapshot(mixedState, { now: NOW });
   const handoffPayload = normalizeHandoffPayload({ targetStep: 4, designSnapshot: snapshot }, NOW);
