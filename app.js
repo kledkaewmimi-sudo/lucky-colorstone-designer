@@ -251,6 +251,9 @@ const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
 let liffLoginInProgress = false;
+let liffInitializationPromise = null;
+let liffInitializationFailureReason = '';
+let lastLiffLoginStartMetadata = null;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 let landingPressTimer = null;
@@ -2225,14 +2228,40 @@ async function completeCustomizationStartResume() {
   if (loader) loader.style.display = 'none';
 }
 
+function getLiffLoginStartFailure(reason, returnStartStatus) {
+  return returnStartStatus ? { ok: false, reason } : false;
+}
+
+function getSafeLiffRedirectMetadata(redirectUri) {
+  try {
+    const url = new URL(redirectUri);
+    return {
+      valid: url.protocol === 'https:' && Boolean(url.hostname),
+      origin: url.origin,
+      pathname: url.pathname,
+      hasLineHandoff: url.searchParams.has('line_handoff'),
+      hasLineResume: url.searchParams.get('line_resume') === 'guest_design_handoff',
+      urlLength: redirectUri.length
+    };
+  } catch {
+    return { valid: false, origin: '', pathname: '', hasLineHandoff: false, hasLineResume: false, urlLength: 0 };
+  }
+}
+
 function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false, resumeIntent = null } = {}) {
-  if (getRequestedOrderId()) return returnStartStatus ? false : true;
+  if (getRequestedOrderId()) return getLiffLoginStartFailure('LOGIN_START_UNEXPECTED_RETURN', returnStartStatus);
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
-    return false;
+    return getLiffLoginStartFailure('LOGIN_START_UNEXPECTED_RETURN', returnStartStatus);
   }
-  if (typeof liff === 'undefined' || !State.liffInitialized || typeof liff.login !== 'function') {
-    return false;
+  if (typeof liff === 'undefined') {
+    return getLiffLoginStartFailure('LIFF_SDK_UNAVAILABLE', returnStartStatus);
+  }
+  if (!State.liffInitialized) {
+    return getLiffLoginStartFailure('LIFF_INIT_FAILED', returnStartStatus);
+  }
+  if (typeof liff.login !== 'function') {
+    return getLiffLoginStartFailure('LIFF_SDK_UNAVAILABLE', returnStartStatus);
   }
 
   const loader = DOM.liffLoadingOverlay;
@@ -2251,18 +2280,25 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   console.log("LIFF customization login start");
 
   try {
-    liff.login({ redirectUri: getLiffRedirectUri({ resumeIntent }) });
+    const redirectUri = getLiffRedirectUri({ resumeIntent });
+    lastLiffLoginStartMetadata = getSafeLiffRedirectMetadata(redirectUri);
+    if (!lastLiffLoginStartMetadata.valid) {
+      liffLoginInProgress = false;
+      return getLiffLoginStartFailure('REDIRECT_URI_INVALID', returnStartStatus);
+    }
+    console.info('[line-handoff]', { stage: 'liff_login_start', ...lastLiffLoginStartMetadata });
+    liff.login({ redirectUri });
     return returnStartStatus ? true : false;
   } catch (loginErr) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
-    console.warn("LIFF customization login failed to start.", loginErr);
+    console.warn('[line-handoff]', { reason: 'LIFF_LOGIN_THROW', name: String(loginErr?.name || 'Error'), message: String(loginErr?.message || '').slice(0, 160) });
     trackAnalyticsEvent('line_auth_error', {
       message: loginErr?.message || String(loginErr || '')
     });
     resetLandingStartAfterFailure();
-    return false;
+    return getLiffLoginStartFailure('LIFF_LOGIN_THROW', returnStartStatus);
   }
 }
 
@@ -2401,15 +2437,17 @@ async function createLineOaFriendshipResumeIntent() {
   return { ok: true, intent };
 }
 
-function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
+async function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
   // Never invoke liff.login() over an existing LIFF session. The deferred
   // boundary has already attempted to resolve its profile; a failed profile
   // verification must stay fail-closed on Step 3.
-  if (isLiffLoggedIn()) return false;
+  const ready = await ensureLiffInitializedForDeferredLogin();
+  if (!ready.ok) return ready;
+  if (isLiffLoggedIn()) return { ok: false, reason: 'LOGIN_START_UNEXPECTED_RETURN' };
   if (canUseLiffLoginFromCurrentBrowser()) {
     return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true, resumeIntent });
   }
-  return openLineConnectEntryForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
+  return { ok: false, reason: 'LIFF_SDK_UNAVAILABLE' };
 }
 
 async function beginDeferredStep3AuthBoundary() {
@@ -2437,12 +2475,33 @@ function reportLineHandoffFailure(result = {}) {
     'HANDOFF_TOKEN_MISSING',
     'INTENT_PERSIST_FAILED',
     'LOGIN_START_FAILED',
-    'LIFF_NOT_READY',
+    'LIFF_SDK_UNAVAILABLE',
+    'LIFF_INIT_FAILED',
+    'REDIRECT_URI_INVALID',
+    'LIFF_LOGIN_THROW',
+    'LOGIN_START_UNEXPECTED_RETURN',
     'UNKNOWN_BOUNDARY_FAILURE'
   ]);
   const reason = allowedReasons.has(result.reason) ? result.reason : 'UNKNOWN_BOUNDARY_FAILURE';
   const details = { reason };
   if (Number.isInteger(result.status)) details.status = result.status;
+  if (reason.startsWith('LIFF_') || reason.startsWith('LOGIN_') || reason === 'REDIRECT_URI_INVALID') {
+    let isLoggedIn = null;
+    let isInClient = null;
+    try {
+      if (typeof liff !== 'undefined' && typeof liff.isLoggedIn === 'function') isLoggedIn = Boolean(liff.isLoggedIn());
+      if (typeof liff !== 'undefined' && typeof liff.isInClient === 'function') isInClient = Boolean(liff.isInClient());
+    } catch {
+      // Diagnostics must not replace the customer-safe failure toast.
+    }
+    details.liff = {
+      sdkAvailable: typeof liff !== 'undefined',
+      initialized: State.liffInitialized === true,
+      isLoggedIn,
+      isInClient
+    };
+    if (lastLiffLoginStartMetadata) details.redirect = lastLiffLoginStartMetadata;
+  }
   console.error('[line-handoff]', details);
   return ({
     SNAPSHOT_CREATE_FAILED: 'F01',
@@ -2452,6 +2511,11 @@ function reportLineHandoffFailure(result = {}) {
     HANDOFF_RESPONSE_INVALID: 'F04',
     HANDOFF_TOKEN_MISSING: 'F04',
     LOGIN_START_FAILED: 'F05',
+    LIFF_SDK_UNAVAILABLE: 'F05A',
+    LIFF_INIT_FAILED: 'F05B',
+    REDIRECT_URI_INVALID: 'F05C',
+    LIFF_LOGIN_THROW: 'F05D',
+    LOGIN_START_UNEXPECTED_RETURN: 'F05E',
     CALLBACK_MARKER_MISSING: 'F06',
     HANDOFF_READ_FAILED: 'F07',
     DESIGN_RESTORE_FAILED: 'F08',
@@ -2460,11 +2524,24 @@ function reportLineHandoffFailure(result = {}) {
   })[reason] || 'F00';
 }
 
+async function ensureLiffInitializedForDeferredLogin() {
+  await initLIFF();
+  if (State.liffInitialized && typeof liff !== 'undefined' && typeof liff.login === 'function') return { ok: true };
+  return { ok: false, reason: liffInitializationFailureReason || (typeof liff === 'undefined' ? 'LIFF_SDK_UNAVAILABLE' : 'LIFF_INIT_FAILED') };
+}
+
 // LIFF Initialization
-async function initLIFF() {
+function initLIFF() {
+  if (liffInitializationPromise) return liffInitializationPromise;
+  liffInitializationPromise = initializeLiffOnce();
+  return liffInitializationPromise;
+}
+
+async function initializeLiffOnce() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
+    liffInitializationFailureReason = 'LIFF_SDK_UNAVAILABLE';
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
     return;
@@ -2475,6 +2552,7 @@ async function initLIFF() {
     await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
+    liffInitializationFailureReason = '';
 
     const isLoggedIn = liff.isLoggedIn();
     console.log("LIFF isLoggedIn:", isLoggedIn);
@@ -2497,8 +2575,9 @@ async function initLIFF() {
       }
     }
   } catch (err) {
-    console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
+    console.warn('[line-handoff]', { reason: 'LIFF_INIT_FAILED', name: String(err?.name || 'Error'), message: String(err?.message || '').slice(0, 160) });
     State.liffInitialized = false;
+    liffInitializationFailureReason = 'LIFF_INIT_FAILED';
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
       });

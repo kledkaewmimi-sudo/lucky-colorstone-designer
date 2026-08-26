@@ -231,7 +231,8 @@ test('production startup recognizes the URL handoff before fresh reset and retai
     readFile(new URL('../server.js', import.meta.url), 'utf8')
   ]);
   assert.ok(appSource.indexOf('const startupRawCustomizationIntent = getStartupCustomizationLoginIntent();') < appSource.indexOf('resetCustomizationSessionForFreshEntry();'));
-  assert.match(appSource, /liff\.login\(\{ redirectUri: getLiffRedirectUri\(\{ resumeIntent \}\) \}\)/);
+  assert.match(appSource, /const redirectUri = getLiffRedirectUri\(\{ resumeIntent \}\)/);
+  assert.match(appSource, /liff\.login\(\{ redirectUri \}\)/);
   assert.match(appSource, /startLineLogin: startDeferredLineLoginWithPersistedIntent/);
   const restoreStart = appSource.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const restoreEnd = appSource.indexOf('function persistLandingDismissed', restoreStart);

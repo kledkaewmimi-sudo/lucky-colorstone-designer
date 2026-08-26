@@ -69,12 +69,12 @@ export function createDeferredStep3AuthBoundary({
 
     try {
       const started = await startLineLogin(intent);
-      if (started === true) return { handled: true, ok: true, intent, intentPersisted };
+      if (started === true || started?.ok === true) return { handled: true, ok: true, intent, intentPersisted };
       clearIntent();
-      return { handled: true, ok: false, reason: 'LOGIN_START_FAILED' };
+      return { handled: true, ok: false, reason: started?.reason || 'LOGIN_START_UNEXPECTED_RETURN' };
     } catch {
       clearIntent();
-      return { handled: true, ok: false, reason: 'LOGIN_START_FAILED' };
+      return { handled: true, ok: false, reason: 'LIFF_LOGIN_THROW' };
     }
   };
 }
