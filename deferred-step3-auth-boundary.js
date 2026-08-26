@@ -49,7 +49,7 @@ export function createDeferredStep3AuthBoundary({
     }
 
     try {
-      const started = await startLineLogin();
+      const started = await startLineLogin(intent);
       if (started === true) return { handled: true, ok: true, intent };
       clearIntent();
       return { handled: true, ok: false, reason: 'login_start_failed' };

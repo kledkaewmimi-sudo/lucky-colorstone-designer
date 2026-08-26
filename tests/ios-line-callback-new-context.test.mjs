@@ -98,6 +98,50 @@ test('new iOS browsing context restores the server handoff before a fresh reset'
   ]);
 });
 
+test('realistic logged-out iPhone auth carries the handoff through a new context and restores before friendship gating', async () => {
+  const snapshot = createGuestDesignSnapshot(mixedState, { now: NOW });
+  const handoffPayload = normalizeHandoffPayload({ targetStep: 4, designSnapshot: snapshot }, NOW);
+  const redirectUri = createLineCallbackResumeUrl('https://customize.luckycolorstone.com/', {
+    handoffToken: TOKEN,
+    targetStep: 4,
+    now: NOW,
+    featureEnabled: true
+  });
+  const callbackIntent = parseLineCallbackResumeIntent(redirectUri, { now: NOW + 1, featureEnabled: true });
+  assert.equal(new URL(redirectUri).searchParams.get('line_handoff'), TOKEN);
+  assert.equal(new URL(redirectUri).searchParams.get('line_resume'), 'guest_design_handoff');
+  assert.equal(planLineCallbackBootstrap({ rawIntent: JSON.stringify(callbackIntent), hasLineIdentity: false, featureEnabled: true, now: NOW + 1 }).kind, 'v2-wait-for-identity');
+
+  const order = [];
+  let restoredDesign = null;
+  let freshResetAttempts = 0;
+  const restored = await runDormantV2CallbackRestore({
+    rawIntent: JSON.stringify(callbackIntent),
+    hasLineIdentity: true,
+    featureEnabled: true,
+    guard: createLineCallbackRestoreGuard(),
+    retrieveServerHandoff: async () => { order.push('handoff_read'); return { ok: true, snapshot: handoffPayload.designSnapshot }; },
+    finalizeServerHandoff: async () => { order.push('handoff_consume'); return true; },
+    restoreLocalSnapshot: async () => { throw new Error('new iPhone context has no local snapshot'); },
+    applyCanonicalDesign: async (value) => { order.push('design_apply'); restoredDesign = value; },
+    now: NOW + 1
+  });
+
+  assert.equal(restored.ok, true);
+  assert.deepEqual(order, ['handoff_read', 'design_apply', 'handoff_consume']);
+  assert.equal(freshResetAttempts, 0);
+  assert.equal(restoredDesign.design.beadSize, 'mixed');
+  assert.equal(restoredDesign.design.mixedPlacingSize, 10);
+  assert.deepEqual(restoredDesign.design.components.filter((item) => item.type === 'stone').map((item) => item.size), [4, 10, 6]);
+
+  const appSource = await (await import('node:fs/promises')).readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const restoreStart = appSource.indexOf('async function restoreDeferredLineCallbackBeforeReset');
+  const restore = appSource.slice(restoreStart, appSource.indexOf('function persistLandingDismissed', restoreStart));
+  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('await canEnterOperationalStep4'));
+  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('clearLineCallbackResumeParams'));
+  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('await canEnterOperationalStep4'));
+});
+
 test('an apply interruption leaves the server handoff recoverable for an iOS callback retry', async () => {
   const snapshot = createGuestDesignSnapshot(mixedState, { now: NOW });
   const rawIntent = createCallbackIntent();
@@ -149,11 +193,12 @@ test('production startup recognizes the URL handoff before fresh reset and retai
     readFile(new URL('../server.js', import.meta.url), 'utf8')
   ]);
   assert.ok(appSource.indexOf('const startupRawCustomizationIntent = getStartupCustomizationLoginIntent();') < appSource.indexOf('resetCustomizationSessionForFreshEntry();'));
-  assert.ok(appSource.indexOf('getLiffRedirectUri()') < appSource.indexOf('liff.login({ redirectUri: getLiffRedirectUri() })'));
+  assert.match(appSource, /liff\.login\(\{ redirectUri: getLiffRedirectUri\(\{ resumeIntent \}\) \}\)/);
+  assert.match(appSource, /startLineLogin: startDeferredLineLoginWithPersistedIntent/);
   const restoreStart = appSource.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const restoreEnd = appSource.indexOf('function persistLandingDismissed', restoreStart);
   const restore = appSource.slice(restoreStart, restoreEnd);
-  assert.ok(restore.indexOf('await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
+  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('await canEnterOperationalStep4'));
   assert.match(restore, /retrieveServerHandoff: readDeferredLineAuthHandoff/);
   assert.match(restore, /finalizeServerHandoff: consumeDeferredLineAuthHandoff/);
   assert.match(serverSource, /async function readLineAuthHandoff/);

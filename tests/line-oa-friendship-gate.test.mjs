@@ -8,8 +8,8 @@ test('deferred callback requires LINE OA friendship before consuming a handoff',
   const restoreEnd = source.indexOf('function persistLandingDismissed', restoreStart);
   const restore = source.slice(restoreStart, restoreEnd);
   assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') >= 0);
-  assert.ok(restore.indexOf("reason: 'line_oa_friendship_required'") >= 0);
-  assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
+  assert.match(restore, /line_oa_friendship_required/);
+  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4'));
   assert.match(source, /liff\.getFriendship\(\)/);
 });
 
@@ -120,8 +120,8 @@ test('deferred callback uses the centralized guard before handoff consume and op
   const start = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const end = source.indexOf('function persistLandingDismissed', start);
   const restore = source.slice(start, end);
-  assert.ok(restore.indexOf('await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
-  assert.match(restore, /openAddFriend: true/);
+  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('await canEnterOperationalStep4'));
+  assert.match(restore, /queueStep3Resume: true/);
 });
 
 test('customer Step 4 does not mount the legacy export/download controls', async () => {

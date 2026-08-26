@@ -1794,11 +1794,11 @@ function getStartupCustomizationLoginIntent() {
   }
 }
 
-function getLiffRedirectUri() {
+function getLiffRedirectUri({ resumeIntent = null } = {}) {
   const baseUrl = `${window.location.origin}${window.location.pathname}`;
-  let intent = null;
+  let intent = resumeIntent;
   try {
-    intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
+    if (!intent) intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
   } catch {
     // The server handoff remains the callback recovery source when storage is unavailable.
   }
@@ -2214,7 +2214,7 @@ async function completeCustomizationStartResume() {
   if (loader) loader.style.display = 'none';
 }
 
-function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false, resumeIntent = null } = {}) {
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
@@ -2235,7 +2235,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   console.log("LIFF customization login start");
 
   try {
-    liff.login({ redirectUri: getLiffRedirectUri() });
+    liff.login({ redirectUri: getLiffRedirectUri({ resumeIntent }) });
     return returnStartStatus ? true : false;
   } catch (loginErr) {
     liffLoginInProgress = false;
@@ -2357,13 +2357,13 @@ async function createDeferredLineAuthHandoff(payload) {
   }
 }
 
-function startDeferredLineLoginWithPersistedIntent() {
+function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
   // Never invoke liff.login() over an existing LIFF session. The deferred
   // boundary has already attempted to resolve its profile; a failed profile
   // verification must stay fail-closed on Step 3.
   if (isLiffLoggedIn()) return false;
   if (canUseLiffLoginFromCurrentBrowser()) {
-    return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
+    return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true, resumeIntent });
   }
   return openLineConnectEntryForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
 }
@@ -2777,11 +2777,6 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
 
-  const canEnterStep4 = await canEnterOperationalStep4({ openAddFriend: true });
-  if (!canEnterStep4) {
-    return { ok: false, reason: 'line_oa_friendship_required' };
-  }
-
   await startCustomerCatalogWarmup();
   const restored = await runDormantV2CallbackRestore({
     rawIntent,
@@ -2798,11 +2793,28 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (restored.ok) {
     applyDeferredLineAuthAnalyticsContinuity(restored.analyticsContinuity);
-    lineOaFriendshipRequired = false;
     clearCustomizationLoginIntent();
     clearGuestDesignSnapshot();
     clearLineCallbackResumeParams();
-    restored.lineOaFriendshipVerified = true;
+
+    // The canonical design is now restored and the handoff is acknowledged.
+    // Keep the restored design mounted while the existing friendship gate runs;
+    // never gate or redirect before this server-first apply has completed.
+    State.currentStep = 3;
+    lineOaFriendshipStep4ResumePending = true;
+    saveState();
+    const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: true });
+    if (canEnterStep4) {
+      lineOaFriendshipStep4ResumePending = false;
+      clearLineOaFriendshipResumePending();
+      lineOaFriendshipRequired = false;
+      State.currentStep = 4;
+      saveState();
+      restored.lineOaFriendshipVerified = true;
+    } else {
+      restored.friendshipPending = true;
+      restored.reason = 'line_oa_friendship_required';
+    }
   }
   return restored;
 }
