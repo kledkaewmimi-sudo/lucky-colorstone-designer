@@ -5,6 +5,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
+const { validateAuthoritativeOrder } = require('./server-order-validation.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
   DEFERRED_LOGIN_QA_TOKEN_PATTERN,
@@ -1045,34 +1046,9 @@ function getCatalogSellingPrice(item) {
 }
 
 async function buildAuthoritativeStripeOrder(clientOrder = {}) {
-  const sequence = Array.isArray(clientOrder.braceletSequence) ? clientOrder.braceletSequence : [];
-  if (!sequence.length) throw new Error("Bracelet configuration is required.");
   const [catalogs, settings] = await Promise.all([readStockCatalogMapsForOrder(), readSettingsForApi()]);
-  const billing = [];
-  for (const component of sequence) {
-    const type = String(component?.type || component?.componentType || "").toLowerCase();
-    if (type === "empty") continue;
-    if (!['stone', 'charm', 'spacer'].includes(type)) throw new Error("Unsupported bracelet component.");
-    const id = String(type === 'stone' ? (component.stoneId || component.id) : type === 'charm' ? (component.charmId || component.id) : (component.spacerId || component.id)).trim();
-    const item = catalogs[type].get(id);
-    if (!id || !item || !isCatalogItemAvailable(item)) throw new Error("A selected catalog item is unavailable. Please refresh and try again.");
-    let unitPrice;
-    let size = null;
-    if (type === 'stone') {
-      size = Number(component.size || component.sizeMm || clientOrder.beadSize);
-      if (!Array.isArray(item.sizes) || !item.sizes.map(Number).includes(size)) throw new Error("The selected stone size is unavailable.");
-      unitPrice = getStoneSellingPrice(item, size);
-    } else {
-      unitPrice = getCatalogSellingPrice(item);
-    }
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("A selected catalog item has invalid pricing.");
-    billing.push({ type, id, stoneId: type === 'stone' ? id : undefined, charmId: type === 'charm' ? id : undefined, spacerId: type === 'spacer' ? id : undefined, size, quantity: 1, unitPrice, totalPrice: unitPrice });
-  }
-  if (!billing.length) throw new Error("Bracelet configuration is empty.");
-  const subtotal = billing.reduce((sum, item) => sum + item.totalPrice, 0);
-  const discountPercent = settings?.discountEnabled === false ? 0 : Math.max(0, Number(settings?.globalDiscountPercent ?? 20));
-  const discountAmount = Math.round(subtotal * discountPercent / 100);
-  const finalPrice = subtotal - discountAmount;
+  const validated = validateAuthoritativeOrder({ clientOrder, catalogs, settings });
+  const finalPrice = validated.finalPrice;
   const clientTotal = parseMoneyValue(clientOrder?.checkoutSummary?.finalPrice ?? clientOrder.finalPrice ?? clientOrder.totalPrice);
   if (clientTotal != null && Math.abs(clientTotal - finalPrice) > 0.01) {
     const error = new Error("Price changed. Please refresh before checkout.");
@@ -1082,10 +1058,19 @@ async function buildAuthoritativeStripeOrder(clientOrder = {}) {
   return {
     ...clientOrder,
     id: String(clientOrder.id || nextRandomOrderId()),
-    itemizedBilling: billing,
-    subtotal, discountPercent, discountAmount, shippingAmount: 0,
-    finalPrice, totalPrice: finalPrice, netPrice: finalPrice,
-    checkoutSummary: { subtotal, discountPercent, discountAmount, shippingAmount: 0, finalPrice, totalPrice: finalPrice, netPrice: finalPrice },
+    ...validated,
+    shippingAmount: 0,
+    checkoutSummary: {
+      subtotal: validated.subtotal,
+      discountPercent: validated.discountPercent,
+      discountAmount: validated.discountAmount,
+      shippingAmount: 0,
+      finalPrice,
+      totalPrice: finalPrice,
+      netPrice: finalPrice,
+      stoneVariants: validated.stoneVariants,
+      geometry: validated.geometry
+    },
     paymentMethod: 'stripe_checkout', stripePaymentStatus: 'pending_payment', status: 'Pending Payment'
   };
 }
