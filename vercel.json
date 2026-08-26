@@ -13,6 +13,10 @@
       "dest": "/index.html"
     },
     {
+      "src": "/api/liff-config",
+      "dest": "/api/liff-config.js"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "https://lucky-colorstone-uat.onrender.com/api/$1"
     },

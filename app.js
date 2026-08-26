@@ -12,6 +12,7 @@ import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
+import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -51,7 +52,8 @@ const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.ge
 const APP_ENV = 'uat';
 const IS_UAT_MODE = APP_ENV === 'uat';
 const STICKY_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('debugSticky') === '1';
-const LIFF_ID = '';
+let LIFF_ID = '';
+let liffConfigurationReason = 'UAT_LIFF_CONFIG_MISSING';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
@@ -1169,6 +1171,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Start the shared-data work immediately, but keep it off the mobile authentication/Step 1 path.
   startCustomerCatalogWarmup();
 
+  // Load only the UAT LIFF configuration before initializing the SDK.
+  await loadUatLiffConfiguration();
   // Setup LIFF (LINE Front-end Framework). This remains the required mobile gate.
   await initLIFF();
   markStartupPerformance('T1_liff_ready');
@@ -2357,11 +2361,27 @@ async function beginDeferredStep3AuthBoundary() {
   return boundary();
 }
 
+async function loadUatLiffConfiguration() {
+  const fallback = resolveLiffEnvironmentConfig({ environment: 'uat', liffId: '' });
+  try {
+    const response = await fetch('/api/liff-config', { cache: 'no-store' });
+    const payload = response.ok ? await response.json() : null;
+    const resolved = resolveLiffEnvironmentConfig({ environment: 'uat', liffId: payload?.liffId });
+    LIFF_ID = resolved.liffId;
+    liffConfigurationReason = resolved.reason;
+  } catch {
+    LIFF_ID = fallback.liffId;
+    liffConfigurationReason = fallback.reason;
+  }
+}
+
 // LIFF Initialization
 async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
-  if (IS_UAT_MODE) {
+  if (!LIFF_ID) {
     State.liffInitialized = false;
+    console.warn('[uat-liff]', { reason: liffConfigurationReason || 'UAT_LIFF_CONFIG_MISSING' });
+    setLiffLoadingMessage('UAT LINE configuration is missing.');
     if (loader) loader.style.display = 'none';
     return;
   }
