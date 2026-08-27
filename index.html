@@ -22,7 +22,12 @@
           && intent?.targetStep === 4;
         const validFriendshipFallback = Number.isFinite(friendshipFallback?.expiresAt)
           && friendshipFallback.expiresAt > Date.now();
-        if (validV2Intent || friendshipResume || validFriendshipFallback) {
+        const params = new URLSearchParams(window.location.search);
+        const liffState = params.get('liff.state') || '';
+        const liffStateParams = new URLSearchParams(liffState.startsWith('?') ? liffState.slice(1) : liffState);
+        const initialIdentityCallback = params.get('line_auth') === 'identity'
+          || liffStateParams.get('line_auth') === 'identity';
+        if (initialIdentityCallback || validV2Intent || friendshipResume || validFriendshipFallback) {
           document.documentElement.classList.add('callback-bootstrap-hold');
         }
       } catch {

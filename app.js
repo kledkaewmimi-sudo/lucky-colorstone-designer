@@ -1074,10 +1074,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (document.documentElement.classList.contains('callback-bootstrap-hold')) {
     setCallbackBootstrapHold(true);
   }
-  await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
     && isInitialLineIdentityCallback(window.location.search);
+  // The head marker covers first paint. Confirm the initial identity callback
+  // before any async startup work so it remains hidden through LIFF/profile sync.
+  if (shouldResumeInitialIdentityCallback) {
+    setCallbackBootstrapHold(true);
+  }
+  await initializeDeferredLoginQaSession();
   const shouldOpenStep4FromUrl = !IS_UAT_MODE && (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId'));
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.

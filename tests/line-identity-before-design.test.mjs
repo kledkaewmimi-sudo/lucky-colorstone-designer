@@ -62,14 +62,35 @@ test('UAT app source gates Landing Start before Step 1 and retires Step 3 first-
 });
 
 test('initial identity callback is recognized before fresh-entry rendering and resumes a clean Step 1 only with identity', async () => {
-  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const [source, html] = await Promise.all([
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../index.html', import.meta.url), 'utf8')
+  ]);
   const startupStart = source.indexOf("document.addEventListener('DOMContentLoaded'");
   const startupEnd = source.indexOf('function withTimeout', startupStart);
   const startup = source.slice(startupStart, startupEnd);
+  assert.match(html, /const initialIdentityCallback = params\.get\('line_auth'\) === 'identity'/);
+  assert.match(html, /liffStateParams\.get\('line_auth'\) === 'identity'/);
+  assert.match(html, /if \(initialIdentityCallback \|\| validV2Intent/);
+  assert.ok(startup.indexOf('const shouldResumeInitialIdentityCallback') < startup.indexOf('await initializeDeferredLoginQaSession()'));
+  assert.ok(startup.indexOf('setCallbackBootstrapHold(true);') < startup.indexOf('await initializeDeferredLoginQaSession()'));
   assert.ok(startup.indexOf('const shouldResumeInitialIdentityCallback') < startup.indexOf('resetCustomizationSessionForFreshEntry()'));
   assert.ok(startup.indexOf('await initLIFF()') < startup.indexOf('if (shouldResumeInitialIdentityCallback) {', startup.indexOf('await initLIFF()')));
   assert.match(startup, /if \(isLineIdentityAvailable\(\)\) \{\s*State\.currentStep = 1;/);
   assert.match(startup, /State\.landingDismissed = true;\s*persistLandingDismissed\(\);\s*clearInitialLineIdentityCallbackMarker\(\);/);
+  const successBranch = startup.slice(startup.indexOf('if (shouldResumeInitialIdentityCallback) {', startup.indexOf('await initLIFF()')));
+  assert.ok(successBranch.indexOf('State.currentStep = 1;') < successBranch.indexOf('await renderApp();'));
+  assert.ok(successBranch.indexOf('State.landingDismissed = true;') < successBranch.indexOf('await renderApp();'));
+});
+
+test('fresh entries retain Landing until Start while existing sessions avoid redundant login after Start', async () => {
+  const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  const startupStart = source.indexOf("document.addEventListener('DOMContentLoaded'");
+  const startupEnd = source.indexOf('function withTimeout', startupStart);
+  const startup = source.slice(startupStart, startupEnd);
+  assert.match(startup, /if \(shouldStartFreshCustomization\) \{\s*resetCustomizationSessionForFreshEntry\(\);/);
+  assert.match(source, /State\.landingDismissed = false;/);
+  assert.match(source, /requireLineLoginForCustomization\(\{ showLandingPrompt: true \}\)/);
 });
 
 test('Step 3 keeps the OA-friendship design handoff and blocks Step 4 without friendFlag', async () => {
