@@ -11,7 +11,11 @@ function sourceBetween(start, end) {
 
 test('Step 2 to Step 3 commits the body before the stepper', () => {
   const renderApp = sourceBetween('async function renderApp()', '// Stepper bar rendering logic');
-  assert.ok(renderApp.indexOf('await renderStepViews();') < renderApp.indexOf('renderStepper();'));
+  assert.ok(renderApp.indexOf('renderStepper();') < renderApp.indexOf('await renderStepViews();'));
+  const atomicTransition = sourceBetween('async function renderStep2ToStep3Atomically()', '// Stepper bar rendering logic');
+  assert.ok(atomicTransition.indexOf('await renderStepViews();') < atomicTransition.indexOf('renderStepper();'));
+  const navigation = sourceBetween('async function goToStep(step)', 'function configureFooterNavigation()');
+  assert.match(navigation, /if \(previousStep === 2 && step === 3\) \{\s*await renderStep2ToStep3Atomically\(\)/);
   const stepViews = sourceBetween('async function renderStepViews()', '// Navigate to step');
   assert.ok(stepViews.indexOf("view.classList.add('active')") < stepViews.indexOf('renderStep3();'));
 });

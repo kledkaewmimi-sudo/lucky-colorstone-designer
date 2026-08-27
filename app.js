@@ -2503,7 +2503,7 @@ function setupLandingEvents() {
 
     if (!canContinue) {
       if (!liffLoginInProgress) {
-        resetLandingStartState();
+        showLineConnectPrompt(lineIdentityFailureCode ? '' : LINE_CONNECT_RETRY_MESSAGE);
       }
       return;
     }
@@ -3228,6 +3228,14 @@ async function loadOrderDetailFromUrlIfNeeded() {
 // ==========================================
 async function renderApp() {
   syncShellVisibility();
+  renderStepper();
+  await renderStepViews();
+  saveState();
+  persistLandingDismissed();
+}
+
+async function renderStep2ToStep3Atomically() {
+  syncShellVisibility();
   await renderStepViews();
   renderStepper();
   saveState();
@@ -3447,6 +3455,7 @@ async function renderStepViews() {
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
+  const previousStep = State.currentStep;
   if (step === 4) {
     const fitEligibility = getCurrentCheckoutFitEligibility();
     if (!fitEligibility.eligible) {
@@ -3464,7 +3473,11 @@ async function goToStep(step) {
     resetStep3DesignState(`step3-back-to-${step}`);
   }
   State.currentStep = step;
-  await renderApp();
+  if (previousStep === 2 && step === 3) {
+    await renderStep2ToStep3Atomically();
+  } else {
+    await renderApp();
+  }
   trackStepView(step);
   return true;
 }
