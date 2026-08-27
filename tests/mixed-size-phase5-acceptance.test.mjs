@@ -56,10 +56,10 @@ test('unsupported mixed to fixed remains blocked before trimming and cancellatio
 });
 
 test('fit, mixed pricing, payload variants, and ordered sequence remain phase-5 ready', () => {
-  assert.equal(getCheckoutFitEligibility({ differenceMm: -1 }).eligible, true);
-  assert.equal(getCheckoutFitEligibility({ differenceMm: 1 }).eligible, true);
-  assert.equal(getCheckoutFitEligibility({ differenceMm: -1.1 }).eligible, false);
-  assert.equal(getCheckoutFitEligibility({ differenceMm: 1.1 }).eligible, false);
+  assert.equal(getCheckoutFitEligibility({ differenceMm: -2 }).eligible, true);
+  assert.equal(getCheckoutFitEligibility({ differenceMm: 2 }).eligible, true);
+  assert.equal(getCheckoutFitEligibility({ differenceMm: -2.1 }).eligible, false);
+  assert.equal(getCheckoutFitEligibility({ differenceMm: 2.1 }).eligible, false);
   const variants = aggregateStoneVariants([stone(4, 'a'), stone(6, 'b'), stone(10, 'c')], catalog, (entry, size) => entry[`p${size}`]);
   assert.deepEqual(createStoneVariantPayload(variants), [
     { stoneId: 'all', size: 4, quantity: 1 },
@@ -71,8 +71,10 @@ test('fit, mixed pricing, payload variants, and ordered sequence remain phase-5 
 });
 
 test('UAT safety and derived-only layout guards remain in the integrated flow', () => {
-  assert.match(app, /if \(IS_UAT_MODE && step === 4\)/);
+  assert.match(app, /async function canEnterOperationalStep4/);
+  assert.match(app, /const canEnterStep4 = await canEnterOperationalStep4\(\{ queueStep3Resume: State\.currentStep === 3 \}\);/);
   assert.match(app, /if \(IS_UAT_MODE\) \{\s*showToast\('UAT: checkout and payment are disabled.'/);
+  assert.match(app, /if \(IS_UAT_MODE\) \{\s*if \(showToastNotification\) showToast\('UAT: order creation is disabled.'/);
   assert.doesNotMatch(app, /lucky-colorstone-designer\.onrender\.com/);
   assert.doesNotMatch(app, /resolvedLayout:\s*createCurrentBraceletResolvedLayout/);
 });

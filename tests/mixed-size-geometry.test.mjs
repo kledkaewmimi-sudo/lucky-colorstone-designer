@@ -73,14 +73,14 @@ test('fixed to mixed preserves geometry and valid mixed to fixed recalculates ta
   assert.equal(getTotalUsedLengthMm(fixed.state.selectedStones.map((item) => ({ type: 'stone', sizeMm: item.size }))), 20);
 });
 
-test('difference and 1mm fit tolerance boundaries are exact', () => {
+test('difference and 2mm inclusive fit tolerance boundaries are exact', () => {
   assert.deepEqual(createBraceletGeometry({ components: mixedSequence, targetLengthMm: 20 }), {
     usedLengthMm: 20, targetLengthMm: 20, differenceMm: 0, fitStatus: 'within_tolerance', isWithinTolerance: true
   });
-  assert.equal(getFitStatus(-1), 'within_tolerance');
-  assert.equal(getFitStatus(1), 'within_tolerance');
-  assert.equal(getFitStatus(-1.01), 'underfill');
-  assert.equal(getFitStatus(1.01), 'overflow');
+  assert.equal(getFitStatus(-2), 'within_tolerance');
+  assert.equal(getFitStatus(2), 'within_tolerance');
+  assert.equal(getFitStatus(-2.1), 'underfill');
+  assert.equal(getFitStatus(2.1), 'overflow');
 });
 
 test('geometry is derived-only and renderer nodes use per-component physical sizes', () => {

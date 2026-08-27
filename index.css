@@ -2063,17 +2063,6 @@ option {
 #stepView2 .bead-size-preview-mixed .bead-preview-circle-md { width: 15px; height: 15px; }
 #stepView2 .bead-size-preview-mixed .bead-preview-circle-lg { width: 19px; height: 19px; }
 
-#stepView2 .bead-size-card-mixed {
-  border-color: rgba(216, 169, 59, 0.38);
-  background: linear-gradient(135deg, #fffdf8, #fff 68%, #fbf6ea);
-  box-shadow: 0 8px 18px rgba(184, 145, 51, 0.11);
-}
-
-#stepView2 .bead-size-card-mixed.active {
-  border-color: rgba(181, 137, 36, 0.56);
-  box-shadow: 0 9px 20px rgba(184, 145, 51, 0.16);
-}
-
 #stepView2 .bead-size-mixed-recommendation {
   position: absolute;
   z-index: 2;
@@ -4336,17 +4325,6 @@ button.stone-card {
 #stepView2 .bead-size-preview-mixed .bead-preview-circle-lg {
   width: 19px;
   height: 19px;
-}
-
-#stepView2 .bead-size-card-mixed {
-  border-color: rgba(216, 169, 59, 0.38);
-  background: linear-gradient(135deg, #fffdf8, #fff 68%, #fbf6ea);
-  box-shadow: 0 8px 18px rgba(184, 145, 51, 0.11);
-}
-
-#stepView2 .bead-size-card-mixed.active {
-  border-color: rgba(181, 137, 36, 0.56);
-  box-shadow: 0 9px 20px rgba(184, 145, 51, 0.16);
 }
 
 #stepView2 .bead-size-mixed-recommendation {

@@ -83,13 +83,13 @@ test('server accepts supported sizes, rejects unsupported/mixed variants, and ig
   assert.throws(() => getAuthoritativeStoneVariant({ size: 4 }, { ...amethyst, p4: null }), /invalid pricing/);
 });
 
-test('fit gate accepts inclusive +/-1mm and blocks underfill/overflow without mutation', () => {
-  assert.equal(getCheckoutFitEligibility({ differenceMm: -1 }).eligible, true);
-  assert.equal(getCheckoutFitEligibility({ differenceMm: 1 }).eligible, true);
+test('fit gate accepts inclusive +/-2mm and blocks underfill/overflow without mutation', () => {
+  assert.equal(getCheckoutFitEligibility({ differenceMm: -2 }).eligible, true);
+  assert.equal(getCheckoutFitEligibility({ differenceMm: 2 }).eligible, true);
   const design = [{ stoneId: 'amethyst', size: 4 }];
   const before = structuredClone(design);
-  assert.equal(getCheckoutFitEligibility({ differenceMm: -1.01 }).fitStatus, 'underfill');
-  assert.equal(getCheckoutFitEligibility({ differenceMm: 1.01 }).fitStatus, 'overflow');
+  assert.equal(getCheckoutFitEligibility({ differenceMm: -2.1 }).fitStatus, 'underfill');
+  assert.equal(getCheckoutFitEligibility({ differenceMm: 2.1 }).fitStatus, 'overflow');
   assert.deepEqual(design, before);
   assert.match(app, /const fitEligibility = getCurrentCheckoutFitEligibility\(\)/);
 });

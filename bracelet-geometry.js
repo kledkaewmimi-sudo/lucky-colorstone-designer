@@ -1,4 +1,4 @@
-export const FIT_TOLERANCE_MM = 1;
+export const BRACELET_FIT_TOLERANCE_MM = 2;
 const PHYSICAL_STONE_SIZES_MM = new Set([4, 6, 10]);
 
 function positiveNumber(value) {
@@ -29,16 +29,17 @@ export function getTotalUsedLengthMm(components = []) {
   return components.reduce((total, component) => total + getComponentPhysicalLengthMm(component), 0);
 }
 
-export function getFitStatus(differenceMm, toleranceMm = FIT_TOLERANCE_MM) {
+export function getFitStatus(differenceMm, toleranceMm = BRACELET_FIT_TOLERANCE_MM) {
   const difference = Number(differenceMm);
-  const tolerance = positiveNumber(toleranceMm) || FIT_TOLERANCE_MM;
+  const tolerance = positiveNumber(toleranceMm) || BRACELET_FIT_TOLERANCE_MM;
   if (!Number.isFinite(difference)) return 'underfill';
-  if (difference < -tolerance) return 'underfill';
-  if (difference > tolerance) return 'overflow';
+  const boundary = tolerance + Number.EPSILON * Math.max(1, Math.abs(difference), tolerance) * 8;
+  if (difference < -boundary) return 'underfill';
+  if (difference > boundary) return 'overflow';
   return 'within_tolerance';
 }
 
-export function createBraceletGeometry({ components = [], targetLengthMm = 0, toleranceMm = FIT_TOLERANCE_MM } = {}) {
+export function createBraceletGeometry({ components = [], targetLengthMm = 0, toleranceMm = BRACELET_FIT_TOLERANCE_MM } = {}) {
   const usedLengthMm = getTotalUsedLengthMm(components);
   const targetLength = positiveNumber(targetLengthMm);
   const differenceMm = usedLengthMm - targetLength;
@@ -54,13 +55,13 @@ export function createBraceletGeometry({ components = [], targetLengthMm = 0, to
 }
 
 export function getCheckoutFitEligibility(geometry = {}) {
-  const fitStatus = geometry.fitStatus || getFitStatus(geometry.differenceMm);
+  const fitStatus = getFitStatus(geometry.differenceMm);
   if (fitStatus === 'within_tolerance') {
     return { eligible: true, reason: null, fitStatus };
   }
   return {
     eligible: false,
-    reason: fitStatus === 'overflow' ? 'Bracelet exceeds the 1.0mm fit tolerance.' : 'Bracelet is below the 1.0mm fit tolerance.',
+    reason: fitStatus === 'overflow' ? 'Bracelet exceeds the 2.0mm fit tolerance.' : 'Bracelet is below the 2.0mm fit tolerance.',
     fitStatus
   };
 }

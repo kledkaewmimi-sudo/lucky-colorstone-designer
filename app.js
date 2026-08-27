@@ -3265,6 +3265,10 @@ function renderStepper() {
   DOM.stepIndicatorLabel.innerText = stepLabels[State.currentStep - 1];
 }
 
+function getResolvedLayoutFitEligibility(resolvedLayout) {
+  return getCheckoutFitEligibility(resolvedLayout?.summary);
+}
+
 function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedLayout()) {
   const {
     braceletLengthMm,
@@ -3279,7 +3283,8 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
   const numPlaceholders = resolvedLayout.summary.numPlaceholders;
   const capacity = State.beadSize === 'mixed' ? null : uniformCapacity;
   const isOverflow = spaceLeftRaw < 0;
-  const isFull = resolvedLayout.summary.placedCount > 0 && numPlaceholders === 0 && !isOverflow;
+  const fitEligibility = getResolvedLayoutFitEligibility(resolvedLayout);
+  const isFull = resolvedLayout.summary.placedCount > 0 && fitEligibility.eligible;
 
   return {
     braceletLengthMm,
@@ -3306,8 +3311,7 @@ function clearInitialLineIdentityCallbackMarker() {
 }
 
 function getCurrentCheckoutFitEligibility() {
-  const summary = createCurrentBraceletResolvedLayout().summary;
-  return getCheckoutFitEligibility(summary);
+  return getResolvedLayoutFitEligibility(createCurrentBraceletResolvedLayout());
 }
 
 function ensureStep3WarningElement() {
@@ -7296,7 +7300,7 @@ function renderStep3() {
   
   // Center label inside circular design canvas
   DOM.canvasCenterValue.textContent = `${State.wristSize.toFixed(1)} cm`;
-  if (validationState.isOverflow || remainingSpace <= 1.0) {
+  if (validationState.isOverflow || validationState.isFull) {
     DOM.canvasCenterSub.textContent = "Full Capacity";
     DOM.canvasCenterSub.className = "center-subvalue overflow";
   } else {
