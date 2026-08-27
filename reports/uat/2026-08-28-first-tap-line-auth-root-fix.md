@@ -48,7 +48,7 @@ Real failed starts emit a UAT-only non-secret diagnostic with: LIFF initializati
 
 ## UAT Deployment
 
-The frontend-only UAT deployment occurs after the controlled commit is pushed to `origin/uat`. Render is not required.
+Frontend commit `d1e637fa0e257699978c6138a1d03beaf1b15604` was pushed to `origin/uat`. The UAT custom domain resolves to a Ready Vercel deployment and its served `app.js` contains the initial-auth adapter and UAT failure diagnostic. Render is not required.
 
 ## Owner Retest
 
