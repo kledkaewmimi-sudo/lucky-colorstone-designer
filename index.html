@@ -23,10 +23,14 @@
         const validFriendshipFallback = Number.isFinite(friendshipFallback?.expiresAt)
           && friendshipFallback.expiresAt > Date.now();
         const params = new URLSearchParams(window.location.search);
-        const liffState = params.get('liff.state') || '';
-        const liffStateParams = new URLSearchParams(liffState.startsWith('?') ? liffState.slice(1) : liffState);
-        const initialIdentityCallback = params.get('line_auth') === 'identity'
-          || liffStateParams.get('line_auth') === 'identity';
+        let callbackCandidate = window.location.search;
+        let initialIdentityCallback = false;
+        for (let depth = 0; depth < 4 && callbackCandidate; depth += 1) {
+          const callbackQuery = callbackCandidate.includes('?') ? callbackCandidate.slice(callbackCandidate.indexOf('?') + 1) : callbackCandidate.replace(/^\?/, '');
+          const callbackParams = new URLSearchParams(callbackQuery);
+          if (callbackParams.get('line_auth') === 'identity') { initialIdentityCallback = true; break; }
+          callbackCandidate = callbackParams.get('liff.state') || '';
+        }
         if (initialIdentityCallback || validV2Intent || friendshipResume || validFriendshipFallback) {
           document.documentElement.classList.add('callback-bootstrap-hold');
         }
@@ -89,7 +93,7 @@
       <div class="spinner-container">
         <div class="pastel-spinner"></div>
         <span class="loading-title" id="liffLoadingTitle">กำลังเชื่อมต่อ LINE</span>
-        <span class="loading-text" id="liffLoadingText">กำลังเตรียมข้อมูล...</span>
+        <span class="loading-text" id="liffLoadingText">กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ</span>
       </div>
     </div>
 

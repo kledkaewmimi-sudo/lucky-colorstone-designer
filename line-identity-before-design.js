@@ -1,16 +1,16 @@
 // Pure landing identity gate. It deliberately establishes identity before any
 // bracelet design exists, so it never creates or restores a design handoff.
 export function isInitialLineIdentityCallback(search = '') {
-  const params = new URLSearchParams(search);
-  if (params.get('line_auth') === 'identity') return true;
-
-  // LIFF can return the original redirect query inside `liff.state` rather
-  // than restoring it as a top-level query parameter. This is only a resume
-  // marker; the caller still requires a verified LIFF profile before Step 1.
-  const liffState = params.get('liff.state');
-  if (!liffState) return false;
-  const nestedParams = new URLSearchParams(liffState.startsWith('?') ? liffState.slice(1) : liffState);
-  return nestedParams.get('line_auth') === 'identity';
+  let candidate = String(search || '');
+  for (let depth = 0; depth < 4 && candidate; depth += 1) {
+    const query = candidate.includes('?') ? candidate.slice(candidate.indexOf('?') + 1) : candidate.replace(/^\?/, '');
+    const params = new URLSearchParams(query);
+    if (params.get('line_auth') === 'identity') return true;
+    const nested = params.get('liff.state');
+    if (!nested) return false;
+    candidate = nested;
+  }
+  return false;
 }
 
 export async function establishLineIdentityBeforeDesign({

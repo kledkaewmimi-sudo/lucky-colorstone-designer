@@ -1765,13 +1765,13 @@ function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
 function setLiffLoadingMessage(message = '') {
   const loadingText = DOM.liffLoadingOverlay?.querySelector('#liffLoadingText, .loading-text');
   if (!loadingText) return;
-  loadingText.textContent = message || 'กำลังเชื่อมต่อกับ LINE...';
+  loadingText.textContent = message || 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ';
 }
 
 function setLiffTransitionState({ title = '', body = '' } = {}) {
   const loadingTitle = DOM.liffLoadingOverlay?.querySelector('#liffLoadingTitle, .loading-title');
   if (loadingTitle) loadingTitle.textContent = title || 'กำลังเชื่อมต่อ LINE';
-  setLiffLoadingMessage(body || 'กำลังเตรียมข้อมูล...');
+  setLiffLoadingMessage(body || 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
 }
 
 function showLineOaFriendshipTransition() {
@@ -2239,7 +2239,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
-  setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
+  setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
@@ -2272,7 +2272,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
-  setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
+  setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
 
@@ -3443,10 +3443,6 @@ async function renderStepViews() {
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
-  if (IS_UAT_MODE && step === 4) {
-    showToast('UAT: checkout and order creation are disabled.');
-    return false;
-  }
   if (step === 4) {
     const fitEligibility = getCurrentCheckoutFitEligibility();
     if (!fitEligibility.eligible) {

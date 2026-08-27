@@ -69,8 +69,9 @@ test('initial identity callback is recognized before fresh-entry rendering and r
   const startupStart = source.indexOf("document.addEventListener('DOMContentLoaded'");
   const startupEnd = source.indexOf('function withTimeout', startupStart);
   const startup = source.slice(startupStart, startupEnd);
-  assert.match(html, /const initialIdentityCallback = params\.get\('line_auth'\) === 'identity'/);
-  assert.match(html, /liffStateParams\.get\('line_auth'\) === 'identity'/);
+  assert.match(html, /let initialIdentityCallback = false/);
+  assert.match(html, /depth < 4 && callbackCandidate/);
+  assert.match(html, /callbackParams\.get\('liff\.state'\)/);
   assert.match(html, /if \(initialIdentityCallback \|\| validV2Intent/);
   assert.ok(startup.indexOf('const shouldResumeInitialIdentityCallback') < startup.indexOf('await initializeDeferredLoginQaSession()'));
   assert.ok(startup.indexOf('setCallbackBootstrapHold(true);') < startup.indexOf('await initializeDeferredLoginQaSession()'));
