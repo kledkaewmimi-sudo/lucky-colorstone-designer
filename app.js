@@ -2753,17 +2753,23 @@ async function restoreDeferredCallbackDesignToStep3Fallback() {
 
 async function consumeDeferredLineAuthHandoff(token) {
   try {
-    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}/consume`, {
+    const handoffUrl = `/api/auth-handoffs/${encodeURIComponent(token)}`;
+    const readResponse = await fetch(handoffUrl);
+    const readResult = await readResponse.json().catch(() => null);
+    if (!readResponse.ok || !readResult?.payload?.designSnapshot) {
+      return { ok: false, reason: readResponse.status === 404 ? 'not_found' : 'unavailable' };
+    }
+    const consumeResponse = await fetch(`${handoffUrl}/consume`, {
       method: 'POST'
     });
-    const result = await response.json().catch(() => null);
-    if (!response.ok || !result?.payload?.designSnapshot) {
-      return { ok: false, reason: response.status === 404 ? 'not_found' : 'unavailable' };
+    const consumeResult = await consumeResponse.json().catch(() => null);
+    if (!consumeResponse.ok || consumeResult?.consumed !== true) {
+      return { ok: false, reason: consumeResponse.status === 404 ? 'not_found' : 'unavailable' };
     }
     return {
       ok: true,
-      snapshot: result.payload.designSnapshot,
-      analyticsContinuity: result.payload.analyticsContinuity || null
+      snapshot: readResult.payload.designSnapshot,
+      analyticsContinuity: readResult.payload.analyticsContinuity || null
     };
   } catch {
     return { ok: false, reason: 'unavailable' };
@@ -2927,17 +2933,8 @@ async function fetchOrdersFromApiUrl(apiUrl) {
 }
 
 function getOrderDetailFallbackApiUrls() {
-  if (IS_UAT_MODE) return [];
-  const urls = [];
-  try {
-    const currentOrigin = window.location.origin;
-    if (currentOrigin !== 'https://crm.luckycolorstone.com') {
-      urls.push('https://crm.luckycolorstone.com/api/orders');
-    }
-  } catch {
-    urls.push('https://crm.luckycolorstone.com/api/orders');
-  }
-  return urls;
+  // The UAT branch never falls back to a production CRM order endpoint.
+  return [];
 }
 
 async function findSavedOrderByRequestedId(orderId) {

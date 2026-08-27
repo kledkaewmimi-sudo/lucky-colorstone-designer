@@ -4,7 +4,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
-const { assertSafeUatEnvironment, isUatReadOnlyApiRequest } = require('./uat-backend-guard.js');
+const { assertSafeUatEnvironment, isUatSupabaseApiRequest } = require('./uat-backend-guard.js');
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
@@ -152,8 +152,12 @@ function restoreSeedData() {
 
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", isFixtureOnlyUatBackend ? uatAllowedOrigin : "*");
-  res.setHeader("Access-Control-Allow-Methods", isFixtureOnlyUatBackend ? "GET, OPTIONS" : "GET, POST, PUT, OPTIONS, DELETE");
+  res.setHeader("Access-Control-Allow-Methods", isFixtureOnlyUatBackend ? "GET, POST, PUT, OPTIONS" : "GET, POST, PUT, OPTIONS, DELETE");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+function isAllowedUatOriginRequest(req) {
+  return String(req.headers.origin || '').trim() === uatAllowedOrigin;
 }
 
 function sendJson(res, statusCode, data) {
@@ -1734,8 +1738,10 @@ function deleteById(records, targetId) {
 }
 
 function getSupabaseConfig() {
-  const url = getEnvValue("SUPABASE_URL").replace(/\/+$/, "");
-  const serviceRoleKey = getEnvValue("SUPABASE_SERVICE_ROLE_KEY");
+  // Deliberately UAT-specific names prevent a production Render environment
+  // from being copied into this service by accident.
+  const url = getEnvValue("UAT_SUPABASE_URL").replace(/\/+$/, "");
+  const serviceRoleKey = getEnvValue("UAT_SUPABASE_SERVICE_ROLE_KEY");
   return { url, serviceRoleKey, configured: Boolean(url && serviceRoleKey) };
 }
 
@@ -1853,10 +1859,19 @@ async function createLineAuthHandoff(input) {
   return { token, expiresAt: payload.expiresAt };
 }
 
-async function consumeLineAuthHandoff(token) {
+async function readLineAuthHandoff(token) {
   if (!isSupabaseConfigured() || !HANDOFF_TOKEN_PATTERN.test(String(token || ''))) return null;
-  const rows = await supabaseRpc('consume_line_auth_handoff', { p_token: token });
+  const rows = await supabaseRpc('read_uat_line_auth_handoff', { p_token: token });
   return Array.isArray(rows) && rows[0]?.payload ? rows[0].payload : null;
+}
+
+async function acknowledgeLineAuthHandoffConsume(token) {
+  if (!isSupabaseConfigured() || !HANDOFF_TOKEN_PATTERN.test(String(token || ''))) return null;
+  const rows = await supabaseRpc('consume_uat_line_auth_handoff', { p_token: token });
+  const result = Array.isArray(rows) ? rows[0] : null;
+  return result && typeof result.consumed === 'boolean' && typeof result.already_consumed === 'boolean'
+    ? result
+    : null;
 }
 
 async function createDeferredLoginQaSession() {
@@ -3266,9 +3281,9 @@ async function handleApiRequest(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = req.method;
 
-  if (isFixtureOnlyUatBackend && !isUatReadOnlyApiRequest(method, pathname)) {
+  if (isFixtureOnlyUatBackend && !isUatSupabaseApiRequest(method, pathname)) {
     sendJson(res, 403, {
-      error: 'UAT fixture backend allows only read-only catalog and settings endpoints.'
+      error: 'UAT fixture backend allows only catalog/settings fixture routes.'
     });
     return true;
   }
@@ -3400,6 +3415,13 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  const isHandoffRequest = pathname === '/api/auth-handoffs'
+    || /^\/api\/auth-handoffs\/[A-Za-z0-9_-]{43}(?:\/consume)?$/.test(pathname);
+  if (isHandoffRequest && !isAllowedUatOriginRequest(req)) {
+    sendJson(res, 403, { error: 'UAT handoff requests require the approved UAT origin.' });
+    return true;
+  }
+
   if (pathname === '/api/auth-handoffs' && method === 'POST') {
     if (!bodyObj) {
       sendJson(res, 400, { error: 'Invalid handoff request.' });
@@ -3422,15 +3444,30 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  const readHandoffMatch = pathname.match(/^\/api\/auth-handoffs\/([A-Za-z0-9_-]{43})$/);
+  if (readHandoffMatch && method === 'GET') {
+    try {
+      const payload = await readLineAuthHandoff(readHandoffMatch[1]);
+      if (!payload) {
+        sendJson(res, 404, { error: 'Handoff unavailable, expired, or consumed.' });
+        return true;
+      }
+      sendJson(res, 200, { payload });
+    } catch {
+      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+    }
+    return true;
+  }
+
   const consumeHandoffMatch = pathname.match(/^\/api\/auth-handoffs\/([A-Za-z0-9_-]{43})\/consume$/);
   if (consumeHandoffMatch && method === 'POST') {
     try {
-      const payload = await consumeLineAuthHandoff(consumeHandoffMatch[1]);
-      if (!payload) {
+      const acknowledgement = await acknowledgeLineAuthHandoffConsume(consumeHandoffMatch[1]);
+      if (!acknowledgement) {
         sendJson(res, 404, { error: 'Handoff unavailable or expired.' });
         return true;
       }
-      sendJson(res, 200, { ok: true, payload });
+      sendJson(res, 200, { ok: true, ...acknowledgement });
     } catch {
       sendJson(res, 503, { error: 'Handoff storage unavailable.' });
     }
@@ -3955,11 +3992,11 @@ async function handleApiRequest(req, res, urlObj) {
       }
       if (isSupabaseConfigured()) {
         await upsertSupabaseRow("catalog_spacers", buildSpacerRow(nextRecord));
-        sendJson(res, 200, nextRecord);
-        return true;
+      } else {
+        const spacers = readJsonArray("spacers");
+        writeJsonFile(dataFiles.spacers, upsertById(spacers, nextRecord));
       }
-
-      sendJson(res, 501, { error: "Spacer persistence requires Supabase." });
+      sendJson(res, 200, nextRecord);
       return true;
     }
   }
