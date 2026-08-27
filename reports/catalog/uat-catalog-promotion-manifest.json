@@ -1,0 +1,266 @@
+{
+  "manifestVersion": 1,
+  "environment": "uat",
+  "status": "DRAFT_OWNER_MEANING_PENDING",
+  "generatedAt": "2026-08-27",
+  "sourceOfTruth": "UAT fixture API backed by data/stones.json, data/charms.json, and data/spacers.json",
+  "promotionRules": {
+    "allowedOperations": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "deleteAllowed": false,
+    "productionMutationFromUat": false,
+    "ownerApprovalRequired": true
+  },
+  "recordContract": {
+    "type": "stone | charm | spacer",
+    "id": "stable runtime id/code",
+    "operation": "INSERT | UPDATE",
+    "nameTh": "Thai name",
+    "nameEn": "English name",
+    "category": "runtime category or collection where applicable",
+    "supportedSizesMm": [
+      4,
+      6,
+      10
+    ],
+    "price": "runtime price fields: p4/p6/p10 for stones, price for charms/spacers",
+    "image": "UAT-tested image URL or root-relative asset path",
+    "runtimeRecord": "complete UAT API record, including availability, display order, and charm/spacer renderer metadata where applicable"
+  },
+  "approvedItems": [
+    {
+      "operation": "INSERT",
+      "type": "stone",
+      "id": "blue_cat_eye",
+      "nameEn": "Blue Cat eye",
+      "nameTh": "บลูแคทอาย",
+      "supportedSizesMm": [
+        6
+      ],
+      "price": {
+        "p4": 0,
+        "p6": 19,
+        "p10": 0
+      },
+      "image": "assets/Blue Cat eye.png",
+      "category": "calm",
+      "completeRuntimeMetadata": true,
+      "ownerMeaningPending": true,
+      "runtimeRecord": {
+        "id": "blue_cat_eye",
+        "p4": 0,
+        "p6": 19,
+        "p10": 0,
+        "name": "Blue Cat eye",
+        "color": "#5C8FD6",
+        "image": "assets/Blue Cat eye.png",
+        "sizes": [
+          6
+        ],
+        "nameTh": "บลูแคทอาย",
+        "inStock": true,
+        "meaning": "UAT catalog entry; owner meaning pending.",
+        "category": "calm",
+        "isActive": true,
+        "stockQty": 100,
+        "meaningTh": "รอข้อมูลความหมายจากเจ้าของ",
+        "stock_qty": 100,
+        "categoryId": "calm",
+        "categoryTh": "",
+        "displayOrder": 330,
+        "manualCost4mm": 0,
+        "manualCost6mm": 0,
+        "manualCost10mm": 0
+      }
+    },
+    {
+      "operation": "INSERT",
+      "type": "stone",
+      "id": "gold_sand_stone",
+      "nameEn": "Gold sand stone",
+      "nameTh": "ทรายทอง",
+      "supportedSizesMm": [
+        6
+      ],
+      "price": {
+        "p4": 0,
+        "p6": 20,
+        "p10": 0
+      },
+      "image": "assets/Gold sand stone.png",
+      "category": "calm",
+      "completeRuntimeMetadata": true,
+      "ownerMeaningPending": true,
+      "runtimeRecord": {
+        "id": "gold_sand_stone",
+        "p4": 0,
+        "p6": 20,
+        "p10": 0,
+        "name": "Gold sand stone",
+        "color": "#C7A24C",
+        "image": "assets/Gold sand stone.png",
+        "sizes": [
+          6
+        ],
+        "nameTh": "ทรายทอง",
+        "inStock": true,
+        "meaning": "UAT catalog entry; owner meaning pending.",
+        "category": "calm",
+        "isActive": true,
+        "stockQty": 100,
+        "meaningTh": "รอข้อมูลความหมายจากเจ้าของ",
+        "stock_qty": 100,
+        "categoryId": "calm",
+        "categoryTh": "",
+        "displayOrder": 340,
+        "manualCost4mm": 0,
+        "manualCost6mm": 0,
+        "manualCost10mm": 0
+      }
+    },
+    {
+      "operation": "INSERT",
+      "type": "stone",
+      "id": "silver_sand_stone",
+      "nameEn": "Silver sand stone",
+      "nameTh": "ทรายเงิน",
+      "supportedSizesMm": [
+        6
+      ],
+      "price": {
+        "p4": 0,
+        "p6": 20,
+        "p10": 0
+      },
+      "image": "assets/Silver sand stone.png",
+      "category": "calm",
+      "completeRuntimeMetadata": true,
+      "ownerMeaningPending": true,
+      "runtimeRecord": {
+        "id": "silver_sand_stone",
+        "p4": 0,
+        "p6": 20,
+        "p10": 0,
+        "name": "Silver sand stone",
+        "color": "#A7ADB5",
+        "image": "assets/Silver sand stone.png",
+        "sizes": [
+          6
+        ],
+        "nameTh": "ทรายเงิน",
+        "inStock": true,
+        "meaning": "UAT catalog entry; owner meaning pending.",
+        "category": "calm",
+        "isActive": true,
+        "stockQty": 100,
+        "meaningTh": "รอข้อมูลความหมายจากเจ้าของ",
+        "stock_qty": 100,
+        "categoryId": "calm",
+        "categoryTh": "",
+        "displayOrder": 350,
+        "manualCost4mm": 0,
+        "manualCost6mm": 0,
+        "manualCost10mm": 0
+      }
+    },
+    {
+      "operation": "INSERT",
+      "type": "stone",
+      "id": "amethyst_quartz",
+      "nameEn": "Amethyst quartz",
+      "nameTh": "อเมทิสต์ โป่งข่าม",
+      "supportedSizesMm": [
+        6,
+        10
+      ],
+      "price": {
+        "p4": 0,
+        "p6": 32,
+        "p10": 59
+      },
+      "image": "assets/Amethyst quartz.png",
+      "category": "calm",
+      "completeRuntimeMetadata": true,
+      "ownerMeaningPending": true,
+      "runtimeRecord": {
+        "id": "amethyst_quartz",
+        "p4": 0,
+        "p6": 32,
+        "p10": 59,
+        "name": "Amethyst quartz",
+        "color": "#B99AD9",
+        "image": "assets/Amethyst quartz.png",
+        "sizes": [
+          6,
+          10
+        ],
+        "nameTh": "อเมทิสต์ โป่งข่าม",
+        "inStock": true,
+        "meaning": "UAT catalog entry; owner meaning pending.",
+        "category": "calm",
+        "isActive": true,
+        "stockQty": 100,
+        "meaningTh": "รอข้อมูลความหมายจากเจ้าของ",
+        "stock_qty": 100,
+        "categoryId": "calm",
+        "categoryTh": "",
+        "displayOrder": 360,
+        "manualCost4mm": 0,
+        "manualCost6mm": 0,
+        "manualCost10mm": 0
+      }
+    },
+    {
+      "operation": "UPDATE",
+      "type": "stone",
+      "id": "amethyst",
+      "nameEn": "Amethyst",
+      "nameTh": "อเมทิสต์",
+      "supportedSizesMm": [
+        4,
+        6,
+        10
+      ],
+      "price": {
+        "p4": 20,
+        "p6": 29,
+        "p10": 50
+      },
+      "image": "assets/amethyst.png",
+      "category": "calm",
+      "completeRuntimeMetadata": true,
+      "changeScope": "IMAGE_ONLY_CHANGE",
+      "pricesUnchanged": true,
+      "runtimeRecord": {
+        "id": "amethyst",
+        "p4": 20,
+        "p6": 29,
+        "p10": 50,
+        "name": "Amethyst",
+        "color": "#9F86C0",
+        "image": "assets/amethyst.png",
+        "sizes": [
+          4,
+          6,
+          10
+        ],
+        "nameTh": "อเมทิสต์",
+        "inStock": true,
+        "meaning": "Symbolizes calm, intuition, focus, and emotional balance.",
+        "category": "calm",
+        "isActive": true,
+        "stockQty": 460,
+        "meaningTh": "สื่อถึงความสงบ สติ สมาธิ และการพักใจจากความวุ่นวาย",
+        "stock_qty": 460,
+        "categoryId": "calm",
+        "categoryTh": "",
+        "displayOrder": 30,
+        "manualCost4mm": 2,
+        "manualCost6mm": 0,
+        "manualCost10mm": 0
+      }
+    }
+  ]
+}
