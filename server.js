@@ -5,7 +5,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
 const { assertSafeUatEnvironment, isUatSupabaseApiRequest } = require('./uat-backend-guard.js');
-const { buildUatSupabaseAuthHeaders } = require('./uat-supabase-auth.js');
+const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-supabase-auth.js');
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
@@ -1741,8 +1741,8 @@ function deleteById(records, targetId) {
 function getSupabaseConfig() {
   // Deliberately UAT-specific names prevent a production Render environment
   // from being copied into this service by accident.
-  const url = getEnvValue("UAT_SUPABASE_URL").replace(/\/+$/, "");
-  const serviceRoleKey = getEnvValue("UAT_SUPABASE_SERVICE_ROLE_KEY");
+  const url = getEnvValue("UAT_SUPABASE_URL").trim().replace(/\/+$/, "");
+  const serviceRoleKey = normalizeUatSupabaseKey(getEnvValue("UAT_SUPABASE_SERVICE_ROLE_KEY"));
   return { url, serviceRoleKey, configured: Boolean(url && serviceRoleKey) };
 }
 
