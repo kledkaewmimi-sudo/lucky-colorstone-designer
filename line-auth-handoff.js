@@ -20,14 +20,19 @@ function normalizeDesignSnapshot(value) {
   const beadSize = String(design.beadSize || '');
   const components = Array.isArray(design.components) ? design.components : null;
   const selectedCharmIds = Array.isArray(design.selectedCharmIds) ? design.selectedCharmIds : null;
+  const mixedPlacingSize = Number(design.mixedPlacingSize);
   if (!Number.isFinite(wristSize) || wristSize < 14 || wristSize > 20 || Math.round(wristSize * 2) !== wristSize * 2) return null;
-  if (!['4', '6', '10'].includes(beadSize) || !components || components.length > 240 || !selectedCharmIds || selectedCharmIds.length > 2) return null;
+  if (!['4', '6', '10', 'mixed'].includes(beadSize) || !components || components.length > 240 || !selectedCharmIds || selectedCharmIds.length > 2) return null;
+  if (beadSize === 'mixed' && ![4, 6, 10].includes(mixedPlacingSize)) return null;
   const normalizedComponents = components.map((component) => {
     const type = String(component?.type || '').trim().toLowerCase();
     if (type === 'empty') return { type };
     if (!['stone', 'charm', 'spacer'].includes(type)) return null;
     const id = normalizeId(component?.id);
-    return id ? { type, id } : null;
+    if (!id) return null;
+    if (type !== 'stone') return { type, id };
+    const size = Number(component?.size ?? (beadSize === 'mixed' ? NaN : beadSize));
+    return [4, 6, 10].includes(size) ? { type, id, size } : null;
   });
   const charms = selectedCharmIds.map(normalizeId);
   if (normalizedComponents.some((component) => !component) || charms.some((id) => !id)) return null;
@@ -35,7 +40,19 @@ function normalizeDesignSnapshot(value) {
   const expiresAt = Number(value.expiresAt);
   const step = Number(value.step);
   if (!Number.isFinite(savedAt) || !Number.isFinite(expiresAt) || expiresAt <= savedAt || ![1, 2, 3].includes(step)) return null;
-  return { version: 1, savedAt, expiresAt, step, design: { wristSize, beadSize, selectedCharmIds: charms, components: normalizedComponents } };
+  return {
+    version: 1,
+    savedAt,
+    expiresAt,
+    step,
+    design: {
+      wristSize,
+      beadSize,
+      mixedPlacingSize: beadSize === 'mixed' ? mixedPlacingSize : Number(beadSize),
+      selectedCharmIds: charms,
+      components: normalizedComponents
+    }
+  };
 }
 
 function normalizeContinuity(value = {}) {
