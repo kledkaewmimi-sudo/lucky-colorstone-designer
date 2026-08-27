@@ -282,6 +282,19 @@ function getEnvValue(name, defaultValue = "") {
   return value && String(value).trim() ? String(value) : defaultValue;
 }
 
+function resolveUatHandoffQaTtlMs() {
+  const configuredSeconds = String(getEnvValue('UAT_HANDOFF_QA_TTL_SECONDS')).trim();
+  if (!configuredSeconds) return HANDOFF_TTL_MS;
+
+  const isApprovedUatRuntime = String(process.env.APP_ENV || '').trim().toLowerCase() === 'uat'
+    && String(process.env.UAT_BACKEND || '').trim().toLowerCase() === 'true';
+  if (!isApprovedUatRuntime) return HANDOFF_TTL_MS;
+
+  const seconds = Number(configuredSeconds);
+  if (!Number.isSafeInteger(seconds) || seconds < 60 || seconds > 300) return HANDOFF_TTL_MS;
+  return seconds * 1000;
+}
+
 function getNestedJsonValue(target, pathValue) {
   if (!target || !pathValue) return null;
   return String(pathValue)
@@ -1846,7 +1859,7 @@ async function supabaseRpc(functionName, body = {}) {
 
 async function createLineAuthHandoff(input) {
   if (!isSupabaseConfigured()) return null;
-  const payload = normalizeHandoffPayload(input);
+  const payload = normalizeHandoffPayload(input, Date.now(), resolveUatHandoffQaTtlMs());
   if (!payload) return null;
   const token = createHandoffToken();
   await supabaseRequest('line_auth_handoffs', {

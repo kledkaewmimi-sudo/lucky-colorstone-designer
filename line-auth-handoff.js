@@ -74,15 +74,17 @@ function normalizeContinuity(value = {}) {
   };
 }
 
-function normalizeHandoffPayload(input = {}, now = Date.now()) {
+function normalizeHandoffPayload(input = {}, now = Date.now(), ttlMs = HANDOFF_TTL_MS) {
   const targetStep = Number(input.targetStep);
   const designSnapshot = normalizeDesignSnapshot(input.designSnapshot);
   if (!designSnapshot || ![1, 2, 3, 4].includes(targetStep)) return null;
   const createdAt = Number(now);
+  const resolvedTtlMs = Number(ttlMs);
+  if (!Number.isSafeInteger(resolvedTtlMs) || resolvedTtlMs < 60 * 1000 || resolvedTtlMs > HANDOFF_TTL_MS) return null;
   const payload = {
     version: HANDOFF_VERSION,
     createdAt,
-    expiresAt: createdAt + HANDOFF_TTL_MS,
+    expiresAt: createdAt + resolvedTtlMs,
     targetStep,
     designSnapshot,
     analyticsContinuity: normalizeContinuity(input.analyticsContinuity)
