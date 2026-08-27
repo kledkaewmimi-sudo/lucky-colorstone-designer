@@ -47,7 +47,7 @@ Static source/DOM-contract coverage was performed locally. A real-device browser
 
 ## UAT Deployment
 
-UAT deployment is performed only after the scoped commit is pushed to `origin/uat`. No backend file changed, so Render deployment is not required.
+Commit `feab30dbb0eb18e75286c314d2ad1a16c0a6836b` was pushed to `origin/uat`. The linked `lucky-colorstone-uat` Vercel deployment was attempted and rejected with `Not authorized`; no alternate project or production deployment was attempted. No backend file changed, so Render deployment is not required.
 
 ## Owner Retest
 
