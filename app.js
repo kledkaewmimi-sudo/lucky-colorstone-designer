@@ -3,7 +3,7 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm, getPhysicalPreviewSpan } from './bracelet-geometry.js';
+import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
@@ -3228,8 +3228,8 @@ async function loadOrderDetailFromUrlIfNeeded() {
 // ==========================================
 async function renderApp() {
   syncShellVisibility();
-  renderStepper();
   await renderStepViews();
+  renderStepper();
   saveState();
   persistLandingDismissed();
 }
@@ -6221,6 +6221,15 @@ function getAvailableLengthForNewLoopItem() {
   };
 }
 
+function getCurrentPlacementEligibility(lengthMm) {
+  const capacityMetrics = getCurrentBraceletCapacityMetrics();
+  return getNextComponentPlacementEligibility({
+    usedLengthMm: capacityMetrics.totalUsedLengthMm,
+    targetLengthMm: capacityMetrics.braceletLengthMm,
+    componentLengthMm: lengthMm
+  });
+}
+
 function placeLoopItemInFirstAvailableSlot(loopItem) {
   const emptySlotIndex = getFirstEmptyLoopSlotIndex();
   State.activeSlotIndex = null;
@@ -6256,7 +6265,7 @@ function fillEntireBracelet(stoneId) {
     : Math.max(0, stockQty - (getSelectedStoneCountsById()[stoneId] || 0));
   State.newlyAddedIds = [];
   
-  while (availableLengthMm + 1.0 >= placedSize && remainingStockQty > 0) {
+  while (getCurrentPlacementEligibility(placedSize).eligible && remainingStockQty > 0) {
     State.uniqueCounter++;
     placeLoopItemInFirstAvailableSlot(createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter));
     State.newlyAddedIds.push(State.uniqueCounter);
@@ -6272,8 +6281,9 @@ function fillEntireBracelet(stoneId) {
 
 function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
+  const placementEligibility = getCurrentPlacementEligibility(lengthMm);
 
-  if (remainingMm < lengthMm) {
+  if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${lengthMm}mm)`);
     return false;
   }
@@ -6318,9 +6328,10 @@ function addStoneToBracelet(stoneId) {
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
+  const placementEligibility = getCurrentPlacementEligibility(placedSize);
   
-  // Check if there is enough space left for this bead
-  if (remainingMm < placedSize) {
+  // The final placement must use the same inclusive physical-fit boundary as Step 3 completion.
+  if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดหินที่จะใส่: ${placedSize}mm)`);
     return;
   }
@@ -6373,8 +6384,9 @@ function addSpacerToBracelet(spacerId) {
   }
 
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
+  const placementEligibility = getCurrentPlacementEligibility(spacer.effectiveLengthMm);
 
-  if (remainingMm < spacer.effectiveLengthMm) {
+  if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${spacer.effectiveLengthMm}mm)`);
     return;
   }
@@ -6589,22 +6601,15 @@ function createBraceletComponentList() {
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
   const loopComponents = capacityMetrics.loopComponents;
-  const isPhysicallyUnderfilled = capacityMetrics.fitStatus === 'underfill';
-  // Derived placeholders are useful for a fit layout, but must never consume
-  // angular span in an underfilled preview: they are not physical components.
-  const visibleLoopComponents = isPhysicallyUnderfilled
-    ? loopComponents.filter((component) => component.type !== 'empty')
-    : loopComponents;
   const placedCount = loopComponents.filter((component) => component.type !== 'empty').length;
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
   const trailingPlaceholderCount = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
   const emptySlotCount = loopComponents.filter((component) => component.type === 'empty').length;
   const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
-  const renderedTrailingPlaceholderCount = isPhysicallyUnderfilled ? 0 : trailingPlaceholderCount;
 
   const loopItems = [
-    ...visibleLoopComponents.map((component) => component.type === 'empty'
+    ...loopComponents.map((component) => component.type === 'empty'
       ? {
         kind: 'placeholder',
         sourceIndex: component.sourceIndex,
@@ -6615,7 +6620,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
         component,
         sizeMm: component.sizeMm
       }),
-    ...Array.from({ length: renderedTrailingPlaceholderCount }, (_, index) => ({
+    ...Array.from({ length: trailingPlaceholderCount }, (_, index) => ({
       kind: 'placeholder',
       placeholderIndex: index,
       sizeMm: braceletConfig.placingSizeMm
@@ -6623,14 +6628,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   ];
 
   const totalVirtualDiameter = loopItems.reduce((sum, item) => sum + item.sizeMm, 0);
-  const physicalPreviewSpan = getPhysicalPreviewSpan({
-    targetCircumferenceMm: braceletConfig.braceletLengthMm,
-    placedPhysicalLengthMm: capacityMetrics.totalUsedLengthMm,
-    fitStatus: capacityMetrics.fitStatus
-  });
-  const loopCircumferenceMm = isPhysicallyUnderfilled
-    ? physicalPreviewSpan.renderCircumferenceMm
-    : (totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm);
+  const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm;
   const scaleMmToPx = (2 * Math.PI * braceletConfig.svg.radiusPx) / loopCircumferenceMm;
   const buildResolvedNode = (item, index, itemAngleWidth, centerAngle, isFirstPlaceholder = false) => {
     const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
@@ -6670,7 +6668,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   };
 
   const charmComponents = loopComponents.filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType));
-  if (!isPhysicallyUnderfilled && charmComponents.length === 2) {
+  if (charmComponents.length === 2) {
     const [topCharm, bottomCharm] = charmComponents;
     const fillerItems = [
       ...loopComponents
@@ -6772,10 +6770,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
         totalItems: loopItems.length,
         totalVirtualDiameter,
         loopCircumferenceMm,
-        scaleMmToPx,
-        physicalOccupiedAngle: physicalPreviewSpan.occupiedAngle,
-        physicalGapAngle: physicalPreviewSpan.gapAngle,
-        hasVisiblePhysicalGap: physicalPreviewSpan.isUnderfilled
+        scaleMmToPx
       },
       nodes
     };
@@ -6822,10 +6817,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       totalItems: loopItems.length,
       totalVirtualDiameter,
       loopCircumferenceMm,
-      scaleMmToPx,
-      physicalOccupiedAngle: physicalPreviewSpan.occupiedAngle,
-      physicalGapAngle: physicalPreviewSpan.gapAngle,
-      hasVisiblePhysicalGap: physicalPreviewSpan.isUnderfilled
+      scaleMmToPx
     },
     nodes
   };

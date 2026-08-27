@@ -66,20 +66,17 @@ export function getCheckoutFitEligibility(geometry = {}) {
   };
 }
 
-// Preview-only geometry. It deliberately reuses the canonical fit status but does
-// not participate in checkout eligibility or mutate the bracelet components.
-export function getPhysicalPreviewSpan({ targetCircumferenceMm = 0, placedPhysicalLengthMm = 0, fitStatus = '' } = {}) {
-  const target = positiveNumber(targetCircumferenceMm);
-  const placed = positiveNumber(placedPhysicalLengthMm);
-  const isUnderfilled = fitStatus === 'underfill' && target > 0;
-  const occupiedAngle = isUnderfilled
-    ? Math.min(Math.PI * 2, (placed / target) * Math.PI * 2)
-    : Math.PI * 2;
-
+// Placement and final Step 3 eligibility share the same inclusive 2mm upper
+// boundary. Underfilled placements remain valid so a bracelet can be built one
+// retained slot at a time; completion still uses getCheckoutFitEligibility.
+export function getNextComponentPlacementEligibility({ usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
+  const nextUsedLengthMm = positiveNumber(usedLengthMm) + positiveNumber(componentLengthMm);
+  const differenceMm = nextUsedLengthMm - positiveNumber(targetLengthMm);
+  const fitStatus = getFitStatus(differenceMm);
   return {
-    isUnderfilled,
-    occupiedAngle,
-    gapAngle: Math.max(0, Math.PI * 2 - occupiedAngle),
-    renderCircumferenceMm: isUnderfilled ? target : placed
+    eligible: fitStatus !== 'overflow',
+    differenceMm,
+    fitStatus,
+    isComplete: fitStatus === 'within_tolerance'
   };
 }
