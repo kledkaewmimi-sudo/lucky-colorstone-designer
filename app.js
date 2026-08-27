@@ -3,7 +3,7 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm } from './bracelet-geometry.js';
+import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm, getPhysicalPreviewSpan } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
@@ -6589,15 +6589,22 @@ function createBraceletComponentList() {
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
   const loopComponents = capacityMetrics.loopComponents;
+  const isPhysicallyUnderfilled = capacityMetrics.fitStatus === 'underfill';
+  // Derived placeholders are useful for a fit layout, but must never consume
+  // angular span in an underfilled preview: they are not physical components.
+  const visibleLoopComponents = isPhysicallyUnderfilled
+    ? loopComponents.filter((component) => component.type !== 'empty')
+    : loopComponents;
   const placedCount = loopComponents.filter((component) => component.type !== 'empty').length;
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
   const trailingPlaceholderCount = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
   const emptySlotCount = loopComponents.filter((component) => component.type === 'empty').length;
   const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
+  const renderedTrailingPlaceholderCount = isPhysicallyUnderfilled ? 0 : trailingPlaceholderCount;
 
   const loopItems = [
-    ...loopComponents.map((component) => component.type === 'empty'
+    ...visibleLoopComponents.map((component) => component.type === 'empty'
       ? {
         kind: 'placeholder',
         sourceIndex: component.sourceIndex,
@@ -6608,7 +6615,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
         component,
         sizeMm: component.sizeMm
       }),
-    ...Array.from({ length: trailingPlaceholderCount }, (_, index) => ({
+    ...Array.from({ length: renderedTrailingPlaceholderCount }, (_, index) => ({
       kind: 'placeholder',
       placeholderIndex: index,
       sizeMm: braceletConfig.placingSizeMm
@@ -6616,7 +6623,14 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   ];
 
   const totalVirtualDiameter = loopItems.reduce((sum, item) => sum + item.sizeMm, 0);
-  const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm;
+  const physicalPreviewSpan = getPhysicalPreviewSpan({
+    targetCircumferenceMm: braceletConfig.braceletLengthMm,
+    placedPhysicalLengthMm: capacityMetrics.totalUsedLengthMm,
+    fitStatus: capacityMetrics.fitStatus
+  });
+  const loopCircumferenceMm = isPhysicallyUnderfilled
+    ? physicalPreviewSpan.renderCircumferenceMm
+    : (totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm);
   const scaleMmToPx = (2 * Math.PI * braceletConfig.svg.radiusPx) / loopCircumferenceMm;
   const buildResolvedNode = (item, index, itemAngleWidth, centerAngle, isFirstPlaceholder = false) => {
     const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
@@ -6656,7 +6670,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   };
 
   const charmComponents = loopComponents.filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType));
-  if (charmComponents.length === 2) {
+  if (!isPhysicallyUnderfilled && charmComponents.length === 2) {
     const [topCharm, bottomCharm] = charmComponents;
     const fillerItems = [
       ...loopComponents
@@ -6758,7 +6772,10 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
         totalItems: loopItems.length,
         totalVirtualDiameter,
         loopCircumferenceMm,
-        scaleMmToPx
+        scaleMmToPx,
+        physicalOccupiedAngle: physicalPreviewSpan.occupiedAngle,
+        physicalGapAngle: physicalPreviewSpan.gapAngle,
+        hasVisiblePhysicalGap: physicalPreviewSpan.isUnderfilled
       },
       nodes
     };
@@ -6805,7 +6822,10 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       totalItems: loopItems.length,
       totalVirtualDiameter,
       loopCircumferenceMm,
-      scaleMmToPx
+      scaleMmToPx,
+      physicalOccupiedAngle: physicalPreviewSpan.occupiedAngle,
+      physicalGapAngle: physicalPreviewSpan.gapAngle,
+      hasVisiblePhysicalGap: physicalPreviewSpan.isUnderfilled
     },
     nodes
   };

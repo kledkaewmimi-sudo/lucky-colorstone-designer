@@ -65,3 +65,21 @@ export function getCheckoutFitEligibility(geometry = {}) {
     fitStatus
   };
 }
+
+// Preview-only geometry. It deliberately reuses the canonical fit status but does
+// not participate in checkout eligibility or mutate the bracelet components.
+export function getPhysicalPreviewSpan({ targetCircumferenceMm = 0, placedPhysicalLengthMm = 0, fitStatus = '' } = {}) {
+  const target = positiveNumber(targetCircumferenceMm);
+  const placed = positiveNumber(placedPhysicalLengthMm);
+  const isUnderfilled = fitStatus === 'underfill' && target > 0;
+  const occupiedAngle = isUnderfilled
+    ? Math.min(Math.PI * 2, (placed / target) * Math.PI * 2)
+    : Math.PI * 2;
+
+  return {
+    isUnderfilled,
+    occupiedAngle,
+    gapAngle: Math.max(0, Math.PI * 2 - occupiedAngle),
+    renderCircumferenceMm: isUnderfilled ? target : placed
+  };
+}
