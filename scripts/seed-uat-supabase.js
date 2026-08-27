@@ -3,6 +3,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const { assertSafeUatEnvironment } = require('../uat-backend-guard.js');
+const { buildUatSupabaseAuthHeaders } = require('../uat-supabase-auth.js');
 
 assertSafeUatEnvironment(process.env);
 
@@ -32,7 +33,7 @@ async function upsert(table, records, conflictColumn = 'id') {
   if (dryRun) return console.log(`Would upsert ${records.length} UAT ${table} records.`);
   const response = await fetch(`${url}/rest/v1/${table}?on_conflict=${encodeURIComponent(conflictColumn)}`, {
     method: 'POST',
-    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    headers: { ...buildUatSupabaseAuthHeaders(key), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(records)
   });
   if (!response.ok) throw new Error(`UAT ${table} seed failed with HTTP ${response.status}`);

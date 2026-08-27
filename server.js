@@ -5,6 +5,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
 const { assertSafeUatEnvironment, isUatSupabaseApiRequest } = require('./uat-backend-guard.js');
+const { buildUatSupabaseAuthHeaders } = require('./uat-supabase-auth.js');
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
@@ -1766,10 +1767,7 @@ function createSupabaseRestUrl(tableName, params = {}) {
 
 async function supabaseRequest(tableName, { method = "GET", params = {}, body = null, prefer = "" } = {}) {
   const { serviceRoleKey } = getSupabaseConfig();
-  const headers = {
-    apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`
-  };
+  const headers = buildUatSupabaseAuthHeaders(serviceRoleKey);
 
   if (body !== null) {
     headers["Content-Type"] = "application/json";
@@ -1838,7 +1836,7 @@ async function supabaseRpc(functionName, body = {}) {
   const { url, serviceRoleKey } = getSupabaseConfig();
   const response = await fetch(new URL(`/rest/v1/rpc/${functionName}`, url), {
     method: 'POST',
-    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, 'Content-Type': 'application/json' },
+    headers: { ...buildUatSupabaseAuthHeaders(serviceRoleKey), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   const text = await response.text();
