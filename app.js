@@ -9,6 +9,7 @@ import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transitio
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
 import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from './line-identity-before-design.js';
+import { invokeInitialLineAuthentication } from './initial-line-auth.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
@@ -1863,6 +1864,19 @@ function isLineIdentityAvailable() {
   return true;
 }
 
+function reportInitialLineAuthDiagnostic(result = {}) {
+  console.warn('[uat-line-auth-start]', {
+    liffInitialized: State.liffInitialized === true,
+    liffIdPresent: Boolean(LIFF_ID),
+    isInClient: isLiffInClient(),
+    isLoggedIn: isLiffLoggedIn(),
+    canonicalIdentityPresent: Boolean(State.lineUserId && State.lineUserId.trim()),
+    loginMethodAttempted: result.method || 'NONE',
+    loginInvocation: result.invocation || 'NOT_AVAILABLE',
+    lineIdentityFailureCode: result.reason || lineIdentityFailureCode || ''
+  });
+}
+
 async function syncLineProfileFromLiff() {
   lineIdentityFailureCode = '';
   if (!isLiffLoggedIn()) {
@@ -2230,13 +2244,10 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
     console.warn("LIFF login already in progress.");
     return false;
   }
-  if (typeof liff === 'undefined' || !State.liffInitialized || typeof liff.login !== 'function') {
-    return false;
-  }
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started');
-  if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
+  const persistInitialIntent = () => preserveExistingIntent || rememberCustomizationLoginIntent();
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
@@ -2244,53 +2255,65 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
 
-  try {
-    liff.login({ redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }) });
-    return returnStartStatus ? true : false;
-  } catch (loginErr) {
+  const loginResult = invokeInitialLineAuthentication({
+    method: 'LIFF_LOGIN',
+    isInClient: isLiffInClient(),
+    liffInitialized: State.liffInitialized,
+    liff: typeof liff === 'undefined' ? null : liff,
+    redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }),
+    persistIntent: persistInitialIntent
+  });
+  if (!loginResult.started) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
-    console.warn("LIFF customization login failed to start.", loginErr);
+    lineIdentityFailureCode = loginResult.reason;
+    reportInitialLineAuthDiagnostic(loginResult);
+    console.warn("LIFF customization login failed to start.", loginResult.error);
     trackAnalyticsEvent('line_auth_error', {
-      message: loginErr?.message || String(loginErr || '')
+      message: loginResult.error?.message || loginResult.reason
     });
     resetLandingStartAfterFailure();
     return false;
   }
+  return returnStartStatus ? true : false;
 }
 
 function openLineConnectEntryForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) return false;
 
-  const entryUrl = getLiffEntryUrl();
-  if (!entryUrl) return false;
-
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
-  if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
+  const persistInitialIntent = () => preserveExistingIntent || rememberCustomizationLoginIntent();
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
 
-  try {
-    window.location.assign(entryUrl);
-    return returnStartStatus ? true : false;
-  } catch (entryErr) {
+  const entryResult = invokeInitialLineAuthentication({
+    method: 'LIFF_ENTRY',
+    isInClient: isLiffInClient(),
+    liffId: LIFF_ID,
+    persistIntent: persistInitialIntent,
+    navigate: (entryUrl) => window.location.assign(entryUrl)
+  });
+  if (!entryResult.started) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
-    console.warn("LINE connect entry failed to open.", entryErr);
+    lineIdentityFailureCode = entryResult.reason;
+    reportInitialLineAuthDiagnostic(entryResult);
+    console.warn("LINE connect entry failed to open.", entryResult.error);
     trackAnalyticsEvent('line_auth_error', {
-      message: entryErr?.message || String(entryErr || ''),
+      message: entryResult.error?.message || entryResult.reason,
       method: 'entry_url'
     });
     resetLandingStartAfterFailure();
     return false;
   }
+  return returnStartStatus ? true : false;
 }
 
 async function requireLineLoginForCustomization(options = {}) {
