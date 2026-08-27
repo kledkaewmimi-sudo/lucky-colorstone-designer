@@ -14,6 +14,12 @@ Existing stable `amethyst` is updated only from `assets/amethyst.webp` to `asset
 
 `reports/catalog/uat-catalog-promotion-manifest.json` contains only four INSERTs and the Amethyst IMAGE_ONLY_CHANGE UPDATE; it has no DELETE and remains `DRAFT_OWNER_MEANING_PENDING`. No production SQL was executed.
 
+## UAT catalog writes and live read-back
+
+After the UAT Vercel deployment was Ready, the live UAT catalog API accepted only the four valid new records and existing Amethyst update (HTTP 200 each). `GET /api/stones` read back exact IDs, names, Thai names, sizes, prices, and image paths. The live count is 37: 32 seeded baseline + retained QA record + four valid additions. Blue Agate is not present.
+
+All five deployed asset paths returned HTTP 200 from `https://uat.customize.luckycolorstone.com/`.
+
 ## Tests and remaining live work
 
-The focused catalog contract test passed, as did `node --check app.js`, `node --check server.js`, and `git diff --check`. Frontend assets and fixture changes require UAT Vercel deployment before UAT API upserts/read-back and Step 3 image/renderer QA. Render is not required. Production remains untouched.
+The focused catalog contract test passed, as did `node --check app.js`, `node --check server.js`, and `git diff --check`. UAT Vercel is Ready; Render is not required. Step 3 visual/renderer interaction remains for owner real-device QA, along with supplying a Blue Agate PNG and marketing meanings before promotion. Production remains untouched.
