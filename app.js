@@ -52,6 +52,8 @@ const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.ge
 // explicit so every external integration can fail closed before making a request.
 const APP_ENV = 'uat';
 const IS_UAT_MODE = APP_ENV === 'uat';
+const LINE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('line_debug') === '1';
+const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
 const STICKY_DEBUG_ENABLED = false;
 let LIFF_ID = '';
@@ -283,6 +285,12 @@ const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
 });
 let customerCatalogStartupPromise = null;
 let catalogRefreshPollingTimer = null;
+const lineDebugStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+const lineDebugEvents = [];
+let lineDebugOutput = null;
+let lineDebugNoNavigationTimer = null;
+let lineDebugLoginNavigationArmed = false;
+let lineDebugNavigationObserved = false;
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
 let isDraggingWristPicker = false;
@@ -1064,11 +1072,138 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
   });
 }
 
+function sanitizeLineDebugText(value, maxLength = 240) {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').slice(0, maxLength);
+}
+
+function getLineDebugState() {
+  const safeLiffCall = (method) => {
+    try {
+      return typeof liff !== 'undefined' && typeof liff[method] === 'function' ? Boolean(liff[method]()) : null;
+    } catch {
+      return null;
+    }
+  };
+  const activation = navigator.userActivation;
+  return {
+    liffInitialized: State.liffInitialized === true,
+    liffIdPresent: Boolean(LIFF_ID),
+    isInClient: safeLiffCall('isInClient'),
+    isLoggedIn: safeLiffCall('isLoggedIn'),
+    visibilityState: document.visibilityState,
+    userActivationActive: activation?.isActive ?? null,
+    userActivationHasBeenActive: activation?.hasBeenActive ?? null,
+    hasFocus: typeof document.hasFocus === 'function' ? document.hasFocus() : null,
+    landingConnectPromptVisible,
+    liffLoginInProgress,
+    currentCtaText: sanitizeLineDebugText(DOM.btnLandingLogin?.querySelector('.btn-text')?.textContent || ''),
+    userAgent: sanitizeLineDebugText(navigator.userAgent, 300)
+  };
+}
+
+function renderLineDebugPanel() {
+  if (!lineDebugOutput) return;
+  lineDebugOutput.textContent = lineDebugEvents.map((entry) => {
+    const state = entry.state ? ` state=${JSON.stringify(entry.state)}` : '';
+    const details = entry.details ? ` details=${JSON.stringify(entry.details)}` : '';
+    return `${entry.t}ms ${entry.event}${state}${details}`;
+  }).join('\n');
+  lineDebugOutput.scrollTop = lineDebugOutput.scrollHeight;
+}
+
+function lineDebugTrace(event, { captureState = false, details = null } = {}) {
+  if (!LINE_DEBUG_ENABLED) return;
+  lineDebugEvents.push({
+    t: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - lineDebugStartedAt),
+    event,
+    ...(captureState ? { state: getLineDebugState() } : {}),
+    ...(details ? { details } : {})
+  });
+  renderLineDebugPanel();
+}
+
+function setupLineDebugPanel() {
+  if (!LINE_DEBUG_ENABLED || document.getElementById('lineDebugPanel')) return;
+  const panel = document.createElement('aside');
+  panel.id = 'lineDebugPanel';
+  panel.className = 'line-debug-panel';
+  panel.setAttribute('aria-label', 'UAT LINE authentication diagnostic trace');
+  panel.innerHTML = '<div class="line-debug-heading">UAT LINE DEBUG</div><button type="button" class="line-debug-copy">Copy Debug Trace</button><pre class="line-debug-output"></pre>';
+  const copyButton = panel.querySelector('.line-debug-copy');
+  lineDebugOutput = panel.querySelector('.line-debug-output');
+  copyButton?.addEventListener('click', async () => {
+    const trace = JSON.stringify(lineDebugEvents, null, 2);
+    try {
+      await navigator.clipboard?.writeText(trace);
+      copyButton.textContent = 'Copied';
+    } catch {
+      copyButton.textContent = 'Copy unavailable';
+    }
+  });
+  document.body.append(panel);
+  renderLineDebugPanel();
+}
+
+function markLineDebugNavigationObserved(event) {
+  if (!LINE_DEBUG_ENABLED) return;
+  if (event === 'VISIBILITY_HIDDEN') {
+    lineDebugTrace(event, { captureState: true });
+  } else {
+    lineDebugTrace(event);
+  }
+  if (lineDebugLoginNavigationArmed) {
+    lineDebugNavigationObserved = true;
+    if (lineDebugNoNavigationTimer) window.clearTimeout(lineDebugNoNavigationTimer);
+  }
+}
+
+function armLineDebugNoNavigationDetection() {
+  if (!LINE_DEBUG_ENABLED) return;
+  lineDebugLoginNavigationArmed = true;
+  lineDebugNavigationObserved = false;
+  if (lineDebugNoNavigationTimer) window.clearTimeout(lineDebugNoNavigationTimer);
+  lineDebugNoNavigationTimer = window.setTimeout(() => {
+    if (!lineDebugNavigationObserved) {
+      lineDebugTrace('LOGIN_INVOKED_NO_NAVIGATION', {
+        captureState: true,
+        details: { code: 'F05E8', meaning: 'LIFF_LOGIN_INVOKED_BUT_NO_NAVIGATION_OBSERVED' }
+      });
+    }
+  }, LINE_DEBUG_NO_NAVIGATION_MS);
+}
+
+function setupLineDebugRuntimeListeners() {
+  if (!LINE_DEBUG_ENABLED) return;
+  window.addEventListener('pagehide', () => markLineDebugNavigationObserved('PAGEHIDE'));
+  window.addEventListener('beforeunload', () => markLineDebugNavigationObserved('BEFOREUNLOAD'));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') markLineDebugNavigationObserved('VISIBILITY_HIDDEN');
+  });
+  window.addEventListener('error', (event) => {
+    lineDebugTrace('WINDOW_ERROR', { details: {
+      name: sanitizeLineDebugText(event.error?.name || 'Error', 80),
+      message: sanitizeLineDebugText(event.message, 180),
+      source: sanitizeLineDebugText(String(event.filename || '').split('/').pop(), 100)
+    } });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    lineDebugTrace('UNHANDLED_REJECTION', { details: {
+      name: sanitizeLineDebugText(event.reason?.name || 'UnhandledRejection', 80),
+      message: sanitizeLineDebugText(event.reason?.message || event.reason, 180)
+    } });
+  });
+}
+
+lineDebugTrace('BOOT', { captureState: true });
+
 // ==========================================
 // 4. Initialisation
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+  setupLineDebugPanel();
+  setupLineDebugRuntimeListeners();
+  lineDebugTrace('DOM_READY', { captureState: true });
   // The document-head marker prevents a first-paint landing flash while the QA
   // status request below is still resolving. Confirm the real callback state
   // immediately afterwards before continuing to hold normal UI rendering.
@@ -1186,6 +1321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load only the UAT LIFF configuration before initializing the SDK.
   await loadUatLiffConfiguration();
+  lineDebugTrace('LIFF_CONFIG_READY', { captureState: true, details: { configurationReason: sanitizeLineDebugText(liffConfigurationReason, 80) } });
   // Setup LIFF (LINE Front-end Framework). This remains the required mobile gate.
   await initLIFF();
   markStartupPerformance('T1_liff_ready');
@@ -2247,13 +2383,23 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started');
-  const persistInitialIntent = () => preserveExistingIntent || rememberCustomizationLoginIntent();
+  const persistInitialIntent = () => {
+    try {
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
+      return persisted;
+    } catch (error) {
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: false, error: sanitizeLineDebugText(error?.message || error, 120) } });
+      throw error;
+    }
+  };
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
+  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_LOGIN' } });
 
   const loginResult = invokeInitialLineAuthentication({
     method: 'LIFF_LOGIN',
@@ -2261,7 +2407,14 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
     liffInitialized: State.liffInitialized,
     liff: typeof liff === 'undefined' ? null : liff,
     redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }),
-    persistIntent: persistInitialIntent
+    persistIntent: persistInitialIntent,
+    onBeforeLogin: () => lineDebugTrace('BEFORE_LIFF_LOGIN', { captureState: true }),
+    onLoginInvoked: () => lineDebugTrace('LIFF_LOGIN_INVOKED', { captureState: true }),
+    onLoginReturned: () => {
+      lineDebugTrace('LIFF_LOGIN_RETURNED', { captureState: true });
+      armLineDebugNoNavigationDetection();
+    },
+    onLoginThrow: (error) => lineDebugTrace('LIFF_LOGIN_THROW', { captureState: true, details: { error: sanitizeLineDebugText(error?.message || error, 180) } })
   });
   if (!loginResult.started) {
     liffLoginInProgress = false;
@@ -2285,19 +2438,30 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
-  const persistInitialIntent = () => preserveExistingIntent || rememberCustomizationLoginIntent();
+  const persistInitialIntent = () => {
+    try {
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
+      return persisted;
+    } catch (error) {
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: false, error: sanitizeLineDebugText(error?.message || error, 120) } });
+      throw error;
+    }
+  };
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
   setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
+  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_ENTRY' } });
 
   const entryResult = invokeInitialLineAuthentication({
     method: 'LIFF_ENTRY',
     isInClient: isLiffInClient(),
     liffId: LIFF_ID,
     persistIntent: persistInitialIntent,
-    navigate: (entryUrl) => window.location.assign(entryUrl)
+    navigate: (entryUrl) => window.location.assign(entryUrl),
+    onEntryNavigation: () => lineDebugTrace('LIFF_ENTRY_NAVIGATION', { captureState: true })
   });
   if (!entryResult.started) {
     liffLoginInProgress = false;
@@ -2318,6 +2482,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
 
 async function requireLineLoginForCustomization(options = {}) {
   const { showLandingPrompt = false } = options;
+  lineDebugTrace('REQUIRE_LINE_LOGIN_ENTER', { captureState: true });
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
   // Desktop remains independent of LIFF availability and login state.
@@ -2443,6 +2608,7 @@ async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (!LIFF_ID) {
     State.liffInitialized = false;
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(liffConfigurationReason || 'LIFF_ID_MISSING', 80) } });
     console.warn('[uat-liff]', { reason: liffConfigurationReason || 'UAT_LIFF_CONFIG_MISSING' });
     setLiffLoadingMessage('UAT LINE configuration is missing.');
     if (loader) loader.style.display = 'none';
@@ -2450,6 +2616,7 @@ async function initLIFF() {
   }
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: 'LIFF_SDK_UNAVAILABLE' } });
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
     return;
@@ -2457,9 +2624,11 @@ async function initLIFF() {
 
   try {
     console.log("LIFF init start");
+    lineDebugTrace('LIFF_INIT_START', { captureState: true });
     await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
+    lineDebugTrace('LIFF_INIT_OK', { captureState: true });
 
     const isLoggedIn = liff.isLoggedIn();
     console.log("LIFF isLoggedIn:", isLoggedIn);
@@ -2469,6 +2638,7 @@ async function initLIFF() {
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(err?.message || err, 180) } });
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
       });
@@ -2483,9 +2653,11 @@ function setupLandingEvents() {
   DOM.btnLandingLogin.addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
+    lineDebugTrace('LANDING_START_CLICK', { captureState: true });
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+    lineDebugTrace('START_HANDLER_ENTER', { captureState: true });
     markStartupPerformance('T0_cta_click');
     trackAnalyticsEvent('start_customize_click');
     triggerLandingStartFeedback();
@@ -2493,8 +2665,11 @@ function setupLandingEvents() {
     startLandingLoadReassurance();
 
     try {
+      lineDebugTrace('STARTUP_PROMISE_BEGIN', { captureState: true });
       await customerStartupBootstrapPromise;
+      lineDebugTrace('STARTUP_PROMISE_RESOLVED', { captureState: true });
     } catch (bootstrapError) {
+      lineDebugTrace('STARTUP_PROMISE_REJECTED', { details: { error: sanitizeLineDebugText(bootstrapError?.message || bootstrapError, 180) } });
       console.warn('Start customization blocked by startup bootstrap failure.', bootstrapError);
       resetLandingStartAfterFailure('');
       return;

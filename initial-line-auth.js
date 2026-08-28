@@ -6,8 +6,20 @@ export function invokeInitialLineAuthentication({
   liffId = '',
   redirectUri = '',
   persistIntent = () => true,
-  navigate = () => {}
+  navigate = () => {},
+  onBeforeLogin = () => {},
+  onLoginInvoked = () => {},
+  onLoginReturned = () => {},
+  onLoginThrow = () => {},
+  onEntryNavigation = () => {}
 } = {}) {
+  const notify = (callback, ...args) => {
+    try {
+      callback(...args);
+    } catch {
+      // Diagnostic hooks must not influence the authentication operation.
+    }
+  };
   const intentPersisted = persistIntent() !== false;
 
   if (isInClient) {
@@ -19,9 +31,13 @@ export function invokeInitialLineAuthentication({
       return { started: false, method: 'LIFF_LOGIN', invocation: 'NOT_AVAILABLE', intentPersisted, reason: 'F05E1_LIFF_LOGIN_NOT_AVAILABLE' };
     }
     try {
+      notify(onBeforeLogin);
       liff.login({ redirectUri });
+      notify(onLoginInvoked);
+      notify(onLoginReturned);
       return { started: true, method: 'LIFF_LOGIN', invocation: 'STARTED', intentPersisted, reason: '' };
     } catch (error) {
+      notify(onLoginThrow, error);
       return { started: false, method: 'LIFF_LOGIN', invocation: 'THREW', intentPersisted, reason: 'F05E2_LIFF_LOGIN_THROWN', error };
     }
   }
@@ -31,6 +47,7 @@ export function invokeInitialLineAuthentication({
     return { started: false, method: 'LIFF_ENTRY', invocation: 'NOT_AVAILABLE', intentPersisted, reason: 'F05E4_LIFF_ENTRY_URL_MISSING' };
   }
   try {
+    notify(onEntryNavigation);
     navigate(entryUrl);
     return { started: true, method: 'LIFF_ENTRY', invocation: 'STARTED', intentPersisted, reason: '' };
   } catch (error) {
