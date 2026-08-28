@@ -47,8 +47,9 @@ test('slot forensics is UAT-only and records source, SVG, metadata, and neighbor
   assert.match(app, /document\.body\.appendChild\(panel\)/);
   assert.match(app, /history:\s*\[\]/);
   assert.match(app, /slotForensics\.history\.push\(snapshot\)/);
-  assert.match(app, /STATE_C_IMMEDIATE_AFTER_READD/);
-  assert.match(app, /STATE_D_FINAL_SETTLED_RENDER/);
+  ['STATE_A_BEFORE_DELETE', 'STATE_B_IMMEDIATE_AFTER_DELETE_MUTATION', 'STATE_C_FIRST_RENDER_AFTER_DELETE', 'STATE_D_BEFORE_READD_MUTATION', 'STATE_E_IMMEDIATE_AFTER_READD_MUTATION', 'STATE_F_FIRST_RENDER_AFTER_READD', 'STATE_G_SECOND_RENDER_AFTER_READD', 'STATE_H_FINAL_SETTLED_RENDER'].forEach((stateName) => {
+    assert.match(app, new RegExp(stateName));
+  });
   assert.match(app, /compareSlotForensicsSnapshots/);
   assert.match(app, /JSON\.stringify\(slotForensics, null, 2\)/);
 });

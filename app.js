@@ -6598,6 +6598,7 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
     return false;
   }
 
+  captureSlotForensics('STATE_D_BEFORE_READD_MUTATION', createCurrentBraceletResolvedLayout());
   State.newlyAddedIds = [loopItem.uniqueId];
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
@@ -6610,7 +6611,9 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
     State.selectedStones.push(loopItem);
   }
 
-  markSlotForensicsAction('STATE_C_IMMEDIATE_AFTER_READD');
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION', createCurrentBraceletResolvedLayout());
+  markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -6648,6 +6651,7 @@ function addStoneToBracelet(stoneId) {
     return;
   }
   
+  captureSlotForensics('STATE_D_BEFORE_READD_MUTATION', createCurrentBraceletResolvedLayout());
   State.uniqueCounter++;
   const newBead = createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter);
   State.newlyAddedIds = [newBead.uniqueId];
@@ -6664,7 +6668,9 @@ function addStoneToBracelet(stoneId) {
     State.selectedStones.push(newBead);
   }
   
-  markSlotForensicsAction('STATE_C_IMMEDIATE_AFTER_READD');
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION', createCurrentBraceletResolvedLayout());
+  markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
   renderStep3();
   saveState();
   
@@ -6705,6 +6711,7 @@ function addSpacerToBracelet(spacerId) {
     return;
   }
 
+  captureSlotForensics('STATE_D_BEFORE_READD_MUTATION', createCurrentBraceletResolvedLayout());
   State.uniqueCounter++;
   const newSpacer = createSpacerSelectionItem(spacer.id, State.uniqueCounter);
   if (!newSpacer) return;
@@ -6720,7 +6727,9 @@ function addSpacerToBracelet(spacerId) {
     State.selectedStones.push(newSpacer);
   }
 
-  markSlotForensicsAction('STATE_C_IMMEDIATE_AFTER_READD');
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION', createCurrentBraceletResolvedLayout());
+  markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -6754,6 +6763,8 @@ function removeLoopItemFromBracelet(index, showToastNotification = true, event =
   } else {
     State.selectedStones[resolvedIndex] = createEmptyLoopSlot(removed?.size, removed?.uniqueId || null);
   }
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureSlotForensics('STATE_B_IMMEDIATE_AFTER_DELETE_MUTATION', createCurrentBraceletResolvedLayout());
   const occupiedAfter = getSelectedLoopItems().filter((item) => !isEmptyLoopSlot(item)).length;
   const emptyAfter = getSelectedLoopItems().filter((item) => isEmptyLoopSlot(item)).length;
   recordDeleteDebug(event, { phase: 'mutation-after', handler: 'removeLoopItemFromBracelet', sourceIndex: index, currentArrayIndex: resolvedIndex, expectedUniqueId, occupiedAfter, emptyAfter, mutationSequence: deleteMutationSequence });
@@ -6762,7 +6773,7 @@ function removeLoopItemFromBracelet(index, showToastNotification = true, event =
     return;
   }
   State.activeSlotIndex = null;
-  markSlotForensicsAction('STATE_B_AFTER_ONE_DELETE');
+  markSlotForensicsAction('STATE_C_FIRST_RENDER_AFTER_DELETE');
   if (showToastNotification) {
     if (isSelectedSpacerItem(removed)) {
       showToast(`${CUSTOMER_COMPONENT_LABELS.spacer} removed.`);
@@ -7621,9 +7632,12 @@ function getForensicNeighborDistances(nodes, circumferenceMm) {
       fromSourceIndex: node.sourceIndex ?? null,
       toSourceIndex: next.sourceIndex ?? null,
       angleDeltaDeg: Number((angleDelta * 180 / Math.PI).toFixed(4)),
+      arcDistanceMm: Number(arcMm.toFixed(4)),
       expectedVisualSpacingMm: Number(expectedVisualSpacingMm.toFixed(4)),
       actualVisualSpacingMm: Number(arcMm.toFixed(4)),
       visualGapMm: Number((arcMm - expectedVisualSpacingMm).toFixed(4)),
+      residualGapMm: Number((arcMm - expectedVisualSpacingMm).toFixed(4)),
+      RESIDUAL_GAP_GT_1MM: arcMm - expectedVisualSpacingMm > 1 ? 'YES' : 'NO',
       componentSizesMm: [getForensicRenderSizeMm(node), getForensicRenderSizeMm(next)]
     };
   });
@@ -7690,17 +7704,39 @@ function captureSlotForensics(stateName, resolvedLayout = createCurrentBraceletR
     const canonicalItem = canonical.find((item) => item.sourceIndex === row.sourceIndex);
     return canonicalItem && (row.sizeMm !== canonicalItem.physicalLengthMm || row.renderSizeMm !== canonicalItem.renderSizeMm);
   });
+  const componentListTotals = {
+    total: resolvedLayout.braceletComponentList.length,
+    occupied: resolvedLayout.braceletComponentList.filter((item) => item.type !== 'empty').length,
+    empty: resolvedLayout.braceletComponentList.filter((item) => item.type === 'empty').length
+  };
+  const resolvedTotals = {
+    total: nodeRows.length,
+    occupied: nodeRows.filter((item) => !item.isEmpty).length,
+    empty: nodeRows.filter((item) => item.isEmpty).length,
+    placeholder: nodeRows.filter((item) => item.isEmpty).length
+  };
+  const domNodes = Array.from(DOM.braceletSvg.querySelectorAll('.bead-node'));
+  const domTotals = {
+    total: domNodes.length,
+    stone: domNodes.filter((node) => node.dataset.slotKind === 'stone').length,
+    empty: domNodes.filter((node) => node.dataset.slotKind === 'empty').length,
+    placeholder: domNodes.filter((node) => node.classList.contains('placeholder')).length
+  };
   const snapshot = {
     state: stateName,
     ACTION_SEQUENCE: slotForensics.actionSequence,
     RENDER_SEQUENCE: slotForensics.renderSequence,
     TOTAL_CANONICAL_ITEMS: canonical.length,
-    TOTAL_COMPONENT_LIST_ITEMS: resolvedLayout.braceletComponentList.length,
-    TOTAL_RESOLVED_NODES: nodeRows.length,
-    TOTAL_DOM_COMPONENT_NODES: DOM.braceletSvg.querySelectorAll('.bead-node').length,
+    TOTAL_COMPONENT_LIST_ITEMS: componentListTotals.total,
+    TOTAL_RESOLVED_NODES: resolvedTotals.total,
+    TOTAL_DOM_COMPONENT_NODES: domTotals.total,
     TOTAL_OCCUPIED_ITEMS: canonical.filter((item) => !item.isEmpty).length,
     TOTAL_EMPTY_ITEMS: canonical.filter((item) => item.isEmpty).length,
     TOTAL_PLACEHOLDER_NODES: nodeRows.filter((item) => item.dom.class?.includes('placeholder')).length,
+    CANONICAL: { total: canonical.length, occupied: canonical.filter((item) => !item.isEmpty).length, empty: canonical.filter((item) => item.isEmpty).length },
+    COMPONENT_LIST: componentListTotals,
+    RESOLVED: resolvedTotals,
+    DOM: domTotals,
     complete: Boolean(resolvedLayout.summary.completionEligibility?.complete),
     canonical,
     nodes: nodeRows,
@@ -7740,6 +7776,7 @@ function compareSlotForensicsSnapshots(firstPostReadd, finalSettled) {
     const fields = ['kind', 'sizeMm', 'renderSizeMm', 'angleDeg', 'angleWidthDeg'];
     const changedFields = fields.filter((field) => firstNode[field] !== finalNode[field]);
     if (firstNode.center.x !== finalNode.center.x || firstNode.center.y !== finalNode.center.y) changedFields.push('center');
+    if (firstNode.dom.imageHref !== finalNode.dom.imageHref) changedFields.push('dom.imageHref');
     return changedFields.length > 0
       ? { sourceIndex: firstNode.sourceIndex, uniqueId: firstNode.uniqueId, changedFields, firstPostReadd: firstNode, finalRender: finalNode }
       : null;
@@ -7748,15 +7785,27 @@ function compareSlotForensicsSnapshots(firstPostReadd, finalSettled) {
     const exists = firstPostReadd.nodes.some((firstNode) => firstNode.sourceIndex === finalNode.sourceIndex && firstNode.uniqueId === finalNode.uniqueId);
     if (!exists) changedSlots.push({ sourceIndex: finalNode.sourceIndex, uniqueId: finalNode.uniqueId, change: 'NODE_APPEARED' });
   });
-  return { available: true, changedSlots, transientRenderDivergence: changedSlots.length > 0 ? 'YES' : 'NO' };
+  const summaryFields = ['TOTAL_CANONICAL_ITEMS', 'TOTAL_COMPONENT_LIST_ITEMS', 'TOTAL_RESOLVED_NODES', 'TOTAL_DOM_COMPONENT_NODES', 'TOTAL_EMPTY_ITEMS', 'TOTAL_PLACEHOLDER_NODES'];
+  const summaryDifferences = summaryFields
+    .filter((field) => firstPostReadd[field] !== finalSettled[field])
+    .map((field) => ({ field, firstPostReadd: firstPostReadd[field], finalRender: finalSettled[field] }));
+  const firstDivergence = changedSlots[0] || summaryDifferences[0] || null;
+  return {
+    available: true,
+    changedSlots,
+    summaryDifferences,
+    firstDivergence,
+    transientRenderDivergence: changedSlots.length > 0 || summaryDifferences.length > 0 ? 'YES' : 'NO'
+  };
 }
 
-function captureSettledSlotForensics() {
+function capturePostReaddRenderFrames() {
   if (!SLOT_FORENSICS_ENABLED) return;
   window.requestAnimationFrame(() => {
+    captureSlotForensics('STATE_G_SECOND_RENDER_AFTER_READD');
     window.requestAnimationFrame(() => {
-      const settled = captureSlotForensics('STATE_D_FINAL_SETTLED_RENDER');
-      const immediate = slotForensics.history.slice().reverse().find((snapshot) => snapshot.state === 'STATE_C_IMMEDIATE_AFTER_READD');
+      const settled = captureSlotForensics('STATE_H_FINAL_SETTLED_RENDER');
+      const immediate = slotForensics.history.slice().reverse().find((snapshot) => snapshot.state === 'STATE_F_FIRST_RENDER_AFTER_READD');
       if (!settled) return;
       settled.firstPostReaddComparison = compareSlotForensicsSnapshots(immediate, settled);
       window.__slotForensics = slotForensics;
@@ -7769,7 +7818,7 @@ function capturePendingSlotForensics(resolvedLayout) {
   if (!SLOT_FORENSICS_ENABLED) return;
   const stateName = slotForensics.pendingState || 'RENDER';
   captureSlotForensics(stateName, resolvedLayout);
-  if (stateName === 'STATE_C_IMMEDIATE_AFTER_READD') captureSettledSlotForensics();
+  if (stateName === 'STATE_F_FIRST_RENDER_AFTER_READD') capturePostReaddRenderFrames();
   slotForensics.pendingState = null;
 }
 
@@ -7892,8 +7941,8 @@ function setupSlotForensicsPanel() {
   controls.style.cssText = 'display:flex!important;flex-wrap:wrap;gap:5px;margin-bottom:6px;';
   [
     ['STATE_A_BEFORE_DELETE', 'Capture A'],
-    ['STATE_B_AFTER_ONE_DELETE', 'Capture B'],
-    ['STATE_C_IMMEDIATE_AFTER_READD', 'Capture C']
+    ['STATE_B_IMMEDIATE_AFTER_DELETE_MUTATION', 'Capture B'],
+    ['STATE_C_FIRST_RENDER_AFTER_DELETE', 'Capture C']
   ].forEach(([stateName, label]) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -7939,6 +7988,10 @@ function renderSlotForensicsOverlay(snapshot) {
     `COMPLETE: ${anomaly.COMPLETE} | GAP_WITHOUT_EMPTY_NODE: ${anomaly.GAP_WITHOUT_EMPTY_NODE}`,
     `ABNORMAL_ANGULAR_GAP_FOUND: ${anomaly.ABNORMAL_ANGULAR_GAP_FOUND}`,
     `FULL_RENDER_HISTORY: ${slotForensics.history.length} snapshots`,
+    `CAPTURES STORED: ${slotForensics.history.length}`,
+    `FIRST POST-READD CAPTURE: ${slotForensics.history.some((item) => item.state === 'STATE_F_FIRST_RENDER_AFTER_READD') ? 'YES' : 'NO'}`,
+    `FINAL SETTLED CAPTURE: ${slotForensics.history.some((item) => item.state === 'STATE_H_FINAL_SETTLED_RENDER') ? 'YES' : 'NO'}`,
+    `TRANSIENT DIFFERENCE FOUND: ${snapshot.firstPostReaddComparison?.transientRenderDivergence || 'NO'}`,
     'Full JSON: Export / Copy Trace includes ordered history and first-post-readd comparison'
   ].join('\n');
 }
