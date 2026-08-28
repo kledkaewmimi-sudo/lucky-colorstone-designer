@@ -26,8 +26,8 @@ test('Step 3 completion, Next UI, and Step 4 validation share target plus five e
   assert.doesNotMatch(app, /1\.0mm fit tolerance/);
 });
 
-test('the shared Step 4 gate completes only in the target through target plus five interval', () => {
-  assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm: 175, fixedComponentLengthMm: 10 }).eligible, false);
+test('the shared Step 4 gate uses fixed discrete capacity and Mixed target through target plus five', () => {
+  assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm: 175, fixedComponentLengthMm: 10 }).eligible, true);
   assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 170, targetLengthMm: 175 }).eligible, false);
   assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 4 }).eligible, true);
   assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 6 }).eligible, true);

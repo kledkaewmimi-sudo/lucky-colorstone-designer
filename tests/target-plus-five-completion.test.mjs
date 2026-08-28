@@ -12,20 +12,20 @@ test('RED A: Mixed 172mm of 175mm remains incomplete and allows only 4mm and 6mm
   assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm, targetLengthMm }).eligible, false);
 });
 
-test('RED B: fixed 10mm reaches completion at 18 beads, not 17', () => {
+test('fixed 10mm restores pre-Mixed completion at 17 beads', () => {
   const targetLengthMm = 175;
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm, fixedComponentLengthMm: 10 }).eligible, false);
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 180, targetLengthMm, fixedComponentLengthMm: 10 }).eligible, true);
+  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm, fixedComponentLengthMm: 10 }).eligible, true);
+  assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm, componentLengthMm: 10 }).eligible, false);
 });
 
-test('RED C: fixed 6mm reaches completion at 30 beads, not 29', () => {
+test('fixed 6mm restores pre-Mixed completion at 29 beads', () => {
   const targetLengthMm = 175;
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 174, targetLengthMm, fixedComponentLengthMm: 6 }).eligible, false);
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 180, targetLengthMm, fixedComponentLengthMm: 6 }).eligible, true);
+  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 174, targetLengthMm, fixedComponentLengthMm: 6 }).eligible, true);
+  assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm: 174, targetLengthMm, componentLengthMm: 6 }).eligible, false);
 });
 
-test('RED D: fixed 4mm reaches completion at 44 beads, not 43', () => {
+test('fixed 4mm restores pre-Mixed completion at 43 beads', () => {
   const targetLengthMm = 175;
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 172, targetLengthMm, fixedComponentLengthMm: 4 }).eligible, false);
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 176, targetLengthMm, fixedComponentLengthMm: 4 }).eligible, true);
+  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 172, targetLengthMm, fixedComponentLengthMm: 4 }).eligible, true);
+  assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm: 172, targetLengthMm, componentLengthMm: 4 }).eligible, false);
 });

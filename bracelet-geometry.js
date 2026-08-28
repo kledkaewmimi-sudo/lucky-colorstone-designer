@@ -10,6 +10,10 @@ function positiveNumber(value) {
 export function getComponentPhysicalLengthMm(component) {
   if (!component) return 0;
 
+  // Empty loop entries retain an editor position only. Their former size is
+  // renderer metadata and must never reserve physical bracelet length.
+  if (component.type === 'empty' || component.componentType === 'empty') return 0;
+
   if (component.type === 'stone') {
     const sizeMm = positiveNumber(component.sizeMm ?? component.size);
     return PHYSICAL_STONE_SIZES_MM.has(sizeMm) ? sizeMm : 0;
@@ -67,14 +71,14 @@ export function getCheckoutFitEligibility(geometry = {}) {
   };
 }
 
-// The 2mm fit status remains diagnostic metadata. Physical placement uses the
-// owner-approved target + 5mm maximum physical length.
-export function getNextComponentPlacementEligibility({ usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
+// The 2mm fit status remains diagnostic metadata. Mixed placement permits the
+// owner-approved target + 5mm maximum; fixed placement keeps discrete capacity.
+export function getNextComponentPlacementEligibility({ mode = 'mixed', usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
   const nextUsedLengthMm = positiveNumber(usedLengthMm) + positiveNumber(componentLengthMm);
   const targetLength = positiveNumber(targetLengthMm);
   const differenceMm = nextUsedLengthMm - targetLength;
   const fitStatus = getFitStatus(differenceMm);
-  const maxAllowedLengthMm = targetLength + MAX_OVER_TARGET_MM;
+  const maxAllowedLengthMm = targetLength + (mode === 'fixed' ? 0 : MAX_OVER_TARGET_MM);
   const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(nextUsedLengthMm), Math.abs(maxAllowedLengthMm)) * 8;
   return {
     eligible: nextUsedLengthMm - maxAllowedLengthMm <= overflowBoundary,
@@ -94,22 +98,26 @@ export function getBraceletCompletionEligibility({
 } = {}) {
   const usedLength = positiveNumber(usedLengthMm);
   const targetLength = positiveNumber(targetLengthMm);
-  const maxAllowedLengthMm = targetLength + MAX_OVER_TARGET_MM;
+  const maxOverTargetMm = mode === 'fixed' ? 0 : MAX_OVER_TARGET_MM;
+  const maxAllowedLengthMm = targetLength + maxOverTargetMm;
   const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(usedLength), Math.abs(maxAllowedLengthMm)) * 8;
   const candidateLengthsMm = (mode === 'fixed' ? [fixedComponentLengthMm] : supportedComponentLengthsMm)
     .map(positiveNumber)
     .filter((lengthMm) => PHYSICAL_STONE_SIZES_MM.has(lengthMm));
   const overflow = usedLength - maxAllowedLengthMm > overflowBoundary;
   const placeableSizes = !overflow ? candidateLengthsMm.filter((componentLengthMm) =>
-    getNextComponentPlacementEligibility({ usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible
+    getNextComponentPlacementEligibility({ mode, usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible
   ) : [];
-  const complete = !overflow && usedLength >= targetLength - overflowBoundary;
+  const hasPlaceableStone = placeableSizes.length > 0;
+  const complete = !overflow && (mode === 'fixed'
+    ? !hasPlaceableStone
+    : usedLength >= targetLength - overflowBoundary);
   const fitStatus = getFitStatus(usedLength - targetLength);
 
   return {
     mode,
     targetLengthMm: targetLength,
-    maxOverTargetMm: MAX_OVER_TARGET_MM,
+    maxOverTargetMm,
     maxAllowedLengthMm,
     usedLengthMm: usedLength,
     remainingToTargetMm: targetLength - usedLength,
@@ -117,12 +125,12 @@ export function getBraceletCompletionEligibility({
     eligible: complete,
     complete,
     status: overflow ? 'OVERFLOW_INVALID' : complete ? 'COMPLETE_WITHIN_OVERRUN' : 'UNDER_TARGET',
-    reason: overflow ? 'Bracelet exceeds physical capacity.' : complete ? null : 'Add stone components until the bracelet reaches its target length.',
+    reason: overflow ? 'Bracelet exceeds physical capacity.' : complete ? null : mode === 'fixed' ? 'Add another fixed-size stone to complete the bracelet.' : 'Add stone components until the bracelet reaches its target length.',
     fitStatus,
     overflow,
     isOverflow: overflow,
     placeableSizes,
-    hasPlaceableStone: placeableSizes.length > 0,
+    hasPlaceableStone,
     candidateLengthsMm
   };
 }

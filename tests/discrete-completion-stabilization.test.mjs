@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getBraceletCompletionEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
 
-test('16cm fixed 10mm remains under target at 17 beads and completes at 18 beads', () => {
+test('16cm fixed 10mm reaches pre-Mixed terminal capacity at 17 beads', () => {
   const targetLengthMm = 175;
   const usedLengthMm = 170;
   const nextTenMm = getNextComponentPlacementEligibility({
@@ -11,7 +11,7 @@ test('16cm fixed 10mm remains under target at 17 beads and completes at 18 beads
     componentLengthMm: 10
   });
 
-  assert.equal(nextTenMm.eligible, true, 'an 18th 10mm bead is valid within the five millimetre overrun');
+  assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm, componentLengthMm: 10 }).eligible, false, 'an 18th fixed 10mm bead exceeds fixed capacity');
   assert.equal(
     getBraceletCompletionEligibility({
       mode: 'fixed',
@@ -19,10 +19,10 @@ test('16cm fixed 10mm remains under target at 17 beads and completes at 18 beads
       usedLengthMm,
       targetLengthMm
     }).eligible,
-    false,
-    '17 beads are still below the target'
+    true,
+    '17 beads are the last whole fixed-size capacity'
   );
-  assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', fixedComponentLengthMm: 10, usedLengthMm: 180, targetLengthMm }).eligible, true);
+  assert.equal(nextTenMm.eligible, true, 'Mixed target plus five placement remains available when mode is not fixed');
 });
 
 test('RED: mixed placement and completion must never reach a no-placeable/incomplete dead zone', () => {
@@ -71,12 +71,12 @@ test('mixed 4/6/10 sequences preserve the complete-or-placeable invariant', () =
   }
 });
 
-test('every selectable wrist and fixed stone size reaches the target through target plus five interval', () => {
+test('every selectable wrist and fixed stone size reaches pre-Mixed discrete terminal capacity', () => {
   const wristSizesCm = Array.from({ length: 13 }, (_, index) => 14 + index * 0.5);
   for (const wristSizeCm of wristSizesCm) {
     const targetLengthMm = (wristSizeCm + 1.5) * 10;
     for (const fixedComponentLengthMm of [4, 6, 10]) {
-      const usedLengthMm = Math.ceil(targetLengthMm / fixedComponentLengthMm) * fixedComponentLengthMm;
+      const usedLengthMm = Math.floor(targetLengthMm / fixedComponentLengthMm) * fixedComponentLengthMm;
       const completion = getBraceletCompletionEligibility({
         mode: 'fixed', usedLengthMm, targetLengthMm, fixedComponentLengthMm
       });
@@ -87,12 +87,13 @@ test('every selectable wrist and fixed stone size reaches the target through tar
 
 test('fixed delete and re-add return from terminal capacity to a placeable state and back', () => {
   const targetLengthMm = 175;
-  const terminalUsedLengthMm = 180;
+  const terminalUsedLengthMm = 170;
   const afterDeleteUsedLengthMm = terminalUsedLengthMm - 10;
   assert.equal(getBraceletCompletionEligibility({
     mode: 'fixed', usedLengthMm: terminalUsedLengthMm, targetLengthMm, fixedComponentLengthMm: 10
   }).eligible, true);
   assert.equal(getNextComponentPlacementEligibility({
+    mode: 'fixed',
     usedLengthMm: afterDeleteUsedLengthMm, targetLengthMm, componentLengthMm: 10
   }).eligible, true);
   assert.equal(getBraceletCompletionEligibility({

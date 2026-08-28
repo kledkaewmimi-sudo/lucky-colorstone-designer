@@ -31,23 +31,13 @@ test('the known-good slot renderer retains dotted placeholders and stable source
   assert.match(sourceBetween('function removeLoopItemFromBracelet', '// Remove Stone Logic'), /\} else \{\s*State\.selectedStones\[index\] = createEmptyLoopSlot/);
 });
 
-test('fixed and mixed final-slot placement reaches the target through target plus five interval', () => {
-  for (const [mode, beforeLengthMm, targetLengthMm, componentLengthMm, completionMode] of [
-    ['fixed-4', 172, 175, 4, 'fixed'],
-    ['fixed-6', 174, 175, 6, 'fixed'],
-    ['fixed-10', 170, 175, 10, 'fixed'],
-    ['mixed', 172, 175, 4, 'mixed']
-  ]) {
-    const placement = getNextComponentPlacementEligibility({ usedLengthMm: beforeLengthMm, targetLengthMm, componentLengthMm });
-    assert.equal(placement.eligible, true, mode);
-    const completion = getBraceletCompletionEligibility({
-      mode: completionMode,
-      usedLengthMm: beforeLengthMm + componentLengthMm,
-      targetLengthMm,
-      fixedComponentLengthMm: completionMode === 'fixed' ? componentLengthMm : 0
-    });
-    assert.equal(completion.eligible, true, mode);
+test('fixed slots preserve pre-Mixed capacity while Mixed keeps target plus five placement', () => {
+  for (const [sizeMm, usedLengthMm] of [[4, 172], [6, 174], [10, 170]]) {
+    assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm: 175, componentLengthMm: sizeMm }).eligible, false, `fixed-${sizeMm}`);
+    assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm: 175, fixedComponentLengthMm: sizeMm }).eligible, true, `fixed-${sizeMm}`);
   }
+  assert.equal(getNextComponentPlacementEligibility({ mode: 'mixed', usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 4 }).eligible, true);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 176, targetLengthMm: 175 }).eligible, true);
 });
 
 test('underfilled states retain at least one supported physical placement when capacity remains', () => {

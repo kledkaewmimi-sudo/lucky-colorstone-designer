@@ -6443,6 +6443,7 @@ function getAvailableLengthForNewLoopItem() {
 function getCurrentPlacementEligibility(lengthMm) {
   const capacityMetrics = getCurrentBraceletCapacityMetrics();
   return getNextComponentPlacementEligibility({
+    mode: State.beadSize === 'mixed' ? 'mixed' : 'fixed',
     usedLengthMm: capacityMetrics.totalUsedLengthMm,
     targetLengthMm: capacityMetrics.braceletLengthMm,
     componentLengthMm: lengthMm
@@ -6862,6 +6863,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     if (item.kind !== 'placeholder') return false;
     if (item.isRetainedSlot) {
       return getNextComponentPlacementEligibility({
+        mode: braceletConfig.beadSizeMode === 'mixed' ? 'mixed' : 'fixed',
         usedLengthMm: capacityMetrics.totalUsedLengthMm,
         targetLengthMm: capacityMetrics.braceletLengthMm,
         componentLengthMm: item.sizeMm

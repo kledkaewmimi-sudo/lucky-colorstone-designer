@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createBraceletGeometry, getBraceletCompletionEligibility, getNextComponentPlacementEligibility, MAX_OVER_TARGET_MM } from '../bracelet-geometry.js';
+import { createBraceletGeometry, getBraceletCompletionEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
 
 const SUPPORTED_SIZES_MM = [4, 6, 10];
 
@@ -22,18 +22,17 @@ test('Mixed evaluates every supported physical size against target +5', () => {
   assert.equal(result.remainingToMaxAllowedMm, 8);
 });
 
-test('every selectable wrist/fixed-size pair reaches target through target +5 and rejects the next overrun', () => {
+test('every selectable wrist/fixed-size pair reaches its pre-Mixed discrete terminal capacity', () => {
   const wristSizesCm = Array.from({ length: 13 }, (_, index) => 14 + index * 0.5);
   for (const wristSizeCm of wristSizesCm) {
     const targetLengthMm = (wristSizeCm + 1.5) * 10;
     for (const sizeMm of SUPPORTED_SIZES_MM) {
-      const count = Math.ceil(targetLengthMm / sizeMm);
+      const count = Math.floor(targetLengthMm / sizeMm);
       const usedLengthMm = count * sizeMm;
-      const terminalUsedLengthMm = Math.floor((targetLengthMm + MAX_OVER_TARGET_MM) / sizeMm) * sizeMm;
       const completion = getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm, fixedComponentLengthMm: sizeMm });
       assert.equal(completion.complete, true, `${wristSizeCm}/${sizeMm}`);
-      assert.ok(usedLengthMm <= targetLengthMm + MAX_OVER_TARGET_MM, `${wristSizeCm}/${sizeMm} reaches interval`);
-      assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: terminalUsedLengthMm, targetLengthMm, componentLengthMm: sizeMm }).eligible, false, `${wristSizeCm}/${sizeMm} next bead exceeds max`);
+      assert.ok(usedLengthMm <= targetLengthMm, `${wristSizeCm}/${sizeMm} stays within fixed capacity`);
+      assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm, componentLengthMm: sizeMm }).eligible, false, `${wristSizeCm}/${sizeMm} next bead exceeds fixed capacity`);
     }
   }
 });
