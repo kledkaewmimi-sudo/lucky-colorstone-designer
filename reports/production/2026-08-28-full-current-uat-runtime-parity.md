@@ -48,7 +48,11 @@ The current UAT focused suite passed 60 tests: renderer restoration, Step 2/3 co
 
 ## Production Deployment
 
-Pending controlled commit, normal `origin/main` push, Vercel readiness, and live source verification.
+Production commit `fc228ce798a3afcdab10b3a4dc277c652974b3cc` was pushed normally to `origin/main`. Vercel deployment `lucky-colorstone-designer-mcp6hp8ec-lucky-colorstone.vercel.app` is Ready and aliases `https://customize.luckycolorstone.com/`.
+
+## Live UAT vs Production Verification
+
+The live UAT and production `index.css` SHA-256 values match exactly: `0afdd47c2bb1f342374619ee1d41ba59d12c38cba1646f3dc96c3d46f4bbb479`. Their live `bracelet-geometry.js` SHA-256 values also match exactly: `33756b296aa1eb627da86235d67b5f4606b83fa2cfe314ec30348698ab5fde63`.
 
 ## Rollback SHA
 
