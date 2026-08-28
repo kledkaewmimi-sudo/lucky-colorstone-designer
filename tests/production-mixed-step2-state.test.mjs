@@ -10,6 +10,7 @@ import {
 const root = new URL('..', import.meta.url);
 const appSource = await readFile(new URL('app.js', root), 'utf8');
 const htmlSource = await readFile(new URL('index.html', root), 'utf8');
+const cssSource = await readFile(new URL('index.css', root), 'utf8');
 
 const thai = (...points) => String.fromCodePoint(...points);
 const mixedTitle = thai(0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a, 0x0e4c);
@@ -26,11 +27,9 @@ test('fresh Step 2 state has no selected bead size or implicit 6mm selection', (
 });
 
 test('Step 2 cards retain the approved exact order and Thai mixed copy', () => {
-  const mixedIndex = htmlSource.indexOf('data-bead-size="mixed"');
-  const tenIndex = htmlSource.indexOf('data-bead-size="10"');
-  const sixIndex = htmlSource.indexOf('data-bead-size="6"');
-  const fourIndex = htmlSource.indexOf('data-bead-size="4"');
-  assert.ok(mixedIndex >= 0 && mixedIndex < tenIndex && tenIndex < sixIndex && sixIndex < fourIndex);
+  for (const [size, order] of [['mixed', 1], ['10', 2], ['6', 3], ['4', 4]]) {
+    assert.match(cssSource, new RegExp(`#stepView2 \\.bead-size-card\\[data-bead-size="${size}"\\]\\s*\\{\\s*order:\\s*${order};`));
+  }
   assert.ok(htmlSource.includes(mixedTitle));
   assert.ok(htmlSource.includes(mixedDescription));
 });
