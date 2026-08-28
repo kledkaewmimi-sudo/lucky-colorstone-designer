@@ -3,8 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   createBraceletGeometry,
+  getBraceletCompletionEligibility,
   getComponentPhysicalLengthMm,
   getFitStatus,
+  getNextComponentPlacementEligibility,
   getTotalUsedLengthMm
 } from '../bracelet-geometry.js';
 import { transitionBraceletSizeMode } from '../mixed-size-state.js';
@@ -31,21 +33,20 @@ test('mixed 4/6/10 geometry sums placed physical sizes independently', () => {
   assert.equal(afterMixedPlacingChange.usedLengthMm, before.usedLengthMm);
 });
 
-test('fit uses unrounded inclusive 1.0mm boundaries', () => {
-  assert.equal(getFitStatus(-1), 'within_tolerance');
-  assert.equal(getFitStatus(1), 'within_tolerance');
-  assert.equal(getFitStatus(-1.01), 'underfill');
-  assert.equal(getFitStatus(1.01), 'overflow');
+test('diagnostic fit uses unrounded inclusive 2.0mm boundaries', () => {
+  assert.equal(getFitStatus(-2), 'within_tolerance');
+  assert.equal(getFitStatus(2), 'within_tolerance');
+  assert.equal(getFitStatus(-2.01), 'underfill');
+  assert.equal(getFitStatus(2.01), 'overflow');
 });
 
-test('invalid dimensions report invalid geometry without a mixed or 6mm fallback', () => {
+test('invalid dimensions contribute no physical footprint without a mixed or 6mm fallback', () => {
   const invalidStone = createBraceletGeometry({ components: [{ type: 'stone', size: 'mixed' }], targetLengthMm: 10 });
   const invalidCharm = createBraceletGeometry({ components: [{ type: 'charm', size: 6 }], targetLengthMm: 10 });
   const invalidSpacer = createBraceletGeometry({ components: [{ type: 'spacer', size: 6 }], targetLengthMm: 10 });
-  assert.equal(invalidStone.fitStatus, 'invalid');
-  assert.equal(invalidCharm.fitStatus, 'invalid');
-  assert.equal(invalidSpacer.fitStatus, 'invalid');
-  assert.equal(invalidStone.usedLengthMm, null);
+  assert.equal(invalidStone.usedLengthMm, 0);
+  assert.equal(invalidCharm.usedLengthMm, 6);
+  assert.equal(invalidSpacer.usedLengthMm, 6);
 });
 
 test('mixed to fixed validates before mutation, converts all stones, then trims only the trailing minimum', () => {
@@ -80,8 +81,20 @@ test('trimming does not auto-add when it starts underfilled and fixed 4/6/10 rem
 });
 
 test('production integration uses the established target formula and canonical geometry path', () => {
-  assert.match(app, /import \{ createBraceletGeometry, getComponentPhysicalLengthMm \} from '\.\/bracelet-geometry\.js';/);
+  assert.match(app, /import \{ createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility \} from '\.\/bracelet-geometry\.js';/);
   assert.match(app, /return \(State\.wristSize \+ TOLERANCE_CM\) \* 10;/);
   assert.match(app, /trimTrailingOverflowAfterFixedConversion\(/);
   assert.match(app, /getComponentGeometry: createGeometryComponentForLoopItem/);
+});
+
+test('approved UAT completion contract is shared by fixed, mixed, and placement', () => {
+  for (const [sizeMm, usedLengthMm] of [[10, 170], [6, 174], [4, 172]]) {
+    assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm: 175, fixedComponentLengthMm: sizeMm }).complete, true);
+    assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm: 175, componentLengthMm: sizeMm }).eligible, false);
+  }
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 169, targetLengthMm: 175 }).status, 'UNDER_TARGET_MINUS_5');
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 170, targetLengthMm: 175 }).complete, true);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 175, targetLengthMm: 175 }).complete, true);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 176, targetLengthMm: 175 }).status, 'OVERFLOW_INVALID');
+  assert.deepEqual(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 168, targetLengthMm: 175 }).placeableSizes, [4, 6]);
 });

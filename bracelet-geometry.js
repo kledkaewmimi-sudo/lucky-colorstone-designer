@@ -1,81 +1,87 @@
-export const FIT_TOLERANCE_MM = 1;
+export const BRACELET_FIT_TOLERANCE_MM = 2;
+export const MIXED_COMPLETION_WINDOW_MM = 5;
 const PHYSICAL_STONE_SIZES_MM = new Set([4, 6, 10]);
 
-function validPositiveNumber(value) {
+function positiveNumber(value) {
   const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
-
-function componentType(component) {
-  return String(component?.componentType || component?.type || '').trim().toLowerCase();
-}
-
-// Dimensions come from each placed component, never from current selection state.
-export function resolveComponentPhysicalLengthMm(component) {
-  const type = componentType(component);
-  if (!component || !type) return { valid: false, lengthMm: null, reason: 'missing_component_type' };
-  if (type === 'stone') {
-    const size = validPositiveNumber(component.size ?? component.sizeMm);
-    return PHYSICAL_STONE_SIZES_MM.has(size) ? { valid: true, lengthMm: size } : { valid: false, lengthMm: null, reason: 'invalid_stone_size' };
-  }
-  if (type === 'spacer') {
-    const lengthMm = validPositiveNumber(component.effectiveLengthMm);
-    return lengthMm === null ? { valid: false, lengthMm: null, reason: 'invalid_spacer_effective_length' } : { valid: true, lengthMm };
-  }
-  if (type === 'charm') {
-    const lengthMm = validPositiveNumber(component.footprintMm);
-    return lengthMm === null ? { valid: false, lengthMm: null, reason: 'invalid_charm_footprint' } : { valid: true, lengthMm };
-  }
-  return { valid: false, lengthMm: null, reason: 'unsupported_component_type' };
+  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 export function getComponentPhysicalLengthMm(component) {
-  const resolution = resolveComponentPhysicalLengthMm(component);
-  return resolution.valid ? resolution.lengthMm : null;
+  if (!component) return 0;
+  if (component.type === 'empty' || component.componentType === 'empty') return 0;
+  if (component.type === 'stone') {
+    const sizeMm = positiveNumber(component.sizeMm ?? component.size);
+    return PHYSICAL_STONE_SIZES_MM.has(sizeMm) ? sizeMm : 0;
+  }
+  if (component.type === 'spacer') return positiveNumber(component.effectiveLengthMm ?? component.sizeMm ?? component.size);
+  if (component.type === 'charm') return positiveNumber(component.footprintMm ?? component.sizeMm ?? component.size);
+  return positiveNumber(component.sizeMm ?? component.size);
 }
 
-export function resolveBraceletGeometryComponents(components = []) {
-  if (!Array.isArray(components)) return { usedLengthMm: null, invalidComponents: [{ index: null, reason: 'components_not_array' }] };
-  let usedLengthMm = 0;
-  const invalidComponents = [];
-  components.forEach((component, index) => {
-    const resolution = resolveComponentPhysicalLengthMm(component);
-    if (!resolution.valid) {
-      invalidComponents.push({ index, uniqueId: component?.uniqueId ?? null, componentType: componentType(component) || null, reason: resolution.reason });
-      return;
-    }
-    usedLengthMm += resolution.lengthMm;
-  });
-  return { usedLengthMm: invalidComponents.length ? null : usedLengthMm, invalidComponents };
+export function getTotalUsedLengthMm(components = []) {
+  return components.reduce((total, component) => total + getComponentPhysicalLengthMm(component), 0);
 }
 
-export function getTotalUsedLengthMm(components = []) { return resolveBraceletGeometryComponents(components).usedLengthMm; }
-
-export function getFitStatus(differenceMm, toleranceMm = FIT_TOLERANCE_MM) {
+export function getFitStatus(differenceMm, toleranceMm = BRACELET_FIT_TOLERANCE_MM) {
   const difference = Number(differenceMm);
-  const tolerance = validPositiveNumber(toleranceMm) ?? FIT_TOLERANCE_MM;
-  if (!Number.isFinite(difference)) return 'invalid';
-  if (difference < -tolerance) return 'underfill';
-  if (difference > tolerance) return 'overflow';
+  const tolerance = positiveNumber(toleranceMm) || BRACELET_FIT_TOLERANCE_MM;
+  if (!Number.isFinite(difference)) return 'underfill';
+  const boundary = tolerance + Number.EPSILON * Math.max(1, Math.abs(difference), tolerance) * 8;
+  if (difference < -boundary) return 'underfill';
+  if (difference > boundary) return 'overflow';
   return 'within_tolerance';
 }
 
-export function createBraceletGeometry({ components = [], targetLengthMm = 0, toleranceMm = FIT_TOLERANCE_MM } = {}) {
-  const resolution = resolveBraceletGeometryComponents(components);
-  const target = validPositiveNumber(targetLengthMm);
-  const invalidComponents = [...resolution.invalidComponents];
-  if (target === null) invalidComponents.push({ index: null, componentType: null, reason: 'invalid_target_length' });
-  const valid = invalidComponents.length === 0;
-  const usedLengthMm = valid ? resolution.usedLengthMm : null;
-  const differenceMm = valid ? usedLengthMm - target : null;
-  const fitStatus = valid ? getFitStatus(differenceMm, toleranceMm) : 'invalid';
-  return { usedLengthMm, targetLengthMm: target, differenceMm, fitStatus, isWithinTolerance: fitStatus === 'within_tolerance', valid, invalidComponents };
+export function createBraceletGeometry({ components = [], targetLengthMm = 0, toleranceMm = BRACELET_FIT_TOLERANCE_MM } = {}) {
+  const usedLengthMm = getTotalUsedLengthMm(components);
+  const targetLength = positiveNumber(targetLengthMm);
+  const differenceMm = usedLengthMm - targetLength;
+  const fitStatus = getFitStatus(differenceMm, toleranceMm);
+  return { usedLengthMm, targetLengthMm: targetLength, differenceMm, fitStatus, isWithinTolerance: fitStatus === 'within_tolerance' };
 }
 
 export function getCheckoutFitEligibility(geometry = {}) {
-  const fitStatus = geometry.fitStatus || getFitStatus(geometry.differenceMm);
+  const fitStatus = getFitStatus(geometry.differenceMm);
   if (fitStatus === 'within_tolerance') return { eligible: true, reason: null, fitStatus };
-  if (fitStatus === 'overflow') return { eligible: false, reason: 'Bracelet exceeds the 1.0mm fit tolerance.', fitStatus };
-  if (fitStatus === 'underfill') return { eligible: false, reason: 'Bracelet is below the 1.0mm fit tolerance.', fitStatus };
-  return { eligible: false, reason: 'Bracelet geometry is invalid.', fitStatus: 'invalid' };
+  return { eligible: false, reason: fitStatus === 'overflow' ? 'Bracelet exceeds the 2.0mm fit tolerance.' : 'Bracelet is below the 2.0mm fit tolerance.', fitStatus };
+}
+
+export function getNextComponentPlacementEligibility({ mode = 'mixed', usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
+  const nextUsedLengthMm = positiveNumber(usedLengthMm) + positiveNumber(componentLengthMm);
+  const targetLength = positiveNumber(targetLengthMm);
+  const differenceMm = nextUsedLengthMm - targetLength;
+  const fitStatus = getFitStatus(differenceMm);
+  const maxAllowedLengthMm = targetLength;
+  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(nextUsedLengthMm), Math.abs(maxAllowedLengthMm)) * 8;
+  return { eligible: nextUsedLengthMm - maxAllowedLengthMm <= overflowBoundary, differenceMm, fitStatus, isComplete: nextUsedLengthMm >= targetLength - overflowBoundary && nextUsedLengthMm - maxAllowedLengthMm <= overflowBoundary, maxAllowedLengthMm };
+}
+
+export function getBraceletCompletionEligibility({ mode = 'mixed', usedLengthMm = 0, targetLengthMm = 0, fixedComponentLengthMm = 0, supportedComponentLengthsMm = [4, 6, 10] } = {}) {
+  const usedLength = positiveNumber(usedLengthMm);
+  const targetLength = positiveNumber(targetLengthMm);
+  const minCompleteLengthMm = mode === 'mixed' ? Math.max(0, targetLength - MIXED_COMPLETION_WINDOW_MM) : targetLength;
+  const maxOverTargetMm = 0;
+  const maxAllowedLengthMm = targetLength;
+  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(usedLength), Math.abs(maxAllowedLengthMm)) * 8;
+  const candidateLengthsMm = (mode === 'fixed' ? [fixedComponentLengthMm] : supportedComponentLengthsMm).map(positiveNumber).filter((lengthMm) => PHYSICAL_STONE_SIZES_MM.has(lengthMm));
+  const overflow = usedLength - maxAllowedLengthMm > overflowBoundary;
+  const placeableSizes = !overflow ? candidateLengthsMm.filter((componentLengthMm) => getNextComponentPlacementEligibility({ mode, usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible) : [];
+  const hasPlaceableStone = placeableSizes.length > 0;
+  const complete = !overflow && (mode === 'fixed' ? !hasPlaceableStone : usedLength >= minCompleteLengthMm - overflowBoundary);
+  const fitStatus = getFitStatus(usedLength - targetLength);
+  return {
+    mode, targetLengthMm: targetLength, minCompleteLengthMm, maxCompleteLengthMm: targetLength,
+    completionWindowBelowTargetMm: mode === 'mixed' ? MIXED_COMPLETION_WINDOW_MM : 0,
+    maxOverTargetMm, maxAllowedLengthMm, usedLengthMm: usedLength,
+    remainingToTargetMm: targetLength - usedLength, remainingToMaxAllowedMm: maxAllowedLengthMm - usedLength,
+    eligible: complete, complete,
+    status: overflow ? 'OVERFLOW_INVALID' : complete ? mode === 'mixed' ? 'COMPLETE_WITHIN_TARGET_RANGE' : 'COMPLETE_WITHIN_OVERRUN' : mode === 'mixed' ? 'UNDER_TARGET_MINUS_5' : 'UNDER_TARGET',
+    reason: overflow ? 'Bracelet exceeds physical capacity.' : complete ? null : mode === 'fixed' ? 'Add another fixed-size stone to complete the bracelet.' : 'Add stone components until the bracelet reaches the final completion range.',
+    fitStatus, overflow, isOverflow: overflow, placeableSizes, hasPlaceableStone, candidateLengthsMm
+  };
+}
+
+export function getDiscreteBraceletCompletionEligibility(options = {}) {
+  return getBraceletCompletionEligibility(options);
 }
