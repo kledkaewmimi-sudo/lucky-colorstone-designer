@@ -21,26 +21,12 @@ export function createLineCallbackRestoreGuard() {
   };
 }
 
-export async function runDormantV2CallbackRestore({ rawIntent, hasLineIdentity, guard, retrieveServerHandoff, consumeServerHandoff, finalizeServerHandoff, restoreLocalSnapshot, applyCanonicalDesign, featureEnabled = DEFER_LINE_LOGIN_TO_STEP4, allowDormantV2 = true, now = Date.now() } = {}) {
+export async function runDormantV2CallbackRestore({ rawIntent, hasLineIdentity, guard, consumeServerHandoff, restoreLocalSnapshot, applyCanonicalDesign, featureEnabled = DEFER_LINE_LOGIN_TO_STEP4, allowDormantV2 = true, now = Date.now() } = {}) {
   const plan = planLineCallbackBootstrap({ rawIntent, hasLineIdentity, restoreAlreadyApplied: guard?.has(parseCustomizationLoginIntent(rawIntent, { now })?.handoffToken), featureEnabled, allowDormantV2, now });
   if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
-  // Legacy callers provide consumeServerHandoff. Production supplies a
-  // read-before-ack retriever so an iOS reload can retry before the snapshot
-  // has been applied to a new browser context.
-  const restored = await restoreLineRedirectHandoff({
-    intent: plan.intent,
-    consumeServerHandoff: retrieveServerHandoff || consumeServerHandoff,
-    restoreLocalSnapshot
-  });
+  const restored = await restoreLineRedirectHandoff({ intent: plan.intent, consumeServerHandoff, restoreLocalSnapshot });
   if (!restored.ok) return restored;
   await applyCanonicalDesign?.(restored.snapshot, { targetStep: restored.targetStep, source: restored.source });
-  if (restored.source === 'server' && typeof finalizeServerHandoff === 'function') {
-    try {
-      await finalizeServerHandoff(plan.intent.handoffToken);
-    } catch {
-      // The restored design remains recoverable until normal handoff expiry.
-    }
-  }
   guard?.mark(plan.intent.handoffToken);
   return { ...restored, restoredOnce: true };
 }

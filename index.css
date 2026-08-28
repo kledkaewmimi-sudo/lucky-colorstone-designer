@@ -71,51 +71,109 @@
   );
 }
 
-/* Owner-approved UAT Step 2/Step 3 parity. */
-#stepView3.step-view { animation: none; opacity: 1; transform: none; filter: none; isolation: auto; }
-#stepView3.step-view.active { height: auto; min-height: 100%; }
-#stepView3 .canvas-card { position: sticky; top: 0; z-index: 20; isolation: auto; pointer-events: auto; }
-.app-container.step3-preview-covered .app-header { pointer-events: none; }
-.app-container.step3-preview-covered #step3PreviewCard { background: rgb(252, 251, 255) !important; background-clip: border-box; opacity: 1 !important; mix-blend-mode: normal; backdrop-filter: none; -webkit-backdrop-filter: none; filter: none; mask: none; -webkit-mask-image: none; clip-path: none; border-radius: 0; }
+.uat-environment-banner {
+  position: fixed;
+  z-index: 9999;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border: 1px solid rgba(64, 48, 77, 0.25);
+  border-radius: 999px;
+  background: rgba(255, 250, 225, 0.96);
+  color: #40304d;
+  font: 600 11px/1.2 Arial, sans-serif;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
 
-#stepView2 .bead-size-options { display: flex; flex-direction: column; gap: 7px; padding-block: 7px; }
-#stepView2 .bead-size-card, #stepView2 .bead-size-card-recommended { min-height: 84px; padding: 8px 10px; border-color: rgba(181, 169, 219, 0.24); background: var(--color-white); box-shadow: 0 6px 16px rgba(111, 85, 148, 0.08); }
-#stepView2 .bead-size-card[data-bead-size="mixed"] { order: 1; }
-#stepView2 .bead-size-card[data-bead-size="10"] { order: 2; }
-#stepView2 .bead-size-card[data-bead-size="6"] { order: 3; }
-#stepView2 .bead-size-card[data-bead-size="4"] { order: 4; }
-#stepView2 .bead-size-card.active, #stepView2 .bead-size-card-recommended.active { background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(251, 248, 255, 0.98)); border-color: rgba(139, 0, 0, 0.18); box-shadow: 0 8px 18px rgba(181, 169, 219, 0.1); }
-#stepView2 .bead-size-content, #stepView2 .bead-size-card-recommended .bead-size-content { grid-template-columns: 18px minmax(0, 1fr) 76px; min-height: 68px; gap: 8px; }
-#stepView2 .bead-size-copy { grid-template-columns: 52px minmax(0, 1fr); column-gap: 10px; }
-#stepView2 .bead-size-preview { min-width: 52px; }
-#stepView2 .bead-size-preview-mixed { justify-content: flex-start; gap: 2px; padding-top: 1px; }
-#stepView2 .bead-size-preview-mixed .bead-preview-circle-sm { width: 11px; height: 11px; }
-#stepView2 .bead-size-preview-mixed .bead-preview-circle-md { width: 15px; height: 15px; }
-#stepView2 .bead-size-preview-mixed .bead-preview-circle-lg { width: 19px; height: 19px; }
-#stepView2 .bead-size-mixed-recommendation { position: absolute; z-index: 2; top: 5px; right: 5px; display: inline-flex; align-items: center; gap: 3px; min-height: 18px; padding: 2px 6px; border: 1px solid rgba(216, 169, 59, 0.34); border-radius: 999px; background: rgba(255, 252, 241, 0.92); color: #a97817; font-size: 9px; font-weight: 800; line-height: 1; box-shadow: 0 2px 7px rgba(154, 111, 22, 0.12); }
-#stepView2 .bead-size-hand-panel, #stepView2 .bead-size-support-banner, #stepView2 .bead-size-popular-badge, #stepView2 .bead-size-featured-crown, #stepView2 .bead-size-recommendation { display: none; }
-#stepView2 .bead-size-hand-panel, #stepView2 .bead-size-card-recommended .bead-size-hand-panel { display: flex; height: 68px; border-radius: 13px; background: linear-gradient(145deg, #f7f0fb, #fff8fc); border-color: rgba(181, 169, 219, 0.18); box-shadow: none; }
-#stepView2 .bead-size-label, #stepView2 .bead-size-card-recommended .bead-size-label { font-size: 21px; color: var(--color-navy-dark); }
-#stepView2 .bead-size-card.active .bead-size-label, #stepView2 .bead-size-card-recommended.active .bead-size-label { color: var(--color-velvet-red); }
-#stepView2 .bead-size-details h4, #stepView2 .bead-size-card-recommended .bead-size-details h4 { margin-top: 2px; color: var(--color-navy-dark); font-size: 11px; line-height: 1.25; }
+/* UAT query-gated runtime diagnostic surface; no markup is created outside UAT debug mode. */
+.step3-sticky-debug-overlay {
+  position: fixed;
+  z-index: 10001;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: min(90vw, 430px);
+  max-height: 45vh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #75f5b7;
+  border-radius: 8px;
+  background: rgba(5, 13, 29, 0.96);
+  color: #eafff4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
 
-#stepView3 .mixed-size-selector-bar { display: grid; grid-template-columns: minmax(72px, 0.85fr) minmax(0, 2.15fr); min-height: 34px; margin: 0 0 3px; padding: 3px 7px 3px 10px; border: 0; border-radius: 9px; box-shadow: none; background: rgba(239, 233, 248, 0.72); gap: 7px; }
-#stepView3 .catalog-type-filter + .mixed-size-selector-bar { margin-top: -5px; }
-#stepView3 .mixed-size-selector-bar[hidden] { display: none !important; }
-#stepView3 .mixed-label { font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap; }
-#stepView3 .mixed-toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; width: 100%; }
-#stepView3 .mixed-toggle-btn { min-width: 0; min-height: 25px; padding: 3px 6px; border: 0; border-radius: 6px; background: rgba(255, 255, 255, 0.72); color: #67537b; font-size: 12px; line-height: 1; }
-#stepView3 .mixed-toggle-btn.active { background: #7962a8; border-color: transparent; color: var(--color-white); box-shadow: 0 2px 5px rgba(91, 62, 166, 0.18); }
+.step3-sticky-debug-overlay[hidden] {
+  display: none;
+}
 
-@media (max-width: 360px) {
-  #stepView2 .bead-size-options { gap: 6px; }
-  #stepView2 .bead-size-card, #stepView2 .bead-size-card-recommended { min-height: 80px; padding: 7px 8px; }
-  #stepView2 .bead-size-content, #stepView2 .bead-size-card-recommended .bead-size-content { grid-template-columns: 17px minmax(0, 1fr) 70px; min-height: 64px; gap: 7px; }
-  #stepView2 .bead-size-copy { grid-template-columns: 48px minmax(0, 1fr); column-gap: 8px; }
-  #stepView2 .bead-size-preview { min-width: 48px; }
-  #stepView2 .bead-size-hand-panel, #stepView2 .bead-size-card-recommended .bead-size-hand-panel { height: 64px; }
-  #stepView3 .mixed-size-selector-bar { grid-template-columns: minmax(66px, 0.85fr) minmax(0, 2.15fr); padding: 3px 6px; gap: 5px; }
-  #stepView3 .mixed-toggle-btn { padding-inline: 4px; }
+.step3-sticky-debug-heading {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: #75f5b7;
+  font-weight: 700;
+}
+
+.step3-sticky-debug-copy {
+  float: right;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid #75f5b7;
+  border-radius: 4px;
+  background: #142944;
+  color: #eafff4;
+  font: inherit;
+}
+
+.step3-sticky-debug-output {
+  clear: both;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.line-debug-panel {
+  position: fixed;
+  z-index: 10002;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: min(92vw, 440px);
+  max-height: 42vh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #75f5b7;
+  border-radius: 8px;
+  background: rgba(5, 13, 29, 0.96);
+  color: #eafff4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.line-debug-heading {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: #75f5b7;
+  font-weight: 700;
+}
+
+.line-debug-copy {
+  float: right;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid #75f5b7;
+  border-radius: 4px;
+  background: #142944;
+  color: #eafff4;
+  font: inherit;
+}
+
+.line-debug-output {
+  clear: both;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Reset & Base Rules */
@@ -662,9 +720,32 @@ option {
   width: 100%;
   background-color: var(--color-white);
   border-bottom: 1px solid var(--color-gray-border);
-  z-index: 100;
+  z-index: 10;
   padding: 12px 16px 8px 16px;
   box-shadow: var(--shadow-sm);
+}
+
+/* Sticky preview stays visually above the header; disable only the covered
+   header hit target until the preview returns to its document position. */
+.app-container.step3-preview-covered .app-header {
+  pointer-events: none;
+}
+
+/* At the sticky threshold the preview is the visual replacement for the
+   header stack. Keep its full existing dimensions, but paint the whole card
+   with the normal opaque cream surface all the way to the viewport edge. */
+.app-container.step3-preview-covered #step3PreviewCard {
+  background: rgb(252, 251, 255) !important;
+  background-clip: border-box;
+  opacity: 1 !important;
+  mix-blend-mode: normal;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  filter: none;
+  mask: none;
+  -webkit-mask-image: none;
+  clip-path: none;
+  border-radius: 0;
 }
 
 .header-top {
@@ -790,7 +871,7 @@ option {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 110px 16px var(--step-content-bottom-clearance) 16px;
+  padding: 0 16px var(--step-content-bottom-clearance) 16px;
   scroll-padding-bottom: var(--step-content-bottom-clearance);
   display: flex;
   flex-direction: column;
@@ -798,6 +879,8 @@ option {
 
 .step-view {
   display: none;
+  box-sizing: border-box;
+  padding-top: 110px;
   animation: fadeIn 0.4s ease-out forwards;
   width: 100%;
   min-width: 0;
@@ -1233,6 +1316,55 @@ option {
 .bead-size-card[data-bead-size="6"] { order: 1; }
 .bead-size-card[data-bead-size="10"] { order: 2; }
 .bead-size-card[data-bead-size="4"] { order: 3; }
+.bead-size-card[data-bead-size="mixed"] { order: 4; }
+
+.bead-size-preview-mixed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A filled opacity animation can retain a stacking context even at opacity 1.
+   Step 3 must stay animation-free and transform-free so its sticky child can
+   participate directly in the app-root stacking order. */
+#stepView3.step-view {
+  animation: none;
+  opacity: 1;
+  transform: none;
+  filter: none;
+  isolation: auto;
+}
+
+/* Step 3 must be tall enough to remain the sticky containing block while its
+   catalog scrolls; its top spacing is document content, not scrollport space. */
+#stepView3.step-view.active {
+  height: auto;
+  min-height: 100%;
+}
+
+.bead-size-preview-mixed .bead-preview-circle {
+  position: static;
+  flex: 0 0 auto;
+}
+
+.bead-size-mixed-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--color-velvet-red);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bead-size-mixed-panel span {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: rgba(181, 169, 219, 0.18);
+}
 
 .bead-size-content {
   grid-template-columns: 20px minmax(0, 1fr) 92px;
@@ -1907,6 +2039,135 @@ option {
 
 .canvas-card {
   position: relative;
+}
+
+/* Shared Step 3 live preview: one full-size card for every fixed and mixed mode. */
+#stepView3 .canvas-card {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  isolation: auto;
+  pointer-events: auto;
+}
+
+/* Owner-approved UAT Step 2 composition. Keep all four cards in one vertical
+   column, with the same compact right-side wrist image treatment. Mixed is the
+   sole featured card and remains a three physical-bead concept. */
+#stepView2 .bead-size-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-block: 7px;
+}
+
+#stepView2 .bead-size-card,
+#stepView2 .bead-size-card-recommended {
+  min-height: 84px;
+  padding: 8px 10px;
+  border-color: rgba(181, 169, 219, 0.24);
+  background: var(--color-white);
+  box-shadow: 0 6px 16px rgba(111, 85, 148, 0.08);
+}
+
+#stepView2 .bead-size-card[data-bead-size="mixed"] { order: 1; }
+#stepView2 .bead-size-card[data-bead-size="10"] { order: 2; }
+#stepView2 .bead-size-card[data-bead-size="6"] { order: 3; }
+#stepView2 .bead-size-card[data-bead-size="4"] { order: 4; }
+
+#stepView2 .bead-size-card.active,
+#stepView2 .bead-size-card-recommended.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(251, 248, 255, 0.98));
+  border-color: rgba(139, 0, 0, 0.18);
+  box-shadow: 0 8px 18px rgba(181, 169, 219, 0.1);
+}
+
+#stepView2 .bead-size-content,
+#stepView2 .bead-size-card-recommended .bead-size-content {
+  grid-template-columns: 18px minmax(0, 1fr) 76px;
+  min-height: 68px;
+  gap: 8px;
+}
+
+#stepView2 .bead-size-copy {
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+#stepView2 .bead-size-preview { min-width: 52px; }
+
+#stepView2 .bead-size-preview-mixed {
+  justify-content: flex-start;
+  gap: 2px;
+  padding-top: 1px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-sm { width: 11px; height: 11px; }
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-md { width: 15px; height: 15px; }
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-lg { width: 19px; height: 19px; }
+
+#stepView2 .bead-size-mixed-recommendation {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+  padding: 2px 6px;
+  border: 1px solid rgba(216, 169, 59, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 252, 241, 0.92);
+  color: #a97817;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 7px rgba(154, 111, 22, 0.12);
+}
+
+#stepView2 .bead-size-hand-panel,
+#stepView2 .bead-size-support-banner,
+#stepView2 .bead-size-popular-badge,
+#stepView2 .bead-size-featured-crown,
+#stepView2 .bead-size-recommendation { display: none; }
+
+#stepView2 .bead-size-hand-panel,
+#stepView2 .bead-size-card-recommended .bead-size-hand-panel {
+  display: flex;
+  height: 68px;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #f7f0fb, #fff8fc);
+  border-color: rgba(181, 169, 219, 0.18);
+  box-shadow: none;
+}
+
+#stepView2 .bead-size-label,
+#stepView2 .bead-size-card-recommended .bead-size-label {
+  font-size: 21px;
+  color: var(--color-navy-dark);
+}
+
+#stepView2 .bead-size-card.active .bead-size-label,
+#stepView2 .bead-size-card-recommended.active .bead-size-label { color: var(--color-velvet-red); }
+
+#stepView2 .bead-size-details h4,
+#stepView2 .bead-size-card-recommended .bead-size-details h4 {
+  margin-top: 2px;
+  color: var(--color-navy-dark);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+@media (max-width: 360px) {
+  #stepView2 .bead-size-options { gap: 6px; }
+  #stepView2 .bead-size-card,
+  #stepView2 .bead-size-card-recommended { min-height: 80px; padding: 7px 8px; }
+  #stepView2 .bead-size-content,
+  #stepView2 .bead-size-card-recommended .bead-size-content { grid-template-columns: 17px minmax(0, 1fr) 70px; min-height: 64px; gap: 7px; }
+  #stepView2 .bead-size-copy { grid-template-columns: 48px minmax(0, 1fr); column-gap: 8px; }
+  #stepView2 .bead-size-preview { min-width: 48px; }
+  #stepView2 .bead-size-hand-panel,
+  #stepView2 .bead-size-card-recommended .bead-size-hand-panel { height: 64px; }
 }
 
 .canvas-reset-control {
@@ -4040,6 +4301,229 @@ button.stone-card {
   color: var(--color-velvet-red);
 }
 
+/* UAT mixed-size polish: restore the familiar vertical cards and refine the utility strip. */
+#stepView2 .bead-size-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-block: 7px;
+}
+
+#stepView2 .bead-size-card,
+#stepView2 .bead-size-card-recommended {
+  min-height: 84px;
+  padding: 8px 10px;
+  border-color: rgba(181, 169, 219, 0.24);
+  background: var(--color-white);
+  box-shadow: 0 6px 16px rgba(111, 85, 148, 0.08);
+}
+
+#stepView2 .bead-size-card[data-bead-size="mixed"] { order: 1; }
+#stepView2 .bead-size-card[data-bead-size="10"] { order: 2; }
+#stepView2 .bead-size-card[data-bead-size="6"] { order: 3; }
+#stepView2 .bead-size-card[data-bead-size="4"] { order: 4; }
+
+#stepView2 .bead-size-card.active,
+#stepView2 .bead-size-card-recommended.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(251, 248, 255, 0.98));
+  border-color: rgba(139, 0, 0, 0.18);
+  box-shadow: 0 8px 18px rgba(181, 169, 219, 0.1);
+}
+
+#stepView2 .bead-size-content,
+#stepView2 .bead-size-card-recommended .bead-size-content {
+  grid-template-columns: 18px minmax(0, 1fr) 76px;
+  min-height: 68px;
+  gap: 8px;
+}
+
+/* Keep every Step 2 label on one shared text column; the mixed beads receive
+   enough real width to remain left of the label instead of spilling into it. */
+#stepView2 .bead-size-copy {
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+#stepView2 .bead-size-preview {
+  min-width: 52px;
+}
+
+#stepView2 .bead-size-preview-mixed {
+  justify-content: flex-start;
+  gap: 2px;
+  padding-top: 1px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-sm {
+  width: 11px;
+  height: 11px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-md {
+  width: 15px;
+  height: 15px;
+}
+
+#stepView2 .bead-size-preview-mixed .bead-preview-circle-lg {
+  width: 19px;
+  height: 19px;
+}
+
+#stepView2 .bead-size-mixed-recommendation {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+  padding: 2px 6px;
+  border: 1px solid rgba(216, 169, 59, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 252, 241, 0.92);
+  color: #a97817;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 7px rgba(154, 111, 22, 0.12);
+}
+
+#stepView2 .bead-size-hand-panel,
+#stepView2 .bead-size-support-banner,
+#stepView2 .bead-size-popular-badge,
+#stepView2 .bead-size-featured-crown,
+#stepView2 .bead-size-recommendation {
+  display: none;
+}
+
+#stepView2 .bead-size-hand-panel,
+#stepView2 .bead-size-card-recommended .bead-size-hand-panel {
+  display: flex;
+  height: 68px;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #f7f0fb, #fff8fc);
+  border-color: rgba(181, 169, 219, 0.18);
+  box-shadow: none;
+}
+
+#stepView2 .bead-size-label,
+#stepView2 .bead-size-card-recommended .bead-size-label {
+  font-size: 21px;
+  color: var(--color-navy-dark);
+}
+
+#stepView2 .bead-size-card.active .bead-size-label,
+#stepView2 .bead-size-card-recommended.active .bead-size-label {
+  color: var(--color-velvet-red);
+}
+
+#stepView2 .bead-size-details h4,
+#stepView2 .bead-size-card-recommended .bead-size-details h4 {
+  margin-top: 2px;
+  color: var(--color-navy-dark);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+#stepView3 .mixed-size-selector-bar {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.85fr) minmax(0, 2.15fr);
+  min-height: 34px;
+  margin: 0 0 3px;
+  padding: 3px 7px 3px 10px;
+  border: 0;
+  border-radius: 9px;
+  box-shadow: none;
+  background: rgba(239, 233, 248, 0.72);
+  gap: 7px;
+}
+
+#stepView3 .catalog-type-filter + .mixed-size-selector-bar {
+  margin-top: -5px;
+}
+
+/* The authored grid display must never override the semantic hidden state in fixed modes. */
+#stepView3 .mixed-size-selector-bar[hidden] {
+  display: none !important;
+}
+
+#stepView3 .mixed-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#stepView3 .mixed-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+}
+
+#stepView3 .mixed-toggle-btn {
+  min-width: 0;
+  min-height: 25px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #67537b;
+  font-size: 12px;
+  line-height: 1;
+}
+
+#stepView3 .mixed-toggle-btn.active {
+  background: #7962a8;
+  border-color: transparent;
+  color: var(--color-white);
+  box-shadow: 0 2px 5px rgba(91, 62, 166, 0.18);
+}
+
+@media (max-width: 360px) {
+  #stepView2 .bead-size-options {
+    gap: 6px;
+  }
+
+  #stepView2 .bead-size-card,
+  #stepView2 .bead-size-card-recommended {
+    min-height: 80px;
+    padding: 7px 8px;
+  }
+
+  #stepView2 .bead-size-content,
+  #stepView2 .bead-size-card-recommended .bead-size-content {
+    grid-template-columns: 17px minmax(0, 1fr) 70px;
+    min-height: 64px;
+    gap: 7px;
+  }
+
+  #stepView2 .bead-size-copy {
+    grid-template-columns: 48px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  #stepView2 .bead-size-preview {
+    min-width: 48px;
+  }
+
+  #stepView2 .bead-size-hand-panel,
+  #stepView2 .bead-size-card-recommended .bead-size-hand-panel {
+    height: 64px;
+  }
+
+  #stepView3 .mixed-size-selector-bar {
+    grid-template-columns: minmax(66px, 0.85fr) minmax(0, 2.15fr);
+    padding: 3px 6px;
+    gap: 5px;
+  }
+
+  #stepView3 .mixed-toggle-btn {
+    padding-inline: 4px;
+  }
+}
+
 #canvasPriceText {
   color: #047a3d !important;
 }
@@ -4472,17 +4956,17 @@ html.callback-bootstrap-hold .app-container {
   }
 
   #stepView3 .catalog-type-filter {
-    min-height: 66px;
+    min-height: 53px;
     padding: 4px;
-    border-radius: 21px;
+    border-radius: 17px;
   }
 
   #stepView3 .catalog-type-tab {
-    gap: 3px;
-    min-height: 56px;
-    padding: 5px 6px 7px;
-    border-radius: 18px;
-    font-size: 14px;
+    gap: 2px;
+    min-height: 45px;
+    padding: 4px 6px 5px;
+    border-radius: 14px;
+    font-size: 13px;
   }
 
   #stepView3 .catalog-type-tab::after {
@@ -4491,13 +4975,13 @@ html.callback-bootstrap-hold .app-container {
   }
 
   #stepView3 .catalog-type-icon {
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
   }
 
   #stepView3 .charm-amulet-icon {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
   }
 
   #stepView3 .catalog-container {

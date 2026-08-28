@@ -1,5 +1,4 @@
 import { createLineRedirectIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
-import { classifyLineLoginStarterResult } from './line-login-start-diagnostic.js';
 
 // This controller owns only the pre-redirect recovery sequence. It deliberately
 // does not consume a handoff, restore design state, or navigate to Step 4.
@@ -15,21 +14,13 @@ export function createDeferredStep3AuthBoundary({
   getAnalyticsContinuity = () => ({})
 } = {}) {
   return async function beginDeferredStep3Auth() {
-    if (resolveFeatureEnabled() !== true || !requiresLineLogin()) {
-      return { handled: false, ok: true };
-    }
-    const authenticated = await isAuthenticated();
-    if (authenticated) {
+    if (resolveFeatureEnabled() !== true || !requiresLineLogin() || isAuthenticated()) {
       return { handled: false, ok: true };
     }
 
     const savedSnapshot = saveSnapshot();
     if (!savedSnapshot?.ok || !savedSnapshot.snapshot) {
-      return {
-        handled: true,
-        ok: false,
-        reason: savedSnapshot?.reason === 'storage_unavailable' ? 'LOCAL_SNAPSHOT_UNAVAILABLE' : 'SNAPSHOT_CREATE_FAILED'
-      };
+      return { handled: true, ok: false, reason: 'snapshot_unavailable' };
     }
 
     let handoff;
@@ -40,45 +31,27 @@ export function createDeferredStep3AuthBoundary({
         analyticsContinuity: getAnalyticsContinuity()
       });
     } catch {
-      return { handled: true, ok: false, reason: 'HANDOFF_POST_NETWORK_FAILED' };
+      return { handled: true, ok: false, reason: 'handoff_unavailable' };
     }
-    if (!handoff?.token) {
-      return {
-        handled: true,
-        ok: false,
-        reason: handoff?.reason || 'HANDOFF_TOKEN_MISSING',
-        ...(Number.isInteger(handoff?.status) ? { status: handoff.status } : {})
-      };
-    }
+    if (!handoff?.token) return { handled: true, ok: false, reason: 'handoff_unavailable' };
 
     const intent = createLineRedirectIntent({
       handoffToken: handoff.token,
       targetStep: 4,
       featureEnabled: true
     });
-    if (!intent) return { handled: true, ok: false, reason: 'UNKNOWN_BOUNDARY_FAILURE' };
-
-    // The opaque intent is passed directly to the login redirect. Persisting it
-    // locally is a same-context optimization, not a prerequisite for the
-    // server-first recovery path after an iOS browser-context replacement.
-    let intentPersisted = false;
-    try {
-      intentPersisted = persistIntent(intent) === true;
-    } catch {
-      intentPersisted = false;
+    if (!intent || !persistIntent(intent)) {
+      return { handled: true, ok: false, reason: 'intent_unavailable' };
     }
 
     try {
-      const started = await startLineLogin(intent);
-      if (started?.continueWithoutLogin === true && started.ok === true) {
-        return { handled: false, ok: true };
-      }
-      if (started === true || started?.ok === true) return { handled: true, ok: true, intent, intentPersisted };
+      const started = await startLineLogin();
+      if (started === true) return { handled: true, ok: true, intent };
       clearIntent();
-      return { handled: true, ok: false, reason: classifyLineLoginStarterResult(started) };
+      return { handled: true, ok: false, reason: 'login_start_failed' };
     } catch {
       clearIntent();
-      return { handled: true, ok: false, reason: 'LIFF_LOGIN_THROW' };
+      return { handled: true, ok: false, reason: 'login_start_failed' };
     }
   };
 }

@@ -6,22 +6,10 @@ const MAX_HANDOFF_BYTES = 16 * 1024;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const ATTRIBUTION_FIELDS = ['source', 'medium', 'campaign', 'content', 'term', 'platform'];
-const FIXED_BEAD_SIZES = new Set(['4', '6', '10']);
-const PHYSICAL_STONE_SIZES = new Set([4, 6, 10]);
 
 function normalizeId(value) {
   const id = typeof value === 'string' ? value.trim() : '';
   return id && id.length <= 120 ? id : '';
-}
-
-function normalizeUniqueId(value) {
-  const numeric = Number(value);
-  return Number.isInteger(numeric) && numeric > 0 && numeric <= 1000000 ? numeric : null;
-}
-
-function normalizeStoneSize(value) {
-  const numeric = Number(value);
-  return PHYSICAL_STONE_SIZES.has(numeric) ? numeric : null;
 }
 
 function normalizeDesignSnapshot(value) {
@@ -32,21 +20,19 @@ function normalizeDesignSnapshot(value) {
   const beadSize = String(design.beadSize || '');
   const components = Array.isArray(design.components) ? design.components : null;
   const selectedCharmIds = Array.isArray(design.selectedCharmIds) ? design.selectedCharmIds : null;
+  const mixedPlacingSize = Number(design.mixedPlacingSize);
   if (!Number.isFinite(wristSize) || wristSize < 14 || wristSize > 20 || Math.round(wristSize * 2) !== wristSize * 2) return null;
-  if (!FIXED_BEAD_SIZES.has(beadSize) && beadSize !== 'mixed') return null;
-  const mixedPlacingSize = beadSize === 'mixed' ? normalizeStoneSize(design.mixedPlacingSize) : Number(beadSize);
-  if (!mixedPlacingSize || !components || components.length > 240 || !selectedCharmIds || selectedCharmIds.length > 2) return null;
+  if (!['4', '6', '10', 'mixed'].includes(beadSize) || !components || components.length > 240 || !selectedCharmIds || selectedCharmIds.length > 2) return null;
+  if (beadSize === 'mixed' && ![4, 6, 10].includes(mixedPlacingSize)) return null;
   const normalizedComponents = components.map((component) => {
     const type = String(component?.type || '').trim().toLowerCase();
-    const uniqueId = normalizeUniqueId(component?.uniqueId);
-    if (type === 'empty') return uniqueId ? { type, uniqueId } : { type };
+    if (type === 'empty') return { type };
     if (!['stone', 'charm', 'spacer'].includes(type)) return null;
     const id = normalizeId(component?.id);
     if (!id) return null;
-    if (type !== 'stone') return uniqueId ? { type, id, uniqueId } : { type, id };
-    const size = normalizeStoneSize(component?.size) || (FIXED_BEAD_SIZES.has(beadSize) ? Number(beadSize) : null);
-    if (!size) return null;
-    return uniqueId ? { type, id, size, uniqueId } : { type, id, size };
+    if (type !== 'stone') return { type, id };
+    const size = Number(component?.size ?? (beadSize === 'mixed' ? NaN : beadSize));
+    return [4, 6, 10].includes(size) ? { type, id, size } : null;
   });
   const charms = selectedCharmIds.map(normalizeId);
   if (normalizedComponents.some((component) => !component) || charms.some((id) => !id)) return null;
@@ -54,7 +40,19 @@ function normalizeDesignSnapshot(value) {
   const expiresAt = Number(value.expiresAt);
   const step = Number(value.step);
   if (!Number.isFinite(savedAt) || !Number.isFinite(expiresAt) || expiresAt <= savedAt || ![1, 2, 3].includes(step)) return null;
-  return { version: 1, savedAt, expiresAt, step, design: { wristSize, beadSize, mixedPlacingSize, selectedCharmIds: charms, components: normalizedComponents } };
+  return {
+    version: 1,
+    savedAt,
+    expiresAt,
+    step,
+    design: {
+      wristSize,
+      beadSize,
+      mixedPlacingSize: beadSize === 'mixed' ? mixedPlacingSize : Number(beadSize),
+      selectedCharmIds: charms,
+      components: normalizedComponents
+    }
+  };
 }
 
 function normalizeContinuity(value = {}) {
@@ -76,15 +74,17 @@ function normalizeContinuity(value = {}) {
   };
 }
 
-function normalizeHandoffPayload(input = {}, now = Date.now()) {
+function normalizeHandoffPayload(input = {}, now = Date.now(), ttlMs = HANDOFF_TTL_MS) {
   const targetStep = Number(input.targetStep);
   const designSnapshot = normalizeDesignSnapshot(input.designSnapshot);
   if (!designSnapshot || ![1, 2, 3, 4].includes(targetStep)) return null;
   const createdAt = Number(now);
+  const resolvedTtlMs = Number(ttlMs);
+  if (!Number.isSafeInteger(resolvedTtlMs) || resolvedTtlMs < 60 * 1000 || resolvedTtlMs > HANDOFF_TTL_MS) return null;
   const payload = {
     version: HANDOFF_VERSION,
     createdAt,
-    expiresAt: createdAt + HANDOFF_TTL_MS,
+    expiresAt: createdAt + resolvedTtlMs,
     targetStep,
     designSnapshot,
     analyticsContinuity: normalizeContinuity(input.analyticsContinuity)

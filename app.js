@@ -1,20 +1,19 @@
 import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
-import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, createGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
-import { createLineCallbackResumeUrl, createLineRedirectIntent, parseCustomizationLoginIntent, parseLineCallbackResumeIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
-import { createInitialLineLoginGuard } from './deferred-initial-line-login.js';
+import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
+import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
+import { createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
+import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
+import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
+import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
-import { createLineAuthHandoffRequest } from './line-handoff-client.js';
-import { LINE_LOGIN_START_DIAGNOSTICS, getLineLoginStartDiagnostic } from './line-login-start-diagnostic.js';
-import { syncLiffProfileIdentity } from './line-liff-profile-sync.js';
+import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from './line-identity-before-design.js';
+import { invokeInitialLineAuthentication } from './initial-line-auth.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
-import { MIXED_BEAD_SIZE_MODE, getPhysicalStonePlacementSize, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
-import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
-import { createStonePricingSummary } from './mixed-order-model.js';
+import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -49,7 +48,17 @@ const ANALYTICS_CURRENT_STAGE_KEY = 'lucky_analytics_current_stage';
 const ANALYTICS_FUNNEL_STAGE_KEYS_KEY = 'lucky_analytics_funnel_v2_stage_keys';
 const FORCE_STEP3_CATEGORY_HINT = urlParams.has('showStep3Hint1') || urlParams.get('showStep3Hint') === '1';
 const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.get('showStep3InfoHint') === '1';
-const LIFF_ID = '2010525799-qImIuhla';
+// Production keeps the approved UAT customer runtime while retaining production
+// integration identities and live transaction/analytics behavior.
+const APP_ENV = 'production';
+const IS_UAT_MODE = APP_ENV === 'uat';
+// The accepted UAT candidate ships without the temporary sticky debug overlay.
+const STICKY_DEBUG_ENABLED = false;
+const LINE_DEBUG_ENABLED = false;
+const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
+let LIFF_ID = '2010525799-qImIuhla';
+let liffConfigurationReason = 'LIFF_CONFIG_MISSING';
+let lineIdentityFailureCode = '';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
@@ -79,8 +88,8 @@ const State = {
   currentStep: 1,
   wristSize: 16.0,          // Default wrist size in cm
   beadSize: null,           // Explicit customer choice: '4', '6', '10', or mixed
-  mixedPlacingSize: 6,
-  mixedSizeFilter: '6',
+  mixedPlacingSize: 6,      // Current catalog filter/placement size in mixed mode
+  mixedSizeFilter: '6',     // Mixed-mode catalog filter only; never a physical size when 'all'
   ownerName: '',            // Personalized bracelet owner name
   lineUserId: '',           // LIFF profile user identifier
   shippingInfo: {
@@ -253,10 +262,6 @@ const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
 let liffLoginInProgress = false;
-let liffInitializationPromise = null;
-let liffInitializationFailureReason = '';
-let lastLiffLoginStartMetadata = null;
-let lastLineProfileSyncFailureReason = '';
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 let landingPressTimer = null;
@@ -272,9 +277,6 @@ let deferredLoginQaEnabled = false;
 let lineOaFriendshipRequired = false;
 let lineOaFriendshipRecheckInFlight = false;
 let lineOaFriendshipStep4ResumePending = false;
-const shouldBypassInitialLineLoginForApp = createInitialLineLoginGuard({
-  resolveFeatureEnabled: () => isDeferredLineLoginEffectivelyEnabled()
-});
 let resolveCustomerStartupBootstrap;
 let rejectCustomerStartupBootstrap;
 const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
@@ -283,6 +285,12 @@ const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
 });
 let customerCatalogStartupPromise = null;
 let catalogRefreshPollingTimer = null;
+const lineDebugStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+const lineDebugEvents = [];
+let lineDebugOutput = null;
+let lineDebugNoNavigationTimer = null;
+let lineDebugLoginNavigationArmed = false;
+let lineDebugNavigationObserved = false;
 let inspirationGalleryCloseTimer = null;
 let wristPickerHintTimer = null;
 let isDraggingWristPicker = false;
@@ -431,8 +439,9 @@ function isStoneAvailableForCurrentBeadSize(stone) {
   return stoneSupportsSize(stone, getCurrentBeadSizeMm());
 }
 
-function hasExplicitBeadSizeSelection(value = State.beadSize) {
-  return ['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(String(value ?? ''));
+function isStoneVisibleForCurrentSizeFilter(stone) {
+  if (State.beadSize !== MIXED_BEAD_SIZE_MODE) return isStoneAvailableForCurrentBeadSize(stone);
+  return stoneMatchesMixedSizeFilter(stone, State.mixedSizeFilter);
 }
 
 function adaptSpacerRecordForCustomer(record) {
@@ -472,13 +481,22 @@ function normalizeBeadSizeOption(value) {
   return normalizeBraceletSizeMode(value);
 }
 
+function hasExplicitBeadSizeSelection(value = State.beadSize) {
+  return ['4', '6', '10', MIXED_BEAD_SIZE_MODE].includes(String(value ?? ''));
+}
+
 function getCurrentBeadSizeMm() {
-  if (!hasExplicitBeadSizeSelection()) return null;
-  return getPhysicalStonePlacementSize(State.beadSize, State.mixedPlacingSize);
+  const mode = normalizeBeadSizeOption(State.beadSize);
+  return mode === MIXED_BEAD_SIZE_MODE
+    ? normalizeMixedPlacingSize(State.mixedPlacingSize)
+    : Number(mode);
 }
 
 function getAllowedDesignerCategories(beadSize = State.beadSize) {
-  const normalizedSize = normalizeBeadSizeOption(beadSize);
+  const mode = normalizeBeadSizeOption(beadSize);
+  // The mixed filter controls stone visibility only; it must not hide the existing
+  // charm/spacer tabs when the user browses a 4mm or 6mm stone subset.
+  const normalizedSize = mode === MIXED_BEAD_SIZE_MODE ? '10' : mode;
   return DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE[normalizedSize] || DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE['10'];
 }
 
@@ -549,7 +567,6 @@ function removeInvalidDesignerItemsForBeadSize({ showToastNotification = false }
 }
 
 function ensureCurrentDesignMatchesBeadSize({ showToastNotification = false } = {}) {
-  if (State.beadSize === MIXED_BEAD_SIZE_MODE) return false;
   const changed = removeInvalidDesignerItemsForBeadSize({ showToastNotification });
   if (changed) {
     adjustBeadsToNewCapacity();
@@ -562,11 +579,31 @@ function ensureCurrentDesignMatchesBeadSize({ showToastNotification = false } = 
 function normalizeSelectedStoneSizes() {
   if (State.beadSize === MIXED_BEAD_SIZE_MODE) return;
   const normalizedBeadSize = getCurrentBeadSizeMm();
-  if (![4, 6, 10].includes(normalizedBeadSize)) return;
   State.selectedStones.forEach((item) => {
     if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
     item.size = normalizedBeadSize;
   });
+}
+
+function setCurrentMixedPlacingSize(size) {
+  State.mixedPlacingSize = withMixedPlacingSize(State, size).mixedPlacingSize;
+}
+
+function setMixedStoneSizeFilter(size) {
+  const nextFilter = normalizeMixedSizeFilter(size, State.mixedSizeFilter);
+  State.mixedSizeFilter = nextFilter;
+  if (nextFilter !== 'all') setCurrentMixedPlacingSize(nextFilter);
+}
+
+function applyBraceletSizeModeTransition(targetMode) {
+  const previousMode = State.beadSize;
+  const transition = transitionBraceletSizeMode(State, targetMode, STONES);
+  if (!transition.ok) return transition;
+  Object.assign(State, transition.state);
+  if (State.beadSize === MIXED_BEAD_SIZE_MODE && previousMode !== MIXED_BEAD_SIZE_MODE) {
+    State.mixedSizeFilter = String(State.mixedPlacingSize);
+  }
+  return transition;
 }
 
 function getSpacerCatalogEntry(spacerId) {
@@ -657,12 +694,7 @@ function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSize
 
   const stoneId = String(item.stoneId || '').trim();
   if (!stoneId) return null;
-  const explicitSize = Number(item.size);
-  const fallbackSize = State.beadSize === MIXED_BEAD_SIZE_MODE ? null : normalizedBeadSize;
-  const size = [4, 6, 10].includes(explicitSize)
-    ? explicitSize
-    : [4, 6, 10].includes(fallbackSize) ? fallbackSize : null;
-  if (size === null) return null;
+  const size = Number.isFinite(Number(item.size)) ? Number(item.size) : normalizedBeadSize;
 
   return {
     componentType: 'stone',
@@ -683,26 +715,6 @@ function normalizeSelectedLoopItems(source = []) {
 
 function getSelectedLoopItems() {
   return normalizeSelectedLoopItems(State.selectedStones);
-}
-
-function createGeometryComponentForLoopItem(item) {
-  if (isSelectedSpacerItem(item)) {
-    const spacer = getSpacerCatalogEntry(item?.spacerId);
-    return { type: 'spacer', uniqueId: item?.uniqueId, effectiveLengthMm: spacer?.effectiveLengthMm };
-  }
-  if (isSelectedCharmItem(item)) {
-    const charm = getCharmCatalogEntry(item?.charmId);
-    return { type: 'charm', uniqueId: item?.uniqueId, footprintMm: charm ? getCharmFootprintMm(charm) : null };
-  }
-  return { type: 'stone', uniqueId: item?.uniqueId, size: item?.size };
-}
-
-function getAnchoredGeometryComponents() {
-  return getSelectedAnchoredCharmCatalogEntries().map((charm) => ({
-    type: 'charm',
-    uniqueId: `charm-${charm.id}-${charm.selectionIndex}`,
-    footprintMm: getCharmFootprintMm(charm)
-  }));
 }
 
 function isSelectedSpacerItem(item) {
@@ -1060,23 +1072,157 @@ function resolveShippingInfoFromCheckoutPayload(payload = {}) {
   });
 }
 
+function sanitizeLineDebugText(value, maxLength = 240) {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').slice(0, maxLength);
+}
+
+function getLineDebugState() {
+  const safeLiffCall = (method) => {
+    try {
+      return typeof liff !== 'undefined' && typeof liff[method] === 'function' ? Boolean(liff[method]()) : null;
+    } catch {
+      return null;
+    }
+  };
+  const activation = navigator.userActivation;
+  return {
+    liffInitialized: State.liffInitialized === true,
+    liffIdPresent: Boolean(LIFF_ID),
+    isInClient: safeLiffCall('isInClient'),
+    isLoggedIn: safeLiffCall('isLoggedIn'),
+    visibilityState: document.visibilityState,
+    userActivationActive: activation?.isActive ?? null,
+    userActivationHasBeenActive: activation?.hasBeenActive ?? null,
+    hasFocus: typeof document.hasFocus === 'function' ? document.hasFocus() : null,
+    landingConnectPromptVisible,
+    liffLoginInProgress,
+    currentCtaText: sanitizeLineDebugText(DOM.btnLandingLogin?.querySelector('.btn-text')?.textContent || ''),
+    userAgent: sanitizeLineDebugText(navigator.userAgent, 300)
+  };
+}
+
+function renderLineDebugPanel() {
+  if (!lineDebugOutput) return;
+  lineDebugOutput.textContent = lineDebugEvents.map((entry) => {
+    const state = entry.state ? ` state=${JSON.stringify(entry.state)}` : '';
+    const details = entry.details ? ` details=${JSON.stringify(entry.details)}` : '';
+    return `${entry.t}ms ${entry.event}${state}${details}`;
+  }).join('\n');
+  lineDebugOutput.scrollTop = lineDebugOutput.scrollHeight;
+}
+
+function lineDebugTrace(event, { captureState = false, details = null } = {}) {
+  if (!LINE_DEBUG_ENABLED) return;
+  lineDebugEvents.push({
+    t: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - lineDebugStartedAt),
+    event,
+    ...(captureState ? { state: getLineDebugState() } : {}),
+    ...(details ? { details } : {})
+  });
+  renderLineDebugPanel();
+}
+
+function setupLineDebugPanel() {
+  if (!LINE_DEBUG_ENABLED || document.getElementById('lineDebugPanel')) return;
+  const panel = document.createElement('aside');
+  panel.id = 'lineDebugPanel';
+  panel.className = 'line-debug-panel';
+  panel.setAttribute('aria-label', 'UAT LINE authentication diagnostic trace');
+  panel.innerHTML = '<div class="line-debug-heading">UAT LINE DEBUG</div><button type="button" class="line-debug-copy">Copy Debug Trace</button><pre class="line-debug-output"></pre>';
+  const copyButton = panel.querySelector('.line-debug-copy');
+  lineDebugOutput = panel.querySelector('.line-debug-output');
+  copyButton?.addEventListener('click', async () => {
+    const trace = JSON.stringify(lineDebugEvents, null, 2);
+    try {
+      await navigator.clipboard?.writeText(trace);
+      copyButton.textContent = 'Copied';
+    } catch {
+      copyButton.textContent = 'Copy unavailable';
+    }
+  });
+  document.body.append(panel);
+  renderLineDebugPanel();
+}
+
+function markLineDebugNavigationObserved(event) {
+  if (!LINE_DEBUG_ENABLED) return;
+  if (event === 'VISIBILITY_HIDDEN') {
+    lineDebugTrace(event, { captureState: true });
+  } else {
+    lineDebugTrace(event);
+  }
+  if (lineDebugLoginNavigationArmed) {
+    lineDebugNavigationObserved = true;
+    if (lineDebugNoNavigationTimer) window.clearTimeout(lineDebugNoNavigationTimer);
+  }
+}
+
+function armLineDebugNoNavigationDetection() {
+  if (!LINE_DEBUG_ENABLED) return;
+  lineDebugLoginNavigationArmed = true;
+  lineDebugNavigationObserved = false;
+  if (lineDebugNoNavigationTimer) window.clearTimeout(lineDebugNoNavigationTimer);
+  lineDebugNoNavigationTimer = window.setTimeout(() => {
+    if (!lineDebugNavigationObserved) {
+      lineDebugTrace('LOGIN_INVOKED_NO_NAVIGATION', {
+        captureState: true,
+        details: { code: 'F05E8', meaning: 'LIFF_LOGIN_INVOKED_BUT_NO_NAVIGATION_OBSERVED' }
+      });
+    }
+  }, LINE_DEBUG_NO_NAVIGATION_MS);
+}
+
+function setupLineDebugRuntimeListeners() {
+  if (!LINE_DEBUG_ENABLED) return;
+  window.addEventListener('pagehide', () => markLineDebugNavigationObserved('PAGEHIDE'));
+  window.addEventListener('beforeunload', () => markLineDebugNavigationObserved('BEFOREUNLOAD'));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') markLineDebugNavigationObserved('VISIBILITY_HIDDEN');
+  });
+  window.addEventListener('error', (event) => {
+    lineDebugTrace('WINDOW_ERROR', { details: {
+      name: sanitizeLineDebugText(event.error?.name || 'Error', 80),
+      message: sanitizeLineDebugText(event.message, 180),
+      source: sanitizeLineDebugText(String(event.filename || '').split('/').pop(), 100)
+    } });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    lineDebugTrace('UNHANDLED_REJECTION', { details: {
+      name: sanitizeLineDebugText(event.reason?.name || 'UnhandledRejection', 80),
+      message: sanitizeLineDebugText(event.reason?.message || event.reason, 180)
+    } });
+  });
+}
+
+lineDebugTrace('BOOT', { captureState: true });
+
 // ==========================================
 // 4. Initialisation
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+  setupLineDebugPanel();
+  setupLineDebugRuntimeListeners();
+  lineDebugTrace('DOM_READY', { captureState: true });
   // The document-head marker prevents a first-paint landing flash while the QA
   // status request below is still resolving. Confirm the real callback state
   // immediately afterwards before continuing to hold normal UI rendering.
   if (document.documentElement.classList.contains('callback-bootstrap-hold')) {
     setCallbackBootstrapHold(true);
   }
-  await initializeDeferredLoginQaSession();
   const returnParams = new URLSearchParams(window.location.search);
-  const shouldOpenStep4FromUrl = returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId');
+  const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
+    && isInitialLineIdentityCallback(window.location.search);
+  // The head marker covers first paint. Confirm the initial identity callback
+  // before any async startup work so it remains hidden through LIFF/profile sync.
+  if (shouldResumeInitialIdentityCallback) {
+    setCallbackBootstrapHold(true);
+  }
+  await initializeDeferredLoginQaSession();
+  const shouldOpenStep4FromUrl = !IS_UAT_MODE && (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId'));
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
-  const startupRawCustomizationIntent = getStartupCustomizationLoginIntent();
+  const startupRawCustomizationIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
   const startupDeferredFeatureEnabled = isDeferredLineLoginEffectivelyEnabled();
   const startupCallbackPlan = planLineCallbackBootstrap({
     rawIntent: startupRawCustomizationIntent,
@@ -1087,9 +1233,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     && (startupCallbackPlan.kind === 'v2-wait-for-identity' || startupCallbackPlan.kind === 'v2-restore-before-reset');
   const shouldHoldForFriendshipResume = !returnParams.has('orderId')
     && hasLineOaFriendshipResumePending();
-  const shouldHoldForCallbackBootstrap = shouldHoldForDeferredCallback || shouldHoldForFriendshipResume;
+  const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
+    || shouldHoldForDeferredCallback
+    || shouldHoldForFriendshipResume;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
-    && (shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
+    && (shouldResumeInitialIdentityCallback || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
   // A cross-context V2 callback must apply validated handoff continuity before
   // the first analytics event can create a replacement browser session.
@@ -1103,7 +1251,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // A public/manual entry is deliberately a new design session. Only a bounded
   // active LINE callback/resume context may load prior customization state.
-  if (shouldStartFreshCustomization) {
+  if (shouldResumeInitialIdentityCallback) {
+    // Initial identity callbacks must never revive a stale bracelet. The marker
+    // is recognized before UI rendering, then the callback resumes a clean Step 1.
+    resetCustomizationSessionForFreshEntry();
+  } else if (shouldStartFreshCustomization) {
     resetCustomizationSessionForFreshEntry();
   } else {
     loadPersistedState();
@@ -1167,17 +1319,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Start the shared-data work immediately, but keep it off the mobile authentication/Step 1 path.
   startCustomerCatalogWarmup();
 
+  // Load only the UAT LIFF configuration before initializing the SDK.
+  await loadProductionLiffConfiguration();
+  lineDebugTrace('LIFF_CONFIG_READY', { captureState: true, details: { configurationReason: sanitizeLineDebugText(liffConfigurationReason, 80) } });
   // Setup LIFF (LINE Front-end Framework). This remains the required mobile gate.
   await initLIFF();
   markStartupPerformance('T1_liff_ready');
   clearOAuthQueryParams();
   let restored = null;
-  if (shouldHoldForDeferredCallback) {
+  if (shouldResumeInitialIdentityCallback) {
+    if (isLineIdentityAvailable()) {
+      State.currentStep = 1;
+      State.landingDismissed = true;
+      persistLandingDismissed();
+      clearInitialLineIdentityCallbackMarker();
+    } else {
+      console.warn('[uat-line-identity]', { reason: lineIdentityFailureCode || 'INITIAL_IDENTITY_UNAVAILABLE' });
+      showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${lineIdentityFailureCode || 'F05E3'})`);
+    }
+  } else if (shouldHoldForDeferredCallback) {
     restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
     const handoffToken = parseCustomizationLoginIntent(startupRawCustomizationIntent)?.handoffToken;
     const restoreAlreadyApplied = Boolean(handoffToken && lineCallbackRestoreGuard.has(handoffToken));
     if (!restored?.ok && restored?.reason === 'handoff_not_found') {
-      clearLineCallbackResumeParams();
       resetCustomizationSessionForFreshEntry();
     } else if (!restored?.ok && !restoreAlreadyApplied) {
       await restoreDeferredCallbackDesignToStep3Fallback();
@@ -1418,6 +1582,7 @@ function applyDeferredLineAuthAnalyticsContinuity(rawContinuity) {
 }
 
 function initAnalytics() {
+  if (IS_UAT_MODE) return;
   try {
     const resolvedSession = resolveAnalyticsSession({
       sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
@@ -1494,6 +1659,7 @@ function getAnalyticsOrderFields() {
 }
 
 function sendAnalyticsPayload(payload, { beacon = false } = {}) {
+  if (IS_UAT_MODE) return;
   try {
     const body = JSON.stringify(payload);
     if (beacon && navigator.sendBeacon) {
@@ -1513,6 +1679,7 @@ function sendAnalyticsPayload(payload, { beacon = false } = {}) {
 }
 
 function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
+  if (IS_UAT_MODE) return;
   if (!analyticsSessionId) return;
   const canonicalEventName = eventName === 'start_customize_click' ? 'start_design' : eventName;
   const isFunnelStage = isCanonicalFunnelStage(canonicalEventName);
@@ -1584,6 +1751,7 @@ function trackCheckoutStarted(checkoutSessionId) {
 }
 
 function trackMetaEvent(eventName, parameters = {}) {
+  if (IS_UAT_MODE) return;
   try {
     if (typeof window.fbq !== 'function') return;
     window.fbq('track', eventName, parameters);
@@ -1734,13 +1902,13 @@ function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
 function setLiffLoadingMessage(message = '') {
   const loadingText = DOM.liffLoadingOverlay?.querySelector('#liffLoadingText, .loading-text');
   if (!loadingText) return;
-  loadingText.textContent = message || 'กำลังเชื่อมต่อกับ LINE...';
+  loadingText.textContent = message || 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ';
 }
 
 function setLiffTransitionState({ title = '', body = '' } = {}) {
   const loadingTitle = DOM.liffLoadingOverlay?.querySelector('#liffLoadingTitle, .loading-title');
   if (loadingTitle) loadingTitle.textContent = title || 'กำลังเชื่อมต่อ LINE';
-  setLiffLoadingMessage(body || 'กำลังเตรียมข้อมูล...');
+  setLiffLoadingMessage(body || 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
 }
 
 function showLineOaFriendshipTransition() {
@@ -1784,47 +1952,14 @@ function clearLineConnectPrompt() {
   setLandingSubtitleMessage('');
 }
 
-function getCallbackCustomizationLoginIntent() {
-  const intent = parseLineCallbackResumeIntent(window.location.href, {
-    featureEnabled: isDeferredLineLoginEffectivelyEnabled()
-  });
-  return intent ? JSON.stringify(intent) : '';
+function getLiffRedirectUri({ initialIdentity = false } = {}) {
+  const redirect = new URL(`${window.location.origin}${window.location.pathname}`);
+  if (initialIdentity) redirect.searchParams.set('line_auth', 'identity');
+  return redirect.toString();
 }
 
-function getStartupCustomizationLoginIntent() {
-  const callbackIntent = getCallbackCustomizationLoginIntent();
-  if (callbackIntent) return callbackIntent;
-  try {
-    return localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-function getLiffRedirectUri({ resumeIntent = null } = {}) {
-  const baseUrl = `${window.location.origin}${window.location.pathname}`;
-  let intent = resumeIntent;
-  try {
-    if (!intent) intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
-  } catch {
-    // The server handoff remains the callback recovery source when storage is unavailable.
-  }
-  return intent?.version === 2
-    ? createLineCallbackResumeUrl(baseUrl, { handoffToken: intent.handoffToken, targetStep: intent.targetStep, featureEnabled: true }) || baseUrl
-    : baseUrl;
-}
-
-function getLiffEntryUrl({ resumeIntent = null } = {}) {
-  const baseUrl = `https://liff.line.me/${LIFF_ID}`;
-  let intent = resumeIntent;
-  try {
-    if (!intent) intent = parseCustomizationLoginIntent(localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY));
-  } catch {
-    // The normal LIFF entry remains available without a recoverable design intent.
-  }
-  return intent?.version === 2
-    ? createLineCallbackResumeUrl(baseUrl, { handoffToken: intent.handoffToken, targetStep: intent.targetStep, featureEnabled: true }) || baseUrl
-    : baseUrl;
+function getLiffEntryUrl() {
+  return LIFF_ID ? `https://liff.line.me/${LIFF_ID}` : '';
 }
 
 function isLikelyMobileBrowser() {
@@ -1865,40 +2000,51 @@ function isLineIdentityAvailable() {
   return true;
 }
 
-async function resolveExistingLineIdentityForDeferredStep3Auth() {
-  if (isLineIdentityAvailable()) return true;
-  // A LIFF session can survive while this page's in-memory profile has not yet
-  // been populated. Resolve that existing session before considering a redirect.
-  return isLiffLoggedIn() ? await syncLineProfileFromLiff() : false;
+function reportInitialLineAuthDiagnostic(result = {}) {
+  console.warn('[uat-line-auth-start]', {
+    liffInitialized: State.liffInitialized === true,
+    liffIdPresent: Boolean(LIFF_ID),
+    isInClient: isLiffInClient(),
+    isLoggedIn: isLiffLoggedIn(),
+    canonicalIdentityPresent: Boolean(State.lineUserId && State.lineUserId.trim()),
+    loginMethodAttempted: result.method || 'NONE',
+    loginInvocation: result.invocation || 'NOT_AVAILABLE',
+    lineIdentityFailureCode: result.reason || lineIdentityFailureCode || ''
+  });
 }
 
 async function syncLineProfileFromLiff() {
-  lastLineProfileSyncFailureReason = '';
-  const synced = await syncLiffProfileIdentity({
-    isLoggedIn: isLiffLoggedIn,
-    getProfile: () => withTimeout(liff.getProfile(), 5000, 'LIFF getProfile'),
-    applyIdentity: ({ lineUserId, displayName }) => {
-      State.lineUserId = lineUserId;
-      if (displayName) {
-        State.ownerName = displayName;
-        DOM.braceletOwnerName.value = displayName;
-      }
-      saveState();
-      return isLineIdentityAvailable();
+  lineIdentityFailureCode = '';
+  if (!isLiffLoggedIn()) {
+    lineIdentityFailureCode = 'F05E3_NOT_LOGGED_IN';
+    return false;
+  }
+
+  try {
+    const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
+    const lineUserId = String(profile?.userId || '').trim();
+    if (!lineUserId) {
+      lineIdentityFailureCode = 'F05E3B';
+      return false;
     }
-  });
-  if (synced.ok) {
+    State.lineUserId = lineUserId;
+    if (profile.displayName) {
+      State.ownerName = profile.displayName;
+      DOM.braceletOwnerName.value = profile.displayName;
+    }
+    saveState();
     trackAnalyticsEvent('line_auth_success');
-    return true;
-  }
-  lastLineProfileSyncFailureReason = synced.reason;
-  if (synced.reason !== 'LIFF_PROFILE_SESSION_UNAVAILABLE') {
-    console.warn('[line-login-start]', { branch: synced.reason });
+    const synchronized = isLineIdentityAvailable();
+    if (!synchronized) lineIdentityFailureCode = 'F05E3C';
+    return synchronized;
+  } catch (profileErr) {
+    lineIdentityFailureCode = 'F05E3A';
+    console.warn("LIFF profile fetch failed. LINE identity is unavailable.", profileErr);
     trackAnalyticsEvent('line_auth_error', {
-      message: synced.reason
+      message: profileErr?.message || String(profileErr || '')
     });
+    return false;
   }
-  return false;
 }
 
 async function getLineOaFriendshipStatus() {
@@ -1993,7 +2139,7 @@ function canUseNativeLineOaFriendshipPrompt() {
   return liffContext?.viewType === 'full';
 }
 
-async function openLineOaAddFriendExperience({ resumeIntent = null } = {}) {
+async function openLineOaAddFriendExperience() {
   // requestFriendship keeps the customer inside LIFF and returns control after
   // the official LINE add-friend/unblock subwindow closes. It is the primary path.
   if (canUseNativeLineOaFriendshipPrompt()) {
@@ -2015,7 +2161,7 @@ async function openLineOaAddFriendExperience({ resumeIntent = null } = {}) {
   if (!isLiffInClient()) {
     showLineOaFriendshipTransition();
     try {
-      window.location.assign(getLiffEntryUrl({ resumeIntent }));
+      window.location.assign(getLiffEntryUrl());
       return { opened: true, source: 'liff_entry' };
     } catch (error) {
       hideLineOaFriendshipTransition();
@@ -2106,18 +2252,8 @@ async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFrien
       showToast('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e41\u0e1a\u0e1a\u0e01\u0e33\u0e44\u0e25\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e19 LINE \u0e44\u0e14\u0e49 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e25\u0e2d\u0e07\u0e43\u0e2b\u0e21\u0e48');
       return false;
     }
-    let resumeIntent = null;
-    if (!isLiffInClient()) {
-      const prepared = await createLineOaFriendshipResumeIntent();
-      if (!prepared.ok) {
-        const code = reportLineHandoffFailure(prepared);
-        showToast(`ไม่สามารถบันทึกแบบกำไลเพื่อเพิ่มเพื่อน LINE ได้ กรุณาลองใหม่ (${code})`);
-        return false;
-      }
-      resumeIntent = prepared.intent;
-    }
     setLineOaFriendshipResumePending();
-    const addFriend = await openLineOaAddFriendExperience({ resumeIntent });
+    const addFriend = await openLineOaAddFriendExperience();
     if (!addFriend.opened) {
       clearLineOaFriendshipResumePending();
     } else if (addFriend.source === 'liff_request_friendship') {
@@ -2238,78 +2374,62 @@ async function completeCustomizationStartResume() {
   if (loader) loader.style.display = 'none';
 }
 
-function getLiffLoginStartFailure(reason, returnStartStatus) {
-  return returnStartStatus ? { ok: false, reason } : false;
-}
-
-function getSafeLiffRedirectMetadata(redirectUri) {
-  try {
-    const url = new URL(redirectUri);
-    return {
-      valid: url.protocol === 'https:' && Boolean(url.hostname),
-      origin: url.origin,
-      pathname: url.pathname,
-      hasLineHandoff: url.searchParams.has('line_handoff'),
-      hasLineResume: url.searchParams.get('line_resume') === 'guest_design_handoff',
-      urlLength: redirectUri.length
-    };
-  } catch {
-    return { valid: false, origin: '', pathname: '', hasLineHandoff: false, hasLineResume: false, urlLength: 0 };
-  }
-}
-
-function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false, resumeIntent = null } = {}) {
-  if (getRequestedOrderId()) return getLiffLoginStartFailure('ORDER_DETAIL_CONTEXT_BLOCK', returnStartStatus);
+function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+  if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
-    return getLiffLoginStartFailure('LOGIN_ALREADY_IN_PROGRESS', returnStartStatus);
-  }
-  if (typeof liff === 'undefined') {
-    return getLiffLoginStartFailure('LIFF_SDK_UNAVAILABLE', returnStartStatus);
-  }
-  if (!State.liffInitialized) {
-    return getLiffLoginStartFailure('LIFF_INIT_FAILED', returnStartStatus);
-  }
-  if (typeof liff.login !== 'function') {
-    return getLiffLoginStartFailure('LIFF_SDK_UNAVAILABLE', returnStartStatus);
+    return false;
   }
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started');
-  if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
-  try {
-    saveState();
-  } catch {
-    if (!preserveExistingIntent) return false;
-    console.warn('[line-handoff]', { reason: 'LOCAL_SNAPSHOT_UNAVAILABLE' });
-  }
+  const persistInitialIntent = () => {
+    try {
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
+      return persisted;
+    } catch (error) {
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: false, error: sanitizeLineDebugText(error?.message || error, 120) } });
+      throw error;
+    }
+  };
+  saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
-  setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
+  setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
+  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_LOGIN' } });
 
-  try {
-    const redirectUri = getLiffRedirectUri({ resumeIntent });
-    lastLiffLoginStartMetadata = getSafeLiffRedirectMetadata(redirectUri);
-    if (!lastLiffLoginStartMetadata.valid) {
-      liffLoginInProgress = false;
-      return getLiffLoginStartFailure('REDIRECT_URI_INVALID', returnStartStatus);
-    }
-    console.info('[line-handoff]', { stage: 'liff_login_start', ...lastLiffLoginStartMetadata });
-    liff.login({ redirectUri });
-    return returnStartStatus ? true : false;
-  } catch (loginErr) {
+  const loginResult = invokeInitialLineAuthentication({
+    method: 'LIFF_LOGIN',
+    isInClient: isLiffInClient(),
+    liffInitialized: State.liffInitialized,
+    liff: typeof liff === 'undefined' ? null : liff,
+    redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }),
+    persistIntent: persistInitialIntent,
+    onBeforeLogin: () => lineDebugTrace('BEFORE_LIFF_LOGIN', { captureState: true }),
+    onLoginInvoked: () => lineDebugTrace('LIFF_LOGIN_INVOKED', { captureState: true }),
+    onLoginReturned: () => {
+      lineDebugTrace('LIFF_LOGIN_RETURNED', { captureState: true });
+      armLineDebugNoNavigationDetection();
+    },
+    onLoginThrow: (error) => lineDebugTrace('LIFF_LOGIN_THROW', { captureState: true, details: { error: sanitizeLineDebugText(error?.message || error, 180) } })
+  });
+  if (!loginResult.started) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
-    console.warn('[line-handoff]', { reason: 'LIFF_LOGIN_THROW', name: String(loginErr?.name || 'Error'), message: String(loginErr?.message || '').slice(0, 160) });
+    lineIdentityFailureCode = loginResult.reason;
+    reportInitialLineAuthDiagnostic(loginResult);
+    console.warn("LIFF customization login failed to start.", loginResult.error);
     trackAnalyticsEvent('line_auth_error', {
-      message: loginErr?.message || String(loginErr || '')
+      message: loginResult.error?.message || loginResult.reason
     });
     resetLandingStartAfterFailure();
-    return getLiffLoginStartFailure('LIFF_LOGIN_THROW', returnStartStatus);
+    return false;
   }
+  return returnStartStatus ? true : false;
 }
 
 function openLineConnectEntryForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
@@ -2318,87 +2438,87 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
-  if (!preserveExistingIntent && !rememberCustomizationLoginIntent()) return false;
-  try {
-    saveState();
-  } catch {
-    if (!preserveExistingIntent) return false;
-    console.warn('[line-handoff]', { reason: 'LOCAL_SNAPSHOT_UNAVAILABLE' });
-  }
+  const persistInitialIntent = () => {
+    try {
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
+      return persisted;
+    } catch (error) {
+      lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: false, error: sanitizeLineDebugText(error?.message || error, 120) } });
+      throw error;
+    }
+  };
+  saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
-  setLiffLoadingMessage('กำลังเข้าสู่ระบบ LINE...');
+  setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
+  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_ENTRY' } });
 
-  try {
-    window.location.assign(getLiffEntryUrl());
-    return returnStartStatus ? true : false;
-  } catch (entryErr) {
+  const entryResult = invokeInitialLineAuthentication({
+    method: 'LIFF_ENTRY',
+    isInClient: isLiffInClient(),
+    liffId: LIFF_ID,
+    persistIntent: persistInitialIntent,
+    navigate: (entryUrl) => window.location.assign(entryUrl),
+    onEntryNavigation: () => lineDebugTrace('LIFF_ENTRY_NAVIGATION', { captureState: true })
+  });
+  if (!entryResult.started) {
     liffLoginInProgress = false;
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
-    console.warn("LINE connect entry failed to open.", entryErr);
+    lineIdentityFailureCode = entryResult.reason;
+    reportInitialLineAuthDiagnostic(entryResult);
+    console.warn("LINE connect entry failed to open.", entryResult.error);
     trackAnalyticsEvent('line_auth_error', {
-      message: entryErr?.message || String(entryErr || ''),
+      message: entryResult.error?.message || entryResult.reason,
       method: 'entry_url'
     });
     resetLandingStartAfterFailure();
     return false;
   }
+  return returnStartStatus ? true : false;
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { showLandingPrompt = false, allowDeferredInitialLogin = false } = options;
+  const { showLandingPrompt = false } = options;
+  lineDebugTrace('REQUIRE_LINE_LOGIN_ENTER', { captureState: true });
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
   // Desktop remains independent of LIFF availability and login state.
   if (!requiresLineLoginForCustomization()) return true;
-  if (shouldBypassInitialLineLoginForApp({
-    requiresLineLogin: true,
-    isAuthenticated: isLineIdentityAvailable(),
-    isCustomization: allowDeferredInitialLogin
-  })) return true;
-  if (isLineIdentityAvailable()) return true;
-  if (isLiffLoggedIn()) {
-    const profileReady = await syncLineProfileFromLiff();
-    if (profileReady) return true;
-    showToast(LINE_CONNECT_RETRY_MESSAGE);
-    return false;
+  const identity = await establishLineIdentityBeforeDesign({
+    hasCanonicalIdentity: isLineIdentityAvailable,
+    isLiffLoggedIn,
+    synchronizeProfile: async () => ({
+      ok: await syncLineProfileFromLiff(),
+      reason: lineIdentityFailureCode || 'F05E3'
+    }),
+    startLogin: async () => {
+      if (canUseLiffLoginFromCurrentBrowser()) {
+        showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
+        return { started: startLiffLoginForCustomization({ returnStartStatus: true }) === true };
+      }
+      if (showLandingPrompt) {
+        return { started: openLineConnectEntryForCustomization({ returnStartStatus: true }) === true };
+      }
+      return { started: false, reason: 'LIFF_NOT_READY' };
+    }
+  });
+  if (identity.ok) return true;
+  if (identity.state === 'profile_sync_failed') {
+    showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${identity.reason})`);
   }
-
-  if (canUseLiffLoginFromCurrentBrowser()) {
-    showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
-    return startLiffLoginForCustomization();
-  }
-
-  if (showLandingPrompt) {
-    return openLineConnectEntryForCustomization();
-  } else {
-    showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
-  }
-
   return false;
 }
 
 function getDeferredLineAuthAnalyticsContinuity() {
   const source = analyticsFirstSource || getCurrentAnalyticsSource();
-  let storedVisitorId = '';
-  let storedSessionId = '';
-  let storedStartedAt = '';
-  let storedLastSeenAt = '';
-  try {
-    storedVisitorId = localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '';
-    storedSessionId = localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '';
-    storedStartedAt = localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '';
-    storedLastSeenAt = localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '';
-  } catch {
-    console.warn('[line-handoff]', { reason: 'LOCAL_SNAPSHOT_UNAVAILABLE' });
-  }
   return {
-    visitorId: analyticsVisitorId || storedVisitorId,
-    sessionId: analyticsSessionId || storedSessionId,
-    startedAt: analyticsStartedAt || storedStartedAt,
-    lastSeenAt: analyticsLastSeenAt || storedLastSeenAt,
+    visitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
+    sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+    startedAt: analyticsStartedAt || localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '',
+    lastSeenAt: analyticsLastSeenAt || localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '',
     attribution: {
       source: source?.utm_source || '',
       medium: source?.utm_medium || '',
@@ -2415,6 +2535,11 @@ function isDeferredLineLoginEffectivelyEnabled() {
 }
 
 async function initializeDeferredLoginQaSession() {
+  if (IS_UAT_MODE) {
+    deferredLoginQaActivationAttempted = false;
+    deferredLoginQaEnabled = false;
+    return false;
+  }
   const activation = await activateDeferredLoginQaSessionFromFragment();
   deferredLoginQaActivationAttempted = activation.attempted === true;
   const state = activation.attempted ? activation : await getValidatedDeferredLoginQaState();
@@ -2423,52 +2548,37 @@ async function initializeDeferredLoginQaSession() {
 }
 
 async function createDeferredLineAuthHandoff(payload) {
-  return createLineAuthHandoffRequest({ payload });
-}
-
-async function createLineOaFriendshipResumeIntent() {
-  const savedSnapshot = saveGuestDesignSnapshot();
-  if (!savedSnapshot?.ok || !savedSnapshot.snapshot) {
-    return { ok: false, reason: 'SNAPSHOT_CREATE_FAILED' };
-  }
-  const handoff = await createDeferredLineAuthHandoff({
-    targetStep: 4,
-    designSnapshot: savedSnapshot.snapshot,
-    analyticsContinuity: getDeferredLineAuthAnalyticsContinuity()
-  });
-  if (!handoff?.token) return { ok: false, reason: handoff?.reason || 'HANDOFF_TOKEN_MISSING', status: handoff?.status };
-  const intent = createLineRedirectIntent({ handoffToken: handoff.token, targetStep: 4, featureEnabled: true });
-  if (!intent) return { ok: false, reason: 'UNKNOWN_BOUNDARY_FAILURE' };
   try {
-    persistCustomizationLoginIntent(intent);
+    const response = await fetch('/api/auth-handoffs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json().catch(() => null);
+    return response.ok && typeof result?.token === 'string' ? result : null;
   } catch {
-    // The direct resume intent remains sufficient for the new LIFF context.
+    return null;
   }
-  return { ok: true, intent };
 }
 
-async function startDeferredLineLoginWithPersistedIntent(resumeIntent = null) {
-  // Never invoke liff.login() over an existing LIFF session. The deferred
-  // boundary has already attempted to resolve its profile; a failed profile
-  // verification must stay fail-closed on Step 3.
-  const ready = await ensureLiffInitializedForDeferredLogin();
-  if (!ready.ok) return ready;
-  if (isLiffLoggedIn()) {
-    const profileReady = await syncLineProfileFromLiff();
-    if (profileReady) return { ok: true, continueWithoutLogin: true };
-    return { ok: false, reason: lastLineProfileSyncFailureReason || 'LIFF_LOGGED_IN_BUT_APP_IDENTITY_MISSING' };
-  }
+function startDeferredLineLoginWithPersistedIntent() {
   if (canUseLiffLoginFromCurrentBrowser()) {
-    return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true, resumeIntent });
+    return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
   }
-  return { ok: false, reason: 'LIFF_SDK_UNAVAILABLE' };
+  return openLineConnectEntryForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
 }
 
 async function beginDeferredStep3AuthBoundary() {
+  // Identity is now established at Landing Start. Step 3 only owns the later
+  // OA-friendship handoff, never a first-time LINE login/design handoff.
+  if (!isLineIdentityAvailable()) {
+    return { handled: true, ok: false, reason: 'line_identity_required' };
+  }
+  if (IS_UAT_MODE) return { handled: false, ok: true };
   const boundary = createDeferredStep3AuthBoundary({
     resolveFeatureEnabled: isDeferredLineLoginEffectivelyEnabled,
     requiresLineLogin: requiresLineLoginForCustomization,
-    isAuthenticated: resolveExistingLineIdentityForDeferredStep3Auth,
+    isAuthenticated: isLineIdentityAvailable,
     saveSnapshot: saveGuestDesignSnapshot,
     createHandoff: createDeferredLineAuthHandoff,
     persistIntent: persistCustomizationLoginIntent,
@@ -2479,100 +2589,34 @@ async function beginDeferredStep3AuthBoundary() {
   return boundary();
 }
 
-function reportLineHandoffFailure(result = {}) {
-  const allowedReasons = new Set([
-    'SNAPSHOT_CREATE_FAILED',
-    'LOCAL_SNAPSHOT_UNAVAILABLE',
-    'HANDOFF_POST_NETWORK_FAILED',
-    'HANDOFF_POST_HTTP_FAILED',
-    'HANDOFF_RESPONSE_INVALID',
-    'HANDOFF_TOKEN_MISSING',
-    'INTENT_PERSIST_FAILED',
-    'LOGIN_START_FAILED',
-    'LIFF_SDK_UNAVAILABLE',
-    'LIFF_INIT_FAILED',
-    'REDIRECT_URI_INVALID',
-    'LIFF_LOGIN_THROW',
-    ...Object.keys(LINE_LOGIN_START_DIAGNOSTICS),
-    'UNKNOWN_BOUNDARY_FAILURE'
-  ]);
-  const reason = allowedReasons.has(result.reason) ? result.reason : 'UNKNOWN_BOUNDARY_FAILURE';
-  const loginStartDiagnostic = getLineLoginStartDiagnostic(reason);
-  if (loginStartDiagnostic) {
-    let liffLoggedIn = false;
-    try {
-      if (typeof liff !== 'undefined' && typeof liff.isLoggedIn === 'function') liffLoggedIn = Boolean(liff.isLoggedIn());
-    } catch {
-      // A diagnostic must not alter the customer-safe failure path.
-    }
-    console.error('[line-login-start]', {
-      code: loginStartDiagnostic.code,
-      branch: loginStartDiagnostic.branch,
-      liffReady: State.liffInitialized === true,
-      liffLoggedIn,
-      loginInProgress: liffLoginInProgress === true
-    });
-    return loginStartDiagnostic.code;
+async function loadProductionLiffConfiguration() {
+  const fallback = resolveLiffEnvironmentConfig({ environment: 'production', liffId: LIFF_ID });
+  try {
+    const response = await fetch('/api/liff-config', { cache: 'no-store' });
+    const payload = response.ok ? await response.json() : null;
+    const resolved = resolveLiffEnvironmentConfig({ environment: 'production', liffId: payload?.liffId || LIFF_ID });
+    LIFF_ID = resolved.liffId;
+    liffConfigurationReason = resolved.reason;
+  } catch {
+    LIFF_ID = fallback.liffId;
+    liffConfigurationReason = fallback.reason;
   }
-  const details = { reason };
-  if (Number.isInteger(result.status)) details.status = result.status;
-  if (reason.startsWith('LIFF_') || reason.startsWith('LOGIN_') || reason === 'REDIRECT_URI_INVALID') {
-    let isLoggedIn = null;
-    let isInClient = null;
-    try {
-      if (typeof liff !== 'undefined' && typeof liff.isLoggedIn === 'function') isLoggedIn = Boolean(liff.isLoggedIn());
-      if (typeof liff !== 'undefined' && typeof liff.isInClient === 'function') isInClient = Boolean(liff.isInClient());
-    } catch {
-      // Diagnostics must not replace the customer-safe failure toast.
-    }
-    details.liff = {
-      sdkAvailable: typeof liff !== 'undefined',
-      initialized: State.liffInitialized === true,
-      isLoggedIn,
-      isInClient
-    };
-    if (lastLiffLoginStartMetadata) details.redirect = lastLiffLoginStartMetadata;
-  }
-  console.error('[line-handoff]', details);
-  return ({
-    SNAPSHOT_CREATE_FAILED: 'F01',
-    LOCAL_SNAPSHOT_UNAVAILABLE: 'F01',
-    HANDOFF_POST_NETWORK_FAILED: 'F02',
-    HANDOFF_POST_HTTP_FAILED: 'F03',
-    HANDOFF_RESPONSE_INVALID: 'F04',
-    HANDOFF_TOKEN_MISSING: 'F04',
-    LOGIN_START_FAILED: 'F05',
-    LIFF_SDK_UNAVAILABLE: 'F05A',
-    LIFF_INIT_FAILED: 'F05B',
-    REDIRECT_URI_INVALID: 'F05C',
-    LIFF_LOGIN_THROW: 'F05D',
-    LOGIN_START_UNEXPECTED_RETURN: 'F05E',
-    CALLBACK_MARKER_MISSING: 'F06',
-    HANDOFF_READ_FAILED: 'F07',
-    DESIGN_RESTORE_FAILED: 'F08',
-    LINE_IDENTITY_FAILED: 'F09',
-    FRIENDSHIP_CHECK_FAILED: 'F10'
-  })[reason] || 'F00';
-}
-
-async function ensureLiffInitializedForDeferredLogin() {
-  await initLIFF();
-  if (State.liffInitialized && typeof liff !== 'undefined' && typeof liff.login === 'function') return { ok: true };
-  return { ok: false, reason: liffInitializationFailureReason || (typeof liff === 'undefined' ? 'LIFF_SDK_UNAVAILABLE' : 'LIFF_INIT_FAILED') };
 }
 
 // LIFF Initialization
-function initLIFF() {
-  if (liffInitializationPromise) return liffInitializationPromise;
-  liffInitializationPromise = initializeLiffOnce();
-  return liffInitializationPromise;
-}
-
-async function initializeLiffOnce() {
+async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
+  if (!LIFF_ID) {
+    State.liffInitialized = false;
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(liffConfigurationReason || 'LIFF_ID_MISSING', 80) } });
+    console.warn('[uat-liff]', { reason: liffConfigurationReason || 'UAT_LIFF_CONFIG_MISSING' });
+    setLiffLoadingMessage('UAT LINE configuration is missing.');
+    if (loader) loader.style.display = 'none';
+    return;
+  }
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
-    liffInitializationFailureReason = 'LIFF_SDK_UNAVAILABLE';
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: 'LIFF_SDK_UNAVAILABLE' } });
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
     return;
@@ -2580,35 +2624,21 @@ async function initializeLiffOnce() {
 
   try {
     console.log("LIFF init start");
+    lineDebugTrace('LIFF_INIT_START', { captureState: true });
     await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
-    liffInitializationFailureReason = '';
+    lineDebugTrace('LIFF_INIT_OK', { captureState: true });
 
     const isLoggedIn = liff.isLoggedIn();
     console.log("LIFF isLoggedIn:", isLoggedIn);
     if (isLoggedIn) {
-      try {
-        console.log("LIFF getProfile start");
-        const profile = await withTimeout(liff.getProfile(), 5000, "LIFF getProfile");
-        console.log("LIFF getProfile complete");
-        State.lineUserId = String(profile.userId || '').trim();
-        if (profile.displayName) {
-          State.ownerName = profile.displayName;
-          DOM.braceletOwnerName.value = profile.displayName;
-        }
-        trackAnalyticsEvent('line_auth_success');
-      } catch (profileErr) {
-        console.warn("LIFF profile fetch failed. Continuing as guest.", profileErr);
-        trackAnalyticsEvent('line_auth_error', {
-          message: profileErr?.message || String(profileErr || '')
-        });
-      }
+      await syncLineProfileFromLiff();
     }
   } catch (err) {
-    console.warn('[line-handoff]', { reason: 'LIFF_INIT_FAILED', name: String(err?.name || 'Error'), message: String(err?.message || '').slice(0, 160) });
+    console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
-    liffInitializationFailureReason = 'LIFF_INIT_FAILED';
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(err?.message || err, 180) } });
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
       });
@@ -2623,9 +2653,11 @@ function setupLandingEvents() {
   DOM.btnLandingLogin.addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
+    lineDebugTrace('LANDING_START_CLICK', { captureState: true });
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
+    lineDebugTrace('START_HANDLER_ENTER', { captureState: true });
     markStartupPerformance('T0_cta_click');
     trackAnalyticsEvent('start_customize_click');
     triggerLandingStartFeedback();
@@ -2633,8 +2665,11 @@ function setupLandingEvents() {
     startLandingLoadReassurance();
 
     try {
+      lineDebugTrace('STARTUP_PROMISE_BEGIN', { captureState: true });
       await customerStartupBootstrapPromise;
+      lineDebugTrace('STARTUP_PROMISE_RESOLVED', { captureState: true });
     } catch (bootstrapError) {
+      lineDebugTrace('STARTUP_PROMISE_REJECTED', { details: { error: sanitizeLineDebugText(bootstrapError?.message || bootstrapError, 180) } });
       console.warn('Start customization blocked by startup bootstrap failure.', bootstrapError);
       resetLandingStartAfterFailure('');
       return;
@@ -2654,7 +2689,7 @@ function setupLandingEvents() {
     let canContinue = false;
     try {
       canContinue = await withTimeout(
-        requireLineLoginForCustomization({ showLandingPrompt: true, allowDeferredInitialLogin: true }),
+        requireLineLoginForCustomization({ showLandingPrompt: true }),
         8000,
         "Start customization"
       );
@@ -2666,7 +2701,7 @@ function setupLandingEvents() {
 
     if (!canContinue) {
       if (!liffLoginInProgress) {
-        resetLandingStartState();
+        showLineConnectPrompt(lineIdentityFailureCode ? '' : LINE_CONNECT_RETRY_MESSAGE);
       }
       return;
     }
@@ -2696,17 +2731,10 @@ function loadPersistedState() {
   if (savedState) {
     try {
       const parsed = JSON.parse(savedState);
-      const restoredBeadSize = hasExplicitBeadSizeSelection(parsed.beadSize) ? normalizeBeadSizeOption(parsed.beadSize) : null;
-      if (restoredBeadSize === MIXED_BEAD_SIZE_MODE) {
-        if (![4, 6, 10].includes(Number(parsed.mixedPlacingSize))) throw new Error('Invalid mixed placing size in persisted state');
-        const invalidMixedStone = (Array.isArray(parsed.selectedStones) ? parsed.selectedStones : []).find((item) => {
-          const type = String(item?.componentType || item?.type || 'stone').trim().toLowerCase();
-          return type === 'stone' && ![4, 6, 10].includes(Number(item?.size));
-        });
-        if (invalidMixedStone) throw new Error('Invalid physical stone size in persisted mixed state');
-      }
       State.wristSize = parsed.wristSize || 16.0;
-      State.beadSize = restoredBeadSize;
+      State.beadSize = hasExplicitBeadSizeSelection(parsed.beadSize)
+        ? normalizeBeadSizeOption(parsed.beadSize)
+        : null;
       State.mixedPlacingSize = normalizeMixedPlacingSize(parsed.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : (State.beadSize || '6'));
       State.mixedSizeFilter = normalizeMixedSizeFilter(parsed.mixedSizeFilter, String(State.mixedPlacingSize));
       State.ownerName = parsed.ownerName || '';
@@ -2820,7 +2848,6 @@ function saveState() {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
-    mixedSizeFilter: State.mixedSizeFilter,
     ownerName: State.ownerName,
     lineUserId: State.lineUserId,
     shippingInfo: normalizeShippingInfo(State.shippingInfo),
@@ -2849,21 +2876,14 @@ function getCanonicalGuestDesignState() {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
     mixedPlacingSize: State.mixedPlacingSize,
+    mixedSizeFilter: State.mixedSizeFilter,
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
     selectedStones: getSelectedLoopItems()
   };
 }
 
 function saveGuestDesignSnapshot() {
-  const canonicalState = getCanonicalGuestDesignState();
-  const snapshot = createGuestDesignSnapshot(canonicalState);
-  if (!snapshot) return { ok: false, reason: 'invalid' };
-
-  // The server handoff is the recovery source for a cross-context LINE return.
-  // Safari storage failures must not prevent a valid Step 3 design from reaching
-  // that handoff; localStorage remains only a same-context fallback.
-  const persisted = writeGuestDesignSnapshot(canonicalState);
-  return persisted.ok ? persisted : { ok: true, snapshot, persistence: 'unavailable' };
+  return writeGuestDesignSnapshot(getCanonicalGuestDesignState());
 }
 
 function restoreGuestDesignSnapshot() {
@@ -2873,17 +2893,17 @@ function restoreGuestDesignSnapshot() {
   const { design, step } = result.snapshot;
   State.wristSize = design.wristSize;
   State.beadSize = design.beadSize;
-  State.mixedPlacingSize = design.mixedPlacingSize;
+  State.mixedPlacingSize = normalizeMixedPlacingSize(design.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
   State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
   syncSelectedCharmState();
   State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
-    if (component.type === 'empty') return { componentType: 'empty', uniqueId: component.uniqueId };
-    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: component.size, uniqueId: component.uniqueId };
-    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id, uniqueId: component.uniqueId };
-    return { componentType: 'spacer', spacerId: component.id, uniqueId: component.uniqueId };
+    if (component.type === 'empty') return null;
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: Number(component.size || getCurrentBeadSizeMm()) };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
+    return { componentType: 'spacer', spacerId: component.id };
   }));
-  State.selectedStones.forEach((item, index) => { item.uniqueId = Number.isInteger(Number(item.uniqueId)) && Number(item.uniqueId) > 0 ? Number(item.uniqueId) : index + 1; });
-  State.uniqueCounter = State.selectedStones.reduce((max, item) => Math.max(max, Number(item.uniqueId) || 0), 0);
+  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
+  State.uniqueCounter = State.selectedStones.length;
   normalizeSelectedStoneSizes();
   State.currentStep = step;
   return result;
@@ -2900,17 +2920,17 @@ function applyCanonicalGuestDesignSnapshot(snapshot, { targetStep = 4 } = {}) {
   const { design } = reconciled.snapshot;
   State.wristSize = design.wristSize;
   State.beadSize = design.beadSize;
-  State.mixedPlacingSize = design.mixedPlacingSize;
+  State.mixedPlacingSize = normalizeMixedPlacingSize(design.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
   State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
   syncSelectedCharmState();
   State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
-    if (component.type === 'empty') return { componentType: 'empty', uniqueId: component.uniqueId };
-    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: component.size, uniqueId: component.uniqueId };
-    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id, uniqueId: component.uniqueId };
-    return { componentType: 'spacer', spacerId: component.id, uniqueId: component.uniqueId };
+    if (component.type === 'empty') return null;
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: Number(component.size || getCurrentBeadSizeMm()) };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
+    return { componentType: 'spacer', spacerId: component.id };
   }));
-  State.selectedStones.forEach((item, index) => { item.uniqueId = Number.isInteger(Number(item.uniqueId)) && Number(item.uniqueId) > 0 ? Number(item.uniqueId) : index + 1; });
-  State.uniqueCounter = State.selectedStones.reduce((max, item) => Math.max(max, Number(item.uniqueId) || 0), 0);
+  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
+  State.uniqueCounter = State.selectedStones.length;
   normalizeSelectedStoneSizes();
   State.currentStep = targetStep === 4 ? 4 : 3;
   State.landingDismissed = true;
@@ -2934,31 +2954,28 @@ async function restoreDeferredCallbackDesignToStep3Fallback() {
   return applyCanonicalGuestDesignSnapshot(localSnapshot.snapshot, { targetStep: 3 }).ok;
 }
 
-async function readDeferredLineAuthHandoff(token) {
+async function consumeDeferredLineAuthHandoff(token) {
   try {
-    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}`);
-    const result = await response.json().catch(() => null);
-    if (!response.ok || !result?.payload?.designSnapshot) {
-      return { ok: false, reason: response.status === 404 ? 'not_found' : 'unavailable' };
+    const handoffUrl = `/api/auth-handoffs/${encodeURIComponent(token)}`;
+    const readResponse = await fetch(handoffUrl);
+    const readResult = await readResponse.json().catch(() => null);
+    if (!readResponse.ok || !readResult?.payload?.designSnapshot) {
+      return { ok: false, reason: readResponse.status === 404 ? 'not_found' : 'unavailable' };
+    }
+    const consumeResponse = await fetch(`${handoffUrl}/consume`, {
+      method: 'POST'
+    });
+    const consumeResult = await consumeResponse.json().catch(() => null);
+    if (!consumeResponse.ok || consumeResult?.consumed !== true) {
+      return { ok: false, reason: consumeResponse.status === 404 ? 'not_found' : 'unavailable' };
     }
     return {
       ok: true,
-      snapshot: result.payload.designSnapshot,
-      analyticsContinuity: result.payload.analyticsContinuity || null
+      snapshot: readResult.payload.designSnapshot,
+      analyticsContinuity: readResult.payload.analyticsContinuity || null
     };
   } catch {
     return { ok: false, reason: 'unavailable' };
-  }
-}
-
-async function consumeDeferredLineAuthHandoff(token) {
-  try {
-    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}/consume`, {
-      method: 'POST'
-    });
-    return response.ok;
-  } catch {
-    return false;
   }
 }
 
@@ -2972,14 +2989,18 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (plan.kind !== 'v2-restore-before-reset') return { ok: false, reason: plan.kind };
 
+  const canEnterStep4 = await canEnterOperationalStep4({ openAddFriend: true });
+  if (!canEnterStep4) {
+    return { ok: false, reason: 'line_oa_friendship_required' };
+  }
+
   await startCustomerCatalogWarmup();
   const restored = await runDormantV2CallbackRestore({
     rawIntent,
     hasLineIdentity: isLineIdentityAvailable(),
     guard: lineCallbackRestoreGuard,
     featureEnabled,
-    retrieveServerHandoff: readDeferredLineAuthHandoff,
-    finalizeServerHandoff: consumeDeferredLineAuthHandoff,
+    consumeServerHandoff: consumeDeferredLineAuthHandoff,
     restoreLocalSnapshot: () => readGuestDesignSnapshot({ catalog: getGuestDesignSnapshotCatalog() }),
     applyCanonicalDesign: async (snapshot, { targetStep }) => {
       const applied = applyCanonicalGuestDesignSnapshot(snapshot, { targetStep });
@@ -2988,28 +3009,10 @@ async function restoreDeferredLineCallbackBeforeReset(rawIntent) {
   });
   if (restored.ok) {
     applyDeferredLineAuthAnalyticsContinuity(restored.analyticsContinuity);
+    lineOaFriendshipRequired = false;
     clearCustomizationLoginIntent();
     clearGuestDesignSnapshot();
-    clearLineCallbackResumeParams();
-
-    // The canonical design is now restored and the handoff is acknowledged.
-    // Keep the restored design mounted while the existing friendship gate runs;
-    // never gate or redirect before this server-first apply has completed.
-    State.currentStep = 3;
-    lineOaFriendshipStep4ResumePending = true;
-    saveState();
-    const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: true });
-    if (canEnterStep4) {
-      lineOaFriendshipStep4ResumePending = false;
-      clearLineOaFriendshipResumePending();
-      lineOaFriendshipRequired = false;
-      State.currentStep = 4;
-      saveState();
-      restored.lineOaFriendshipVerified = true;
-    } else {
-      restored.friendshipPending = true;
-      restored.reason = 'line_oa_friendship_required';
-    }
+    restored.lineOaFriendshipVerified = true;
   }
   return restored;
 }
@@ -3045,13 +3048,6 @@ function clearOAuthQueryParams() {
   const cleanSearch = cleanParams.toString();
   const nextUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`;
   window.history.replaceState({}, document.title, nextUrl);
-}
-
-function clearLineCallbackResumeParams() {
-  const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.delete('line_handoff');
-  nextUrl.searchParams.delete('line_resume');
-  window.history.replaceState({}, document.title, `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
 }
 
 function getRequestedOrderId() {
@@ -3140,16 +3136,8 @@ async function fetchOrdersFromApiUrl(apiUrl) {
 }
 
 function getOrderDetailFallbackApiUrls() {
-  const urls = [];
-  try {
-    const currentOrigin = window.location.origin;
-    if (currentOrigin !== 'https://crm.luckycolorstone.com') {
-      urls.push('https://crm.luckycolorstone.com/api/orders');
-    }
-  } catch {
-    urls.push('https://crm.luckycolorstone.com/api/orders');
-  }
-  return urls;
+  // The UAT branch never falls back to a production CRM order endpoint.
+  return [];
 }
 
 async function findSavedOrderByRequestedId(orderId) {
@@ -3373,7 +3361,7 @@ function hydrateStateFromOrder(order) {
   }
 
   State.beadSize = normalizeBeadSizeOption(order?.beadSize || decodedConfig?.b || State.beadSize);
-  State.mixedPlacingSize = getCurrentBeadSizeMm();
+  State.mixedPlacingSize = normalizeMixedPlacingSize(decodedConfig?.m || order?.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
   State.ownerName = String(order?.customerName || decodedConfig?.n || State.ownerName || '').trim();
   State.lineUserId = typeof order?.lineUserId === 'string' ? order.lineUserId : State.lineUserId;
   State.shippingInfo = normalizeShippingInfo(order?.shippingInfo || {
@@ -3404,6 +3392,7 @@ function hydrateStateFromOrder(order) {
 }
 
 async function loadOrderDetailFromUrlIfNeeded() {
+  if (IS_UAT_MODE) return false;
   const orderId = getRequestedOrderId();
   if (!orderId) return false;
 
@@ -3439,6 +3428,14 @@ async function renderApp() {
   syncShellVisibility();
   renderStepper();
   await renderStepViews();
+  saveState();
+  persistLandingDismissed();
+}
+
+async function renderStep2ToStep3Atomically() {
+  syncShellVisibility();
+  await renderStepViews();
+  renderStepper();
   saveState();
   persistLandingDismissed();
 }
@@ -3517,6 +3514,14 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
     isFull,
     warningText: isFull ? '' : 'กรุณาเลือกหินให้เต็มวงกำไลก่อนดำเนินการต่อ'
   };
+}
+
+function clearInitialLineIdentityCallbackMarker() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('line_auth') !== 'identity') return;
+  params.delete('line_auth');
+  const cleanSearch = params.toString();
+  window.history.replaceState({}, document.title, `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`);
 }
 
 function getCurrentCheckoutFitEligibility() {
@@ -3656,6 +3661,7 @@ async function renderStepViews() {
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
+  const previousStep = State.currentStep;
   if (step === 4) {
     const fitEligibility = getCurrentCheckoutFitEligibility();
     if (!fitEligibility.eligible) {
@@ -3673,7 +3679,11 @@ async function goToStep(step) {
     resetStep3DesignState(`step3-back-to-${step}`);
   }
   State.currentStep = step;
-  await renderApp();
+  if (previousStep === 2 && step === 3) {
+    await renderStep2ToStep3Atomically();
+  } else {
+    await renderApp();
+  }
   trackStepView(step);
   return true;
 }
@@ -3765,7 +3775,7 @@ function setupNavigationEvents() {
       await handleStripeCheckout();
     } else {
       if (State.currentStep === 2 && !hasExplicitBeadSizeSelection()) {
-        showToast('\u0e01\u0e23\u0e38\u0e13\u0e32\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e02\u0e19\u0e32\u0e14\u0e2b\u0e34\u0e19\u0e01\u0e48\u0e2d\u0e19', 3000);
+        showToast('กรุณาเลือกขนาดหินก่อน', 3000);
         return;
       }
       if (State.currentStep === 3) {
@@ -3780,8 +3790,7 @@ function setupNavigationEvents() {
         const deferredAuth = await beginDeferredStep3AuthBoundary();
         if (deferredAuth.handled) {
           if (!deferredAuth.ok) {
-            const code = reportLineHandoffFailure(deferredAuth);
-            showToast(`ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง (${code})`, 3500);
+            showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
           }
           return;
         }
@@ -4241,57 +4250,64 @@ function startStep2SupportRotation() {
 
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
       const targetBeadSize = normalizeBeadSizeOption(card.getAttribute('data-bead-size'));
-      if (State.beadSize === targetBeadSize) return;
 
-      const previousBeadSize = State.beadSize;
-      const convertingFromMixed = previousBeadSize === MIXED_BEAD_SIZE_MODE && targetBeadSize !== MIXED_BEAD_SIZE_MODE;
-      const transition = transitionBraceletSizeMode(State, targetBeadSize, STONES);
-      if (!transition.ok) {
-        showToast('\u0e2b\u0e34\u0e19\u0e1a\u0e32\u0e07\u0e40\u0e21\u0e47\u0e14\u0e44\u0e21\u0e48\u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a\u0e02\u0e19\u0e32\u0e14\u0e17\u0e35\u0e48\u0e40\u0e25\u0e37\u0e2d\u0e01', 3000);
-        return;
+      if (State.beadSize === targetBeadSize) return;
+      const convertingFromMixed = State.beadSize === MIXED_BEAD_SIZE_MODE && targetBeadSize !== MIXED_BEAD_SIZE_MODE;
+
+      if (convertingFromMixed && State.selectedStones.length > 0) {
+        const preview = transitionBraceletSizeMode(State, targetBeadSize, STONES);
+        if (!preview.ok) {
+          const names = preview.unsupportedStones
+            .map(({ stoneId }) => STONES.find((stone) => stone.id === stoneId)?.nameTh || stoneId)
+            .join(', ');
+          showToast(`Cannot convert to ${targetBeadSize}mm. Unsupported stones: ${names}`);
+          return;
+        }
+        const confirmed = await showCustomConfirm(
+          `Convert every placed stone to ${targetBeadSize}mm?`,
+          'Convert bead size'
+        );
+        if (!confirmed) return;
       }
 
-      Object.assign(State, transition.state);
+      const transition = applyBraceletSizeModeTransition(targetBeadSize);
+      if (!transition.ok) {
+        showToast('Some selected stones do not support this bead size.');
+        return;
+      }
       if (convertingFromMixed) {
         const trimResult = trimTrailingOverflowAfterFixedConversion({
           state: State,
           targetLengthMm: getBraceletLengthMm(),
-          getComponentGeometry: createGeometryComponentForLoopItem,
-          fixedGeometryComponents: getAnchoredGeometryComponents()
+          getComponentLengthMm: getLoopItemLengthMm
         });
         Object.assign(State, trimResult.state);
         if (trimResult.removedComponents.length > 0) {
-          console.info('[mixed-to-fixed-trim]', { targetBeadSize, removedComponents: trimResult.removedComponents, geometry: trimResult.geometry });
-          showToast('Removed trailing components to fit the selected bead size.');
+          const removedIds = trimResult.removedComponents
+            .map((component) => component.uniqueId || component.stoneId || component.spacerId || component.charmId || 'component')
+            .join(', ');
+          console.info('[mixed-to-fixed-trim]', { targetBeadSize, removedComponents: trimResult.removedComponents });
+          showToast(`Removed trailing components to fit ${targetBeadSize}mm: ${removedIds}`);
         }
       }
-      if (State.beadSize === MIXED_BEAD_SIZE_MODE && previousBeadSize !== MIXED_BEAD_SIZE_MODE) {
-        State.mixedSizeFilter = String(State.mixedPlacingSize);
-      }
-
       trackAnalyticsEvent('bead_size_selected', {
-        bead_size: State.beadSize
+        bead_size: targetBeadSize
       });
-
-      const enteringMixed = State.beadSize === MIXED_BEAD_SIZE_MODE;
-      const leavingMixed = previousBeadSize === MIXED_BEAD_SIZE_MODE && !enteringMixed;
-      if (!enteringMixed && !leavingMixed) {
+      if (!convertingFromMixed) {
         removeInvalidDesignerItemsForBeadSize({ showToastNotification: true });
       }
 
       DOM.beadSizeCards.forEach(c => {
-        if (c.getAttribute('data-bead-size') === State.beadSize) {
-          c.classList.add('active');
-        } else {
-          c.classList.remove('active');
-        }
+        const active = c.getAttribute('data-bead-size') === State.beadSize;
+        c.classList.toggle('active', active);
+        c.setAttribute('aria-checked', active ? 'true' : 'false');
       });
       
       updateEstimationText();
       
-      if (State.selectedStones.length > 0 && !enteringMixed && !leavingMixed) {
+      if (State.selectedStones.length > 0 && !convertingFromMixed) {
         const newSize = getCurrentBeadSizeMm();
         State.selectedStones.forEach((item) => {
           if (isEmptyLoopSlot(item) || isSelectedSpacerItem(item) || isSelectedCharmItem(item)) return;
@@ -4320,13 +4336,9 @@ function updateEstimationText() {
   }
   
   const size = getCurrentBeadSizeMm();
-  const capacity = size
-    ? (capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size))
-    : null;
+  const capacity = capacityMetrics.uniformCapacity ?? Math.floor(capacityMetrics.usableBeadLengthMm / size);
   if (DOM.estimationCapacityText) {
-    DOM.estimationCapacityText.textContent = size
-      ? `Fits approximately ${capacity} beads (${size}mm).`
-      : '\u0e01\u0e23\u0e38\u0e13\u0e32\u0e40\u0e25\u0e37\u0e2d\u0e01\u0e02\u0e19\u0e32\u0e14\u0e2b\u0e34\u0e19\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e14\u0e39\u0e08\u0e33\u0e19\u0e27\u0e19\u0e42\u0e14\u0e22\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13';
+    DOM.estimationCapacityText.textContent = `Fits approximately ${capacity} beads (${size}mm).`;
   }
 }
 
@@ -4353,7 +4365,8 @@ function adjustBeadsToNewCapacity() {
 
 function renderStep2() {
   DOM.beadSizeCards.forEach(c => {
-    const active = hasExplicitBeadSizeSelection() && c.getAttribute('data-bead-size') === State.beadSize;
+    const active = hasExplicitBeadSizeSelection()
+      && c.getAttribute('data-bead-size') === State.beadSize;
     c.classList.toggle('active', active);
     c.setAttribute('aria-checked', active ? 'true' : 'false');
   });
@@ -4692,10 +4705,10 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
   const loopComponents = braceletComponentList.filter((component) => component.layoutRole === 'loop');
   const anchoredCharmFootprintMm = loopComponents
     .filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType))
-    .reduce((sum, component) => sum + (getComponentPhysicalLengthMm(component) || 0), 0);
+    .reduce((sum, component) => sum + getComponentPhysicalLengthMm(component), 0);
   const sequencedLengthMm = loopComponents
     .filter((component) => component.type !== 'charm' || isSlotPlaceableCharmType(component.charmType))
-    .reduce((sum, component) => sum + (getComponentPhysicalLengthMm(component) || 0), 0);
+    .reduce((sum, component) => sum + getComponentPhysicalLengthMm(component), 0);
   const geometry = createBraceletGeometry({
     components: loopComponents.filter((component) => component.type !== 'empty'),
     targetLengthMm: braceletConfig.braceletLengthMm
@@ -4703,7 +4716,7 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
   const totalUsedLengthMm = geometry.usedLengthMm;
   const braceletLengthMm = braceletConfig.braceletLengthMm;
   const usableBeadLengthMm = Math.max(0, braceletLengthMm - anchoredCharmFootprintMm);
-  const remainingLengthMm = totalUsedLengthMm === null ? 0 : braceletLengthMm - totalUsedLengthMm;
+  const remainingLengthMm = braceletLengthMm - totalUsedLengthMm;
   const uniformCapacity = braceletConfig.beadSizeMode === 'mixed'
     ? null
     : Math.floor(usableBeadLengthMm / braceletConfig.placingSizeMm);
@@ -4716,8 +4729,6 @@ function createBraceletCapacityMetrics(braceletConfig, braceletComponentList) {
     differenceMm: geometry.differenceMm,
     fitStatus: geometry.fitStatus,
     isWithinTolerance: geometry.isWithinTolerance,
-    invalidComponents: geometry.invalidComponents,
-    geometry,
     usableBeadLengthMm,
     remainingLengthMm,
     uniformCapacity,
@@ -5412,12 +5423,7 @@ function buildOrderPricingFromSummary(summary) {
     charmData: summary.charmData,
     spacerData: summary.spacerData,
     itemizedBilling: summary.itemizedBilling,
-    braceletSequence: summary.braceletSequence,
-    stoneVariants: summary.stoneVariants,
-    geometry: summary.geometry,
-    pricingValid: summary.pricingValid,
-    pricingIssues: summary.pricingIssues,
-    clientPriceAuthoritative: false
+    braceletSequence: summary.braceletSequence
   };
 }
 
@@ -5430,14 +5436,6 @@ function getEffectiveDiscountPercent() {
 
 function applyEffectiveDiscountToCheckoutSummary(summary = {}) {
   const nextSummary = { ...summary };
-  if (nextSummary.pricingValid === false) {
-    nextSummary.discount = null;
-    nextSummary.discountAmount = null;
-    nextSummary.netPrice = null;
-    nextSummary.finalPrice = null;
-    nextSummary.totalPrice = null;
-    return nextSummary;
-  }
   const subtotal = Number(nextSummary.subtotal || 0);
   const discountPercent = getEffectiveDiscountPercent();
   const discountAmount = Math.round(subtotal * (discountPercent / 100));
@@ -5456,7 +5454,7 @@ function buildCheckoutSummary() {
   const selectedStoneItems = getSelectedStoneItems();
   const charmData = buildSelectedCharmOrderData();
   const spacerData = buildSelectedSpacerOrderData();
-  const aggregatedStones = {};
+  let aggregatedStones = {};
   const uniqueStoneIds = new Set();
 
   selectedStoneItems.forEach((placedBead) => {
@@ -5488,9 +5486,9 @@ function buildCheckoutSummary() {
     aggregatedStones[key].totalPrice += price;
   });
 
-  const stonePricing = createStonePricingSummary(selectedStoneItems, STONES);
-  Object.keys(aggregatedStones).forEach((key) => delete aggregatedStones[key]);
-  Object.assign(aggregatedStones, stonePricing.variants);
+  // Canonical variant aggregation keeps same-stone 4/6/10 components distinct.
+  aggregatedStones = aggregateStoneVariants(selectedStoneItems, STONES, getStonePriceForSize);
+  const stoneVariants = createStoneVariantPayload(aggregatedStones);
 
   const aggregatedSpacers = spacerData.spacers.reduce((spacerMap, spacer) => {
     const key = `${spacer.spacerId}_${spacer.effectiveLengthMm}`;
@@ -5510,7 +5508,7 @@ function buildCheckoutSummary() {
     return spacerMap;
   }, {});
 
-  const stoneBilling = stonePricing.stoneBilling;
+  const stoneBilling = Object.values(aggregatedStones);
   const charmBilling = charmData.charms.map((charm) => ({
     type: 'charm',
     id: charm.id,
@@ -5529,13 +5527,13 @@ function buildCheckoutSummary() {
   }));
   const spacerBilling = Object.values(aggregatedSpacers);
 
-  const stonesSubtotal = stonePricing.stonesSubtotal;
+  const stonesSubtotal = stoneBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
   const charmSubtotal = charmBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
   const spacerSubtotal = spacerBilling.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
-  const subtotal = stonePricing.valid ? stonesSubtotal + spacerSubtotal + charmSubtotal : null;
+  const subtotal = stonesSubtotal + spacerSubtotal + charmSubtotal;
   const discountPercent = getEffectiveDiscountPercent();
-  const discount = subtotal === null ? null : Math.round(subtotal * (discountPercent / 100));
-  const finalPrice = subtotal === null ? null : subtotal - discount;
+  const discount = Math.round(subtotal * (discountPercent / 100));
+  const finalPrice = subtotal - discount;
   const braceletSequence = createBraceletComponentList().map((component, index) => {
     if (component.type === 'empty') {
       return {
@@ -5608,11 +5606,7 @@ function buildCheckoutSummary() {
   return applyEffectiveDiscountToCheckoutSummary({
     selectedStoneItems,
     aggregatedStones,
-    stoneVariants: stonePricing.stoneVariants,
-    pricingValid: stonePricing.valid,
-    pricingIssues: stonePricing.invalidComponents,
-    clientPriceAuthoritative: false,
-    geometry: getCurrentBraceletCapacityMetrics().geometry,
+    stoneVariants,
     aggregatedSpacers,
     uniqueStoneIds,
     itemizedBilling: [
@@ -5928,6 +5922,7 @@ function renderSpacerOptions() {
 // ==========================================
 function setupDesignerEvents() {
   setupStep3StickyLayer();
+  setupStep3StickyDebugOverlay();
 
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
@@ -5951,15 +5946,12 @@ function setupDesignerEvents() {
     }
   });
 
-  // The mixed selector changes only the physical size assigned to the next stone.
+  // Size toggles in mixed mode
   DOM.mixedToggleBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       if (State.beadSize !== MIXED_BEAD_SIZE_MODE) return;
-      const nextState = withMixedPlacingSize(State, btn.getAttribute('data-size'));
-      State.mixedPlacingSize = nextState.mixedPlacingSize;
-      State.mixedSizeFilter = String(State.mixedPlacingSize);
-      syncMixedSizeSelector();
-      renderCatalogGrid();
+      setMixedStoneSizeFilter(btn.getAttribute('data-size'));
+      renderStep3();
       saveState();
     });
   });
@@ -5975,8 +5967,9 @@ function setupDesignerEvents() {
   setupStep3CategoryHintDismissEvents();
 }
 
-// Keep the approved native sticky preview above the header only while it has
-// reached the Step 3 scrollport edge. This changes hit testing, not geometry.
+// This class changes hit testing only. The visual layering is native sticky
+// stacking; the header remains in place beneath the preview and is restored on
+// scroll-up without a layout or size transition.
 function setupStep3StickyLayer() {
   if (!DOM.appContent || DOM.appContent.dataset.step3StickyLayerReady === 'true') return;
   DOM.appContent.dataset.step3StickyLayerReady = 'true';
@@ -6003,17 +5996,225 @@ function syncStep3StickyLayer() {
   DOM.appContainer.classList.toggle('step3-preview-covered', previewTop <= scrollportTop + 1);
 }
 
-function syncMixedSizeSelector() {
-  const isMixedMode = State.beadSize === MIXED_BEAD_SIZE_MODE;
-  const placementSize = normalizeMixedPlacingSize(State.mixedPlacingSize);
-  if (DOM.mixedSizeSelectorBar) {
-    DOM.mixedSizeSelectorBar.hidden = !isMixedMode;
-  }
-  DOM.mixedToggleBtns.forEach((button) => {
-    const isActive = isMixedMode && Number(button.getAttribute('data-size')) === placementSize;
-    button.classList.toggle('active', isActive);
-    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+// Temporary UAT-only runtime instrumentation. It is inert unless the explicit
+// debug query is present, and reads layout data only.
+let step3StickyDebugOverlay = null;
+let step3StickyDebugOutput = null;
+let step3StickyDebugFramePending = false;
+let step3StickyDebugSafeAreaProbe = null;
+
+function setupStep3StickyDebugOverlay() {
+  if (!STICKY_DEBUG_ENABLED || step3StickyDebugOverlay) return;
+
+  step3StickyDebugOverlay = document.createElement('aside');
+  step3StickyDebugOverlay.id = 'step3StickyDebugOverlay';
+  step3StickyDebugOverlay.className = 'step3-sticky-debug-overlay';
+  step3StickyDebugOverlay.setAttribute('aria-label', 'UAT Step 3 sticky layer debug');
+  step3StickyDebugOverlay.hidden = true;
+  step3StickyDebugOverlay.innerHTML = `
+    <div class="step3-sticky-debug-heading">UAT sticky debug</div>
+    <button type="button" class="step3-sticky-debug-copy">Copy Debug</button>
+    <pre class="step3-sticky-debug-output"></pre>
+  `;
+  document.body.appendChild(step3StickyDebugOverlay);
+  step3StickyDebugOutput = step3StickyDebugOverlay.querySelector('.step3-sticky-debug-output');
+  step3StickyDebugSafeAreaProbe = document.createElement('div');
+  step3StickyDebugSafeAreaProbe.setAttribute('aria-hidden', 'true');
+  step3StickyDebugSafeAreaProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);';
+  document.body.appendChild(step3StickyDebugSafeAreaProbe);
+
+  step3StickyDebugOverlay.querySelector('.step3-sticky-debug-copy').addEventListener('click', async () => {
+    if (!step3StickyDebugOutput) return;
+    try {
+      await navigator.clipboard.writeText(step3StickyDebugOutput.textContent);
+    } catch {
+      // Clipboard availability differs by WebView; the text remains selectable.
+    }
   });
+
+  const schedule = () => scheduleStep3StickyDebugUpdate();
+  DOM.appContent?.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule, { passive: true });
+  window.visualViewport?.addEventListener('resize', schedule, { passive: true });
+  window.visualViewport?.addEventListener('scroll', schedule, { passive: true });
+  const step3View = document.getElementById('stepView3');
+  if (step3View) {
+    step3View.addEventListener('transitionend', schedule, { passive: true });
+    new MutationObserver(schedule).observe(step3View, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  }
+  schedule();
+}
+
+function scheduleStep3StickyDebugUpdate() {
+  if (!STICKY_DEBUG_ENABLED || !step3StickyDebugOverlay || step3StickyDebugFramePending) return;
+  step3StickyDebugFramePending = true;
+  window.requestAnimationFrame(() => {
+    step3StickyDebugFramePending = false;
+    renderStep3StickyDebugOverlay();
+  });
+}
+
+function renderStep3StickyDebugOverlay() {
+  if (!step3StickyDebugOverlay || !step3StickyDebugOutput) return;
+  const isStep3 = State.currentStep === 3;
+  step3StickyDebugOverlay.hidden = !isStep3;
+  if (!isStep3 || !DOM.appContent || !DOM.step3PreviewCard) return;
+
+  const header = document.querySelector('.app-header');
+  const step3View = document.getElementById('stepView3');
+  const workspace = step3View?.querySelector('.designer-workspace');
+  const scrollStyle = window.getComputedStyle(DOM.appContent);
+  const scrollRect = DOM.appContent.getBoundingClientRect();
+  const previewRect = DOM.step3PreviewCard.getBoundingClientRect();
+  const visualViewport = window.visualViewport;
+  const describeElement = (element) => {
+    if (!element) return 'NONE';
+    const className = typeof element.className === 'string' && element.className ? `.${element.className.trim().replace(/\s+/g, '.')}` : '';
+    return `${element.tagName}${element.id ? `#${element.id}` : ''}${className}`;
+  };
+  const hits = [5, 20, 50, 100, 110, 130]
+    .map((y) => `hit y=${y}: ${describeElement(document.elementFromPoint(Math.floor(window.innerWidth / 2), y))}`)
+    .join('\n');
+  const viewport = [
+    `VIEWPORT: inner=${window.innerWidth}x${window.innerHeight} client=${document.documentElement.clientWidth}x${document.documentElement.clientHeight} window.scrollY=${window.scrollY.toFixed(1)}`,
+    visualViewport
+      ? `VISUAL VIEWPORT: ${visualViewport.width.toFixed(1)}x${visualViewport.height.toFixed(1)} offsetTop=${visualViewport.offsetTop.toFixed(1)} pageTop=${visualViewport.pageTop.toFixed(1)} scale=${visualViewport.scale}`
+      : 'VISUAL VIEWPORT: UNSUPPORTED'
+  ].join('\n');
+  const stickyDifference = previewRect.top - scrollRect.top;
+
+  step3StickyDebugOutput.textContent = [
+    'debugSticky=1 | reads only',
+    viewport,
+    getStep3StickySafeAreaAndOffsetDebug(scrollStyle),
+    describeStep3StickyRuntimeElement(DOM.appContainer, 'APP CONTAINER'),
+    describeStep3StickyRuntimeElement(DOM.appContent, 'APP CONTENT'),
+    describeStep3StickyRuntimeElement(header, 'HEADER'),
+    describeStep3StickyRuntimeElement(step3View, 'STEP 3'),
+    describeStep3StickyRuntimeElement(workspace, 'WORKSPACE'),
+    describeStep3StickyRuntimeElement(DOM.step3PreviewCard, 'PREVIEW'),
+    `STICKY: appContent.scrollTop=${DOM.appContent.scrollTop.toFixed(1)} preview.rect.top=${previewRect.top.toFixed(1)} computed.top=${window.getComputedStyle(DOM.step3PreviewCard).top} expected.top=0 difference(preview-appContent)=${stickyDifference.toFixed(1)} geometry-sticky=${previewRect.top <= scrollRect.top + 1}`,
+    `HIT TESTS (pointer-events filtered; not paint-order proof):\n${hits}`,
+    getStep3StickyRuntimeClassAudit(header, step3View),
+    getStep3AnimationDebug(step3View),
+    `PAINT AUDIT:\n${getStep3StickyPaintAudit(step3View)}`,
+    `ACTIVE MOBILE RULES:\n${getActiveStep3StickyMobileRules()}`,
+    `HEADER ANCESTORS: ${getStackingContextAncestry(header)}`,
+    `PREVIEW ANCESTORS: ${getStackingContextAncestry(DOM.step3PreviewCard)}`
+  ].join('\n');
+}
+
+function describeStep3StickyRuntimeElement(element, label) {
+  if (!element) return `${label}: MISSING`;
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  return [
+    `${label}:`,
+    `  position=${style.position} top=${style.top} margin-top=${style.marginTop} padding-top=${style.paddingTop}`,
+    `  transform=${style.transform} z=${style.zIndex} overflow=${style.overflow}/${style.overflowY}/${style.overflowX}`,
+    `  opacity=${style.opacity} isolation=${style.isolation} pointer=${style.pointerEvents}`,
+    `  rect.top=${rect.top.toFixed(1)} rect.bottom=${rect.bottom.toFixed(1)} offsetTop=${element.offsetTop}`
+  ].join('\n');
+}
+
+function getStep3StickySafeAreaAndOffsetDebug(contentStyle) {
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const safeProbeStyle = step3StickyDebugSafeAreaProbe ? window.getComputedStyle(step3StickyDebugSafeAreaProbe) : null;
+  const customOffsets = ['--mobile-safe-bottom', '--sticky-footer-height', '--step-content-bottom-clearance']
+    .map((name) => `${name}=${rootStyle.getPropertyValue(name).trim() || 'UNSET'}`)
+    .join(' ');
+  const appRect = DOM.appContainer?.getBoundingClientRect();
+  return [
+    `SAFE AREA: top=${safeProbeStyle?.paddingTop || 'UNAVAILABLE'} bottom=${safeProbeStyle?.paddingBottom || 'UNAVAILABLE'} ${customOffsets}`,
+    `APP OFFSET: app.rect.top=${appRect ? appRect.top.toFixed(1) : 'MISSING'} content.padding-top=${contentStyle.paddingTop} content.margin-top=${contentStyle.marginTop} content.scroll-padding-top=${contentStyle.scrollPaddingTop}`
+  ].join('\n');
+}
+
+function getStep3StickyRuntimeClassAudit(header, step3View) {
+  const entries = [
+    ['BODY', document.body],
+    ['APP CONTAINER', DOM.appContainer],
+    ['APP CONTENT', DOM.appContent],
+    ['STEP 3', step3View],
+    ['PREVIEW', DOM.step3PreviewCard]
+  ];
+  return `RUNTIME CLASSES/STYLES:\n${entries.map(([label, element]) => `${label}: class=${element?.className || 'NONE'} inline=${element?.getAttribute('style') || 'NONE'}`).join('\n')}`;
+}
+
+function getStep3AnimationDebug(step3View) {
+  if (!step3View) return 'STEP 3 ANIMATION: MISSING';
+  const style = window.getComputedStyle(step3View);
+  return `STEP 3 ANIMATION: name=${style.animationName}; duration=${style.animationDuration}; fill=${style.animationFillMode}; play-state=${style.animationPlayState}; timeline=${style.animationTimeline || 'UNSUPPORTED'}; transition=${style.transition}; opacity=${style.opacity}; transform=${style.transform}`;
+}
+
+function getStep3StickyPaintAudit(step3View) {
+  const preview = DOM.step3PreviewCard;
+  const paintTargets = [
+    ['PREVIEW ROOT', preview, null],
+    ['PREVIEW ::before', preview, '::before'],
+    ['PREVIEW ::after', preview, '::after'],
+    ['CANVAS CARD', step3View?.querySelector('.canvas-card'), null],
+    ['CANVAS CARD ::before', step3View?.querySelector('.canvas-card'), '::before'],
+    ['CANVAS CARD ::after', step3View?.querySelector('.canvas-card'), '::after'],
+    ['INFO ROW', step3View?.querySelector('.canvas-info-row'), null],
+    ['CANVAS CONTAINER', step3View?.querySelector('.canvas-container'), null],
+    ['BRACELET SVG', DOM.braceletSvg, null],
+    ['CONTROLS', step3View?.querySelector('.canvas-controls-bar'), null]
+  ];
+  return paintTargets.map(([label, element, pseudo]) => {
+    if (!element) return `${label}: MISSING`;
+    const style = window.getComputedStyle(element, pseudo);
+    return `${label}: bg=${style.backgroundColor}; bg-image=${style.backgroundImage}; opacity=${style.opacity}; blend=${style.mixBlendMode}; backdrop=${style.backdropFilter || style.webkitBackdropFilter}; filter=${style.filter}; mask=${style.maskImage || style.webkitMaskImage}; clip=${style.clipPath}; radius=${style.borderRadius}; shadow=${style.boxShadow}; content=${pseudo ? style.content : 'ELEMENT'}`;
+  }).join('\n');
+}
+
+function getActiveStep3StickyMobileRules() {
+  const targets = ['.app-content', '.app-header', '#stepView3', '.designer-workspace', '.canvas-card', '#step3PreviewCard'];
+  const properties = ['position', 'top', 'margin-top', 'padding-top', 'height', 'min-height', 'transform', 'overflow', 'overflow-y', 'overflow-x', 'z-index'];
+  const matches = [];
+  const collect = (rules, mediaText = '') => {
+    Array.from(rules || []).forEach((rule) => {
+      if (rule.type === CSSRule.MEDIA_RULE) {
+        if (window.matchMedia(rule.conditionText).matches) collect(rule.cssRules, rule.conditionText);
+        return;
+      }
+      if (!mediaText || rule.type !== CSSRule.STYLE_RULE || !targets.some((target) => rule.selectorText?.includes(target))) return;
+      const declarations = properties
+        .filter((property) => rule.style.getPropertyValue(property))
+        .map((property) => `${property}=${rule.style.getPropertyValue(property).trim()}`)
+        .join(', ');
+      if (declarations) matches.push(`${mediaText} | ${rule.selectorText} | ${declarations}`);
+    });
+  };
+  Array.from(document.styleSheets).forEach((sheet) => {
+    try {
+      collect(sheet.cssRules);
+    } catch {
+      // Cross-origin stylesheets (for example font imports) do not expose cssRules.
+    }
+  });
+  return matches.length > 0 ? matches.join('\n') : 'NONE';
+}
+
+function getStackingContextAncestry(element) {
+  const contexts = [];
+  for (let current = element?.parentElement; current; current = current.parentElement) {
+    const style = window.getComputedStyle(current);
+    const reasons = [];
+    if (style.transform !== 'none') reasons.push('transform');
+    if (style.filter !== 'none') reasons.push('filter');
+    if (Number(style.opacity) < 1) reasons.push('opacity');
+    if (style.isolation === 'isolate') reasons.push('isolation');
+    if (style.contain !== 'none') reasons.push('contain');
+    if (style.willChange !== 'auto') reasons.push('will-change');
+    if (style.perspective !== 'none') reasons.push('perspective');
+    if (style.position !== 'static' && style.zIndex !== 'auto') reasons.push(`position+z(${style.zIndex})`);
+    if (reasons.length > 0) contexts.push(`${current.tagName}${current.id ? `#${current.id}` : ''}${current.className ? `.${String(current.className).trim().replace(/\s+/g, '.')}` : ''}[${reasons.join(',')}]`);
+  }
+  return contexts.length > 0 ? contexts.join(' > ') : 'NONE';
 }
 
 function setupStep3CategoryHintDismissEvents() {
@@ -6091,7 +6292,17 @@ function syncCatalogSectionFilter() {
     catalogContainer.style.display = safeActiveSection === 'stones' ? '' : 'none';
   }
 
-  syncMixedSizeSelector();
+  if (DOM.mixedSizeSelectorBar) {
+    if (!['4', '6', '10'].includes(String(State.mixedSizeFilter))) {
+      State.mixedSizeFilter = String(normalizeMixedPlacingSize(State.mixedPlacingSize));
+    }
+    DOM.mixedSizeSelectorBar.hidden = State.beadSize !== MIXED_BEAD_SIZE_MODE;
+    DOM.mixedToggleBtns.forEach((button) => {
+      const active = button.getAttribute('data-size') === State.mixedSizeFilter;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
 
   if (DOM.charmSectionMount) {
     DOM.charmSectionMount.hidden = safeActiveSection === 'stones';
@@ -6162,7 +6373,7 @@ function renderCatalogGrid() {
   
   // Filter out of stock items
   const availableStones = applyCatalogLayoutOrder(
-    STONES.filter((stone) => isCustomerCatalogItemAvailable(stone) && isStoneAvailableForCurrentBeadSize(stone)),
+    STONES.filter((stone) => isCustomerCatalogItemAvailable(stone) && isStoneVisibleForCurrentSizeFilter(stone)),
     'stones'
   );
   
@@ -6172,8 +6383,9 @@ function renderCatalogGrid() {
     
   let berylCatalogPreview = null;
   filtered.forEach(stone => {
-    const catalogCurrentSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-    const catalogPrice = getStonePriceForSize(stone, catalogCurrentSize);
+    const catalogCurrentSize = getCurrentBeadSizeMm();
+    const hasExplicitPlacementSize = State.beadSize !== MIXED_BEAD_SIZE_MODE || stoneSupportsSize(stone, catalogCurrentSize);
+    const catalogPrice = hasExplicitPlacementSize ? getStonePriceForSize(stone, catalogCurrentSize) : null;
     const selectedCount = selectedStoneCounts[stone.id] || 0;
     const card = buildStoneCard({
       dataAttributeName: 'stone-id',
@@ -6184,7 +6396,7 @@ function renderCatalogGrid() {
       imageAlt: stone.name,
       nameTh: stone.nameTh,
       nameEn: stone.name,
-      priceText: formatDisplayPrice(catalogPrice),
+      priceText: catalogPrice === null ? 'Select a size' : formatDisplayPrice(catalogPrice),
       isSelected: selectedCount > 0,
       selectedClassName: 'stone-card-selected',
       onCardClick: () => addStoneToBracelet(stone.id),
@@ -6255,14 +6467,17 @@ function placeLoopItemInFirstAvailableSlot(loopItem) {
 function fillEntireBracelet(stoneId) {
   const stoneData = STONES.find(s => s.id === stoneId);
   if (!stoneData) return;
+  if (State.beadSize === MIXED_BEAD_SIZE_MODE && getMixedPlacementSizeForStone(stoneData, State.mixedPlacingSize) === null) {
+    showToast(`Select a supported 4mm, 6mm, or 10mm size for ${stoneData.nameTh || stoneId}.`);
+    return;
+  }
   if (!isCustomerCatalogItemAvailable(stoneData) || !isStoneAvailableForCurrentBeadSize(stoneData)) {
     trackAnalyticsEvent('stock_unavailable', { item_type: 'stone', item_id: stoneId, source: 'fill_all' });
     showToast(STOCK_UNAVAILABLE_TOAST);
     return;
   }
   
-  const placedSize = getCurrentBeadSizeMm();
-  if (!Number.isFinite(placedSize)) return;
+  const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
   let { availableLengthMm } = getAvailableLengthForNewLoopItem();
   const stockQty = normalizeStockQtyForCustomer(stoneData.stockQty ?? stoneData.stock_qty);
   let remainingStockQty = stockQty === null
@@ -6333,8 +6548,9 @@ function addStoneToBracelet(stoneId) {
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
-  
   const placementEligibility = getCurrentPlacementEligibility(placedSize);
+
+  // Placement and Step 3 completion both use the shared target-plus-five physical-capacity boundary.
   if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดหินที่จะใส่: ${placedSize}mm)`);
     return;
@@ -6554,7 +6770,6 @@ function createBraceletComponentList() {
         layoutRole: 'loop',
         sourceIndex: index,
         stoneId: item.stoneId,
-        size: item.size,
         sizeMm: item.size,
         visualImage,
         uniqueId: item.uniqueId
@@ -7295,7 +7510,7 @@ function renderStep3() {
   const totalDiameter = validationState.totalDiameter;
   const remainingSpace = validationState.remainingSpace;
   
-  syncMixedSizeSelector();
+  syncCatalogSectionFilter();
   
   // Render statistics text
   DOM.canvasPriceText.textContent = `฿${pricing.subtotal.toLocaleString()}`;
@@ -7334,12 +7549,6 @@ function renderStep3() {
   const remainingSpaceText = `เหลือ ${remainingSpace.toFixed(1)} mm`;
   DOM.canvasSpaceText.textContent = remainingSpaceText;
   
-  // Update mixed space context if exists
-  const mixedSpaceText = document.getElementById('mixedSpaceText');
-  if (mixedSpaceText) {
-    mixedSpaceText.textContent = remainingSpaceText;
-  }
-  
   // Update wrist context label
   const wristContext = document.getElementById('canvasWristContext');
   if (wristContext) {
@@ -7348,7 +7557,7 @@ function renderStep3() {
   
   // Center label inside circular design canvas
   DOM.canvasCenterValue.textContent = `${State.wristSize.toFixed(1)} cm`;
-  if (validationState.isOverflow || remainingSpace <= 1.0) {
+  if (validationState.isOverflow || validationState.isFull) {
     DOM.canvasCenterSub.textContent = "Full Capacity";
     DOM.canvasCenterSub.className = "center-subvalue overflow";
   } else {
@@ -7966,6 +8175,7 @@ function buildCurrentOrderPayload(overrides = {}) {
         size: stone.size
       };
     }),
+    stoneVariants: createStoneVariantPayload(pricing.aggregatedStones),
     subtotal: pricing.subtotal,
     discountPercent: pricing.discountPercent,
     discountAmount: pricing.discountAmount,
@@ -8036,6 +8246,7 @@ function activatePaymentCompletedView(savedOrder = null) {
 }
 
 async function handleStripeReturnIfNeeded() {
+  if (IS_UAT_MODE) return;
   const params = new URLSearchParams(window.location.search);
   const stripeState = params.get('stripe');
   if (!stripeState) return;
@@ -8120,12 +8331,22 @@ async function handleStripeReturnIfNeeded() {
 }
 
 async function handleStripeCheckout() {
+  if (IS_UAT_MODE) {
+    showToast('UAT: checkout and payment are disabled.');
+    return;
+  }
   if (State.orderDetailMode || State.paymentCompletedView) {
     showToast("This order has already been created.");
     return;
   }
 
   ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
+
+  const fitEligibility = getCurrentCheckoutFitEligibility();
+  if (!fitEligibility.eligible) {
+    showToast(fitEligibility.reason);
+    return;
+  }
 
   if (getSelectedStoneItems().length === 0) {
     showToast("Bracelet is empty!");
@@ -9073,6 +9294,10 @@ function renderBraceletShowcaseFallback(previewKey = '') {
 
 // Submit Order to CRM backend database
 async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
+  if (IS_UAT_MODE) {
+    if (showToastNotification) showToast('UAT: order creation is disabled.');
+    return null;
+  }
   ensureCurrentDesignMatchesBeadSize({ showToastNotification });
 
   if (getSelectedStoneItems().length === 0) {
@@ -9204,6 +9429,10 @@ async function submitOrderToCRM(showToastNotification = true, overrides = {}) {
 
 // Generate Formatted LINE Order Message & Redirection
 async function handleLineOrder() {
+  if (IS_UAT_MODE) {
+    showToast('UAT: LINE notifications and order creation are disabled.');
+    return;
+  }
   // First, submit order to CRM database so it syncs immediately
   const savedOrder = await submitOrderToCRM(false);
   if (!savedOrder) return;

@@ -1250,10 +1250,11 @@ export let SPACER_RECORDS = [];
 
 // --- Price calculation helper based on bead size ---
 export function getStonePriceForSize(stone, size) {
-  const sz = Number(size);
-  const field = sz === 4 ? 'p4' : sz === 6 ? 'p6' : sz === 10 ? 'p10' : null;
-  const price = field ? Number(stone?.[field]) : NaN;
-  return Number.isFinite(price) && price >= 0 ? price : null;
+  if (!stone) return 0;
+  const sz = parseInt(size);
+  if (sz === 4) return stone.p4 !== undefined ? stone.p4 : (stone.price || 0);
+  if (sz === 10 || sz === 8) return stone.p10 !== undefined ? stone.p10 : (stone.p8 ?? stone.price ?? 0);
+  return stone.p6 !== undefined ? stone.p6 : (stone.price || 0); // default to 6mm
 }
 
 // --- Asynchronous API Helpers ---
