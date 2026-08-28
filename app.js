@@ -55,6 +55,15 @@ const IS_UAT_MODE = APP_ENV === 'uat';
 const LINE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('line_debug') === '1';
 const DELETE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('delete_debug') === '1';
 const SLOT_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('slot_debug') === '1';
+// UAT-only, opt-in real-device SVG forensic capture. This does not participate
+// in placement, capacity, completion, or checkout behaviour.
+const SLOT_FORENSICS_ENABLED = IS_UAT_MODE && urlParams.get('slot_forensics') === '1';
+const slotForensics = {
+  actionSequence: 0,
+  renderSequence: 0,
+  pendingState: null,
+  captures: {}
+};
 const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
 const STICKY_DEBUG_ENABLED = false;
@@ -6568,6 +6577,7 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
     State.selectedStones.push(loopItem);
   }
 
+  markSlotForensicsAction('STATE_C_AFTER_ONE_READD');
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -6621,6 +6631,7 @@ function addStoneToBracelet(stoneId) {
     State.selectedStones.push(newBead);
   }
   
+  markSlotForensicsAction('STATE_C_AFTER_ONE_READD');
   renderStep3();
   saveState();
   
@@ -6676,6 +6687,7 @@ function addSpacerToBracelet(spacerId) {
     State.selectedStones.push(newSpacer);
   }
 
+  markSlotForensicsAction('STATE_C_AFTER_ONE_READD');
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -6699,6 +6711,7 @@ function removeLoopItemFromBracelet(index, showToastNotification = true, event =
   if (resolvedIndex < 0 || resolvedIndex >= State.selectedStones.length) return;
   const removed = State.selectedStones[resolvedIndex];
   if (isEmptyLoopSlot(removed)) return;
+  captureSlotForensics('STATE_A_BEFORE_DELETE', createCurrentBraceletResolvedLayout());
   const occupiedBefore = getSelectedLoopItems().filter((item) => !isEmptyLoopSlot(item)).length;
   const emptyBefore = getSelectedLoopItems().filter((item) => isEmptyLoopSlot(item)).length;
   deleteMutationSequence += 1;
@@ -6716,6 +6729,7 @@ function removeLoopItemFromBracelet(index, showToastNotification = true, event =
     return;
   }
   State.activeSlotIndex = null;
+  markSlotForensicsAction('STATE_B_AFTER_ONE_DELETE');
   if (showToastNotification) {
     if (isSelectedSpacerItem(removed)) {
       showToast(`${CUSTOMER_COMPONENT_LABELS.spacer} removed.`);
@@ -6957,6 +6971,11 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       index,
       kind: item.kind,
       sizeMm: item.sizeMm,
+      placeholderSubtype: item.isRetainedSlot
+        ? 'RETAINED_EMPTY'
+        : item.isTrailingCapacityPlaceholder
+          ? 'TRAILING_PLACEHOLDER'
+          : null,
       itemAngleWidth,
       centerAngle,
       centerX,
@@ -7224,6 +7243,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
   bgRing.setAttribute("stroke", "url(#creamWhiteGradient)");
   bgRing.setAttribute("stroke-width", "10");
   bgRing.setAttribute("opacity", "0.6");
+  bgRing.dataset.forensicsRole = 'DECORATIVE_PLACEHOLDER_RAIL';
   svg.appendChild(bgRing);
 
   nodes.forEach((node) => {
@@ -7234,7 +7254,9 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
     // Group element for bead visual nodes
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.dataset.slotSourceIndex = Number.isInteger(node.sourceIndex) ? String(node.sourceIndex) : '';
+    group.dataset.slotResolvedIndex = String(node.index);
     group.dataset.slotKind = node.kind === 'component' ? (node.component?.type || 'component') : 'empty';
+    group.dataset.placeholderSubtype = node.placeholderSubtype || '';
     group.dataset.slotId = String(node.component?.uniqueId || node.sourceIndex || node.index);
 
     if (node.isPlaced) {
@@ -7514,6 +7536,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 }
 
 function renderSlotDebugTrace(resolvedLayout) {
+  capturePendingSlotForensics(resolvedLayout);
   if (!SLOT_DEBUG_ENABLED) return;
   let output = document.getElementById('slotDebugOutput');
   if (!output) {
@@ -7531,6 +7554,186 @@ function renderSlotDebugTrace(resolvedLayout) {
     return { SLOT: slot.slotId, SOURCE_INDEX: slot.sourceIndex, CANONICAL_KIND: slot.kind, LIST_KIND: list?.type || 'missing', RESOLVED_KIND: node ? (node.kind === 'component' ? node.component?.type : 'empty') : 'missing', DOM_KIND: dom?.dataset.slotKind || 'missing' };
   });
   output.textContent = rows.map((row) => JSON.stringify(row)).join('\n');
+}
+
+function markSlotForensicsAction(stateName) {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  slotForensics.actionSequence += 1;
+  slotForensics.pendingState = stateName;
+}
+
+function getForensicNodeDom(node) {
+  return DOM.braceletSvg?.querySelector(`[data-slot-resolved-index="${node.index}"]`) || null;
+}
+
+function getForensicImageHref(domNode) {
+  const image = domNode?.querySelector('image');
+  return image?.getAttribute('href') || image?.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || null;
+}
+
+function getForensicRenderSizeMm(node) {
+  return Number(node?.component?.renderSizeMm ?? node?.sizeMm ?? 0);
+}
+
+function getForensicNeighborDistances(nodes, circumferenceMm) {
+  const placed = nodes.filter((node) => node.isPlaced && Number.isFinite(node.centerAngle));
+  if (placed.length < 2 || !Number.isFinite(circumferenceMm) || circumferenceMm <= 0) return [];
+  return placed.map((node, index) => {
+    const next = placed[(index + 1) % placed.length];
+    const angleDelta = (next.centerAngle - node.centerAngle + (2 * Math.PI)) % (2 * Math.PI);
+    const arcMm = angleDelta / (2 * Math.PI) * circumferenceMm;
+    const expectedVisualSpacingMm = (getForensicRenderSizeMm(node) + getForensicRenderSizeMm(next)) / 2;
+    return {
+      fromSourceIndex: node.sourceIndex ?? null,
+      toSourceIndex: next.sourceIndex ?? null,
+      angleDeltaDeg: Number((angleDelta * 180 / Math.PI).toFixed(4)),
+      expectedVisualSpacingMm: Number(expectedVisualSpacingMm.toFixed(4)),
+      actualVisualSpacingMm: Number(arcMm.toFixed(4)),
+      visualGapMm: Number((arcMm - expectedVisualSpacingMm).toFixed(4)),
+      componentSizesMm: [getForensicRenderSizeMm(node), getForensicRenderSizeMm(next)]
+    };
+  });
+}
+
+function classifySlotForensics(nodeRows, neighborDistances) {
+  const placeholder = nodeRows.find((row) => row.dom?.class?.includes('placeholder'));
+  if (placeholder) {
+    return {
+      type: placeholder.placeholderSubtype || 'OTHER',
+      sourceIndex: placeholder.sourceIndex,
+      gapArcMm: placeholder.sizeMm
+    };
+  }
+  const abnormal = neighborDistances.find((row) => row.visualGapMm > 1);
+  return abnormal
+    ? { type: 'ANGLE_GAP_WITH_NO_NODE', sourceIndex: abnormal.fromSourceIndex, gapArcMm: abnormal.visualGapMm }
+    : { type: 'NONE', sourceIndex: null, gapArcMm: 0 };
+}
+
+function captureSlotForensics(stateName, resolvedLayout = createCurrentBraceletResolvedLayout()) {
+  if (!SLOT_FORENSICS_ENABLED || !DOM.braceletSvg) return null;
+  slotForensics.renderSequence += 1;
+  const canonical = State.selectedStones.map((item, sourceIndex) => ({
+    sourceIndex,
+    uniqueId: item?.uniqueId ?? null,
+    kind: isEmptyLoopSlot(item) ? 'empty' : item?.componentType || 'stone',
+    isEmpty: isEmptyLoopSlot(item),
+    sizeMm: Number(item?.size || 0),
+    renderSizeMm: getLoopItemRenderSizeMm(item),
+    physicalLengthMm: getLoopItemLengthMm(item)
+  }));
+  const listBySourceIndex = new Map(resolvedLayout.braceletComponentList.map((item) => [item.sourceIndex, item]));
+  const nodeRows = resolvedLayout.nodes.map((node) => {
+    const domNode = getForensicNodeDom(node);
+    const component = node.component || null;
+    return {
+      sourceIndex: node.sourceIndex ?? null,
+      slotIndex: node.index,
+      uniqueId: component?.uniqueId ?? canonical.find((item) => item.sourceIndex === node.sourceIndex)?.uniqueId ?? null,
+      kind: component?.type || 'empty',
+      isEmpty: !node.isPlaced,
+      sizeMm: node.sizeMm,
+      renderSizeMm: getForensicRenderSizeMm(node),
+      physicalLengthMm: component ? getLoopItemLengthMm(State.selectedStones[node.sourceIndex]) : 0,
+      resolvedNodeType: node.kind,
+      placeholderSubtype: node.placeholderSubtype || null,
+      angleDeg: Number((node.centerAngle * 180 / Math.PI).toFixed(4)),
+      angleWidthDeg: Number((node.itemAngleWidth * 180 / Math.PI).toFixed(4)),
+      center: { x: Number(node.centerX.toFixed(4)), y: Number(node.centerY.toFixed(4)) },
+      dom: {
+        nodeType: domNode?.tagName || 'MISSING_COMPONENT_NODE',
+        class: domNode?.getAttribute('class') || null,
+        transform: domNode?.getAttribute('transform') || null,
+        imageHref: getForensicImageHref(domNode)
+      },
+      componentList: listBySourceIndex.get(node.sourceIndex) || null
+    };
+  });
+  const neighborDistances = getForensicNeighborDistances(resolvedLayout.nodes, resolvedLayout.summary.loopCircumferenceMm);
+  const visibleGap = classifySlotForensics(nodeRows, neighborDistances);
+  const domPlaceholders = nodeRows.filter((row) => row.dom.class?.includes('placeholder'));
+  const oldSizeMetadataActive = nodeRows.some((row) => {
+    if (row.isEmpty || row.sourceIndex === null) return false;
+    const canonicalItem = canonical.find((item) => item.sourceIndex === row.sourceIndex);
+    return canonicalItem && (row.sizeMm !== canonicalItem.physicalLengthMm || row.renderSizeMm !== canonicalItem.renderSizeMm);
+  });
+  const snapshot = {
+    state: stateName,
+    ACTION_SEQUENCE: slotForensics.actionSequence,
+    RENDER_SEQUENCE: slotForensics.renderSequence,
+    TOTAL_CANONICAL_ITEMS: canonical.length,
+    TOTAL_COMPONENT_LIST_ITEMS: resolvedLayout.braceletComponentList.length,
+    TOTAL_RESOLVED_NODES: nodeRows.length,
+    TOTAL_DOM_COMPONENT_NODES: DOM.braceletSvg.querySelectorAll('.bead-node').length,
+    complete: Boolean(resolvedLayout.summary.completionEligibility?.complete),
+    canonical,
+    nodes: nodeRows,
+    decorativeSvgNodes: Array.from(DOM.braceletSvg.querySelectorAll('[data-forensics-role]')).map((node) => ({
+      type: node.tagName,
+      role: node.dataset.forensicsRole,
+      class: node.getAttribute('class'),
+      transform: node.getAttribute('transform')
+    })),
+    neighborDistances,
+    anomaly: {
+      VISIBLE_GAP_NODE: visibleGap.type,
+      VISIBLE_GAP_SOURCE_INDEX: visibleGap.sourceIndex,
+      VISIBLE_GAP_ARC_MM: visibleGap.gapArcMm,
+      OLD_SIZE_METADATA_ACTIVE_AFTER_READD: oldSizeMetadataActive ? 'YES' : 'NO',
+      CANONICAL_EMPTY: canonical.filter((item) => item.isEmpty).length,
+      RESOLVED_EMPTY: nodeRows.filter((item) => item.isEmpty).length,
+      DOM_PLACEHOLDER: domPlaceholders.length,
+      COMPLETE: resolvedLayout.summary.completionEligibility?.complete ? 'YES' : 'NO',
+      GAP_WITHOUT_EMPTY_NODE: visibleGap.type === 'ANGLE_GAP_WITH_NO_NODE' ? 'YES' : 'NO',
+      ABNORMAL_ANGULAR_GAP_FOUND: neighborDistances.some((row) => row.visualGapMm > 1) ? 'YES' : 'NO'
+    }
+  };
+  slotForensics.captures[stateName] = snapshot;
+  window.__slotForensics = slotForensics;
+  renderSlotForensicsOverlay(snapshot);
+  return snapshot;
+}
+
+function capturePendingSlotForensics(resolvedLayout) {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  captureSlotForensics(slotForensics.pendingState || 'RENDER', resolvedLayout);
+  slotForensics.pendingState = null;
+}
+
+function renderSlotForensicsOverlay(snapshot) {
+  let output = document.getElementById('slotForensicsOutput');
+  if (!output) {
+    output = document.createElement('pre');
+    output.id = 'slotForensicsOutput';
+    output.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:100000;max-width:58vw;max-height:44vh;overflow:auto;margin:0;padding:8px;background:#111;color:#f7f2e8;border:1px solid #a77b45;font:10px/1.4 monospace;white-space:pre-wrap;pointer-events:auto;';
+    document.body.appendChild(output);
+    const controls = document.createElement('div');
+    controls.id = 'slotForensicsControls';
+    controls.style.cssText = 'position:fixed;left:8px;bottom:calc(44vh + 12px);z-index:100001;display:flex;gap:4px;';
+    [
+      ['STATE_A_BEFORE_DELETE', 'Capture A'],
+      ['STATE_B_AFTER_ONE_DELETE', 'Capture B'],
+      ['STATE_C_AFTER_ONE_READD', 'Capture C']
+    ].forEach(([stateName, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', () => captureSlotForensics(stateName));
+      controls.appendChild(button);
+    });
+    document.body.appendChild(controls);
+  }
+  const anomaly = snapshot.anomaly;
+  output.textContent = [
+    `${snapshot.state} action=${snapshot.ACTION_SEQUENCE} render=${snapshot.RENDER_SEQUENCE}`,
+    `VISIBLE_GAP_NODE: ${anomaly.VISIBLE_GAP_NODE}/${anomaly.VISIBLE_GAP_SOURCE_INDEX ?? 'NONE'}`,
+    `VISIBLE_GAP_ARC_MM: ${anomaly.VISIBLE_GAP_ARC_MM}`,
+    `OLD_SIZE_METADATA_ACTIVE_AFTER_READD: ${anomaly.OLD_SIZE_METADATA_ACTIVE_AFTER_READD}`,
+    `CANONICAL_EMPTY: ${anomaly.CANONICAL_EMPTY} | RESOLVED_EMPTY: ${anomaly.RESOLVED_EMPTY} | DOM_PLACEHOLDER: ${anomaly.DOM_PLACEHOLDER}`,
+    `COMPLETE: ${anomaly.COMPLETE} | GAP_WITHOUT_EMPTY_NODE: ${anomaly.GAP_WITHOUT_EMPTY_NODE}`,
+    `ABNORMAL_ANGULAR_GAP_FOUND: ${anomaly.ABNORMAL_ANGULAR_GAP_FOUND}`,
+    'Full JSON: window.__slotForensics.captures (copy from device remote console)'
+  ].join('\n');
 }
 
 // Setup SVG defs for sheen gradient
