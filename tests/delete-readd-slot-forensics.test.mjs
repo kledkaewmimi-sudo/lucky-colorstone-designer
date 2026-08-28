@@ -52,6 +52,13 @@ test('slot forensics is UAT-only and records source, SVG, metadata, and neighbor
   });
   assert.match(app, /compareSlotForensicsSnapshots/);
   assert.match(app, /JSON\.stringify\(slotForensics, null, 2\)/);
+  assert.match(app, /navigator\.clipboard\?\.writeText/);
+  assert.match(app, /slotForensicsExportModal/);
+  assert.match(app, /textarea\.readOnly = true/);
+  assert.match(app, /document\.execCommand\('copy'\)/);
+  assert.match(app, /Download Trace JSON/);
+  assert.match(app, /application\/json/);
+  assert.match(app, /EXPORT HISTORY COUNT/);
 });
 
 test('Step 2 UAT trace is query-gated and records selection, validation, navigation, and mobile export evidence', () => {

@@ -64,7 +64,13 @@ const slotForensics = {
   renderSequence: 0,
   pendingState: null,
   captures: {},
-  history: []
+  history: [],
+  exportStatus: {
+    method: 'NONE',
+    snapshotCount: 0,
+    historyCount: 0,
+    success: 'NO'
+  }
 };
 const step2Debug = {
   sequence: 0,
@@ -7922,6 +7928,107 @@ function renderStep2DebugPanel(entry = getStep2DebugState()) {
   ].join('\n');
 }
 
+function updateSlotForensicsExportStatus(method, success) {
+  slotForensics.exportStatus = {
+    method,
+    snapshotCount: Object.keys(slotForensics.captures).length,
+    historyCount: slotForensics.history.length,
+    success: success ? 'YES' : 'NO'
+  };
+  window.__slotForensics = slotForensics;
+  const latest = slotForensics.history[slotForensics.history.length - 1];
+  if (latest) renderSlotForensicsOverlay(latest);
+}
+
+function formatSlotForensicsExportTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function downloadSlotForensicsTrace(trace) {
+  const blob = new Blob([trace], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `slot-forensics-${formatSlotForensicsExportTimestamp()}.json`;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  updateSlotForensicsExportStatus('DOWNLOAD', true);
+}
+
+function openSlotForensicsExportModal(trace) {
+  document.getElementById('slotForensicsExportModal')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'slotForensicsExportModal';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Slot forensics trace export');
+  overlay.style.cssText = 'position:fixed!important;inset:0;z-index:2147483647!important;display:flex!important;align-items:center;justify-content:center;padding:12px;background:rgba(0,0,0,.72);pointer-events:auto;';
+  const modal = document.createElement('section');
+  modal.style.cssText = 'display:flex;flex-direction:column;width:min(96vw,620px);max-height:90vh;padding:12px;background:#111;color:#fff;border:3px solid #ffd166;border-radius:10px;font:12px/1.35 system-ui,sans-serif;';
+  const heading = document.createElement('strong');
+  heading.textContent = 'FULL SLOT FORENSICS TRACE';
+  modal.appendChild(heading);
+  const help = document.createElement('p');
+  help.textContent = 'Clipboard is unavailable in this browser. Select All, Copy, or Download the complete ordered history.';
+  help.style.cssText = 'margin:6px 0;';
+  modal.appendChild(help);
+  const textarea = document.createElement('textarea');
+  textarea.readOnly = true;
+  textarea.value = trace;
+  textarea.setAttribute('aria-label', 'Complete slot forensics JSON trace');
+  textarea.style.cssText = 'display:block;width:100%;min-height:42vh;resize:vertical;overflow:auto;padding:8px;background:#fff;color:#111;border:0;border-radius:4px;font:10px/1.35 monospace;';
+  modal.appendChild(textarea);
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;';
+  const createButton = (label) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.style.cssText = 'min-height:34px;padding:5px 8px;border:0;border-radius:4px;background:#ffd166;color:#111;font-weight:800;';
+    controls.appendChild(button);
+    return button;
+  };
+  const selectAll = createButton('Select All');
+  selectAll.addEventListener('click', () => {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+  });
+  const copy = createButton('Copy');
+  copy.addEventListener('click', () => {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = typeof document.execCommand === 'function' && document.execCommand('copy');
+    // The selectable full-text export remains usable even when WebView blocks execCommand.
+    updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', true);
+    copy.textContent = copied ? 'Copied' : 'Selected — long-press to copy';
+  });
+  const download = createButton('Download Trace JSON');
+  download.addEventListener('click', () => downloadSlotForensicsTrace(trace));
+  const close = createButton('Close');
+  close.addEventListener('click', () => overlay.remove());
+  modal.appendChild(controls);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', true);
+}
+
+async function exportSlotForensicsTrace() {
+  const trace = JSON.stringify(slotForensics, null, 2);
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+    await navigator.clipboard.writeText(trace);
+    updateSlotForensicsExportStatus('CLIPBOARD', true);
+    return;
+  } catch {
+    openSlotForensicsExportModal(trace);
+  }
+}
+
 function setupSlotForensicsPanel() {
   if (!SLOT_FORENSICS_ENABLED || document.getElementById('slotForensicsPanel')) return;
   window.__slotForensics = slotForensics;
@@ -7955,15 +8062,7 @@ function setupSlotForensicsPanel() {
   exportButton.type = 'button';
   exportButton.textContent = 'Export / Copy Trace';
   exportButton.style.cssText = 'display:inline-block!important;min-height:32px;padding:4px 7px;background:#ffd166;color:#111;border:1px solid #ffd166;border-radius:4px;font-weight:800;';
-  exportButton.addEventListener('click', async () => {
-    const trace = JSON.stringify(slotForensics, null, 2);
-    try {
-      await navigator.clipboard.writeText(trace);
-      exportButton.textContent = 'Trace copied';
-    } catch {
-      window.prompt('Copy slot forensics trace:', trace);
-    }
-  });
+  exportButton.addEventListener('click', exportSlotForensicsTrace);
   controls.appendChild(exportButton);
   panel.appendChild(controls);
   const output = document.createElement('pre');
@@ -7992,6 +8091,10 @@ function renderSlotForensicsOverlay(snapshot) {
     `FIRST POST-READD CAPTURE: ${slotForensics.history.some((item) => item.state === 'STATE_F_FIRST_RENDER_AFTER_READD') ? 'YES' : 'NO'}`,
     `FINAL SETTLED CAPTURE: ${slotForensics.history.some((item) => item.state === 'STATE_H_FINAL_SETTLED_RENDER') ? 'YES' : 'NO'}`,
     `TRANSIENT DIFFERENCE FOUND: ${snapshot.firstPostReaddComparison?.transientRenderDivergence || 'NO'}`,
+    `EXPORT METHOD: ${slotForensics.exportStatus.method}`,
+    `EXPORT SNAPSHOT COUNT: ${slotForensics.exportStatus.snapshotCount}`,
+    `EXPORT HISTORY COUNT: ${slotForensics.exportStatus.historyCount}`,
+    `EXPORT SUCCESS: ${slotForensics.exportStatus.success}`,
     'Full JSON: Export / Copy Trace includes ordered history and first-post-readd comparison'
   ].join('\n');
 }
