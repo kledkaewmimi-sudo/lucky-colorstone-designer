@@ -53,6 +53,7 @@ const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.ge
 const APP_ENV = 'uat';
 const IS_UAT_MODE = APP_ENV === 'uat';
 const LINE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('line_debug') === '1';
+const DELETE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('delete_debug') === '1';
 const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
 const STICKY_DEBUG_ENABLED = false;
@@ -129,6 +130,9 @@ let startupOrderReturnInProgress = false;
 // authenticated design restore has produced one final allowed render.
 let callbackBootstrapHoldActive = false;
 let deferredLoginQaActivationAttempted = false;
+let deleteMutationSequence = 0;
+const handledDeleteEvents = new WeakSet();
+const deleteDebugEvents = [];
 
 // ==========================================
 // 2. DOM Elements Selection
@@ -5975,6 +5979,35 @@ function setupDesignerEvents() {
   });
 
   setupStep3CategoryHintDismissEvents();
+  setupDeleteDebugTrace();
+}
+
+function recordDeleteDebug(event, details = {}) {
+  if (!DELETE_DEBUG_ENABLED) return;
+  const entry = {
+    actionId: `delete-${deleteMutationSequence}`,
+    eventType: event?.type || 'programmatic',
+    timestamp: Math.round(event?.timeStamp || performance.now()),
+    pointerId: event?.pointerId ?? null,
+    ...details
+  };
+  deleteDebugEvents.push(entry);
+  const output = document.getElementById('deleteDebugOutput');
+  if (output) output.textContent = deleteDebugEvents.slice(-20).map((item) => JSON.stringify(item)).join('\n');
+}
+
+function setupDeleteDebugTrace() {
+  if (!DELETE_DEBUG_ENABLED || DOM.braceletSvg?.dataset.deleteDebugReady === 'true') return;
+  DOM.braceletSvg.dataset.deleteDebugReady = 'true';
+  ['pointerdown', 'touchstart', 'touchend', 'click'].forEach((eventType) => {
+    DOM.braceletSvg.addEventListener(eventType, (event) => {
+      recordDeleteDebug(event, { phase: 'svg-event', target: event.target?.tagName || '' });
+    }, true);
+  });
+  const output = document.createElement('pre');
+  output.id = 'deleteDebugOutput';
+  output.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999;max-width:48vw;max-height:32vh;overflow:auto;margin:0;padding:8px;background:#fff;color:#222;border:1px solid #999;font:10px/1.35 monospace;white-space:pre-wrap;pointer-events:none;';
+  document.body.appendChild(output);
 }
 
 // This class changes hit testing only. The visual layering is native sticky
@@ -6646,14 +6679,33 @@ function addSpacerToBracelet(spacerId) {
   });
 }
 
-function removeLoopItemFromBracelet(index, showToastNotification = true) {
-  if (index < 0 || index >= State.selectedStones.length) return;
-  const removed = State.selectedStones[index];
+function removeLoopItemFromBracelet(index, showToastNotification = true, event = null, expectedUniqueId = null) {
+  if (event && handledDeleteEvents.has(event)) {
+    recordDeleteDebug(event, { phase: 'blocked-duplicate-event', handler: 'removeLoopItemFromBracelet' });
+    return;
+  }
+  if (event) handledDeleteEvents.add(event);
+  const resolvedIndex = expectedUniqueId === null
+    ? index
+    : State.selectedStones.findIndex((item) => Number(item?.uniqueId) === Number(expectedUniqueId));
+  if (resolvedIndex < 0 || resolvedIndex >= State.selectedStones.length) return;
+  const removed = State.selectedStones[resolvedIndex];
   if (isEmptyLoopSlot(removed)) return;
+  const occupiedBefore = getSelectedLoopItems().filter((item) => !isEmptyLoopSlot(item)).length;
+  const emptyBefore = getSelectedLoopItems().filter((item) => isEmptyLoopSlot(item)).length;
+  deleteMutationSequence += 1;
+  recordDeleteDebug(event, { phase: 'mutation-before', handler: 'removeLoopItemFromBracelet', sourceIndex: index, currentArrayIndex: resolvedIndex, expectedUniqueId, occupiedBefore, emptyBefore, mutationSequence: deleteMutationSequence });
   if (isBeeHeartLoopItem(removed)) {
-    State.selectedStones.splice(index, 1);
+    State.selectedStones.splice(resolvedIndex, 1);
   } else {
-    State.selectedStones[index] = createEmptyLoopSlot(getLoopItemLengthMm(removed), removed?.uniqueId || null);
+    State.selectedStones[resolvedIndex] = createEmptyLoopSlot(removed?.size, removed?.uniqueId || null);
+  }
+  const occupiedAfter = getSelectedLoopItems().filter((item) => !isEmptyLoopSlot(item)).length;
+  const emptyAfter = getSelectedLoopItems().filter((item) => isEmptyLoopSlot(item)).length;
+  recordDeleteDebug(event, { phase: 'mutation-after', handler: 'removeLoopItemFromBracelet', sourceIndex: index, currentArrayIndex: resolvedIndex, expectedUniqueId, occupiedAfter, emptyAfter, mutationSequence: deleteMutationSequence });
+  if (!isBeeHeartLoopItem(removed) && (occupiedAfter !== occupiedBefore - 1 || emptyAfter !== emptyBefore + 1)) {
+    recordDeleteDebug(event, { phase: 'blocked-invariant', handler: 'removeLoopItemFromBracelet', sourceIndex: index, expectedUniqueId, occupiedBefore, occupiedAfter, emptyBefore, emptyAfter, mutationSequence: deleteMutationSequence });
+    return;
   }
   State.activeSlotIndex = null;
   if (showToastNotification) {
@@ -7240,9 +7292,9 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${charmCenterX}, ${charmCenterY})`);
         group.appendChild(charmImage);
-        group.addEventListener('click', async () => {
+        group.addEventListener('click', async (event) => {
           if (isSlotPlaceableCharmType(component.charmType)) {
-            removeLoopItemFromBracelet(node.sourceIndex);
+            removeLoopItemFromBracelet(node.sourceIndex, true, event, component.uniqueId);
           } else {
             await removeSelectedCharm(component.selectionIndex);
           }
@@ -7308,7 +7360,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           group.appendChild(img);
         }
 
-        group.addEventListener('click', () => removeLoopItemFromBracelet(node.sourceIndex));
+        group.addEventListener('click', (event) => removeLoopItemFromBracelet(node.sourceIndex, true, event, component.uniqueId));
       } else {
         const stoneId = component.stoneId;
         const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
@@ -7383,7 +7435,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         
         const currentIdx = node.sourceIndex;
-        group.addEventListener('click', () => removeLoopItemFromBracelet(currentIdx));
+        group.addEventListener('click', (event) => removeLoopItemFromBracelet(currentIdx, true, event, component.uniqueId));
       }
       
     } else {

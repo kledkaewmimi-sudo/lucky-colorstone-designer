@@ -26,9 +26,9 @@ test('the known-good slot renderer retains dotted placeholders and stable source
   assert.match(renderer, /Array\.from\(\{ length: trailingPlaceholderCount \}/);
   assert.doesNotMatch(renderer, /isPhysicallyUnderfilled|physicalPreviewSpan|renderedTrailingPlaceholderCount/);
   assert.match(app, /slot\.setAttribute\("stroke-dasharray", isFirstPlaceholder \? "4 2" : "3 3"\)/);
-  assert.match(app, /State\.selectedStones\[index\] = createEmptyLoopSlot\(getLoopItemLengthMm\(removed\), removed\?\.uniqueId \|\| null\)/);
+  assert.match(app, /State\.selectedStones\[resolvedIndex\] = createEmptyLoopSlot\(removed\?\.size, removed\?\.uniqueId \|\| null\)/);
   assert.match(app, /State\.selectedStones\[State\.activeSlotIndex\] = newBead/);
-  assert.match(sourceBetween('function removeLoopItemFromBracelet', '// Remove Stone Logic'), /\} else \{\s*State\.selectedStones\[index\] = createEmptyLoopSlot/);
+  assert.match(sourceBetween('function removeLoopItemFromBracelet', '// Remove Stone Logic'), /\} else \{\s*State\.selectedStones\[resolvedIndex\] = createEmptyLoopSlot/);
 });
 
 test('fixed slots preserve pre-Mixed capacity while Mixed uses target-minus-five completion', () => {
