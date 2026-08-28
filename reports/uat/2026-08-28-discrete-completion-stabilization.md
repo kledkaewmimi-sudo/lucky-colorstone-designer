@@ -49,7 +49,7 @@ Green after implementation:
 
 ## UAT Deployment
 
-Frontend-only UAT deployment is required after the controlled commit. Render is not required.
+Frontend-only commit `6e93e94` was pushed to `origin/uat`. Vercel deployment `dpl_4QTDRPDZayTHzkxHehG1dLiBQdTX` is Ready and aliased to `https://uat.customize.luckycolorstone.com/`. The served `app.js` contains the discrete-completion fingerprint. Render is not required.
 
 ## Owner Retest
 
