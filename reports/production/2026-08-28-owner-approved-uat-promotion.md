@@ -55,11 +55,16 @@ No landing, initial login, LIFF, callback, OA friendship, or handoff behavior wa
 
 ## Production Deployment
 
-Normal non-force `main` push and Vercel production deployment are performed after this controlled report commit. Render is not deployed because no backend code changed.
+- Normal non-force push: `a8478f7..4377932` to `origin/main`.
+- Vercel production deployment: `dpl_7k5rW3ndtwmiJBXnKkFf1TcrZPMc`, Ready, aliased to `https://customize.luckycolorstone.com/`.
+- Render was not deployed because no backend code changed.
 
 ## Production Smoke Test
 
-After Vercel reports Ready, validate page load, fixed terminal completion, Mixed 17x10mm completion, retained-slot replacement, Step 3/Step 4 physical eligibility, catalog loading, and checkout endpoint reachability without attempting payment.
+- Public page, catalog, and Render backend returned HTTP 200.
+- The deployed geometry file SHA-256 matches the validated candidate exactly; deployed app source contains the Mixed target-minus-five status, shared Step 3/Step 4 eligibility, and dotted-slot renderer markers.
+- No payment or authenticated LINE operation was performed. The existing Stripe route was reached with a safe GET lacking its required `session_id`; it returned 500 from the unchanged handler, so checkout-session confirmation requires a real existing session and remains outside this non-payment smoke.
+- The in-app browser surface was unavailable in this session; browser interaction was not substituted with an authenticated or payment flow.
 
 ## Rollback SHA
 
@@ -67,4 +72,4 @@ After Vercel reports Ready, validate page load, fixed terminal completion, Mixed
 
 ## Final Status
 
-Pending normal production push, Vercel Ready, and post-deploy smoke validation. Production is otherwise isolated from UAT configuration and backend changes.
+Production runtime is deployed and its public geometry fingerprint matches the validated candidate. No UAT configuration or backend change was promoted. Owner real-device retest remains the final behavior confirmation.
