@@ -4,22 +4,23 @@ import { createBraceletGeometry, getBraceletCompletionEligibility, getNextCompon
 
 const SUPPORTED_SIZES_MM = [4, 6, 10];
 
-test('target +5 boundary classifies under-target, complete interval, and overflow exactly', () => {
-  const targetLengthMm = 175;
-  for (const [offset, status] of [[-10, 'UNDER_TARGET'], [-6, 'UNDER_TARGET'], [-4, 'UNDER_TARGET'], [-3, 'UNDER_TARGET'], [-1, 'UNDER_TARGET'], [0, 'COMPLETE_WITHIN_OVERRUN'], [1, 'COMPLETE_WITHIN_OVERRUN'], [3, 'COMPLETE_WITHIN_OVERRUN'], [5, 'COMPLETE_WITHIN_OVERRUN'], [6, 'OVERFLOW_INVALID']]) {
-    const result = getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: targetLengthMm + offset, targetLengthMm });
+test('Mixed wrist baseline classifies under-wrist, complete interval, and overflow exactly', () => {
+  const wristSizeMm = 160;
+  const legacyBraceletLengthMm = 175;
+  for (const [offset, status] of [[-10, 'UNDER_WRIST'], [-6, 'UNDER_WRIST'], [-4, 'UNDER_WRIST'], [-3, 'UNDER_WRIST'], [-1, 'UNDER_WRIST'], [0, 'COMPLETE_WITHIN_5MM'], [1, 'COMPLETE_WITHIN_5MM'], [3, 'COMPLETE_WITHIN_5MM'], [5, 'COMPLETE_WITHIN_5MM'], [6, 'OVERFLOW_INVALID']]) {
+    const result = getBraceletCompletionEligibility({ mode: 'mixed', wristSizeMm, usedLengthMm: wristSizeMm + offset, targetLengthMm: legacyBraceletLengthMm });
     assert.equal(result.status, status, String(offset));
-    assert.equal(result.complete, status === 'COMPLETE_WITHIN_OVERRUN', String(offset));
+    assert.equal(result.complete, status === 'COMPLETE_WITHIN_5MM', String(offset));
   }
 });
 
-test('Mixed evaluates every supported physical size against target +5', () => {
-  const result = getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 172, targetLengthMm: 175 });
+test('Mixed evaluates every supported physical size against selected wrist plus five', () => {
+  const result = getBraceletCompletionEligibility({ mode: 'mixed', wristSizeMm: 160, usedLengthMm: 158, targetLengthMm: 175 });
   assert.deepEqual(result.placeableSizes, [4, 6]);
   assert.equal(result.complete, false);
-  assert.equal(result.maxAllowedLengthMm, 180);
-  assert.equal(result.remainingToTargetMm, 3);
-  assert.equal(result.remainingToMaxAllowedMm, 8);
+  assert.equal(result.maxAllowedLengthMm, 165);
+  assert.equal(result.remainingToTargetMm, 2);
+  assert.equal(result.remainingToMaxAllowedMm, 7);
 });
 
 test('every selectable wrist/fixed-size pair reaches its pre-Mixed discrete terminal capacity', () => {

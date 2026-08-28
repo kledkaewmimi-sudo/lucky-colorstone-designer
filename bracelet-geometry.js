@@ -73,12 +73,13 @@ export function getCheckoutFitEligibility(geometry = {}) {
 
 // The 2mm fit status remains diagnostic metadata. Mixed placement permits the
 // owner-approved target + 5mm maximum; fixed placement keeps discrete capacity.
-export function getNextComponentPlacementEligibility({ mode = 'mixed', usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
+export function getNextComponentPlacementEligibility({ mode = 'mixed', wristSizeMm = 0, usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
   const nextUsedLengthMm = positiveNumber(usedLengthMm) + positiveNumber(componentLengthMm);
   const targetLength = positiveNumber(targetLengthMm);
-  const differenceMm = nextUsedLengthMm - targetLength;
+  const completionBaselineMm = mode === 'mixed' ? positiveNumber(wristSizeMm) || targetLength : targetLength;
+  const differenceMm = nextUsedLengthMm - completionBaselineMm;
   const fitStatus = getFitStatus(differenceMm);
-  const maxAllowedLengthMm = targetLength + (mode === 'fixed' ? 0 : MAX_OVER_TARGET_MM);
+  const maxAllowedLengthMm = completionBaselineMm + (mode === 'fixed' ? 0 : MAX_OVER_TARGET_MM);
   const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(nextUsedLengthMm), Math.abs(maxAllowedLengthMm)) * 8;
   return {
     eligible: nextUsedLengthMm - maxAllowedLengthMm <= overflowBoundary,
@@ -91,6 +92,7 @@ export function getNextComponentPlacementEligibility({ mode = 'mixed', usedLengt
 
 export function getBraceletCompletionEligibility({
   mode = 'mixed',
+  wristSizeMm = 0,
   usedLengthMm = 0,
   targetLengthMm = 0,
   fixedComponentLengthMm = 0,
@@ -98,34 +100,39 @@ export function getBraceletCompletionEligibility({
 } = {}) {
   const usedLength = positiveNumber(usedLengthMm);
   const targetLength = positiveNumber(targetLengthMm);
+  const normalizedWristSizeMm = positiveNumber(wristSizeMm);
+  const completionBaselineMm = mode === 'mixed' ? normalizedWristSizeMm || targetLength : targetLength;
   const maxOverTargetMm = mode === 'fixed' ? 0 : MAX_OVER_TARGET_MM;
-  const maxAllowedLengthMm = targetLength + maxOverTargetMm;
+  const maxAllowedLengthMm = completionBaselineMm + maxOverTargetMm;
   const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(usedLength), Math.abs(maxAllowedLengthMm)) * 8;
   const candidateLengthsMm = (mode === 'fixed' ? [fixedComponentLengthMm] : supportedComponentLengthsMm)
     .map(positiveNumber)
     .filter((lengthMm) => PHYSICAL_STONE_SIZES_MM.has(lengthMm));
   const overflow = usedLength - maxAllowedLengthMm > overflowBoundary;
   const placeableSizes = !overflow ? candidateLengthsMm.filter((componentLengthMm) =>
-    getNextComponentPlacementEligibility({ mode, usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible
+    getNextComponentPlacementEligibility({ mode, wristSizeMm: completionBaselineMm, usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible
   ) : [];
   const hasPlaceableStone = placeableSizes.length > 0;
   const complete = !overflow && (mode === 'fixed'
     ? !hasPlaceableStone
-    : usedLength >= targetLength - overflowBoundary);
-  const fitStatus = getFitStatus(usedLength - targetLength);
+    : usedLength >= completionBaselineMm - overflowBoundary);
+  const fitStatus = getFitStatus(usedLength - completionBaselineMm);
 
   return {
     mode,
     targetLengthMm: targetLength,
+    wristSizeMm: mode === 'mixed' ? completionBaselineMm : null,
+    minCompleteLengthMm: completionBaselineMm,
+    maxCompleteLengthMm: maxAllowedLengthMm,
     maxOverTargetMm,
     maxAllowedLengthMm,
     usedLengthMm: usedLength,
-    remainingToTargetMm: targetLength - usedLength,
+    remainingToTargetMm: completionBaselineMm - usedLength,
     remainingToMaxAllowedMm: maxAllowedLengthMm - usedLength,
     eligible: complete,
     complete,
-    status: overflow ? 'OVERFLOW_INVALID' : complete ? 'COMPLETE_WITHIN_OVERRUN' : 'UNDER_TARGET',
-    reason: overflow ? 'Bracelet exceeds physical capacity.' : complete ? null : mode === 'fixed' ? 'Add another fixed-size stone to complete the bracelet.' : 'Add stone components until the bracelet reaches its target length.',
+    status: overflow ? 'OVERFLOW_INVALID' : complete ? mode === 'mixed' ? 'COMPLETE_WITHIN_5MM' : 'COMPLETE_WITHIN_OVERRUN' : mode === 'mixed' ? 'UNDER_WRIST' : 'UNDER_TARGET',
+    reason: overflow ? 'Bracelet exceeds physical capacity.' : complete ? null : mode === 'fixed' ? 'Add another fixed-size stone to complete the bracelet.' : 'Add stone components until the bracelet reaches the selected wrist length.',
     fitStatus,
     overflow,
     isOverflow: overflow,

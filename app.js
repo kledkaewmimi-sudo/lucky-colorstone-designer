@@ -3476,6 +3476,7 @@ function getResolvedLayoutFitEligibility(resolvedLayout) {
   if (summary.completionEligibility) return summary.completionEligibility;
   return getBraceletCompletionEligibility({
     mode: State.beadSize === 'mixed' ? 'mixed' : 'fixed',
+    wristSizeMm: State.wristSize * 10,
     usedLengthMm: summary.totalUsedLengthMm,
     targetLengthMm: summary.braceletLengthMm,
     fixedComponentLengthMm: State.beadSize === 'mixed' ? 0 : parseInt(State.beadSize, 10),
@@ -6444,6 +6445,7 @@ function getCurrentPlacementEligibility(lengthMm) {
   const capacityMetrics = getCurrentBraceletCapacityMetrics();
   return getNextComponentPlacementEligibility({
     mode: State.beadSize === 'mixed' ? 'mixed' : 'fixed',
+    wristSizeMm: State.wristSize * 10,
     usedLengthMm: capacityMetrics.totalUsedLengthMm,
     targetLengthMm: capacityMetrics.braceletLengthMm,
     componentLengthMm: lengthMm
@@ -6823,6 +6825,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const loopComponents = capacityMetrics.loopComponents;
   const completionEligibility = getBraceletCompletionEligibility({
     mode: braceletConfig.beadSizeMode === 'mixed' ? 'mixed' : 'fixed',
+    wristSizeMm: braceletConfig.wristSizeCm * 10,
     usedLengthMm: capacityMetrics.totalUsedLengthMm,
     targetLengthMm: capacityMetrics.braceletLengthMm,
     fixedComponentLengthMm: braceletConfig.beadSizeMode === 'mixed' ? 0 : braceletConfig.placingSizeMm,
@@ -6864,12 +6867,13 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     if (item.isRetainedSlot) {
       return getNextComponentPlacementEligibility({
         mode: braceletConfig.beadSizeMode === 'mixed' ? 'mixed' : 'fixed',
+        wristSizeMm: braceletConfig.wristSizeCm * 10,
         usedLengthMm: capacityMetrics.totalUsedLengthMm,
         targetLengthMm: capacityMetrics.braceletLengthMm,
         componentLengthMm: item.sizeMm
       }).eligible;
     }
-    return completionEligibility.status === 'UNDER_TARGET' && completionEligibility.hasPlaceableStone;
+    return completionEligibility.status === 'UNDER_WRIST' && completionEligibility.hasPlaceableStone;
   };
   const buildResolvedNode = (item, index, itemAngleWidth, centerAngle, isFirstPlaceholder = false) => {
     const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
