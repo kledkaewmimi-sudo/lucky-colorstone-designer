@@ -54,6 +54,7 @@ const APP_ENV = 'uat';
 const IS_UAT_MODE = APP_ENV === 'uat';
 const LINE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('line_debug') === '1';
 const DELETE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('delete_debug') === '1';
+const SLOT_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('slot_debug') === '1';
 const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
 const STICKY_DEBUG_ENABLED = false;
@@ -7227,6 +7228,9 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 
     // Group element for bead visual nodes
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    group.dataset.slotSourceIndex = Number.isInteger(node.sourceIndex) ? String(node.sourceIndex) : '';
+    group.dataset.slotKind = node.kind === 'component' ? (node.component?.type || 'component') : 'empty';
+    group.dataset.slotId = String(node.component?.uniqueId || node.sourceIndex || node.index);
 
     if (node.isPlaced) {
       const component = node.component;
@@ -7500,7 +7504,28 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
     
     svg.appendChild(group);
   });
+  renderSlotDebugTrace(resolvedLayout);
 
+}
+
+function renderSlotDebugTrace(resolvedLayout) {
+  if (!SLOT_DEBUG_ENABLED) return;
+  let output = document.getElementById('slotDebugOutput');
+  if (!output) {
+    output = document.createElement('pre');
+    output.id = 'slotDebugOutput';
+    output.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999;max-width:52vw;max-height:36vh;overflow:auto;margin:0;padding:8px;background:#fff;color:#222;border:1px solid #999;font:10px/1.35 monospace;white-space:pre-wrap;pointer-events:none;';
+    document.body.appendChild(output);
+  }
+  const components = createBraceletComponentList();
+  const canonical = State.selectedStones.map((item, sourceIndex) => ({ sourceIndex, slotId: item?.uniqueId ?? null, kind: isEmptyLoopSlot(item) ? 'empty' : item?.componentType || 'stone' }));
+  const rows = canonical.map((slot) => {
+    const list = components.find((item) => item.sourceIndex === slot.sourceIndex);
+    const node = resolvedLayout.nodes.find((item) => item.sourceIndex === slot.sourceIndex);
+    const dom = DOM.braceletSvg.querySelector(`[data-slot-source-index="${slot.sourceIndex}"]`);
+    return { SLOT: slot.slotId, SOURCE_INDEX: slot.sourceIndex, CANONICAL_KIND: slot.kind, LIST_KIND: list?.type || 'missing', RESOLVED_KIND: node ? (node.kind === 'component' ? node.component?.type : 'empty') : 'missing', DOM_KIND: dom?.dataset.slotKind || 'missing' };
+  });
+  output.textContent = rows.map((row) => JSON.stringify(row)).join('\n');
 }
 
 // Setup SVG defs for sheen gradient
