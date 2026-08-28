@@ -875,7 +875,10 @@ function getSelectedLoopCharmItems() {
 
 function getLoopItemLengthMm(item) {
   if (isEmptyLoopSlot(item)) {
-    return Number(item?.size || 0);
+    // A retained slot carries only editor position metadata. Counting its
+    // former bead diameter here makes post-delete capacity trimming remove a
+    // second, still-occupied component.
+    return 0;
   }
   if (isSelectedSpacerItem(item)) {
     const spacer = getSpacerCatalogEntry(item.spacerId);
@@ -888,9 +891,16 @@ function getLoopItemLengthMm(item) {
   return Number(item?.size || 0);
 }
 
+function getLoopItemRenderSizeMm(item) {
+  if (isEmptyLoopSlot(item)) {
+    return Number(item?.size || getCurrentBeadSizeMm());
+  }
+  return getLoopItemLengthMm(item);
+}
+
 function serializeSelectedLoopItem(item) {
   if (isEmptyLoopSlot(item)) {
-    return { t: 'empty', z: getLoopItemLengthMm(item) };
+    return { t: 'empty', z: getLoopItemRenderSizeMm(item) };
   }
   if (isSelectedSpacerItem(item)) {
     return { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) };
@@ -903,7 +913,7 @@ function serializeSelectedLoopItem(item) {
 
 function getSelectedLoopItemRenderKey(item) {
   if (isEmptyLoopSlot(item)) {
-    return `empty:${getLoopItemLengthMm(item)}`;
+    return `empty:${getLoopItemRenderSizeMm(item)}`;
   }
   if (isSelectedSpacerItem(item)) {
     return `spacer:${item.spacerId}:${getLoopItemLengthMm(item)}`;
@@ -6700,7 +6710,7 @@ function createBraceletComponentList() {
           type: 'empty',
           layoutRole: 'loop',
           sourceIndex: index,
-          sizeMm: getLoopItemLengthMm(item),
+          sizeMm: getLoopItemRenderSizeMm(item),
           uniqueId: item.uniqueId || `empty-${index}`
         };
       }
