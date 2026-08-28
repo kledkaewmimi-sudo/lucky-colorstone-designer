@@ -58,11 +58,20 @@ const SLOT_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('slot_debug') === '1';
 // UAT-only, opt-in real-device SVG forensic capture. This does not participate
 // in placement, capacity, completion, or checkout behaviour.
 const SLOT_FORENSICS_ENABLED = IS_UAT_MODE && urlParams.get('slot_forensics') === '1';
+const STEP2_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('step2_debug') === '1';
 const slotForensics = {
   actionSequence: 0,
   renderSequence: 0,
   pendingState: null,
   captures: {}
+};
+const step2Debug = {
+  sequence: 0,
+  renderSequence: 0,
+  nextHandlerCalls: 0,
+  clickedCard: null,
+  lastTransitionResult: 'NONE',
+  events: []
 };
 const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
@@ -1226,6 +1235,7 @@ lineDebugTrace('BOOT', { captureState: true });
 document.addEventListener('DOMContentLoaded', async () => {
   try {
   setupSlotForensicsPanel();
+  setupStep2DebugPanel();
   setupLineDebugPanel();
   setupLineDebugRuntimeListeners();
   lineDebugTrace('DOM_READY', { captureState: true });
@@ -3687,6 +3697,7 @@ async function renderStepViews() {
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
   const previousStep = State.currentStep;
+  if (previousStep === 2 && step === 3) recordStep2Debug('BEFORE_GOTO_STEP3');
   if (step === 4) {
     const fitEligibility = getCurrentCheckoutFitEligibility();
     if (!fitEligibility.eligible) {
@@ -3710,6 +3721,7 @@ async function goToStep(step) {
     await renderApp();
   }
   trackStepView(step);
+  if (previousStep === 2 && step === 3) recordStep2Debug('AFTER_GOTO_STEP3', { goToStepResult: true });
   return true;
 }
 
@@ -3799,9 +3811,16 @@ function setupNavigationEvents() {
       if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
-      if (State.currentStep === 2 && !hasExplicitBeadSizeSelection()) {
+      if (State.currentStep === 2) {
+        step2Debug.nextHandlerCalls += STEP2_DEBUG_ENABLED ? 1 : 0;
+        recordStep2Debug('NEXT_CLICK');
+        recordStep2Debug('BEFORE_VALIDATION');
+        const step2ValidationPassed = hasExplicitBeadSizeSelection();
+        recordStep2Debug('AFTER_VALIDATION', { validationResult: step2ValidationPassed ? 'PASS' : 'FAIL' });
+        if (!step2ValidationPassed) {
         showToast('กรุณาเลือกขนาดหินก่อน', 3000);
         return;
+        }
       }
       if (State.currentStep === 3) {
         ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
@@ -4275,8 +4294,13 @@ function startStep2SupportRotation() {
 
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
+    card.addEventListener('pointerdown', () => {
+      recordStep2Debug('CARD_POINTERDOWN', { clickedValue: card.getAttribute('data-bead-size') });
+    });
     card.addEventListener('click', async () => {
       const targetBeadSize = normalizeBeadSizeOption(card.getAttribute('data-bead-size'));
+      step2Debug.clickedCard = card.getAttribute('data-bead-size');
+      recordStep2Debug('CARD_CLICK', { clickedValue: step2Debug.clickedCard });
       
       if (State.beadSize === targetBeadSize) return;
       const convertingFromMixed = State.beadSize === MIXED_BEAD_SIZE_MODE && targetBeadSize !== MIXED_BEAD_SIZE_MODE;
@@ -4297,8 +4321,11 @@ function initBeadSizeOptions() {
         if (!confirmed) return;
       }
 
+      recordStep2Debug('BEFORE_SIZE_TRANSITION', { clickedValue: targetBeadSize });
       const transition = applyBraceletSizeModeTransition(targetBeadSize);
+      step2Debug.lastTransitionResult = transition.ok ? 'OK' : (transition.reason || 'FAILED');
       if (!transition.ok) {
+        recordStep2Debug('AFTER_SIZE_TRANSITION', { transitionResult: step2Debug.lastTransitionResult });
         showToast('Some selected stones do not support this bead size.');
         return;
       }
@@ -4329,6 +4356,7 @@ function initBeadSizeOptions() {
         c.classList.toggle('active', active);
         c.setAttribute('aria-checked', active ? 'true' : 'false');
       });
+      recordStep2Debug('AFTER_SIZE_TRANSITION', { transitionResult: step2Debug.lastTransitionResult });
       
       updateEstimationText();
       
@@ -4342,6 +4370,7 @@ function initBeadSizeOptions() {
       }
       
       saveState();
+      recordStep2Debug('AFTER_STEP2_RENDER');
     });
   });
 }
@@ -4389,6 +4418,8 @@ function adjustBeadsToNewCapacity() {
 }
 
 function renderStep2() {
+  step2Debug.renderSequence += STEP2_DEBUG_ENABLED ? 1 : 0;
+  recordStep2Debug('STEP2_RENDER');
   DOM.beadSizeCards.forEach(c => {
     const active = hasExplicitBeadSizeSelection()
       && c.getAttribute('data-bead-size') === State.beadSize;
@@ -7699,6 +7730,94 @@ function capturePendingSlotForensics(resolvedLayout) {
   if (!SLOT_FORENSICS_ENABLED) return;
   captureSlotForensics(slotForensics.pendingState || 'RENDER', resolvedLayout);
   slotForensics.pendingState = null;
+}
+
+function getStep2DebugActiveCard() {
+  const activeCards = Array.from(DOM.beadSizeCards || [])
+    .filter((card) => card.classList.contains('active'))
+    .map((card) => card.getAttribute('data-bead-size'));
+  return activeCards.length === 1 ? activeCards[0] : activeCards.length === 0 ? 'NONE' : `MULTIPLE:${activeCards.join(',')}`;
+}
+
+function getStep2DebugState(extra = {}) {
+  const validationPassed = hasExplicitBeadSizeSelection();
+  return {
+    EVENT_SEQUENCE: step2Debug.sequence,
+    event: extra.event || 'SNAPSHOT',
+    clickedValue: extra.clickedValue ?? step2Debug.clickedCard,
+    CLICKED_CARD: step2Debug.clickedCard || 'NONE',
+    ACTIVE_CARD: getStep2DebugActiveCard(),
+    STATE_BEAD_SIZE: State.beadSize ?? null,
+    STATE_MIXED_PLACING_SIZE: State.mixedPlacingSize ?? null,
+    EXPLICIT_SELECTION: validationPassed ? 'YES' : 'NO',
+    VALIDATION_RESULT: extra.validationResult || (validationPassed ? 'PASS' : 'FAIL'),
+    CURRENT_STEP: State.currentStep,
+    NEXT_HANDLER_CALLS: step2Debug.nextHandlerCalls,
+    LAST_TRANSITION_RESULT: extra.transitionResult || step2Debug.lastTransitionResult,
+    LAST_RENDER_SEQUENCE: step2Debug.renderSequence,
+    goToStepResult: extra.goToStepResult ?? null
+  };
+}
+
+function recordStep2Debug(event, details = {}) {
+  if (!STEP2_DEBUG_ENABLED) return;
+  step2Debug.sequence += 1;
+  const entry = getStep2DebugState({ ...details, event });
+  step2Debug.events.push(entry);
+  window.__step2Debug = step2Debug;
+  renderStep2DebugPanel(entry);
+}
+
+function setupStep2DebugPanel() {
+  if (!STEP2_DEBUG_ENABLED || document.getElementById('step2DebugPanel')) return;
+  window.__step2Debug = step2Debug;
+  const panel = document.createElement('section');
+  panel.id = 'step2DebugPanel';
+  panel.setAttribute('aria-label', 'Step 2 runtime state trace');
+  panel.style.cssText = 'position:fixed!important;left:8px;bottom:max(8px, env(safe-area-inset-bottom));z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;width:min(94vw,430px);max-height:45vh;overflow:auto;background:#071a30;color:#eff8ff;border:3px solid #28c7fa;border-radius:8px;padding:8px;font:11px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.55);pointer-events:auto;';
+  const heading = document.createElement('div');
+  heading.textContent = 'STEP2 RUNTIME TRACE ACTIVE';
+  heading.style.cssText = 'display:inline-block;font-weight:800;color:#071a30;background:#28c7fa;padding:4px 6px;margin-bottom:6px;';
+  panel.appendChild(heading);
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = 'COPY STEP2 TRACE';
+  copy.style.cssText = 'float:right;min-height:30px;padding:4px 7px;background:#fff;color:#071a30;border:1px solid #fff;border-radius:4px;font-weight:800;';
+  copy.addEventListener('click', async () => {
+    const trace = JSON.stringify(step2Debug, null, 2);
+    try {
+      await navigator.clipboard.writeText(trace);
+      copy.textContent = 'TRACE COPIED';
+    } catch {
+      window.prompt('Copy Step 2 trace:', trace);
+    }
+  });
+  panel.appendChild(copy);
+  const output = document.createElement('pre');
+  output.id = 'step2DebugOutput';
+  output.style.cssText = 'clear:both;display:block;margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font:10px/1.35 monospace;';
+  output.textContent = 'Waiting for Step 2 render.';
+  panel.appendChild(output);
+  document.body.appendChild(panel);
+}
+
+function renderStep2DebugPanel(entry = getStep2DebugState()) {
+  setupStep2DebugPanel();
+  const output = document.getElementById('step2DebugOutput');
+  if (!output) return;
+  output.textContent = [
+    `EVENT: ${entry.event} #${entry.EVENT_SEQUENCE}`,
+    `CLICKED_CARD: ${entry.CLICKED_CARD}`,
+    `ACTIVE_CARD: ${entry.ACTIVE_CARD}`,
+    `STATE_BEAD_SIZE: ${entry.STATE_BEAD_SIZE ?? 'NULL'}`,
+    `STATE_MIXED_PLACING_SIZE: ${entry.STATE_MIXED_PLACING_SIZE ?? 'NULL'}`,
+    `EXPLICIT_SELECTION: ${entry.EXPLICIT_SELECTION}`,
+    `VALIDATION_RESULT: ${entry.VALIDATION_RESULT}`,
+    `CURRENT_STEP: ${entry.CURRENT_STEP}`,
+    `NEXT_HANDLER_CALLS: ${entry.NEXT_HANDLER_CALLS}`,
+    `LAST_TRANSITION_RESULT: ${entry.LAST_TRANSITION_RESULT}`,
+    `LAST_RENDER_SEQUENCE: ${entry.LAST_RENDER_SEQUENCE}`
+  ].join('\n');
 }
 
 function setupSlotForensicsPanel() {
