@@ -6498,6 +6498,10 @@ function placeLoopItemInFirstAvailableSlot(loopItem) {
   State.activeSlotIndex = null;
 
   if (emptySlotIndex >= 0) {
+    const retainedSlot = State.selectedStones[emptySlotIndex];
+    // A replacement consumes the retained slot; preserve that slot's stable
+    // identity so no stale empty render identity can survive the rebuild.
+    loopItem.uniqueId = retainedSlot?.uniqueId || loopItem.uniqueId;
     State.selectedStones[emptySlotIndex] = loopItem;
     return true;
   }
@@ -6555,6 +6559,7 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
+    loopItem.uniqueId = State.selectedStones[State.activeSlotIndex]?.uniqueId || loopItem.uniqueId;
     State.selectedStones[State.activeSlotIndex] = loopItem;
     State.activeSlotIndex = null;
     showToast(`Added ${itemLabel} in chosen position.`);
@@ -6606,6 +6611,7 @@ function addStoneToBracelet(stoneId) {
   
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
     // Fill the first retained empty slot before extending the sequence.
+    newBead.uniqueId = State.selectedStones[State.activeSlotIndex]?.uniqueId || newBead.uniqueId;
     State.selectedStones[State.activeSlotIndex] = newBead;
     State.activeSlotIndex = null; // Reset selection
     showToast(`Added ${stoneData.nameTh} in chosen position.`);
@@ -6661,6 +6667,7 @@ function addSpacerToBracelet(spacerId) {
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
+    newSpacer.uniqueId = State.selectedStones[State.activeSlotIndex]?.uniqueId || newSpacer.uniqueId;
     State.selectedStones[State.activeSlotIndex] = newSpacer;
     State.activeSlotIndex = null;
     showToast(`Added ${spacer.nameEn} in chosen position.`);
