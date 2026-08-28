@@ -1225,6 +1225,7 @@ lineDebugTrace('BOOT', { captureState: true });
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+  setupSlotForensicsPanel();
   setupLineDebugPanel();
   setupLineDebugRuntimeListeners();
   lineDebugTrace('DOM_READY', { captureState: true });
@@ -7700,29 +7701,62 @@ function capturePendingSlotForensics(resolvedLayout) {
   slotForensics.pendingState = null;
 }
 
+function setupSlotForensicsPanel() {
+  if (!SLOT_FORENSICS_ENABLED || document.getElementById('slotForensicsPanel')) return;
+  window.__slotForensics = slotForensics;
+  const panel = document.createElement('section');
+  panel.id = 'slotForensicsPanel';
+  panel.setAttribute('aria-label', 'Slot forensics diagnostic');
+  // Append directly to body at DOM-ready, before any Step 3 render. Fixed
+  // positioning keeps it outside page/sticky overflow and mobile breakpoints.
+  panel.style.cssText = 'position:fixed!important;top:max(8px, env(safe-area-inset-top));right:8px;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;max-width:calc(100vw - 16px);max-height:46vh;overflow:auto;background:#111;color:#fff;border:3px solid #ff3158;border-radius:8px;padding:8px;font:12px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.55);pointer-events:auto;';
+  const badge = document.createElement('div');
+  badge.id = 'slotForensicsBadge';
+  badge.textContent = 'SLOT FORENSICS ACTIVE';
+  badge.style.cssText = 'display:block!important;background:#ff3158;color:#fff;font-weight:800;letter-spacing:.04em;padding:5px 7px;margin:-2px -2px 7px;';
+  panel.appendChild(badge);
+  const controls = document.createElement('div');
+  controls.id = 'slotForensicsControls';
+  controls.style.cssText = 'display:flex!important;flex-wrap:wrap;gap:5px;margin-bottom:6px;';
+  [
+    ['STATE_A_BEFORE_DELETE', 'Capture A'],
+    ['STATE_B_AFTER_ONE_DELETE', 'Capture B'],
+    ['STATE_C_AFTER_ONE_READD', 'Capture C']
+  ].forEach(([stateName, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.style.cssText = 'display:inline-block!important;min-height:32px;padding:4px 7px;background:#fff;color:#111;border:1px solid #fff;border-radius:4px;font-weight:700;';
+    button.addEventListener('click', () => captureSlotForensics(stateName));
+    controls.appendChild(button);
+  });
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.textContent = 'Export / Copy Trace';
+  exportButton.style.cssText = 'display:inline-block!important;min-height:32px;padding:4px 7px;background:#ffd166;color:#111;border:1px solid #ffd166;border-radius:4px;font-weight:800;';
+  exportButton.addEventListener('click', async () => {
+    const trace = JSON.stringify(slotForensics.captures, null, 2);
+    try {
+      await navigator.clipboard.writeText(trace);
+      exportButton.textContent = 'Trace copied';
+    } catch {
+      window.prompt('Copy slot forensics trace:', trace);
+    }
+  });
+  controls.appendChild(exportButton);
+  panel.appendChild(controls);
+  const output = document.createElement('pre');
+  output.id = 'slotForensicsOutput';
+  output.style.cssText = 'display:block!important;margin:0;max-width:100%;max-height:24vh;overflow:auto;white-space:pre-wrap;color:#f7f2e8;background:#111;font:10px/1.4 monospace;';
+  output.textContent = 'Activation confirmed. Enter Step 3, then Capture A before delete, B after delete, and C after re-add.';
+  panel.appendChild(output);
+  document.body.appendChild(panel);
+}
+
 function renderSlotForensicsOverlay(snapshot) {
-  let output = document.getElementById('slotForensicsOutput');
-  if (!output) {
-    output = document.createElement('pre');
-    output.id = 'slotForensicsOutput';
-    output.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:100000;max-width:58vw;max-height:44vh;overflow:auto;margin:0;padding:8px;background:#111;color:#f7f2e8;border:1px solid #a77b45;font:10px/1.4 monospace;white-space:pre-wrap;pointer-events:auto;';
-    document.body.appendChild(output);
-    const controls = document.createElement('div');
-    controls.id = 'slotForensicsControls';
-    controls.style.cssText = 'position:fixed;left:8px;bottom:calc(44vh + 12px);z-index:100001;display:flex;gap:4px;';
-    [
-      ['STATE_A_BEFORE_DELETE', 'Capture A'],
-      ['STATE_B_AFTER_ONE_DELETE', 'Capture B'],
-      ['STATE_C_AFTER_ONE_READD', 'Capture C']
-    ].forEach(([stateName, label]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', () => captureSlotForensics(stateName));
-      controls.appendChild(button);
-    });
-    document.body.appendChild(controls);
-  }
+  setupSlotForensicsPanel();
+  const output = document.getElementById('slotForensicsOutput');
+  if (!output) return;
   const anomaly = snapshot.anomaly;
   output.textContent = [
     `${snapshot.state} action=${snapshot.ACTION_SEQUENCE} render=${snapshot.RENDER_SEQUENCE}`,

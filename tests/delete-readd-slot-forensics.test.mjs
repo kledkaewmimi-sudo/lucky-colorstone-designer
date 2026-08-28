@@ -38,6 +38,11 @@ test('slot forensics is UAT-only and records source, SVG, metadata, and neighbor
   assert.match(app, /getForensicNeighborDistances[\s\S]*visualGapMm/);
   assert.match(app, /GAP_WITHOUT_EMPTY_NODE/);
   assert.match(app, /\['STATE_A_BEFORE_DELETE', 'Capture A'\]/);
+  assert.match(app, /setupSlotForensicsPanel\(\);\s*setupLineDebugPanel\(\);/);
+  assert.match(app, /SLOT FORENSICS ACTIVE/);
+  assert.match(app, /Export \/ Copy Trace/);
+  assert.match(app, /z-index:2147483647!important/);
+  assert.match(app, /document\.body\.appendChild\(panel\)/);
 });
 
 test('full-ring mixed composition preserves order and uses replacement size for same, smaller, and larger re-adds', () => {
