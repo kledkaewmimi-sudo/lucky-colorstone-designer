@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getDiscreteBraceletCompletionEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
 
-test('RED A: Mixed 172mm of 175mm remains incomplete and allows only 4mm and 6mm within target + 5mm', () => {
+test('Mixed 168mm of 175mm remains incomplete and allows only 4mm and 6mm before target', () => {
   const targetLengthMm = 175;
-  const usedLengthMm = 172;
+  const usedLengthMm = 168;
   const placeableSizes = [4, 6, 10].filter((componentLengthMm) =>
     getNextComponentPlacementEligibility({ usedLengthMm, targetLengthMm, componentLengthMm }).eligible
   );

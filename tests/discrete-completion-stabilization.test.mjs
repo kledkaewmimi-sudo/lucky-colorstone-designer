@@ -22,7 +22,7 @@ test('16cm fixed 10mm reaches pre-Mixed terminal capacity at 17 beads', () => {
     true,
     '17 beads are the last whole fixed-size capacity'
   );
-  assert.equal(nextTenMm.eligible, true, 'Mixed target plus five placement remains available when mode is not fixed');
+  assert.equal(nextTenMm.eligible, false, 'Mixed placement also stops at the manufacturing target');
 });
 
 test('RED: mixed placement and completion must never reach a no-placeable/incomplete dead zone', () => {

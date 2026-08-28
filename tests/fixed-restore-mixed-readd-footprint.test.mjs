@@ -60,8 +60,8 @@ test('Mixed retained-slot replacements use the new component footprint without s
   }
 });
 
-test('Mixed target plus five remains the completion and placement contract', () => {
+test('Mixed target-minus-five through target remains the completion and placement contract', () => {
   const eligibility = getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 172, targetLengthMm: 175 });
-  assert.equal(eligibility.complete, false);
-  assert.deepEqual(eligibility.placeableSizes, [4, 6]);
+  assert.equal(eligibility.complete, true);
+  assert.deepEqual(eligibility.placeableSizes, []);
 });

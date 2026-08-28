@@ -31,13 +31,13 @@ test('the known-good slot renderer retains dotted placeholders and stable source
   assert.match(sourceBetween('function removeLoopItemFromBracelet', '// Remove Stone Logic'), /\} else \{\s*State\.selectedStones\[index\] = createEmptyLoopSlot/);
 });
 
-test('fixed slots preserve pre-Mixed capacity while Mixed keeps target plus five placement', () => {
+test('fixed slots preserve pre-Mixed capacity while Mixed uses target-minus-five completion', () => {
   for (const [sizeMm, usedLengthMm] of [[4, 172], [6, 174], [10, 170]]) {
     assert.equal(getNextComponentPlacementEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm: 175, componentLengthMm: sizeMm }).eligible, false, `fixed-${sizeMm}`);
     assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm, targetLengthMm: 175, fixedComponentLengthMm: sizeMm }).eligible, true, `fixed-${sizeMm}`);
   }
-  assert.equal(getNextComponentPlacementEligibility({ mode: 'mixed', usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 4 }).eligible, true);
-  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 176, targetLengthMm: 175 }).eligible, true);
+  assert.equal(getNextComponentPlacementEligibility({ mode: 'mixed', usedLengthMm: 168, targetLengthMm: 175, componentLengthMm: 4 }).eligible, true);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 170, targetLengthMm: 175 }).eligible, true);
 });
 
 test('underfilled states retain at least one supported physical placement when capacity remains', () => {

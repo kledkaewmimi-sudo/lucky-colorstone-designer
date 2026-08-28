@@ -4,22 +4,21 @@ import { createBraceletGeometry, getBraceletCompletionEligibility, getNextCompon
 
 const SUPPORTED_SIZES_MM = [4, 6, 10];
 
-test('Mixed wrist baseline classifies under-wrist, complete interval, and overflow exactly', () => {
-  const wristSizeMm = 160;
-  const legacyBraceletLengthMm = 175;
-  for (const [offset, status] of [[-10, 'UNDER_WRIST'], [-6, 'UNDER_WRIST'], [-4, 'UNDER_WRIST'], [-3, 'UNDER_WRIST'], [-1, 'UNDER_WRIST'], [0, 'COMPLETE_WITHIN_5MM'], [1, 'COMPLETE_WITHIN_5MM'], [3, 'COMPLETE_WITHIN_5MM'], [5, 'COMPLETE_WITHIN_5MM'], [6, 'OVERFLOW_INVALID']]) {
-    const result = getBraceletCompletionEligibility({ mode: 'mixed', wristSizeMm, usedLengthMm: wristSizeMm + offset, targetLengthMm: legacyBraceletLengthMm });
+test('Mixed target-minus-five interval classifies underfill, complete range, and overflow exactly', () => {
+  const targetLengthMm = 175;
+  for (const [offset, status] of [[-10, 'UNDER_TARGET_MINUS_5'], [-6, 'UNDER_TARGET_MINUS_5'], [-5, 'COMPLETE_WITHIN_TARGET_RANGE'], [-4, 'COMPLETE_WITHIN_TARGET_RANGE'], [-3, 'COMPLETE_WITHIN_TARGET_RANGE'], [-1, 'COMPLETE_WITHIN_TARGET_RANGE'], [0, 'COMPLETE_WITHIN_TARGET_RANGE'], [1, 'OVERFLOW_INVALID']]) {
+    const result = getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: targetLengthMm + offset, targetLengthMm });
     assert.equal(result.status, status, String(offset));
-    assert.equal(result.complete, status === 'COMPLETE_WITHIN_5MM', String(offset));
+    assert.equal(result.complete, status === 'COMPLETE_WITHIN_TARGET_RANGE', String(offset));
   }
 });
 
-test('Mixed evaluates every supported physical size against selected wrist plus five', () => {
-  const result = getBraceletCompletionEligibility({ mode: 'mixed', wristSizeMm: 160, usedLengthMm: 158, targetLengthMm: 175 });
+test('Mixed evaluates every supported physical size against manufacturing target', () => {
+  const result = getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 168, targetLengthMm: 175 });
   assert.deepEqual(result.placeableSizes, [4, 6]);
   assert.equal(result.complete, false);
-  assert.equal(result.maxAllowedLengthMm, 165);
-  assert.equal(result.remainingToTargetMm, 2);
+  assert.equal(result.maxAllowedLengthMm, 175);
+  assert.equal(result.remainingToTargetMm, 7);
   assert.equal(result.remainingToMaxAllowedMm, 7);
 });
 
@@ -38,7 +37,7 @@ test('every selectable wrist/fixed-size pair reaches its pre-Mixed discrete term
   }
 });
 
-test('accessory footprint is counted once in target +5 eligibility', () => {
+test('accessory footprint is counted once in target-minus-five eligibility', () => {
   const geometry = createBraceletGeometry({
     targetLengthMm: 175,
     components: [{ type: 'charm', footprintMm: 24 }, { type: 'spacer', effectiveLengthMm: 9 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }, { type: 'stone', size: 10 }]
@@ -49,7 +48,7 @@ test('accessory footprint is counted once in target +5 eligibility', () => {
 
 test('delete and re-add cross the shared completion interval without relying on slot order', () => {
   const targetLengthMm = 175;
-  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 176, targetLengthMm }).complete, true);
-  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 172, targetLengthMm }).complete, false);
-  assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm, componentLengthMm: 4 }).eligible, true);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 170, targetLengthMm }).complete, true);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 169, targetLengthMm }).complete, false);
+  assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 168, targetLengthMm, componentLengthMm: 4 }).eligible, true);
 });
