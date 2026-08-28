@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { getCheckoutFitEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
+import { getDiscreteBraceletCompletionEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
 
 const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 
@@ -31,24 +31,29 @@ test('the known-good slot renderer retains dotted placeholders and stable source
   assert.match(sourceBetween('function removeLoopItemFromBracelet', '// Remove Stone Logic'), /\} else \{\s*State\.selectedStones\[index\] = createEmptyLoopSlot/);
 });
 
-test('fixed and mixed final-slot placement reaches the same inclusive 2mm final-fit boundary', () => {
-  for (const [mode, usedLengthMm, targetLengthMm, componentLengthMm] of [
-    ['fixed-4', 172, 178, 4],
-    ['fixed-6', 168, 176, 6],
-    ['fixed-10', 170, 178, 10],
-    ['mixed', 174, 178, 6]
+test('fixed and mixed final-slot placement reaches a discrete terminal capacity', () => {
+  for (const [mode, beforeLengthMm, targetLengthMm, componentLengthMm, completionMode] of [
+    ['fixed-4', 172, 178, 4, 'fixed'],
+    ['fixed-6', 168, 176, 6, 'fixed'],
+    ['fixed-10', 160, 178, 10, 'fixed'],
+    ['mixed', 172, 178, 4, 'mixed']
   ]) {
-    const placement = getNextComponentPlacementEligibility({ usedLengthMm, targetLengthMm, componentLengthMm });
+    const placement = getNextComponentPlacementEligibility({ usedLengthMm: beforeLengthMm, targetLengthMm, componentLengthMm });
     assert.equal(placement.eligible, true, mode);
-    assert.equal(placement.isComplete, true, mode);
-    assert.equal(getCheckoutFitEligibility({ differenceMm: placement.differenceMm }).eligible, true, mode);
+    const completion = getDiscreteBraceletCompletionEligibility({
+      mode: completionMode,
+      usedLengthMm: beforeLengthMm + componentLengthMm,
+      targetLengthMm,
+      fixedComponentLengthMm: completionMode === 'fixed' ? componentLengthMm : 0
+    });
+    assert.equal(completion.eligible, true, mode);
   }
 });
 
-test('underfilled states retain at least one supported physical placement when one can reach the fit boundary', () => {
+test('underfilled states retain at least one supported physical placement when capacity remains', () => {
   const targetLengthMm = 178;
   const usedLengthMm = 166;
-  assert.equal(getCheckoutFitEligibility({ differenceMm: usedLengthMm - targetLengthMm }).eligible, false);
+  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm, targetLengthMm }).eligible, false);
   assert.ok([4, 6, 10].some((componentLengthMm) => getNextComponentPlacementEligibility({
     usedLengthMm,
     targetLengthMm,

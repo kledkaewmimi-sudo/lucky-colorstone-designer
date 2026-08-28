@@ -66,17 +66,47 @@ export function getCheckoutFitEligibility(geometry = {}) {
   };
 }
 
-// Placement and final Step 3 eligibility share the same inclusive 2mm upper
-// boundary. Underfilled placements remain valid so a bracelet can be built one
-// retained slot at a time; completion still uses getCheckoutFitEligibility.
+// The 2mm fit status remains diagnostic metadata. Physical placement itself is
+// discrete: a component may not take the occupied bracelet length past capacity.
 export function getNextComponentPlacementEligibility({ usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
   const nextUsedLengthMm = positiveNumber(usedLengthMm) + positiveNumber(componentLengthMm);
-  const differenceMm = nextUsedLengthMm - positiveNumber(targetLengthMm);
+  const targetLength = positiveNumber(targetLengthMm);
+  const differenceMm = nextUsedLengthMm - targetLength;
   const fitStatus = getFitStatus(differenceMm);
+  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(nextUsedLengthMm), Math.abs(targetLength)) * 8;
   return {
-    eligible: fitStatus !== 'overflow',
+    eligible: differenceMm <= overflowBoundary,
     differenceMm,
     fitStatus,
-    isComplete: fitStatus === 'within_tolerance'
+    isComplete: false
+  };
+}
+
+export function getDiscreteBraceletCompletionEligibility({
+  mode = 'mixed',
+  usedLengthMm = 0,
+  targetLengthMm = 0,
+  fixedComponentLengthMm = 0,
+  supportedComponentLengthsMm = [4, 6, 10]
+} = {}) {
+  const usedLength = positiveNumber(usedLengthMm);
+  const targetLength = positiveNumber(targetLengthMm);
+  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(usedLength), Math.abs(targetLength)) * 8;
+  const candidateLengthsMm = (mode === 'fixed' ? [fixedComponentLengthMm] : supportedComponentLengthsMm)
+    .map(positiveNumber)
+    .filter((lengthMm) => PHYSICAL_STONE_SIZES_MM.has(lengthMm));
+  const isOverflow = usedLength - targetLength > overflowBoundary;
+  const canPlaceSupportedStone = !isOverflow && candidateLengthsMm.some((componentLengthMm) =>
+    getNextComponentPlacementEligibility({ usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible
+  );
+  const fitStatus = getFitStatus(usedLength - targetLength);
+
+  return {
+    eligible: !isOverflow && !canPlaceSupportedStone,
+    reason: isOverflow ? 'Bracelet exceeds physical capacity.' : canPlaceSupportedStone ? 'Add another supported stone to complete the bracelet.' : null,
+    fitStatus,
+    isOverflow,
+    canPlaceSupportedStone,
+    candidateLengthsMm
   };
 }

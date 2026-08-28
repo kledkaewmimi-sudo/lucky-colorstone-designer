@@ -3,7 +3,7 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getCheckoutFitEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
+import { createBraceletGeometry, getComponentPhysicalLengthMm, getDiscreteBraceletCompletionEligibility, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
@@ -3472,7 +3472,14 @@ function renderStepper() {
 }
 
 function getResolvedLayoutFitEligibility(resolvedLayout) {
-  return getCheckoutFitEligibility(resolvedLayout?.summary);
+  const summary = resolvedLayout?.summary || {};
+  return getDiscreteBraceletCompletionEligibility({
+    mode: State.beadSize === 'mixed' ? 'mixed' : 'fixed',
+    usedLengthMm: summary.totalUsedLengthMm,
+    targetLengthMm: summary.braceletLengthMm,
+    fixedComponentLengthMm: State.beadSize === 'mixed' ? 0 : parseInt(State.beadSize, 10),
+    supportedComponentLengthsMm: [4, 6, 10]
+  });
 }
 
 function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedLayout()) {
@@ -3488,9 +3495,9 @@ function getStep3ValidationState(resolvedLayout = createCurrentBraceletResolvedL
   const remainingSpace = Math.max(0, spaceLeftRaw);
   const numPlaceholders = resolvedLayout.summary.numPlaceholders;
   const capacity = State.beadSize === 'mixed' ? null : uniformCapacity;
-  const isOverflow = spaceLeftRaw < 0;
   const fitEligibility = getResolvedLayoutFitEligibility(resolvedLayout);
-  const isFull = resolvedLayout.summary.placedCount > 0 && fitEligibility.eligible;
+  const isOverflow = fitEligibility.isOverflow;
+  const isFull = fitEligibility.eligible;
 
   return {
     braceletLengthMm,
@@ -6541,7 +6548,7 @@ function addStoneToBracelet(stoneId) {
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
   const placementEligibility = getCurrentPlacementEligibility(placedSize);
   
-  // The final placement must use the same inclusive physical-fit boundary as Step 3 completion.
+  // Placement and Step 3 completion both use the shared discrete physical-capacity boundary.
   if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดหินที่จะใส่: ${placedSize}mm)`);
     return;
