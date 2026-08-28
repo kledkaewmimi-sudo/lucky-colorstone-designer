@@ -6901,7 +6901,12 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const placedCount = loopComponents.filter((component) => component.type !== 'empty').length;
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
-  const trailingPlaceholderCount = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
+  // A trailing capacity marker is only an add target while completion is still
+  // under the approved Mixed interval. Once complete it must not look like an
+  // unconsumed retained deletion slot.
+  const trailingPlaceholderCount = completionEligibility.complete
+    ? 0
+    : Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
   const emptySlotCount = loopComponents.filter((component) => component.type === 'empty').length;
   const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
 
