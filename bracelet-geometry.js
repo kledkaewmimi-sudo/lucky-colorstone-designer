@@ -1,4 +1,5 @@
 export const BRACELET_FIT_TOLERANCE_MM = 2;
+export const MAX_OVER_TARGET_MM = 5;
 const PHYSICAL_STONE_SIZES_MM = new Set([4, 6, 10]);
 
 function positiveNumber(value) {
@@ -66,23 +67,25 @@ export function getCheckoutFitEligibility(geometry = {}) {
   };
 }
 
-// The 2mm fit status remains diagnostic metadata. Physical placement itself is
-// discrete: a component may not take the occupied bracelet length past capacity.
+// The 2mm fit status remains diagnostic metadata. Physical placement uses the
+// owner-approved target + 5mm maximum physical length.
 export function getNextComponentPlacementEligibility({ usedLengthMm = 0, targetLengthMm = 0, componentLengthMm = 0 } = {}) {
   const nextUsedLengthMm = positiveNumber(usedLengthMm) + positiveNumber(componentLengthMm);
   const targetLength = positiveNumber(targetLengthMm);
   const differenceMm = nextUsedLengthMm - targetLength;
   const fitStatus = getFitStatus(differenceMm);
-  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(nextUsedLengthMm), Math.abs(targetLength)) * 8;
+  const maxAllowedLengthMm = targetLength + MAX_OVER_TARGET_MM;
+  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(nextUsedLengthMm), Math.abs(maxAllowedLengthMm)) * 8;
   return {
-    eligible: differenceMm <= overflowBoundary,
+    eligible: nextUsedLengthMm - maxAllowedLengthMm <= overflowBoundary,
     differenceMm,
     fitStatus,
-    isComplete: false
+    isComplete: nextUsedLengthMm >= targetLength - overflowBoundary && nextUsedLengthMm - maxAllowedLengthMm <= overflowBoundary,
+    maxAllowedLengthMm
   };
 }
 
-export function getDiscreteBraceletCompletionEligibility({
+export function getBraceletCompletionEligibility({
   mode = 'mixed',
   usedLengthMm = 0,
   targetLengthMm = 0,
@@ -91,22 +94,41 @@ export function getDiscreteBraceletCompletionEligibility({
 } = {}) {
   const usedLength = positiveNumber(usedLengthMm);
   const targetLength = positiveNumber(targetLengthMm);
-  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(usedLength), Math.abs(targetLength)) * 8;
+  const maxAllowedLengthMm = targetLength + MAX_OVER_TARGET_MM;
+  const overflowBoundary = Number.EPSILON * Math.max(1, Math.abs(usedLength), Math.abs(maxAllowedLengthMm)) * 8;
   const candidateLengthsMm = (mode === 'fixed' ? [fixedComponentLengthMm] : supportedComponentLengthsMm)
     .map(positiveNumber)
     .filter((lengthMm) => PHYSICAL_STONE_SIZES_MM.has(lengthMm));
-  const isOverflow = usedLength - targetLength > overflowBoundary;
-  const canPlaceSupportedStone = !isOverflow && candidateLengthsMm.some((componentLengthMm) =>
+  const overflow = usedLength - maxAllowedLengthMm > overflowBoundary;
+  const placeableSizes = !overflow ? candidateLengthsMm.filter((componentLengthMm) =>
     getNextComponentPlacementEligibility({ usedLengthMm: usedLength, targetLengthMm: targetLength, componentLengthMm }).eligible
-  );
+  ) : [];
+  const complete = !overflow && usedLength >= targetLength - overflowBoundary;
   const fitStatus = getFitStatus(usedLength - targetLength);
 
   return {
-    eligible: !isOverflow && !canPlaceSupportedStone,
-    reason: isOverflow ? 'Bracelet exceeds physical capacity.' : canPlaceSupportedStone ? 'Add another supported stone to complete the bracelet.' : null,
+    mode,
+    targetLengthMm: targetLength,
+    maxOverTargetMm: MAX_OVER_TARGET_MM,
+    maxAllowedLengthMm,
+    usedLengthMm: usedLength,
+    remainingToTargetMm: targetLength - usedLength,
+    remainingToMaxAllowedMm: maxAllowedLengthMm - usedLength,
+    eligible: complete,
+    complete,
+    status: overflow ? 'OVERFLOW_INVALID' : complete ? 'COMPLETE_WITHIN_OVERRUN' : 'UNDER_TARGET',
+    reason: overflow ? 'Bracelet exceeds physical capacity.' : complete ? null : 'Add stone components until the bracelet reaches its target length.',
     fitStatus,
-    isOverflow,
-    canPlaceSupportedStone,
+    overflow,
+    isOverflow: overflow,
+    placeableSizes,
+    hasPlaceableStone: placeableSizes.length > 0,
     candidateLengthsMm
   };
+}
+
+// Compatibility export for callers/tests that previously consumed the discrete
+// terminal helper. It now delegates to the target + 5mm canonical rule.
+export function getDiscreteBraceletCompletionEligibility(options = {}) {
+  return getBraceletCompletionEligibility(options);
 }

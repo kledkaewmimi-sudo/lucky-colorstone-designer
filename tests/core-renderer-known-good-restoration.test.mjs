@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { getDiscreteBraceletCompletionEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
+import { getBraceletCompletionEligibility, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
 
 const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 
@@ -31,16 +31,16 @@ test('the known-good slot renderer retains dotted placeholders and stable source
   assert.match(sourceBetween('function removeLoopItemFromBracelet', '// Remove Stone Logic'), /\} else \{\s*State\.selectedStones\[index\] = createEmptyLoopSlot/);
 });
 
-test('fixed and mixed final-slot placement reaches a discrete terminal capacity', () => {
+test('fixed and mixed final-slot placement reaches the target through target plus five interval', () => {
   for (const [mode, beforeLengthMm, targetLengthMm, componentLengthMm, completionMode] of [
-    ['fixed-4', 172, 178, 4, 'fixed'],
-    ['fixed-6', 168, 176, 6, 'fixed'],
-    ['fixed-10', 160, 178, 10, 'fixed'],
-    ['mixed', 172, 178, 4, 'mixed']
+    ['fixed-4', 172, 175, 4, 'fixed'],
+    ['fixed-6', 174, 175, 6, 'fixed'],
+    ['fixed-10', 170, 175, 10, 'fixed'],
+    ['mixed', 172, 175, 4, 'mixed']
   ]) {
     const placement = getNextComponentPlacementEligibility({ usedLengthMm: beforeLengthMm, targetLengthMm, componentLengthMm });
     assert.equal(placement.eligible, true, mode);
-    const completion = getDiscreteBraceletCompletionEligibility({
+    const completion = getBraceletCompletionEligibility({
       mode: completionMode,
       usedLengthMm: beforeLengthMm + componentLengthMm,
       targetLengthMm,
@@ -53,7 +53,7 @@ test('fixed and mixed final-slot placement reaches a discrete terminal capacity'
 test('underfilled states retain at least one supported physical placement when capacity remains', () => {
   const targetLengthMm = 178;
   const usedLengthMm = 166;
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm, targetLengthMm }).eligible, false);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm, targetLengthMm }).eligible, false);
   assert.ok([4, 6, 10].some((componentLengthMm) => getNextComponentPlacementEligibility({
     usedLengthMm,
     targetLengthMm,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { BRACELET_FIT_TOLERANCE_MM, getDiscreteBraceletCompletionEligibility, getFitStatus, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
+import { BRACELET_FIT_TOLERANCE_MM, getBraceletCompletionEligibility, getFitStatus, getNextComponentPlacementEligibility } from '../bracelet-geometry.js';
 
 const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 
@@ -14,8 +14,10 @@ test('2mm fit status remains diagnostic metadata rather than the completion cont
   assert.equal(getFitStatus(2.0000000000000004), 'within_tolerance');
 });
 
-test('Step 3 completion, Next UI, and Step 4 validation share discrete placeability', () => {
-  assert.match(app, /function getResolvedLayoutFitEligibility\(resolvedLayout\) \{[\s\S]*?getDiscreteBraceletCompletionEligibility/);
+test('Step 3 completion, Next UI, and Step 4 validation share target plus five eligibility', () => {
+  assert.match(app, /function getResolvedLayoutFitEligibility\(resolvedLayout\) \{[\s\S]*?getBraceletCompletionEligibility/);
+  assert.match(app, /if \(summary\.completionEligibility\) return summary\.completionEligibility;/);
+  assert.match(app, /completionEligibility,/);
   assert.match(app, /const fitEligibility = getResolvedLayoutFitEligibility\(resolvedLayout\);/);
   assert.match(app, /const isFull = fitEligibility\.eligible;/);
   assert.match(app, /return getResolvedLayoutFitEligibility\(createCurrentBraceletResolvedLayout\(\)\);/);
@@ -24,9 +26,11 @@ test('Step 3 completion, Next UI, and Step 4 validation share discrete placeabil
   assert.doesNotMatch(app, /1\.0mm fit tolerance/);
 });
 
-test('the shared Step 4 gate completes only when no valid mode-supported stone fits', () => {
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm: 175, fixedComponentLengthMm: 10 }).eligible, true);
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 170, targetLengthMm: 175 }).eligible, false);
-  assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 4 }).eligible, false);
-  assert.equal(getDiscreteBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 172, targetLengthMm: 175 }).eligible, true);
+test('the shared Step 4 gate completes only in the target through target plus five interval', () => {
+  assert.equal(getBraceletCompletionEligibility({ mode: 'fixed', usedLengthMm: 170, targetLengthMm: 175, fixedComponentLengthMm: 10 }).eligible, false);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 170, targetLengthMm: 175 }).eligible, false);
+  assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 4 }).eligible, true);
+  assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 6 }).eligible, true);
+  assert.equal(getNextComponentPlacementEligibility({ usedLengthMm: 172, targetLengthMm: 175, componentLengthMm: 10 }).eligible, false);
+  assert.equal(getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: 176, targetLengthMm: 175 }).eligible, true);
 });

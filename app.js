@@ -3,7 +3,7 @@ import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getComponentPhysicalLengthMm, getDiscreteBraceletCompletionEligibility, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
+import { createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
@@ -3473,7 +3473,8 @@ function renderStepper() {
 
 function getResolvedLayoutFitEligibility(resolvedLayout) {
   const summary = resolvedLayout?.summary || {};
-  return getDiscreteBraceletCompletionEligibility({
+  if (summary.completionEligibility) return summary.completionEligibility;
+  return getBraceletCompletionEligibility({
     mode: State.beadSize === 'mixed' ? 'mixed' : 'fixed',
     usedLengthMm: summary.totalUsedLengthMm,
     targetLengthMm: summary.braceletLengthMm,
@@ -6548,7 +6549,7 @@ function addStoneToBracelet(stoneId) {
   const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
   const placementEligibility = getCurrentPlacementEligibility(placedSize);
   
-  // Placement and Step 3 completion both use the shared discrete physical-capacity boundary.
+  // Placement and Step 3 completion both use the shared target-plus-five physical-capacity boundary.
   if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดหินที่จะใส่: ${placedSize}mm)`);
     return;
@@ -6819,6 +6820,13 @@ function createBraceletComponentList() {
 function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
   const loopComponents = capacityMetrics.loopComponents;
+  const completionEligibility = getBraceletCompletionEligibility({
+    mode: braceletConfig.beadSizeMode === 'mixed' ? 'mixed' : 'fixed',
+    usedLengthMm: capacityMetrics.totalUsedLengthMm,
+    targetLengthMm: capacityMetrics.braceletLengthMm,
+    fixedComponentLengthMm: braceletConfig.beadSizeMode === 'mixed' ? 0 : braceletConfig.placingSizeMm,
+    supportedComponentLengthsMm: [4, 6, 10]
+  });
   const placedCount = loopComponents.filter((component) => component.type !== 'empty').length;
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
@@ -6831,7 +6839,8 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       ? {
         kind: 'placeholder',
         sourceIndex: component.sourceIndex,
-        sizeMm: component.sizeMm
+        sizeMm: component.sizeMm,
+        isRetainedSlot: true
       }
       : {
         kind: 'component',
@@ -6841,13 +6850,25 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     ...Array.from({ length: trailingPlaceholderCount }, (_, index) => ({
       kind: 'placeholder',
       placeholderIndex: index,
-      sizeMm: braceletConfig.placingSizeMm
+      sizeMm: braceletConfig.placingSizeMm,
+      isTrailingCapacityPlaceholder: true
     }))
   ];
 
   const totalVirtualDiameter = loopItems.reduce((sum, item) => sum + item.sizeMm, 0);
   const loopCircumferenceMm = totalVirtualDiameter > 0 ? totalVirtualDiameter : braceletConfig.braceletLengthMm;
   const scaleMmToPx = (2 * Math.PI * braceletConfig.svg.radiusPx) / loopCircumferenceMm;
+  const isPlaceholderActiveAddTarget = (item) => {
+    if (item.kind !== 'placeholder') return false;
+    if (item.isRetainedSlot) {
+      return getNextComponentPlacementEligibility({
+        usedLengthMm: capacityMetrics.totalUsedLengthMm,
+        targetLengthMm: capacityMetrics.braceletLengthMm,
+        componentLengthMm: item.sizeMm
+      }).eligible;
+    }
+    return completionEligibility.status === 'UNDER_TARGET' && completionEligibility.hasPlaceableStone;
+  };
   const buildResolvedNode = (item, index, itemAngleWidth, centerAngle, isFirstPlaceholder = false) => {
     const centerX = braceletConfig.svg.centerX + braceletConfig.svg.radiusPx * Math.cos(centerAngle);
     const centerY = braceletConfig.svg.centerY + braceletConfig.svg.radiusPx * Math.sin(centerAngle);
@@ -6895,7 +6916,8 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
           ? {
             kind: 'placeholder',
             sourceIndex: component.sourceIndex,
-            sizeMm: component.sizeMm
+            sizeMm: component.sizeMm,
+            isRetainedSlot: true
           }
           : {
             kind: 'component',
@@ -6905,7 +6927,8 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       ...Array.from({ length: trailingPlaceholderCount }, (_, index) => ({
         kind: 'placeholder',
         placeholderIndex: index,
-        sizeMm: braceletConfig.placingSizeMm
+        sizeMm: braceletConfig.placingSizeMm,
+        isTrailingCapacityPlaceholder: true
       }))
     ];
     const fillerTotalSizeMm = fillerItems.reduce((sum, item) => sum + item.sizeMm, 0);
@@ -6943,7 +6966,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       items.forEach((item) => {
         const itemAngleWidth = item.sizeMm * anglePerMm;
         const centerAngle = currentAngle + (itemAngleWidth / 2);
-        const isFirstPlaceholder = item.kind === 'placeholder' && !firstPlaceholderAssigned;
+        const isFirstPlaceholder = isPlaceholderActiveAddTarget(item) && !firstPlaceholderAssigned;
         if (isFirstPlaceholder) {
           firstPlaceholderAssigned = true;
         }
@@ -6982,6 +7005,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
         isWithinTolerance: capacityMetrics.isWithinTolerance,
         usableBeadLengthMm: capacityMetrics.usableBeadLengthMm,
         uniformCapacity: capacityMetrics.uniformCapacity,
+        completionEligibility,
         sumPlacedDiameter,
         spaceLeft,
         numPlaceholders,
@@ -7008,7 +7032,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const nodes = loopItems.map((item, index) => {
     const itemAngleWidth = (item.sizeMm / loopCircumferenceMm) * 2 * Math.PI;
     const centerAngle = accumulatedAngle + itemAngleWidth / 2;
-    const isFirstPlaceholder = item.kind === 'placeholder' && !firstPlaceholderAssigned;
+    const isFirstPlaceholder = isPlaceholderActiveAddTarget(item) && !firstPlaceholderAssigned;
     if (isFirstPlaceholder) firstPlaceholderAssigned = true;
     const resolvedNode = buildResolvedNode(item, index, itemAngleWidth, centerAngle, isFirstPlaceholder);
     accumulatedAngle += itemAngleWidth;
@@ -7029,6 +7053,7 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       isWithinTolerance: capacityMetrics.isWithinTolerance,
       usableBeadLengthMm: capacityMetrics.usableBeadLengthMm,
       uniformCapacity: capacityMetrics.uniformCapacity,
+      completionEligibility,
       sumPlacedDiameter,
       spaceLeft,
       numPlaceholders,
