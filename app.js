@@ -63,7 +63,8 @@ const slotForensics = {
   actionSequence: 0,
   renderSequence: 0,
   pendingState: null,
-  captures: {}
+  captures: {},
+  history: []
 };
 const step2Debug = {
   sequence: 0,
@@ -6609,7 +6610,7 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
     State.selectedStones.push(loopItem);
   }
 
-  markSlotForensicsAction('STATE_C_AFTER_ONE_READD');
+  markSlotForensicsAction('STATE_C_IMMEDIATE_AFTER_READD');
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -6663,7 +6664,7 @@ function addStoneToBracelet(stoneId) {
     State.selectedStones.push(newBead);
   }
   
-  markSlotForensicsAction('STATE_C_AFTER_ONE_READD');
+  markSlotForensicsAction('STATE_C_IMMEDIATE_AFTER_READD');
   renderStep3();
   saveState();
   
@@ -6719,7 +6720,7 @@ function addSpacerToBracelet(spacerId) {
     State.selectedStones.push(newSpacer);
   }
 
-  markSlotForensicsAction('STATE_C_AFTER_ONE_READD');
+  markSlotForensicsAction('STATE_C_IMMEDIATE_AFTER_READD');
   renderStep3();
   saveState();
   syncStep3NextValidationUI();
@@ -7247,6 +7248,7 @@ function projectResolvedLayoutToLinearMap(resolvedLayout, surfaceConfig) {
 
 // Core Loop Rendering (Dynamic SVG circular path)
 function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout()) {
+  if (SLOT_FORENSICS_ENABLED) slotForensics.renderSequence += 1;
   const svg = DOM.braceletSvg;
   // Clear SVG first, keeping defs
   let defs = svg.querySelector('defs');
@@ -7644,7 +7646,6 @@ function classifySlotForensics(nodeRows, neighborDistances) {
 
 function captureSlotForensics(stateName, resolvedLayout = createCurrentBraceletResolvedLayout()) {
   if (!SLOT_FORENSICS_ENABLED || !DOM.braceletSvg) return null;
-  slotForensics.renderSequence += 1;
   const canonical = State.selectedStones.map((item, sourceIndex) => ({
     sourceIndex,
     uniqueId: item?.uniqueId ?? null,
@@ -7697,6 +7698,9 @@ function captureSlotForensics(stateName, resolvedLayout = createCurrentBraceletR
     TOTAL_COMPONENT_LIST_ITEMS: resolvedLayout.braceletComponentList.length,
     TOTAL_RESOLVED_NODES: nodeRows.length,
     TOTAL_DOM_COMPONENT_NODES: DOM.braceletSvg.querySelectorAll('.bead-node').length,
+    TOTAL_OCCUPIED_ITEMS: canonical.filter((item) => !item.isEmpty).length,
+    TOTAL_EMPTY_ITEMS: canonical.filter((item) => item.isEmpty).length,
+    TOTAL_PLACEHOLDER_NODES: nodeRows.filter((item) => item.dom.class?.includes('placeholder')).length,
     complete: Boolean(resolvedLayout.summary.completionEligibility?.complete),
     canonical,
     nodes: nodeRows,
@@ -7721,14 +7725,51 @@ function captureSlotForensics(stateName, resolvedLayout = createCurrentBraceletR
     }
   };
   slotForensics.captures[stateName] = snapshot;
+  slotForensics.history.push(snapshot);
   window.__slotForensics = slotForensics;
   renderSlotForensicsOverlay(snapshot);
   return snapshot;
 }
 
+function compareSlotForensicsSnapshots(firstPostReadd, finalSettled) {
+  if (!firstPostReadd || !finalSettled) return { available: false, changedSlots: [] };
+  const finalByIdentity = new Map(finalSettled.nodes.map((node) => [`${node.sourceIndex}:${node.uniqueId}`, node]));
+  const changedSlots = firstPostReadd.nodes.map((firstNode) => {
+    const finalNode = finalByIdentity.get(`${firstNode.sourceIndex}:${firstNode.uniqueId}`);
+    if (!finalNode) return { sourceIndex: firstNode.sourceIndex, uniqueId: firstNode.uniqueId, change: 'NODE_DISAPPEARED' };
+    const fields = ['kind', 'sizeMm', 'renderSizeMm', 'angleDeg', 'angleWidthDeg'];
+    const changedFields = fields.filter((field) => firstNode[field] !== finalNode[field]);
+    if (firstNode.center.x !== finalNode.center.x || firstNode.center.y !== finalNode.center.y) changedFields.push('center');
+    return changedFields.length > 0
+      ? { sourceIndex: firstNode.sourceIndex, uniqueId: firstNode.uniqueId, changedFields, firstPostReadd: firstNode, finalRender: finalNode }
+      : null;
+  }).filter(Boolean);
+  finalSettled.nodes.forEach((finalNode) => {
+    const exists = firstPostReadd.nodes.some((firstNode) => firstNode.sourceIndex === finalNode.sourceIndex && firstNode.uniqueId === finalNode.uniqueId);
+    if (!exists) changedSlots.push({ sourceIndex: finalNode.sourceIndex, uniqueId: finalNode.uniqueId, change: 'NODE_APPEARED' });
+  });
+  return { available: true, changedSlots, transientRenderDivergence: changedSlots.length > 0 ? 'YES' : 'NO' };
+}
+
+function captureSettledSlotForensics() {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      const settled = captureSlotForensics('STATE_D_FINAL_SETTLED_RENDER');
+      const immediate = slotForensics.history.slice().reverse().find((snapshot) => snapshot.state === 'STATE_C_IMMEDIATE_AFTER_READD');
+      if (!settled) return;
+      settled.firstPostReaddComparison = compareSlotForensicsSnapshots(immediate, settled);
+      window.__slotForensics = slotForensics;
+      renderSlotForensicsOverlay(settled);
+    });
+  });
+}
+
 function capturePendingSlotForensics(resolvedLayout) {
   if (!SLOT_FORENSICS_ENABLED) return;
-  captureSlotForensics(slotForensics.pendingState || 'RENDER', resolvedLayout);
+  const stateName = slotForensics.pendingState || 'RENDER';
+  captureSlotForensics(stateName, resolvedLayout);
+  if (stateName === 'STATE_C_IMMEDIATE_AFTER_READD') captureSettledSlotForensics();
   slotForensics.pendingState = null;
 }
 
@@ -7852,7 +7893,7 @@ function setupSlotForensicsPanel() {
   [
     ['STATE_A_BEFORE_DELETE', 'Capture A'],
     ['STATE_B_AFTER_ONE_DELETE', 'Capture B'],
-    ['STATE_C_AFTER_ONE_READD', 'Capture C']
+    ['STATE_C_IMMEDIATE_AFTER_READD', 'Capture C']
   ].forEach(([stateName, label]) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -7866,7 +7907,7 @@ function setupSlotForensicsPanel() {
   exportButton.textContent = 'Export / Copy Trace';
   exportButton.style.cssText = 'display:inline-block!important;min-height:32px;padding:4px 7px;background:#ffd166;color:#111;border:1px solid #ffd166;border-radius:4px;font-weight:800;';
   exportButton.addEventListener('click', async () => {
-    const trace = JSON.stringify(slotForensics.captures, null, 2);
+    const trace = JSON.stringify(slotForensics, null, 2);
     try {
       await navigator.clipboard.writeText(trace);
       exportButton.textContent = 'Trace copied';
@@ -7897,7 +7938,8 @@ function renderSlotForensicsOverlay(snapshot) {
     `CANONICAL_EMPTY: ${anomaly.CANONICAL_EMPTY} | RESOLVED_EMPTY: ${anomaly.RESOLVED_EMPTY} | DOM_PLACEHOLDER: ${anomaly.DOM_PLACEHOLDER}`,
     `COMPLETE: ${anomaly.COMPLETE} | GAP_WITHOUT_EMPTY_NODE: ${anomaly.GAP_WITHOUT_EMPTY_NODE}`,
     `ABNORMAL_ANGULAR_GAP_FOUND: ${anomaly.ABNORMAL_ANGULAR_GAP_FOUND}`,
-    'Full JSON: window.__slotForensics.captures (copy from device remote console)'
+    `FULL_RENDER_HISTORY: ${slotForensics.history.length} snapshots`,
+    'Full JSON: Export / Copy Trace includes ordered history and first-post-readd comparison'
   ].join('\n');
 }
 

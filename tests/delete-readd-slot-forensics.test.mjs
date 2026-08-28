@@ -34,6 +34,7 @@ function assertReplacementUsesCurrentFootprint(before, index, replacementSizeMm)
 test('slot forensics is UAT-only and records source, SVG, metadata, and neighbor arc evidence', () => {
   assert.match(app, /const SLOT_FORENSICS_ENABLED = IS_UAT_MODE && urlParams\.get\('slot_forensics'\) === '1'/);
   assert.match(app, /TOTAL_CANONICAL_ITEMS[\s\S]*TOTAL_DOM_COMPONENT_NODES/);
+  assert.match(app, /TOTAL_OCCUPIED_ITEMS[\s\S]*TOTAL_PLACEHOLDER_NODES/);
   assert.match(app, /placeholderSubtype[\s\S]*angleWidthDeg[\s\S]*imageHref/);
   assert.match(app, /getForensicNeighborDistances[\s\S]*visualGapMm/);
   assert.match(app, /GAP_WITHOUT_EMPTY_NODE/);
@@ -44,6 +45,12 @@ test('slot forensics is UAT-only and records source, SVG, metadata, and neighbor
   assert.match(app, /Export \/ Copy Trace/);
   assert.match(app, /z-index:2147483647!important/);
   assert.match(app, /document\.body\.appendChild\(panel\)/);
+  assert.match(app, /history:\s*\[\]/);
+  assert.match(app, /slotForensics\.history\.push\(snapshot\)/);
+  assert.match(app, /STATE_C_IMMEDIATE_AFTER_READD/);
+  assert.match(app, /STATE_D_FINAL_SETTLED_RENDER/);
+  assert.match(app, /compareSlotForensicsSnapshots/);
+  assert.match(app, /JSON\.stringify\(slotForensics, null, 2\)/);
 });
 
 test('Step 2 UAT trace is query-gated and records selection, validation, navigation, and mobile export evidence', () => {

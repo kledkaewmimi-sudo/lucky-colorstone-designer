@@ -4,6 +4,8 @@
 
 Owner real-device testing still reproduces a visible gap after delete/re-add. This change does not claim the gap is fixed or identify its cause before a device capture is collected.
 
+The owner-provided final render snapshot is structurally full: 17 canonical items, 17 component-list items, 17 resolved nodes, 17 DOM component nodes, all occupied 10 mm stones, and `complete: true`. This does not support a final-state retained-empty or placeholder leak.
+
 ## Why Previous Hypotheses Were Insufficient
 
 Earlier checks covered retained-empty counts, unique IDs, and terminal capacity placeholders. They did not preserve a single trace that joins canonical state, component list, resolved layout nodes, rendered SVG nodes, and angular neighbor distances for the same owner action sequence.
@@ -16,7 +18,9 @@ In UAT only, open Step 3 with `?slot_forensics=1`. The overlay captures every re
 - `STATE_B_AFTER_ONE_DELETE` after the following render;
 - `STATE_C_AFTER_ONE_READD` after the following add render.
 
-Each snapshot includes action/render sequence, canonical/list/resolved/DOM totals, every slot’s source and order indexes, identity, size/physical/render metadata, resolved geometry, SVG group attributes and image href, placeholder subtype, decorative rail node, and full-ring neighbor distances. No user identity or secrets are recorded.
+Each snapshot includes action/render sequence, canonical/list/resolved/DOM totals, occupied/empty/placeholder totals, every slot’s source and order indexes, identity, size/physical/render metadata, resolved geometry, SVG group attributes and image href, placeholder subtype, decorative rail node, and full-ring neighbor distances. No user identity or secrets are recorded.
+
+The exported trace now contains ordered `history` rather than only the last named capture. It automatically records `STATE_A_BEFORE_DELETE`, `STATE_B_AFTER_ONE_DELETE`, `STATE_C_IMMEDIATE_AFTER_READD`, and `STATE_D_FINAL_SETTLED_RENDER`. State D is captured after two animation frames and contains a per-slot comparison against the latest State C, including node appearance/disappearance and kind, size, angle, angle-width, and center changes.
 
 ## Visible Gap Classification
 
@@ -25,6 +29,8 @@ The overlay derives its classification from the rendered SVG group and its resol
 ## Node vs Angular Gap
 
 For every adjacent placed pair, the capture records source indexes, angle delta, actual arc spacing, expected visual spacing from current render sizes, and the residual visual gap. A residual over 1 mm is flagged as an angular gap with no empty SVG node.
+
+For the owner’s 17×10 mm final ring, the expected uniform angular width is `360 / 17 = 21.1765°`. The final snapshot’s supplied `angleWidthDeg` matches that expectation. A transient or visual-only divergence remains unproven until the State C-to-D comparison is exported.
 
 ## Retained Metadata Classification
 
@@ -36,7 +42,7 @@ Use `STATE_C_AFTER_ONE_READD.neighborDistances` to locate an outlier. The matchi
 
 ## Exact Root Cause
 
-Not yet proven. The owner-visible real-device trace has not been supplied to this workspace. No inference has been made from unit counts or synthetic data.
+Not yet proven. The final-state empty-slot hypothesis is not supported by the owner evidence. The remaining question is whether State C and State D expose a transient node/geometry divergence, or whether no such divergence exists and the visible effect is outside the SVG component-node model.
 
 ## Minimal Fix
 
