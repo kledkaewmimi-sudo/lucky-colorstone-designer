@@ -7774,11 +7774,16 @@ function setupStep2DebugPanel() {
   const panel = document.createElement('section');
   panel.id = 'step2DebugPanel';
   panel.setAttribute('aria-label', 'Step 2 runtime state trace');
-  panel.style.cssText = 'position:fixed!important;left:8px;bottom:max(8px, env(safe-area-inset-bottom));z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;width:min(94vw,430px);max-height:45vh;overflow:auto;background:#071a30;color:#eff8ff;border:3px solid #28c7fa;border-radius:8px;padding:8px;font:11px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.55);pointer-events:auto;';
+  // Top-anchor the diagnostic so it can never cover the app footer, Back, or Next CTA.
+  panel.style.cssText = 'position:fixed!important;top:max(52px, env(safe-area-inset-top));left:8px;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;width:min(72vw,330px);max-height:42vh;overflow:auto;background:#071a30;color:#eff8ff;border:3px solid #28c7fa;border-radius:8px;padding:8px;font:11px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.55);pointer-events:auto;';
   const heading = document.createElement('div');
   heading.textContent = 'STEP2 RUNTIME TRACE ACTIVE';
   heading.style.cssText = 'display:inline-block;font-weight:800;color:#071a30;background:#28c7fa;padding:4px 6px;margin-bottom:6px;';
   panel.appendChild(heading);
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.textContent = 'Expand';
+  toggle.style.cssText = 'float:right;min-height:30px;padding:4px 7px;margin-left:5px;background:#28c7fa;color:#071a30;border:1px solid #28c7fa;border-radius:4px;font-weight:800;';
   const copy = document.createElement('button');
   copy.type = 'button';
   copy.textContent = 'COPY STEP2 TRACE';
@@ -7797,6 +7802,13 @@ function setupStep2DebugPanel() {
   output.id = 'step2DebugOutput';
   output.style.cssText = 'clear:both;display:block;margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font:10px/1.35 monospace;';
   output.textContent = 'Waiting for Step 2 render.';
+  output.hidden = true;
+  toggle.addEventListener('click', () => {
+    const expanded = output.hidden;
+    output.hidden = !expanded;
+    toggle.textContent = expanded ? 'Collapse' : 'Expand';
+  });
+  panel.appendChild(toggle);
   panel.appendChild(output);
   document.body.appendChild(panel);
 }

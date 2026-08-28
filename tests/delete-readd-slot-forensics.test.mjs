@@ -56,6 +56,10 @@ test('Step 2 UAT trace is query-gated and records selection, validation, navigat
   });
   assert.match(app, /window\.__step2Debug = step2Debug/);
   assert.match(app, /COPY STEP2 TRACE/);
+  assert.match(app, /top:max\(52px, env\(safe-area-inset-top\)\)/);
+  assert.doesNotMatch(app.slice(app.indexOf('function setupStep2DebugPanel'), app.indexOf('function renderStep2DebugPanel')), /bottom:max\(8px/);
+  assert.match(app, /output\.hidden = true/);
+  assert.match(app, /toggle\.textContent = expanded \? 'Collapse' : 'Expand'/);
 });
 
 test('full-ring mixed composition preserves order and uses replacement size for same, smaller, and larger re-adds', () => {
