@@ -4,6 +4,8 @@
 
 Owner real-device video on `https://uat.customize.luckycolorstone.com/?slot_forensics=1` shows an active visual selection on Step 2 but the existing `กรุณาเลือกขนาดหินก่อน` validation toast on Next.
 
+Owner subsequently captured the UAT Step 2 runtime trace for 10mm. It records `STATE_BEAD_SIZE: "10"`, `STATE_MIXED_PLACING_SIZE: 10`, `EXPLICIT_SELECTION: YES`, `VALIDATION_RESULT: PASS`, one Next handler call, and successful `BEFORE_GOTO_STEP3` / `AFTER_GOTO_STEP3` transition from Step 2 to Step 3. The previous blocker is currently not reproduced on the owner device.
+
 ## Normal vs Forensics Reproduction
 
 No browser surface was available in this workspace to execute the eight real UAT navigation cases. Source-level state transition checks pass for all four values. The diagnostic query is source-isolated: it is parsed once as `slot_forensics === '1'`, appends its panel on DOM-ready, and does not assign `State.beadSize`, `State.mixedPlacingSize`, or `State.currentStep`.
@@ -23,7 +25,7 @@ Expected source transition results on a fresh state are:
 
 ## Exact Root Cause
 
-Not yet proven in a runnable real-device/browser trace. The owner video proves a runtime divergence, but the deployed source’s card-selection assignment and validation contract are internally consistent. A behavioral fix would be speculative.
+No code root cause was established. The current owner runtime trace passes without a behavioral change, so no speculative Step 2 fix is justified.
 
 ## Minimal Fix
 
@@ -55,7 +57,7 @@ No new deployment was made because no source change is justified by the current 
 
 ## Owner Retest
 
-Blocked pending a browser/device trace that records the card `data-bead-size`, `State.beadSize`, and validation result immediately before Next. The active forensic panel’s Export / Copy Trace is available on the query URL.
+Passed for the captured 10mm owner flow. Preserve `?step2_debug=1` as regression evidence; resume the pending delete/re-add forensic capture using `?slot_forensics=1`.
 
 ## Production Isolation
 
