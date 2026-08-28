@@ -44,7 +44,7 @@ None applied. The only application change is UAT-gated diagnostic instrumentatio
 
 ## Full-Ring Regression
 
-`tests/delete-readd-slot-forensics.test.mjs` passes three checks: UAT diagnostic coverage, a 170 mm 20-component Mixed full ring (13×10, 6×6, 1×4) for same/smaller/larger middle re-adds, and replacement angular footprint derived from 4 mm rather than the deleted 10 mm. These are code-level regression checks only; they do not replace the owner device trace.
+`tests/delete-readd-slot-forensics.test.mjs` passes three checks: UAT diagnostic coverage, a 170 mm 20-component Mixed full ring (13×10, 6×6, 1×4) for same/smaller/larger middle re-adds, and replacement angular footprint derived from 4 mm rather than the deleted 10 mm. These are code-level regression checks only; they do not replace the owner device trace. The repository-wide command has five unrelated pre-existing failures: two tests require unavailable UAT backend credentials, one has a Beryl test-module declaration error, and two assert UI patterns already absent before this change.
 
 ## Separate Payment Issue Recorded
 
@@ -54,7 +54,7 @@ No payment or checkout code was changed.
 
 ## UAT Deployment
 
-Not deployed in this change set. Deploy the UAT branch, then reproduce the owner sequence with `?slot_forensics=1` and export `window.__slotForensics.captures` after State C.
+Deployed to the isolated UAT project and verified served at `https://uat.customize.luckycolorstone.com/app.js`. Reproduce the owner sequence with `?slot_forensics=1` and export `window.__slotForensics.captures` after State C.
 
 ## Owner Retest
 
