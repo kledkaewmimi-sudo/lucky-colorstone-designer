@@ -9,6 +9,7 @@ function resolvePlaceholderCounts({ mode, placingSizeMm, targetLengthMm, sequenc
   const occupied = sequence.filter((item) => item.type !== 'empty');
   const emptySlotCount = sequence.length - occupied.length;
   const usedLengthMm = occupied.reduce((sum, item) => sum + item.sizeMm, 0);
+  const visualUsedLengthMm = sequence.reduce((sum, item) => sum + item.sizeMm, 0);
   const completion = getBraceletCompletionEligibility({
     mode,
     usedLengthMm,
@@ -16,9 +17,9 @@ function resolvePlaceholderCounts({ mode, placingSizeMm, targetLengthMm, sequenc
     fixedComponentLengthMm: mode === 'fixed' ? placingSizeMm : 0,
     supportedComponentLengthsMm: [4, 6, 10]
   });
-  const trailingPlaceholderCount = emptySlotCount > 0 || completion.complete
+  const trailingPlaceholderCount = completion.complete
     ? 0
-    : Math.max(0, Math.floor((targetLengthMm - usedLengthMm) / placingSizeMm));
+    : Math.max(0, Math.floor((targetLengthMm - visualUsedLengthMm) / placingSizeMm));
   return {
     canonicalEmpty: emptySlotCount,
     resolvedPlaceholders: emptySlotCount + trailingPlaceholderCount,
@@ -32,8 +33,10 @@ function completedFixedSequence() {
   return Array.from({ length: 17 }, (_, index) => ({ type: 'stone', sizeMm: 10, uniqueId: index + 1 }));
 }
 
-test('proven root cause: retained deletion slots suppress duplicate trailing capacity placeholders', () => {
-  assert.match(app, /const trailingPlaceholderCount = emptySlotCount > 0 \|\| completionEligibility\.complete/);
+test('completed deletion retains one visual slot without a duplicate capacity placeholder', () => {
+  assert.match(app, /const visualUsedLengthMm = loopComponents\.reduce/);
+  assert.match(app, /const visualSpaceLeftMm = Math\.max\(0, braceletConfig\.braceletLengthMm - visualUsedLengthMm\)/);
+  assert.match(app, /const trailingPlaceholderCount = completionEligibility\.complete/);
   assert.match(app, /isRetainedSlot: true/);
   assert.match(app, /isTrailingCapacityPlaceholder: true/);
 
@@ -50,7 +53,7 @@ test('proven root cause: retained deletion slots suppress duplicate trailing cap
   assert.equal(result.completion.complete, false);
 });
 
-test('fixed two deletes fill retained positions before any trailing capacity target exists', () => {
+test('fixed two completed deletions retain only their visual slots before re-add', () => {
   const initial = completedFixedSequence();
   const deletedTwice = initial
     .toSpliced(3, 1, { type: 'empty', sizeMm: 10, uniqueId: initial[3].uniqueId })
@@ -68,7 +71,7 @@ test('fixed two deletes fill retained positions before any trailing capacity tar
   assert.deepEqual(afterTwoReadds.map((item) => item.uniqueId), initial.map((item) => item.uniqueId));
 });
 
-test('Mixed 4/6/10 retained slots suppress capacity placeholders until re-add', () => {
+test('complete Mixed 4/6/10 deletions retain one visual slot without extra capacity placeholders', () => {
   const sizes = [...Array(13).fill(10), ...Array(6).fill(6), 4];
   const initial = sizes.map((sizeMm, index) => ({ type: 'stone', sizeMm, uniqueId: index + 1 }));
   assert.equal(initial.reduce((sum, item) => sum + item.sizeMm, 0), 170);
