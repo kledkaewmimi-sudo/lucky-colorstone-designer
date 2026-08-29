@@ -9065,7 +9065,14 @@ async function handleStripeReturnIfNeeded() {
 
 async function handleStripeCheckout() {
   if (IS_UAT_MODE) {
-    showToast('UAT: checkout and payment are disabled.');
+    // UAT never creates a payment session, but it must still distinguish the
+    // approved bracelet-completion result from the environment safety block.
+    const fitEligibility = getCurrentCheckoutFitEligibility();
+    if (!fitEligibility.eligible) {
+      showToast(`Bracelet validation: ${fitEligibility.reason}`);
+      return;
+    }
+    showToast('UAT safe mode: bracelet validation passed. Checkout and payment are disabled.');
     return;
   }
   if (State.orderDetailMode || State.paymentCompletedView) {
