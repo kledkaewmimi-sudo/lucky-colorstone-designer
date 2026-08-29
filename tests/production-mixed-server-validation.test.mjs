@@ -53,15 +53,12 @@ test('authoritative totals preserve existing charm and spacer pricing', () => {
   assert.equal(result.itemizedBilling.find((item) => item.type === 'charm').unitPrice, 200);
 });
 
-test('authoritative fit accepts inclusive boundaries and ignores browser fitStatus', () => {
+test('authoritative completion follows the approved Mixed target-minus-five window and ignores browser fitStatus', () => {
   const underTarget = validate([component(10), { type: 'spacer', spacerId: 'spacer-9' }], { fitStatus: 'overflow' });
   assert.equal(underTarget.geometry.differenceMm, -1);
-  assert.equal(underTarget.geometry.fitStatus, 'within_tolerance');
-  const overTarget = validate([component(10), component(10), { type: 'spacer', spacerId: 'spacer-1' }], { fitStatus: 'underfill' });
-  assert.equal(overTarget.geometry.differenceMm, 1);
-  assert.equal(overTarget.geometry.fitStatus, 'within_tolerance');
-  assert.throws(() => validate([component(10), { type: 'spacer', spacerId: 'spacer-9' }], { wristSize: 0.501 }), /below/);
-  assert.throws(() => validate([component(10), component(10), { type: 'spacer', spacerId: 'spacer-1' }], { wristSize: 0.499 }), /exceeds/);
+  assert.equal(underTarget.geometry.fitStatus, 'COMPLETE_WITHIN_TARGET_RANGE');
+  assert.throws(() => validate([component(10), component(10), { type: 'spacer', spacerId: 'spacer-1' }], { fitStatus: 'underfill' }), /exceeds allowed target/);
+  assert.throws(() => validate([component(10)], { wristSize: 1.6 }), /incomplete/);
 });
 
 test('legacy fixed 4/6/10 component payloads remain valid without stoneVariants', () => {

@@ -80,11 +80,14 @@ test('trimming does not auto-add when it starts underfilled and fixed 4/6/10 rem
   }
 });
 
-test('production integration uses the established target formula and canonical geometry path', () => {
+test('production integration uses the established target formula and canonical resolved-layout pipeline', () => {
   assert.match(app, /import \{ createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility \} from '\.\/bracelet-geometry\.js';/);
   assert.match(app, /return \(State\.wristSize \+ TOLERANCE_CM\) \* 10;/);
   assert.match(app, /trimTrailingOverflowAfterFixedConversion\(/);
-  assert.match(app, /getComponentGeometry: createGeometryComponentForLoopItem/);
+  assert.match(app, /function createBraceletComponentList\(\)/);
+  assert.match(app, /function createResolvedBraceletLayout\(braceletConfig, braceletComponentList\)/);
+  assert.match(app, /function createCurrentBraceletResolvedLayout\(\)\s*\{\s*const braceletConfig = createBraceletConfig\(\);\s*const braceletComponentList = createBraceletComponentList\(\);\s*return createResolvedBraceletLayout\(braceletConfig, braceletComponentList\);\s*\}/);
+  assert.match(app, /function renderBraceletCanvas\(resolvedLayout = createCurrentBraceletResolvedLayout\(\)\)/);
 });
 
 test('approved UAT completion contract is shared by fixed, mixed, and placement', () => {

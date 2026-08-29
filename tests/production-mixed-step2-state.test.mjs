@@ -3,7 +3,6 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import {
   MIXED_BEAD_SIZE_MODE,
-  isExplicitBeadSizeMode,
   transitionBraceletSizeMode
 } from '../mixed-size-state.js';
 
@@ -16,14 +15,11 @@ const thai = (...points) => String.fromCodePoint(...points);
 const mixedTitle = thai(0x0e04, 0x0e25, 0x0e30, 0x0e44, 0x0e0b, 0x0e2a, 0x0e4c);
 const mixedDescription = thai(0x0e2a, 0x0e19, 0x0e38, 0x0e01, 0x20, 0x0e21, 0x0e35, 0x0e21, 0x0e34, 0x0e15, 0x0e34);
 const selectionToast = thai(0x0e01, 0x0e23, 0x0e38, 0x0e13, 0x0e32, 0x0e40, 0x0e25, 0x0e37, 0x0e2d, 0x0e01, 0x0e02, 0x0e19, 0x0e32, 0x0e14, 0x0e2b, 0x0e34, 0x0e19, 0x0e01, 0x0e48, 0x0e2d, 0x0e19);
-const selectionToastEscaped = Array.from(selectionToast, (character) => `\\u${character.codePointAt(0).toString(16).padStart(4, '0')}`).join('');
 
 test('fresh Step 2 state has no selected bead size or implicit 6mm selection', () => {
   assert.match(appSource, /beadSize:\s*null/);
   assert.match(appSource, /State\.beadSize\s*=\s*null/);
-  assert.equal(isExplicitBeadSizeMode(null), false);
-  assert.equal(isExplicitBeadSizeMode('6'), true);
-  assert.equal(isExplicitBeadSizeMode(MIXED_BEAD_SIZE_MODE), true);
+  assert.match(appSource, /function hasExplicitBeadSizeSelection\(value = State\.beadSize\)\s*\{\s*return \['4', '6', '10', MIXED_BEAD_SIZE_MODE\]\.includes\(String\(value \?\? ''\)\);\s*\}/);
 });
 
 test('Step 2 cards retain the approved exact order and Thai mixed copy', () => {
@@ -36,7 +32,7 @@ test('Step 2 cards retain the approved exact order and Thai mixed copy', () => {
 
 test('Step 2 blocks Next without explicit selection and uses the Thai selection toast', () => {
   assert.match(appSource, /State\.currentStep === 2 && !hasExplicitBeadSizeSelection\(\)/);
-  assert.ok(appSource.includes(selectionToastEscaped));
+  assert.ok(appSource.includes(selectionToast));
   assert.match(appSource, /await goToStep\(State\.currentStep \+ 1\)/);
 });
 
@@ -74,7 +70,7 @@ test('mixed to fixed blocks unsupported stones and does not mutate the source se
 });
 
 test('Step 2 selection preserves explicit state when returning from Step 3', () => {
-  assert.match(appSource, /const active = hasExplicitBeadSizeSelection\(\) && c\.getAttribute\('data-bead-size'\) === State\.beadSize/);
+  assert.match(appSource, /const active = hasExplicitBeadSizeSelection\(\)\s*&& c\.getAttribute\('data-bead-size'\) === State\.beadSize/);
   assert.match(appSource, /if \(State\.currentStep === 3 && step < 3\)/);
   assert.doesNotMatch(appSource, /State\.beadSize\s*=\s*null;[\s\S]{0,300}step3-back-to/);
 });

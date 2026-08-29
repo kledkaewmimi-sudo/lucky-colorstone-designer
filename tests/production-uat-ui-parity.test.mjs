@@ -24,5 +24,6 @@ test('Step 3 uses the approved native sticky preview lifecycle without UAT diagn
   assert.match(appSource, /DOM\.appContainer\.classList\.toggle\('step3-preview-covered', previewTop <= scrollportTop \+ 1\)/);
   assert.match(appSource, /setupDesignerEvents\(\)[\s\S]*?setupStep3StickyLayer\(\)/);
   assert.match(appSource, /configureFooterNavigation\(\);\s*syncStep3StickyLayer\(\);/);
-  assert.doesNotMatch(appSource, /setupStep3StickyDebugOverlay\(\)/);
+  assert.match(appSource, /const STICKY_DEBUG_ENABLED = false;/);
+  assert.match(appSource, /function setupStep3StickyDebugOverlay\(\)\s*\{\s*if \(!STICKY_DEBUG_ENABLED \|\| step3StickyDebugOverlay\) return;/);
 });

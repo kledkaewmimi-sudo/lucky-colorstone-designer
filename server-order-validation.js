@@ -1,6 +1,6 @@
 const PHYSICAL_STONE_SIZES = new Set([4, 6, 10]);
-const FIT_TOLERANCE_MM = 1;
 const BRACELET_ALLOWANCE_CM = 1.5;
+const MIXED_COMPLETION_WINDOW_MM = 5;
 
 function invalid(message) { const error = new Error(message); error.statusCode = 409; throw error; }
 function positiveNumber(value) { const number = Number(value); return Number.isFinite(number) && number > 0 ? number : null; }
@@ -37,10 +37,25 @@ function normalizeSuppliedVariants(stoneVariants, sequenceVariantCounts) {
   return counts;
 }
 
-function getFitStatus(differenceMm) {
-  if (differenceMm < -FIT_TOLERANCE_MM) return 'underfill';
-  if (differenceMm > FIT_TOLERANCE_MM) return 'overflow';
-  return 'within_tolerance';
+function getServerCompletionEligibility({ beadSize, usedLengthMm, targetLengthMm } = {}) {
+  const usedLength = Number(usedLengthMm);
+  const targetLength = Number(targetLengthMm);
+  const mode = String(beadSize || '').trim().toLowerCase() === 'mixed' ? 'mixed' : 'fixed';
+  const fixedComponentLengthMm = mode === 'fixed' ? fixedPayloadSize({ beadSize }) : null;
+  const overflow = !Number.isFinite(usedLength) || !Number.isFinite(targetLength) || usedLength > targetLength;
+  const complete = !overflow && (mode === 'mixed'
+    ? usedLength >= targetLength - MIXED_COMPLETION_WINDOW_MM
+    : Number.isFinite(fixedComponentLengthMm) && usedLength + fixedComponentLengthMm > targetLength);
+  return {
+    mode,
+    usedLengthMm: usedLength,
+    targetLengthMm: targetLength,
+    minCompleteLengthMm: mode === 'mixed' ? targetLength - MIXED_COMPLETION_WINDOW_MM : null,
+    fixedComponentLengthMm,
+    overflow,
+    complete,
+    status: overflow ? 'OVERFLOW_INVALID' : complete ? mode === 'mixed' ? 'COMPLETE_WITHIN_TARGET_RANGE' : 'COMPLETE_DISCRETE_CAPACITY' : 'INCOMPLETE'
+  };
 }
 
 function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings = {} } = {}) {
@@ -54,7 +69,9 @@ function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings 
 
   for (const component of sequence) {
     const type = String(component?.type || component?.componentType || '').trim().toLowerCase();
-    if (type === 'empty') continue;
+    // Retained editor slots and renderer-only placeholders have no physical
+    // bracelet length and cannot be billed as catalog components.
+    if (type === 'empty' || type === 'placeholder') continue;
     if (!['stone', 'charm', 'spacer'].includes(type)) invalid('Unsupported bracelet component.');
     const id = String(type === 'stone' ? component.stoneId || component.id : type === 'charm' ? component.charmId || component.id : component.spacerId || component.id).trim();
     const item = catalogMap(catalogs, type).get(id);
@@ -86,9 +103,13 @@ function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings 
   const wristSize = Number(clientOrder.wristSize);
   if (!Number.isFinite(wristSize) || wristSize <= 0) invalid('Wrist size is required.');
   const targetLengthMm = (wristSize + BRACELET_ALLOWANCE_CM) * 10;
-  const differenceMm = usedLengthMm - targetLengthMm;
-  const fitStatus = getFitStatus(differenceMm);
-  if (fitStatus !== 'within_tolerance') invalid(fitStatus === 'overflow' ? 'Bracelet exceeds the 1.0mm fit tolerance.' : 'Bracelet is below the 1.0mm fit tolerance.');
+  const completionEligibility = getServerCompletionEligibility({
+    beadSize: clientOrder.beadSize,
+    usedLengthMm,
+    targetLengthMm
+  });
+  if (completionEligibility.overflow) invalid('Bracelet exceeds allowed target length.');
+  if (!completionEligibility.complete) invalid('Bracelet is incomplete.');
 
   const subtotal = billing.reduce((sum, item) => sum + item.totalPrice, 0);
   const discountPercent = settings?.discountEnabled === false ? 0 : Math.max(0, Number(settings?.globalDiscountPercent ?? 20));
@@ -103,8 +124,15 @@ function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings 
     finalPrice,
     totalPrice: finalPrice,
     netPrice: finalPrice,
-    geometry: { usedLengthMm, targetLengthMm, differenceMm, fitStatus, isWithinTolerance: true }
+    geometry: {
+      usedLengthMm,
+      targetLengthMm,
+      differenceMm: usedLengthMm - targetLengthMm,
+      fitStatus: completionEligibility.status,
+      isWithinTolerance: completionEligibility.complete
+    },
+    completionEligibility
   };
 }
 
-module.exports = { FIT_TOLERANCE_MM, resolveAuthoritativeStoneVariant, validateAuthoritativeOrder };
+module.exports = { MIXED_COMPLETION_WINDOW_MM, getServerCompletionEligibility, resolveAuthoritativeStoneVariant, validateAuthoritativeOrder };

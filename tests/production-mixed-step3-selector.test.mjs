@@ -3,7 +3,9 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import {
   MIXED_BEAD_SIZE_MODE,
-  getPhysicalStonePlacementSize,
+  getMixedPlacementSizeForStone,
+  normalizeBraceletSizeMode,
+  normalizeMixedPlacingSize,
   setMixedPlacingSize,
   stoneSupportsSize
 } from '../mixed-size-state.js';
@@ -24,26 +26,24 @@ test('mixed selector has exactly the three approved physical sizes and no extra 
 });
 
 test('selector is visible only for mixed mode and keeps zero layout space in fixed modes', () => {
-  assert.match(appSource, /const isMixedMode = State\.beadSize === MIXED_BEAD_SIZE_MODE/);
-  assert.match(appSource, /DOM\.mixedSizeSelectorBar\.hidden = !isMixedMode/);
+  assert.match(appSource, /DOM\.mixedSizeSelectorBar\.hidden = State\.beadSize !== MIXED_BEAD_SIZE_MODE/);
   assert.match(cssSource, /\.mixed-size-selector-bar\[hidden\]\s*\{\s*display:\s*none !important;/);
   assert.doesNotMatch(appSource, /DOM\.mixedSizeSelectorBar\.hidden = safeActiveSection !== 'stones'/);
 });
 
 test('selector state uses only physical values and is preserved when catalog tabs change', () => {
-  assert.match(appSource, /const nextState = withMixedPlacingSize\(State, btn\.getAttribute\('data-size'\)\)/);
-  assert.match(appSource, /State\.mixedPlacingSize = nextState\.mixedPlacingSize/);
-  assert.match(appSource, /State\.mixedSizeFilter = String\(State\.mixedPlacingSize\)/);
-  assert.match(appSource, /syncMixedSizeSelector\(\);\s*\n\s*renderCatalogGrid\(\);\s*\n\s*saveState\(\);/);
+  assert.match(appSource, /function setMixedStoneSizeFilter\(size\)\s*\{\s*const nextFilter = normalizeMixedSizeFilter\(size, State\.mixedSizeFilter\);\s*State\.mixedSizeFilter = nextFilter;\s*if \(nextFilter !== 'all'\) setCurrentMixedPlacingSize\(nextFilter\);\s*\}/);
+  assert.match(appSource, /DOM\.mixedToggleBtns\.forEach\(btn => \{\s*btn\.addEventListener\('click', \(\) => \{\s*if \(State\.beadSize !== MIXED_BEAD_SIZE_MODE\) return;\s*setMixedStoneSizeFilter\(btn\.getAttribute\('data-size'\)\);\s*renderStep3\(\);\s*saveState\(\);/);
 });
 
 test('mixed catalog filtering uses selected physical placement size and fixed modes retain their own size', () => {
   const stone = { id: 'variant', sizes: [4, 10] };
-  assert.equal(stoneSupportsSize(stone, getPhysicalStonePlacementSize(MIXED_BEAD_SIZE_MODE, 4)), true);
-  assert.equal(stoneSupportsSize(stone, getPhysicalStonePlacementSize(MIXED_BEAD_SIZE_MODE, 6)), false);
-  assert.equal(stoneSupportsSize(stone, getPhysicalStonePlacementSize('10', 4)), true);
+  assert.equal(getMixedPlacementSizeForStone(stone, 4), 4);
+  assert.equal(getMixedPlacementSizeForStone(stone, 6), null);
+  assert.equal(stoneSupportsSize(stone, Number(normalizeBraceletSizeMode('10'))), true);
   assert.match(appSource, /return stoneSupportsSize\(stone, getCurrentBeadSizeMm\(\)\)/);
-  assert.match(appSource, /STONES\.filter\(\(stone\) => isCustomerCatalogItemAvailable\(stone\) && isStoneAvailableForCurrentBeadSize\(stone\)\)/);
+  assert.match(appSource, /function getCurrentBeadSizeMm\(\)\s*\{\s*const mode = normalizeBeadSizeOption\(State\.beadSize\);\s*return mode === MIXED_BEAD_SIZE_MODE\s*\? normalizeMixedPlacingSize\(State\.mixedPlacingSize\)\s*: Number\(mode\);\s*\}/);
+  assert.match(appSource, /STONES\.filter\(\(stone\) => isCustomerCatalogItemAvailable\(stone\) && isStoneVisibleForCurrentSizeFilter\(stone\)\)/);
 });
 
 test('changing selector state cannot mutate an existing placed component', () => {
@@ -52,15 +52,15 @@ test('changing selector state cannot mutate an existing placed component', () =>
   const next = setMixedPlacingSize(source, 10);
   assert.equal(next.mixedPlacingSize, 10);
   assert.deepEqual(next.selectedStones, [placedStone]);
-  assert.equal(getPhysicalStonePlacementSize(source.beadSize, source.mixedPlacingSize), 4);
-  assert.equal(getPhysicalStonePlacementSize(next.beadSize, next.mixedPlacingSize), 10);
+  assert.equal(normalizeMixedPlacingSize(source.mixedPlacingSize), 4);
+  assert.equal(normalizeMixedPlacingSize(next.mixedPlacingSize), 10);
 });
 
-test('placement is always a physical size and never a mixed/default fallback', () => {
-  assert.equal(getPhysicalStonePlacementSize(MIXED_BEAD_SIZE_MODE, 4), 4);
-  assert.equal(getPhysicalStonePlacementSize(MIXED_BEAD_SIZE_MODE, 10), 10);
-  assert.equal(getPhysicalStonePlacementSize('6', 10), 6);
-  assert.equal(getPhysicalStonePlacementSize(null, 6), null);
-  assert.match(appSource, /const placedSize = getCurrentBeadSizeMm\(\);\s*\n\s*if \(!Number\.isFinite\(placedSize\)\) return;/);
+test('placement uses the current physical size selected by fixed or mixed mode', () => {
+  const stone = { id: 'variant', sizes: [4, 6, 10] };
+  assert.equal(getMixedPlacementSizeForStone(stone, 4), 4);
+  assert.equal(getMixedPlacementSizeForStone(stone, 10), 10);
+  assert.equal(Number(normalizeBraceletSizeMode('6')), 6);
+  assert.match(appSource, /const placedSize = State\.beadSize === 'mixed' \? State\.mixedPlacingSize : parseInt\(State\.beadSize\);/);
   assert.match(appSource, /createStoneSelectionItem\(stoneId, placedSize, State\.uniqueCounter\)/);
 });

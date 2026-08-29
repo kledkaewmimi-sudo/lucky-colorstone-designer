@@ -23,13 +23,14 @@ const mixedState = {
   ]
 };
 
-test('mixed session snapshot preserves mode, placement size, ordered components, physical sizes, and IDs', () => {
+test('mixed session snapshot preserves mode, placement size, ordered components, and physical sizes', () => {
   const snapshot = createGuestDesignSnapshot(mixedState, { now: NOW });
   assert.equal(snapshot.design.beadSize, 'mixed');
   assert.equal(snapshot.design.mixedPlacingSize, 10);
-  assert.deepEqual(snapshot.design.components.map((component) => [component.type, component.id, component.size ?? null, component.uniqueId ?? null]), [
-    ['stone', 'amethyst', 4, 11], ['spacer', 'silver-spacer', null, 12], ['stone', 'quartz', 10, 13], ['charm', 'bee-heart', null, 14], ['stone', 'amethyst', 6, 15]
+  assert.deepEqual(snapshot.design.components.map((component) => [component.type, component.id, component.size ?? null]), [
+    ['stone', 'amethyst', 4], ['spacer', 'silver-spacer', null], ['stone', 'quartz', 10], ['charm', 'bee-heart', null], ['stone', 'amethyst', 6]
   ]);
+  assert.equal(snapshot.design.components.every((component) => component.uniqueId === undefined), true);
   assert.equal(JSON.stringify(snapshot).includes('resolvedLayout'), false);
   assert.equal(JSON.stringify(snapshot).includes('unitPrice'), false);
 });
@@ -72,7 +73,8 @@ test('production restore keeps fresh entry reset and canonical derived recalcula
   assert.match(app, /State\.beadSize = null;/);
   assert.match(app, /if \(State\.beadSize === MIXED_BEAD_SIZE_MODE\) return;/);
   assert.match(app, /mixedPlacingSize: State\.mixedPlacingSize/);
-  assert.match(app, /size: component\.size, uniqueId: component\.uniqueId/);
+  assert.match(app, /if \(component\.type === 'stone'\) return \{ componentType: 'stone', stoneId: component\.id, size: Number\(component\.size \|\| getCurrentBeadSizeMm\(\)\) \};/);
+  assert.match(app, /State\.selectedStones\.forEach\(\(item, index\) => \{ item\.uniqueId = index \+ 1; \}\);/);
   assert.doesNotMatch(app, /resolvedLayout:\s*createCurrentBraceletResolvedLayout/);
   assert.doesNotMatch(app, /trustedPrice/);
 });
