@@ -51,12 +51,22 @@ test('slot forensics is UAT-only and records source, SVG, metadata, and neighbor
     assert.match(app, new RegExp(stateName));
   });
   assert.match(app, /compareSlotForensicsSnapshots/);
-  assert.match(app, /JSON\.stringify\(slotForensics, null, 2\)/);
+  assert.match(app, /JSON\.stringify\(window\.__slotForensics \|\| slotForensics/);
   assert.match(app, /navigator\.clipboard\?\.writeText/);
+  assert.match(app, /FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE/);
+  assert.match(app, /force_clipboard_fail/);
+  ['EXPORT_CLICK', 'SERIALIZE_SUCCESS', 'CLIPBOARD_ATTEMPT', 'CLIPBOARD_REJECTED', 'FALLBACK_MODAL_CREATE', 'FALLBACK_MODAL_APPEND', 'FALLBACK_MODAL_VISIBLE'].forEach((eventName) => {
+    assert.match(app, new RegExp(eventName));
+  });
   assert.match(app, /slotForensicsExportModal/);
+  assert.match(app, /forensicsVisible/);
   assert.match(app, /textarea\.readOnly = true/);
+  assert.match(app, /SLOT FORENSICS EXPORT/);
+  assert.match(app, /HISTORY COUNT:/);
+  assert.match(app, /JSON SIZE:/);
+  assert.match(app, /FALLBACK: ACTIVE/);
   assert.match(app, /document\.execCommand\('copy'\)/);
-  assert.match(app, /Download Trace JSON/);
+  assert.match(app, /DOWNLOAD JSON/);
   assert.match(app, /application\/json/);
   assert.match(app, /EXPORT HISTORY COUNT/);
 });

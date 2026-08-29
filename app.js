@@ -58,6 +58,9 @@ const SLOT_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('slot_debug') === '1';
 // UAT-only, opt-in real-device SVG forensic capture. This does not participate
 // in placement, capacity, completion, or checkout behaviour.
 const SLOT_FORENSICS_ENABLED = IS_UAT_MODE && urlParams.get('slot_forensics') === '1';
+// UAT-only deterministic coverage for in-app browsers where clipboard writes
+// are unavailable or rejected. It changes diagnostic export only.
+const FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE = SLOT_FORENSICS_ENABLED && urlParams.get('force_clipboard_fail') === '1';
 const STEP2_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('step2_debug') === '1';
 const slotForensics = {
   actionSequence: 0,
@@ -70,7 +73,8 @@ const slotForensics = {
     snapshotCount: 0,
     historyCount: 0,
     success: 'NO'
-  }
+  },
+  exportTrace: []
 };
 const step2Debug = {
   sequence: 0,
@@ -7940,6 +7944,37 @@ function updateSlotForensicsExportStatus(method, success) {
   if (latest) renderSlotForensicsOverlay(latest);
 }
 
+function recordSlotForensicsExportEvent(event, details = {}) {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  slotForensics.exportTrace.push({
+    sequence: slotForensics.exportTrace.length + 1,
+    event,
+    historyCount: slotForensics.history.length,
+    ...details
+  });
+  window.__slotForensics = slotForensics;
+}
+
+function serializeSlotForensicsTrace() {
+  // The export must use the public forensic object and must tolerate a future
+  // diagnostic field that contains a repeated object reference.
+  const ancestors = [];
+  const trace = JSON.stringify(window.__slotForensics || slotForensics, function serializeDiagnosticValue(key, value) {
+    if (typeof value === 'bigint') return value.toString();
+    if (value && typeof value === 'object') {
+      // Shared snapshot objects are intentionally stored in both captures and
+      // ordered history. Only replace a true ancestor cycle, never a sibling
+      // shared reference, so history remains complete in the exported JSON.
+      while (ancestors.length && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.includes(value)) return '[Circular diagnostic reference]';
+      ancestors.push(value);
+    }
+    return value;
+  }, 2);
+  if (!trace) throw new Error('Slot forensic export serialization returned empty');
+  return trace;
+}
+
 function formatSlotForensicsExportTimestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
@@ -7958,19 +7993,31 @@ function downloadSlotForensicsTrace(trace) {
   updateSlotForensicsExportStatus('DOWNLOAD', true);
 }
 
-function openSlotForensicsExportModal(trace) {
+function openSlotForensicsExportModal(trace, clipboardState = 'UNAVAILABLE') {
+  recordSlotForensicsExportEvent('FALLBACK_MODAL_CREATE', { jsonBytes: trace.length });
   document.getElementById('slotForensicsExportModal')?.remove();
   const overlay = document.createElement('div');
   overlay.id = 'slotForensicsExportModal';
+  overlay.dataset.forensicsVisible = 'PENDING';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', 'Slot forensics trace export');
-  overlay.style.cssText = 'position:fixed!important;inset:0;z-index:2147483647!important;display:flex!important;align-items:center;justify-content:center;padding:12px;background:rgba(0,0,0,.72);pointer-events:auto;';
+  overlay.style.cssText = 'position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;width:100vw!important;height:100dvh!important;min-height:100vh!important;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;overflow:auto!important;overscroll-behavior:contain!important;padding:12px!important;box-sizing:border-box!important;background:rgba(0,0,0,.82)!important;pointer-events:auto!important;';
   const modal = document.createElement('section');
-  modal.style.cssText = 'display:flex;flex-direction:column;width:min(96vw,620px);max-height:90vh;padding:12px;background:#111;color:#fff;border:3px solid #ffd166;border-radius:10px;font:12px/1.35 system-ui,sans-serif;';
+  modal.style.cssText = 'display:flex!important;flex-direction:column!important;box-sizing:border-box!important;width:100%!important;max-width:620px!important;min-height:calc(100dvh - 24px)!important;margin:0 auto!important;padding:12px!important;background:#111!important;color:#fff!important;border:3px solid #ffd166!important;border-radius:10px!important;font:12px/1.35 system-ui,sans-serif!important;';
   const heading = document.createElement('strong');
-  heading.textContent = 'FULL SLOT FORENSICS TRACE';
+  heading.textContent = 'SLOT FORENSICS EXPORT';
   modal.appendChild(heading);
+  const status = document.createElement('div');
+  status.id = 'slotForensicsExportStatus';
+  status.style.cssText = 'display:block!important;margin:7px 0!important;padding:6px!important;background:#252525!important;color:#fff!important;font:11px/1.4 monospace!important;white-space:pre-wrap!important;';
+  status.textContent = [
+    `HISTORY COUNT: ${slotForensics.history.length}`,
+    `JSON SIZE: ${trace.length} bytes`,
+    `CLIPBOARD: ${clipboardState}`,
+    'FALLBACK: ACTIVE'
+  ].join('\n');
+  modal.appendChild(status);
   const help = document.createElement('p');
   help.textContent = 'Clipboard is unavailable in this browser. Select All, Copy, or Download the complete ordered history.';
   help.style.cssText = 'margin:6px 0;';
@@ -7979,7 +8026,7 @@ function openSlotForensicsExportModal(trace) {
   textarea.readOnly = true;
   textarea.value = trace;
   textarea.setAttribute('aria-label', 'Complete slot forensics JSON trace');
-  textarea.style.cssText = 'display:block;width:100%;min-height:42vh;resize:vertical;overflow:auto;padding:8px;background:#fff;color:#111;border:0;border-radius:4px;font:10px/1.35 monospace;';
+  textarea.style.cssText = 'display:block!important;box-sizing:border-box!important;width:100%!important;height:48vh!important;min-height:300px!important;resize:vertical!important;overflow:auto!important;padding:8px!important;background:#fff!important;color:#111!important;border:0!important;border-radius:4px!important;font:10px/1.35 monospace!important;-webkit-user-select:text!important;user-select:text!important;';
   modal.appendChild(textarea);
   const controls = document.createElement('div');
   controls.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;';
@@ -7991,13 +8038,13 @@ function openSlotForensicsExportModal(trace) {
     controls.appendChild(button);
     return button;
   };
-  const selectAll = createButton('Select All');
+  const selectAll = createButton('SELECT ALL');
   selectAll.addEventListener('click', () => {
     textarea.focus();
     textarea.select();
     textarea.setSelectionRange(0, textarea.value.length);
   });
-  const copy = createButton('Copy');
+  const copy = createButton('COPY');
   copy.addEventListener('click', () => {
     textarea.focus();
     textarea.select();
@@ -8007,25 +8054,44 @@ function openSlotForensicsExportModal(trace) {
     updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', true);
     copy.textContent = copied ? 'Copied' : 'Selected — long-press to copy';
   });
-  const download = createButton('Download Trace JSON');
+  const download = createButton('DOWNLOAD JSON');
   download.addEventListener('click', () => downloadSlotForensicsTrace(trace));
-  const close = createButton('Close');
+  const close = createButton('CLOSE');
   close.addEventListener('click', () => overlay.remove());
   modal.appendChild(controls);
   overlay.appendChild(modal);
-  document.body.appendChild(overlay);
+  (document.body || document.documentElement).appendChild(overlay);
+  overlay.dataset.forensicsVisible = overlay.isConnected ? 'YES' : 'NO';
+  recordSlotForensicsExportEvent('FALLBACK_MODAL_APPEND', { connected: overlay.isConnected ? 'YES' : 'NO' });
+  const computed = window.getComputedStyle(overlay);
+  const visible = overlay.isConnected && computed.display !== 'none' && computed.visibility !== 'hidden' && computed.opacity !== '0';
+  overlay.dataset.forensicsVisible = visible ? 'YES' : 'NO';
+  recordSlotForensicsExportEvent('FALLBACK_MODAL_VISIBLE', { visible: visible ? 'YES' : 'NO' });
   updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', true);
 }
 
 async function exportSlotForensicsTrace() {
-  const trace = JSON.stringify(slotForensics, null, 2);
+  recordSlotForensicsExportEvent('EXPORT_CLICK');
+  let trace;
   try {
+    trace = serializeSlotForensicsTrace();
+    recordSlotForensicsExportEvent('SERIALIZE_SUCCESS', { jsonBytes: trace.length });
+    if (FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE) throw new Error('Forced clipboard failure');
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+    recordSlotForensicsExportEvent('CLIPBOARD_ATTEMPT');
     await navigator.clipboard.writeText(trace);
     updateSlotForensicsExportStatus('CLIPBOARD', true);
     return;
-  } catch {
-    openSlotForensicsExportModal(trace);
+  } catch (error) {
+    recordSlotForensicsExportEvent('CLIPBOARD_REJECTED', { reason: error?.message || 'unknown' });
+    // Re-serialize after rejection so the fallback includes its activation trace.
+    try {
+      const clipboardState = FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE || navigator.clipboard?.writeText ? 'FAILED' : 'UNAVAILABLE';
+      openSlotForensicsExportModal(serializeSlotForensicsTrace(), clipboardState);
+    } catch (fallbackError) {
+      recordSlotForensicsExportEvent('FALLBACK_MODAL_CREATE_FAILED', { reason: fallbackError?.message || 'unknown' });
+      updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', false);
+    }
   }
 }
 
@@ -8095,6 +8161,8 @@ function renderSlotForensicsOverlay(snapshot) {
     `EXPORT SNAPSHOT COUNT: ${slotForensics.exportStatus.snapshotCount}`,
     `EXPORT HISTORY COUNT: ${slotForensics.exportStatus.historyCount}`,
     `EXPORT SUCCESS: ${slotForensics.exportStatus.success}`,
+    `EXPORT TRACE: ${slotForensics.exportTrace.map((item) => item.event).join(' > ') || 'NONE'}`,
+    `FORCE CLIPBOARD FAILURE: ${FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE ? 'YES' : 'NO'}`,
     'Full JSON: Export / Copy Trace includes ordered history and first-post-readd comparison'
   ].join('\n');
 }
