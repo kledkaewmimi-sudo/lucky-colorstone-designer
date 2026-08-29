@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { classifyLineLoginStarterResult, getLineLoginStartDiagnostic } from '../line-login-start-diagnostic.js';
+import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from '../line-identity-before-design.js';
 
 const cases = [
   ['ORDER_DETAIL_CONTEXT_BLOCK', { code: 'F05E1', branch: 'ORDER_DETAIL_CONTEXT_BLOCK' }],
@@ -35,12 +36,23 @@ test('starter return values map to exact non-sensitive F05E branches', () => {
   assert.equal(classifyLineLoginStarterResult('unexpected'), 'UNKNOWN_PRELOGIN_CONTROL_BRANCH');
 });
 
-test('production uses distinct direct branches before LIFF login and keeps a successful login path', async () => {
+test('Start begins identity login and a successful initial callback enters a clean Step 1', async () => {
   const appSource = await readFile(new URL('../app.js', import.meta.url), 'utf8');
-  assert.match(appSource, /getRequestedOrderId\(\)\) return getLiffLoginStartFailure\('ORDER_DETAIL_CONTEXT_BLOCK'/);
-  assert.match(appSource, /if \(liffLoginInProgress\)[\s\S]*LOGIN_ALREADY_IN_PROGRESS/);
-  assert.ok(appSource.includes('const profileReady = await syncLineProfileFromLiff();'));
-  assert.ok(appSource.includes('if (profileReady) return { ok: true, continueWithoutLogin: true };'));
-  assert.match(appSource, /liff\.login\(\{ redirectUri \}\);[\s\S]*return returnStartStatus \? true : false/);
-  assert.match(appSource, /console\.error\('\[line-login-start\]', \{[\s\S]*code: loginStartDiagnostic\.code,[\s\S]*branch: loginStartDiagnostic\.branch,[\s\S]*liffReady: State\.liffInitialized === true,[\s\S]*liffLoggedIn,[\s\S]*loginInProgress: liffLoginInProgress === true/);
+  const start = await establishLineIdentityBeforeDesign({
+    hasCanonicalIdentity: () => false,
+    isLiffLoggedIn: () => false,
+    startLogin: async () => ({ started: true })
+  });
+  assert.deepEqual(start, { ok: false, state: 'login_redirect_started' });
+  const callback = await establishLineIdentityBeforeDesign({
+    hasCanonicalIdentity: () => false,
+    isLiffLoggedIn: () => true,
+    synchronizeProfile: async () => ({ ok: true })
+  });
+  assert.deepEqual(callback, { ok: true, state: 'profile_synchronized' });
+  assert.equal(isInitialLineIdentityCallback('?line_auth=identity'), true);
+  assert.match(appSource, /requireLineLoginForCustomization\(\{ showLandingPrompt: true \}\)/);
+  assert.match(appSource, /const shouldResumeInitialIdentityCallback = !returnParams\.has\('orderId'\)\s*&& isInitialLineIdentityCallback\(window\.location\.search\)/);
+  assert.match(appSource, /if \(shouldResumeInitialIdentityCallback\) \{[\s\S]{0,900}?resetCustomizationSessionForFreshEntry\(\)/);
+  assert.match(appSource, /if \(isLineIdentityAvailable\(\)\) \{\s*State\.currentStep = 1;\s*State\.landingDismissed = true;/);
 });

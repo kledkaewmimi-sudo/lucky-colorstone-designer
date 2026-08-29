@@ -2,28 +2,29 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('deferred callback requires LINE OA friendship before consuming a handoff', async () => {
+test('deferred callback checks LINE OA friendship before consuming a handoff', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   const restoreStart = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const restoreEnd = source.indexOf('function persistLandingDismissed', restoreStart);
   const restore = source.slice(restoreStart, restoreEnd);
   assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') >= 0);
   assert.match(restore, /line_oa_friendship_required/);
-  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4'));
+  assert.ok(restore.indexOf('const canEnterStep4 = await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
   assert.match(source, /liff\.getFriendship\(\)/);
 });
 
-test('friendship gate uses LIFF native friendship first and keeps the OA URL as a last-resort fallback', async () => {
+test('friendship gate uses native LIFF, then LIFF entry, then OA URL fallback', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /lineOaFriendshipModal|btnLineOaAddFriend|btnLineOaRecheck/);
-  const start = source.indexOf('async function openLineOaAddFriendExperience({ resumeIntent = null } = {})');
+  const start = source.indexOf('async function openLineOaAddFriendExperience()');
   const end = source.indexOf('async function recheckLineOaFriendshipAndResume()', start);
   const flow = source.slice(start, end);
-  assert.ok(flow.indexOf('canUseNativeLineOaFriendshipPrompt()') < flow.indexOf("source: 'liff_entry'"));
+  assert.ok(flow.indexOf('canUseNativeLineOaFriendshipPrompt()') < flow.indexOf('if (!isLiffInClient())'));
   assert.match(source, /liff\.requestFriendship\(\)/);
-  assert.ok(flow.indexOf('liff.requestFriendship()') < flow.indexOf("source: 'official_add_friend_url_fallback'"));
-  assert.match(flow, /window\.location\.assign\(getLiffEntryUrl\(\{ resumeIntent \}\)\)/);
+  assert.ok(flow.indexOf('liff.requestFriendship()') < flow.indexOf('if (!isLiffInClient())'));
+  assert.ok(flow.indexOf('if (!isLiffInClient())') < flow.indexOf("source: 'official_add_friend_url_fallback'"));
+  assert.match(flow, /window\.location\.assign\(getLiffEntryUrl\(\)\)/);
   assert.match(source, /fetch\('\/api\/line-oa-add-friend'/);
   assert.match(flow, /window\.location\.assign\(addFriendUrl\)/);
 });
@@ -115,13 +116,13 @@ test('native friendship prompt automatically rechecks and resumes while cancella
   assert.doesNotMatch(gate, /showToast\('\\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e40\u0e1b\u0e34\u0e14 LINE/);
 });
 
-test('deferred callback uses the centralized guard before handoff consume and opens the real add-friend route for non-friends', async () => {
+test('deferred callback cannot consume a handoff until the centralized friendship guard passes', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
   const start = source.indexOf('async function restoreDeferredLineCallbackBeforeReset');
   const end = source.indexOf('function persistLandingDismissed', start);
   const restore = source.slice(start, end);
-  assert.ok(restore.indexOf('runDormantV2CallbackRestore') < restore.indexOf('await canEnterOperationalStep4'));
-  assert.match(restore, /queueStep3Resume: true/);
+  assert.ok(restore.indexOf('await canEnterOperationalStep4') < restore.indexOf('runDormantV2CallbackRestore'));
+  assert.match(restore, /openAddFriend: true/);
 });
 
 test('customer Step 4 does not mount the legacy export/download controls', async () => {

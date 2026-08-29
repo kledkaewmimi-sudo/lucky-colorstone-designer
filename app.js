@@ -6845,9 +6845,15 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
   const emptySlotCount = loopComponents.filter((component) => component.type === 'empty').length;
-  const trailingPlaceholderCount = emptySlotCount > 0 || completionEligibility.complete
+  // Physical completion deliberately excludes retained empty slots, but their
+  // visual footprint remains part of the wrist-derived design loop. Derive
+  // trailing capacity from that visual loop so deleting from a partial design
+  // cannot collapse the remaining components into a smaller ring.
+  const visualUsedLengthMm = loopComponents.reduce((sum, component) => sum + Number(component.sizeMm || 0), 0);
+  const visualSpaceLeftMm = Math.max(0, braceletConfig.braceletLengthMm - visualUsedLengthMm);
+  const trailingPlaceholderCount = completionEligibility.complete
     ? 0
-    : Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
+    : Math.max(0, Math.floor(visualSpaceLeftMm / braceletConfig.placingSizeMm));
   const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
 
   const loopItems = [

@@ -12,9 +12,11 @@ test('retained slots are zero physical length but retain their former visual siz
   assert.match(app, /type: 'empty',[\s\S]{0,220}?sizeMm: getLoopItemRenderSizeMm\(item\),/);
 });
 
-test('a retained slot suppresses the additional trailing capacity placeholder', () => {
+test('a retained slot preserves visual design-loop capacity while completion remains physical', () => {
   assert.match(app, /const emptySlotCount = loopComponents\.filter\(\(component\) => component\.type === 'empty'\)\.length;/);
-  assert.match(app, /const trailingPlaceholderCount = emptySlotCount > 0 \|\| completionEligibility\.complete\s*\? 0\s*:\s*Math\.max\(0, Math\.floor\(spaceLeft \/ braceletConfig\.placingSizeMm\)\);/);
+  assert.match(app, /const visualUsedLengthMm = loopComponents\.reduce/);
+  assert.match(app, /const visualSpaceLeftMm = Math\.max\(0, braceletConfig\.braceletLengthMm - visualUsedLengthMm\);/);
+  assert.match(app, /const trailingPlaceholderCount = completionEligibility\.complete\s*\? 0\s*:\s*Math\.max\(0, Math\.floor\(visualSpaceLeftMm \/ braceletConfig\.placingSizeMm\)\);/);
 });
 
 test('re-add consumes the retained position and keeps its stable render identity', () => {
