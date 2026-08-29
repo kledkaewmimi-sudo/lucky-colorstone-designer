@@ -875,7 +875,9 @@ function getSelectedLoopCharmItems() {
 
 function getLoopItemLengthMm(item) {
   if (isEmptyLoopSlot(item)) {
-    return Number(item?.size || 0);
+    // A retained slot preserves editor position only. Its former visual size
+    // must not remain in the physical completion calculation.
+    return 0;
   }
   if (isSelectedSpacerItem(item)) {
     const spacer = getSpacerCatalogEntry(item.spacerId);
@@ -888,9 +890,16 @@ function getLoopItemLengthMm(item) {
   return Number(item?.size || 0);
 }
 
+function getLoopItemRenderSizeMm(item) {
+  if (isEmptyLoopSlot(item)) {
+    return Number(item?.size || getCurrentBeadSizeMm());
+  }
+  return getLoopItemLengthMm(item);
+}
+
 function serializeSelectedLoopItem(item) {
   if (isEmptyLoopSlot(item)) {
-    return { t: 'empty', z: getLoopItemLengthMm(item) };
+    return { t: 'empty', z: getLoopItemRenderSizeMm(item) };
   }
   if (isSelectedSpacerItem(item)) {
     return { t: 'spacer', i: item.spacerId, l: getLoopItemLengthMm(item) };
@@ -903,7 +912,7 @@ function serializeSelectedLoopItem(item) {
 
 function getSelectedLoopItemRenderKey(item) {
   if (isEmptyLoopSlot(item)) {
-    return `empty:${getLoopItemLengthMm(item)}`;
+    return `empty:${getLoopItemRenderSizeMm(item)}`;
   }
   if (isSelectedSpacerItem(item)) {
     return `spacer:${item.spacerId}:${getLoopItemLengthMm(item)}`;
@@ -6455,6 +6464,7 @@ function placeLoopItemInFirstAvailableSlot(loopItem) {
   State.activeSlotIndex = null;
 
   if (emptySlotIndex >= 0) {
+    loopItem.uniqueId = State.selectedStones[emptySlotIndex]?.uniqueId || loopItem.uniqueId;
     State.selectedStones[emptySlotIndex] = loopItem;
     return true;
   }
@@ -6512,6 +6522,7 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
+    loopItem.uniqueId = State.selectedStones[State.activeSlotIndex]?.uniqueId || loopItem.uniqueId;
     State.selectedStones[State.activeSlotIndex] = loopItem;
     State.activeSlotIndex = null;
     showToast(`Added ${itemLabel} in chosen position.`);
@@ -6563,6 +6574,7 @@ function addStoneToBracelet(stoneId) {
   
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
     // Fill the first retained empty slot before extending the sequence.
+    newBead.uniqueId = State.selectedStones[State.activeSlotIndex]?.uniqueId || newBead.uniqueId;
     State.selectedStones[State.activeSlotIndex] = newBead;
     State.activeSlotIndex = null; // Reset selection
     showToast(`Added ${stoneData.nameTh} in chosen position.`);
@@ -6618,6 +6630,7 @@ function addSpacerToBracelet(spacerId) {
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
   if (State.activeSlotIndex !== null && State.activeSlotIndex >= 0 && State.activeSlotIndex < State.selectedStones.length) {
+    newSpacer.uniqueId = State.selectedStones[State.activeSlotIndex]?.uniqueId || newSpacer.uniqueId;
     State.selectedStones[State.activeSlotIndex] = newSpacer;
     State.activeSlotIndex = null;
     showToast(`Added ${spacer.nameEn} in chosen position.`);
@@ -6700,7 +6713,7 @@ function createBraceletComponentList() {
           type: 'empty',
           layoutRole: 'loop',
           sourceIndex: index,
-          sizeMm: getLoopItemLengthMm(item),
+          sizeMm: getLoopItemRenderSizeMm(item),
           uniqueId: item.uniqueId || `empty-${index}`
         };
       }
@@ -6831,8 +6844,10 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   const placedCount = loopComponents.filter((component) => component.type !== 'empty').length;
   const sumPlacedDiameter = capacityMetrics.totalUsedLengthMm;
   const spaceLeft = capacityMetrics.remainingLengthMm;
-  const trailingPlaceholderCount = Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
   const emptySlotCount = loopComponents.filter((component) => component.type === 'empty').length;
+  const trailingPlaceholderCount = emptySlotCount > 0 || completionEligibility.complete
+    ? 0
+    : Math.max(0, Math.floor(spaceLeft / braceletConfig.placingSizeMm));
   const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
 
   const loopItems = [
