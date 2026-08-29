@@ -20,10 +20,11 @@ test('Step 2 to Step 3 commits the body before the stepper', () => {
   assert.ok(stepViews.indexOf("view.classList.add('active')") < stepViews.indexOf('renderStep3();'));
 });
 
-test('the known-good slot renderer retains dotted placeholders and stable source positions', () => {
+test('the slot renderer retains dotted deletion placeholders without a duplicate trailing capacity placeholder', () => {
   const renderer = sourceBetween('function createResolvedBraceletLayout', 'function createCurrentBraceletResolvedLayout');
   assert.match(renderer, /loopComponents\.map\(\(component\) => component\.type === 'empty'/);
   assert.match(renderer, /Array\.from\(\{ length: trailingPlaceholderCount \}/);
+  assert.match(renderer, /const trailingPlaceholderCount = emptySlotCount > 0 \|\| completionEligibility\.complete/);
   assert.doesNotMatch(renderer, /isPhysicallyUnderfilled|physicalPreviewSpan|renderedTrailingPlaceholderCount/);
   assert.match(app, /slot\.setAttribute\("stroke-dasharray", isFirstPlaceholder \? "4 2" : "3 3"\)/);
   assert.match(app, /State\.selectedStones\[resolvedIndex\] = createEmptyLoopSlot\(removed\?\.size, removed\?\.uniqueId \|\| null\)/);

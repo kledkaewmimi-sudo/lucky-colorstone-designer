@@ -11,7 +11,7 @@ test('RED: a realistic completed Mixed bracelet does not create a trailing dotte
   const eligibility = getBraceletCompletionEligibility({ mode: 'mixed', usedLengthMm: geometry.usedLengthMm, targetLengthMm: 175 });
   assert.equal(geometry.usedLengthMm, 170);
   assert.equal(eligibility.complete, true);
-  assert.match(app, /const trailingPlaceholderCount = completionEligibility\.complete\s*\? 0\s*:\s*Math\.max\(0, Math\.floor\(spaceLeft \/ braceletConfig\.placingSizeMm\)\);/);
+  assert.match(app, /const trailingPlaceholderCount = emptySlotCount > 0 \|\| completionEligibility\.complete\s*\? 0\s*:\s*Math\.max\(0, Math\.floor\(spaceLeft \/ braceletConfig\.placingSizeMm\)\);/);
 });
 
 test('realistic retained-slot re-add preserves slot count and clears the retained empty', () => {
