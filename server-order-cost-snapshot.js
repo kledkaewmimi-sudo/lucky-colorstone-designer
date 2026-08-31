@@ -1,5 +1,6 @@
 const DELIVERY_COST = 80;
 const COST_SOURCE = 'purchases_weighted_average_exact_variant';
+const HISTORICAL_DETERMINISTIC_COST_SOURCE = 'historical_deterministic_purchases_weighted_average_exact_variant';
 
 function numberOrNull(value) {
   const number = Number(value);
@@ -96,6 +97,50 @@ function createOrderCostSnapshot(order = {}, purchases = [], calculatedAt = new 
   return { ...base, status: 'complete', materialCost, totalCost, profit, marginPercent, components };
 }
 
+function getOrderCostCutoffDate(order = {}) {
+  for (const candidate of [order.paidAt, order.date, order.created_at, order.createdAt]) {
+    const date = new Date(candidate);
+    if (!Number.isNaN(date.valueOf())) return date.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+function createHistoricalDeterministicCostSnapshot(order = {}, purchases = [], calculatedAt = new Date().toISOString()) {
+  if (order?.costSnapshot) throw new Error('Refusing to overwrite an existing costSnapshot.');
+  const orderCostAsOfDate = getOrderCostCutoffDate(order);
+  if (!orderCostAsOfDate) throw new Error('A valid paid/order date is required for historical cost backfill.');
+
+  const eligiblePurchases = purchases.filter((purchase) => {
+    const purchasedAt = String(purchase?.purchased_at || purchase?.purchasedAt || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(purchasedAt) && purchasedAt <= orderCostAsOfDate;
+  });
+  const snapshot = createOrderCostSnapshot(order, eligiblePurchases, calculatedAt);
+  if (!snapshot) return null;
+
+  const components = snapshot.components.map((component) => {
+    if (!component.resolved) return component;
+    const sourcePurchaseRowIds = eligiblePurchases
+      .filter((purchase) => {
+        const type = String(purchase?.item_type || purchase?.itemType || '').trim().toLowerCase();
+        const catalogId = String(purchase?.catalog_item_id || purchase?.catalogItemId || '').trim();
+        const sizeMm = numberOrNull(purchase?.size_mm ?? purchase?.sizeMm);
+        return type === component.type
+          && catalogId === component.catalogId
+          && (type !== 'stone' || sizeMm === component.sizeMm);
+      })
+      .map((purchase) => String(purchase?.id || '').trim())
+      .filter(Boolean);
+    return { ...component, sourcePurchaseRowIds };
+  });
+  return {
+    ...snapshot,
+    costSource: HISTORICAL_DETERMINISTIC_COST_SOURCE,
+    historicalDeterministicBackfill: true,
+    orderCostAsOfDate,
+    components
+  };
+}
+
 function preserveOrCreateOrderCostSnapshot(order = {}, purchases = [], calculatedAt) {
   return order?.costSnapshot ? order : { ...order, costSnapshot: createOrderCostSnapshot(order, purchases, calculatedAt) };
 }
@@ -103,8 +148,11 @@ function preserveOrCreateOrderCostSnapshot(order = {}, purchases = [], calculate
 module.exports = {
   COST_SOURCE,
   DELIVERY_COST,
+  HISTORICAL_DETERMINISTIC_COST_SOURCE,
   buildWeightedCostIndexes,
   createOrderCostSnapshot,
+  createHistoricalDeterministicCostSnapshot,
+  getOrderCostCutoffDate,
   isPaidOrder,
   preserveOrCreateOrderCostSnapshot
 };

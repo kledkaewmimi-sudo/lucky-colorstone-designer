@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   DELIVERY_COST,
   createOrderCostSnapshot,
+  createHistoricalDeterministicCostSnapshot,
   preserveOrCreateOrderCostSnapshot
 } = require('../server-order-cost-snapshot.js');
 
@@ -118,6 +119,24 @@ test('preserves an existing snapshot despite later Purchases changes', () => {
   const preserved = preserveOrCreateOrderCostSnapshot(order, [purchase('stone', 'amethyst', 1, 99, 6)]);
   assert.equal(preserved.costSnapshot, original);
   assert.equal(preserved.costSnapshot.materialCost, 3.5);
+});
+
+test('historical deterministic backfill uses only exact purchases on or before the paid date', () => {
+  const order = {
+    ...paidOrder([{ type: 'stone', stoneId: 'amethyst', size: 6, quantity: 2 }], 100),
+    paidAt: '2026-08-22T06:40:01.327Z'
+  };
+  const snapshot = createHistoricalDeterministicCostSnapshot(order, [
+    { ...purchase('stone', 'amethyst', 10, 20, 6), id: 'before', purchased_at: '2026-08-22' },
+    { ...purchase('stone', 'amethyst', 10, 90, 6), id: 'after', purchased_at: '2026-08-23' },
+    { ...purchase('stone', 'amethyst', 10, 10, 4), id: 'wrong-size', purchased_at: '2026-08-20' }
+  ], '2026-09-01T00:00:00.000Z');
+  assert.equal(snapshot.status, 'complete');
+  assert.equal(snapshot.orderCostAsOfDate, '2026-08-22');
+  assert.equal(snapshot.materialCost, 4);
+  assert.deepEqual(snapshot.components[0].sourcePurchaseRowIds, ['before']);
+  assert.equal(snapshot.historicalDeterministicBackfill, true);
+  assert.throws(() => createHistoricalDeterministicCostSnapshot({ ...order, costSnapshot: snapshot }, []), /Refusing to overwrite/);
 });
 
 test('CRM renders persisted complete and unavailable snapshot states only', () => {
