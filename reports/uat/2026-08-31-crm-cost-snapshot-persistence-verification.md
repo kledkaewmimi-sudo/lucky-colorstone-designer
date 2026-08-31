@@ -50,7 +50,7 @@ The focused persistence suite verifies complete JSON fallback persistence, unres
 
 ## UAT Deployment
 
-The isolated UAT project deployment will be updated from this UAT-branch commit after this report is committed. This verification does not deploy or alter Production.
+The isolated `lucky-colorstone-uat` Vercel project is Ready at `https://uat.customize.luckycolorstone.com` from UAT commit `c5ac89d` (deployment `dpl_8qaoa9qR9BEeDTxyK7WHJGoz9jHW`). This verification does not deploy or alter Production.
 
 ## Owner Acceptance
 
