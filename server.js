@@ -8,6 +8,7 @@ const { assertSafeUatEnvironment, isUatSupabaseApiRequest } = require('./uat-bac
 const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-supabase-auth.js');
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
+const { readOrderPayloads, saveOrderPayload } = require('./server-order-persistence.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -2928,7 +2929,7 @@ function sortOrdersForApi(orders) {
 
 async function readOrdersForApi() {
   if (!isSupabaseConfigured()) {
-    const jsonOrders = sortOrdersForApi(readJsonArray("orders"));
+    const jsonOrders = sortOrdersForApi(readOrderPayloads(dataFiles.orders));
     console.info(`[orders] GET /api/orders returned ${jsonOrders.length} records from json`);
     return jsonOrders;
   }
@@ -2945,7 +2946,7 @@ async function readOrdersForApi() {
     return orders;
   } catch (error) {
     warnSupabaseReadFallback("/api/orders", error);
-    const fallbackOrders = sortOrdersForApi(readJsonArray("orders"));
+    const fallbackOrders = sortOrdersForApi(readOrderPayloads(dataFiles.orders));
     console.warn(`[orders] GET /api/orders fallback returned ${fallbackOrders.length} records from json`);
     return fallbackOrders;
   }
@@ -2959,14 +2960,7 @@ async function saveOrderForApi(order) {
     return;
   }
 
-  const orders = readJsonArray("orders");
-  const existingIndex = orders.findIndex((entry) => getOrderId(entry) === orderId);
-  if (existingIndex >= 0) {
-    orders[existingIndex] = order;
-  } else {
-    orders.unshift(order);
-  }
-  writeJsonFile(dataFiles.orders, orders);
+  saveOrderPayload(dataFiles.orders, order, getOrderId);
   console.info(`[orders] saved ${orderId} to json`);
 }
 
@@ -2991,7 +2985,7 @@ async function findOrderByStripeCheckoutSessionId(sessionId) {
     const rows = await supabaseRequest('orders', { params: { select: 'payload', stripe_checkout_session_id: `eq.${sessionId}`, limit: '1' } });
     return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
   }
-  return readJsonArray('orders').find((order) => order?.stripeCheckoutSessionId === sessionId) || null;
+  return readOrderPayloads(dataFiles.orders).find((order) => order?.stripeCheckoutSessionId === sessionId) || null;
 }
 
 async function applyStripeCheckoutPaymentEvent(session, eventId) {
