@@ -4083,6 +4083,26 @@ function getOrderSpacerItems(order = {}) {
   return getOrderItemizedBilling(order).filter((item) => String(item.type || '').toLowerCase() === 'spacer');
 }
 
+function formatOrderCostMoney(value) {
+  return `฿${Number(value).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+function renderOrderCostSummary(order = {}) {
+  const cost = order.costSnapshot;
+  const isComplete = cost?.status === 'complete';
+  const value = (amount) => isComplete && Number.isFinite(Number(amount)) ? formatOrderCostMoney(amount) : 'Unavailable';
+  return `
+    <div class="order-cost-summary${isComplete ? '' : ' is-unavailable'}">
+      ${isComplete ? '' : '<div class="order-cost-unavailable">UNKNOWN / UNRESOLVED COST</div>'}
+      <div><span>Material Cost</span><strong>${value(cost?.materialCost)}</strong></div>
+      <div><span>Delivery Cost</span><strong>${formatOrderCostMoney(cost?.deliveryCost ?? 80)}</strong></div>
+      <div class="order-cost-total"><span>Total Cost</span><strong>${value(cost?.totalCost)}</strong></div>
+      <div><span>Profit</span><strong>${value(cost?.profit)}</strong></div>
+      <div><span>Margin</span><strong>${isComplete && Number.isFinite(Number(cost?.marginPercent)) ? `${Number(cost.marginPercent).toFixed(1)}%` : 'Unavailable'}</strong></div>
+    </div>
+  `;
+}
+
 function detailDateValue(value) {
   return detailValue(formatDetailDateTime(value));
 }
@@ -4380,6 +4400,7 @@ function renderOrdersList(orders) {
         <div style="font-weight:700; color: var(--color-gold); font-size:13px; margin-top:2px;">Total: ฿${order.netPrice.toLocaleString()}</div>
       </div>
     `;
+    const costText = renderOrderCostSummary(order);
     
     // Workflow status dropdown selector
     const currentStatus = order.status || 'New Order';
@@ -4446,6 +4467,7 @@ function renderOrdersList(orders) {
       </td>
       <td data-label="Bracelet Layout">${braceletPreviewHtml}</td>
       <td data-label="Pricing">${priceText}</td>
+      <td data-label="Cost">${costText}</td>
       <td data-label="Status">${workflowMetaHtml}</td>
       <td data-label="Invoice" class="text-right">
         <div class="order-row-actions">

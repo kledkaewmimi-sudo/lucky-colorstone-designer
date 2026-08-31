@@ -7,6 +7,7 @@ const { URL } = require("url");
 const { assertSafeUatEnvironment, isUatSupabaseApiRequest } = require('./uat-backend-guard.js');
 const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-supabase-auth.js');
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
+const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -2969,6 +2970,21 @@ async function saveOrderForApi(order) {
   console.info(`[orders] saved ${orderId} to json`);
 }
 
+async function persistPaidOrderCostSnapshot(order) {
+  if (order?.costSnapshot) return order;
+  let purchases = [];
+  if (isSupabaseConfigured()) {
+    try {
+      purchases = await supabaseRequest('stone_purchase_entries', {
+        params: { select: 'item_type,catalog_item_id,size_mm,quantity,total_cost' }
+      });
+    } catch (error) {
+      console.warn(`[order-cost] purchase cost lookup unavailable for ${getOrderId(order)}:`, error?.message || error);
+    }
+  }
+  return preserveOrCreateOrderCostSnapshot(order, Array.isArray(purchases) ? purchases : []);
+}
+
 async function findOrderByStripeCheckoutSessionId(sessionId) {
   if (!sessionId) return null;
   if (isSupabaseConfigured()) {
@@ -2997,7 +3013,7 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
   if (processed.includes(eventId) || String(order.stripePaymentStatus).toLowerCase() === 'paid') {
     return { order: await notifyPaidOrderLineRecipients(order), duplicate: true };
   }
-  const paidOrder = await deductStockForOrder({
+  const paidOrderWithStock = await deductStockForOrder({
     ...order,
     status: 'Payment Received',
     stripePaymentStatus: 'paid',
@@ -3006,6 +3022,7 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
     paidAt: new Date().toISOString(),
     stripeWebhookEventIds: [...processed, eventId].slice(-20)
   });
+  const paidOrder = await persistPaidOrderCostSnapshot(paidOrderWithStock);
   await saveOrderForApi(paidOrder);
   await linkAnalyticsOrderConversion(paidOrder);
   sendMetaPurchaseEvent(paidOrder).catch((error) => {
