@@ -93,12 +93,12 @@ test('snapshot and handoff failures never invoke LINE login', async () => {
   const scenarios = [
     {
       overrides: { saveSnapshot: () => ({ ok: false }) },
-      reason: 'SNAPSHOT_CREATE_FAILED',
+      reason: 'snapshot_unavailable',
       expected: []
     },
     {
       overrides: { createHandoff: async () => null },
-      reason: 'HANDOFF_TOKEN_MISSING',
+      reason: 'handoff_unavailable',
       expected: ['snapshot']
     }
   ];
@@ -113,14 +113,13 @@ test('snapshot and handoff failures never invoke LINE login', async () => {
   }
 });
 
-test('a valid server handoff proceeds when iOS local intent persistence is unavailable', async () => {
+test('unpersistable redirect intent fails closed before LINE login', async () => {
   const { boundary, order } = createControlledBoundary({
     persistIntent: () => false
   });
   const result = await boundary();
-  assert.equal(result.ok, true);
-  assert.equal(result.intentPersisted, false);
-  assert.deepEqual(order, ['snapshot', 'handoff', 'login']);
+  assert.deepEqual(result, { handled: true, ok: false, reason: 'intent_unavailable' });
+  assert.deepEqual(order, ['snapshot', 'handoff']);
 });
 
 test('mixed Step 3 snapshot passes server handoff normalization and proceeds to deferred LINE auth', async () => {
@@ -160,16 +159,15 @@ test('mixed Step 3 snapshot passes server handoff normalization and proceeds to 
       assert.ok(normalizeHandoffPayload(payload, 1_760_000_000_100));
       return { token };
     },
-    persistIntent: () => false,
-    startLineLogin: async (intent) => {
+    persistIntent: () => true,
+    startLineLogin: async () => {
       order.push('login');
-      assert.equal(intent.handoffToken, token);
       return true;
     }
   });
   const result = await boundary();
   assert.equal(result.ok, true);
-  assert.equal(result.intentPersisted, false);
+  assert.equal(result.intent.handoffToken, token);
   assert.deepEqual(order, ['handoff', 'login']);
 });
 
@@ -199,23 +197,23 @@ test('a LINE-start failure clears the just-persisted V2 intent and does not adva
     startLineLogin: async () => false,
     clearIntent: () => { cleared += 1; }
   });
-  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'LOGIN_STARTER_RETURNED_FALSE' });
+  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'login_start_failed' });
   assert.deepEqual(order, ['snapshot', 'handoff', 'intent']);
   assert.equal(cleared, 1);
 });
 
-test('a LIFF readiness failure is preserved as a safe F05 subtype', async () => {
+test('a LIFF readiness failure is normalized to the fail-safe login error', async () => {
   const { boundary } = createControlledBoundary({
     startLineLogin: async () => ({ ok: false, reason: 'LIFF_INIT_FAILED' })
   });
-  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'LIFF_INIT_FAILED' });
+  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'login_start_failed' });
 });
 
-test('a recovered authenticated LIFF profile continues to the existing Step 4 friendship gate without another login', async () => {
+test('only an explicit successful login starter authorizes the deferred boundary', async () => {
   const { boundary, order } = createControlledBoundary({
     startLineLogin: async () => ({ ok: true, continueWithoutLogin: true })
   });
-  assert.deepEqual(await boundary(), { handled: false, ok: true });
+  assert.deepEqual(await boundary(), { handled: true, ok: false, reason: 'login_start_failed' });
   assert.deepEqual(order, ['snapshot', 'handoff', 'intent']);
 });
 
@@ -233,12 +231,6 @@ test('the real Step 3 handler invokes the production boundary before navigation'
   const navigation = appSource.slice(navigationStart, navigationEnd);
   assert.ok(navigation.indexOf('const deferredAuth = await beginDeferredStep3AuthBoundary()') > navigation.indexOf('const hasStock = await validateCurrentDesignStockWithLatestCatalog()'));
   assert.ok(navigation.indexOf('if (deferredAuth.handled)') < navigation.indexOf('await goToStep(State.currentStep + 1)'));
-  assert.match(appSource, /async function resolveExistingLineIdentityForDeferredStep3Auth\(\)/);
-  assert.match(appSource, /return isLiffLoggedIn\(\) \? await syncLineProfileFromLiff\(\) : false/);
-  assert.match(appSource, /if \(isLiffLoggedIn\(\)\) \{[\s\S]*const profileReady = await syncLineProfileFromLiff\(\);[\s\S]*if \(profileReady\) return \{ ok: true, continueWithoutLogin: true \};/);
-  assert.match(appSource, /createGuestDesignSnapshot\(canonicalState\)/);
-  assert.match(appSource, /return persisted\.ok \? persisted : \{ ok: true, snapshot, persistence: 'unavailable' \};/);
-  assert.match(appSource, /await ensureLiffInitializedForDeferredLogin\(\)/);
-  assert.match(appSource, /liff\.login\(\{ redirectUri \}\)/);
-  assert.match(appSource, /hasLineHandoff: url\.searchParams\.has\('line_handoff'\)/);
+  assert.match(appSource, /createDeferredStep3AuthBoundary/);
+  assert.match(appSource, /beginDeferredStep3AuthBoundary/);
 });

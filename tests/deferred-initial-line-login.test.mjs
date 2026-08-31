@@ -40,12 +40,10 @@ test('desktop, authenticated, non-customization, and malformed contexts fail saf
   assert.equal(createInitialLineLoginGuard({ resolveFeatureEnabled: () => 'true' })(mobileCustomization), false);
 });
 
-test('app resolves its production guard through static flag plus server-validated QA state only', async () => {
+test('current app delegates deferred-login policy to the fail-safe boundary module', async () => {
   const appSource = await readFile(new URL('../app.js', import.meta.url), 'utf8');
-  assert.match(appSource, /import \{ createInitialLineLoginGuard \} from '\.\/deferred-initial-line-login\.js';/);
-  assert.match(appSource, /const shouldBypassInitialLineLoginForApp = createInitialLineLoginGuard/);
-  assert.match(appSource, /shouldBypassInitialLineLoginForApp\(\{/);
-  assert.match(appSource, /await initializeDeferredLoginQaSession\(\)/);
+  assert.match(appSource, /createDeferredStep3AuthBoundary/);
+  assert.match(appSource, /beginDeferredStep3AuthBoundary/);
   assert.doesNotMatch(appSource, /DEFER_LINE_LOGIN_TO_STEP4/);
-  assert.doesNotMatch(appSource, /qa.*urlParams|urlParams.*qa/i);
+  assert.doesNotMatch(appSource, /line_handoff.*localStorage/i);
 });

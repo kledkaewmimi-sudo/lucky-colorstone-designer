@@ -3089,6 +3089,14 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 12px;
 }
 
+.order-cost-summary { display: grid; gap: 4px; min-width: 150px; font-size: 11px; }
+.order-cost-summary > div { display: flex; justify-content: space-between; gap: 10px; }
+.order-cost-summary span { color: var(--color-navy-muted); }
+.order-cost-summary strong { color: var(--color-navy-dark); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.order-cost-total { margin-top: 2px; padding-top: 5px; border-top: 1px dashed var(--color-navy-border); }
+.order-cost-unavailable, .order-cost-source { color: var(--color-gold-dark); font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+.order-cost-summary.is-unavailable strong { color: var(--color-navy-muted); }
+
 /* ==========================================
    PRINTABLE INVOICE PAPER (OMS EXPORT)
    ========================================== */
@@ -3611,6 +3619,7 @@ h1, h2, h3, h4, h5, h6 {
   
   /* Aligning cell contents in card layout */
   .crm-table td[data-label="Bracelet Layout"], 
+  .crm-table td[data-label="Cost"],
   .crm-table td[data-label="Item"],
   .crm-table td[data-label="Meanings"],
   .crm-table td[data-label="Visibility"],
@@ -3629,6 +3638,7 @@ h1, h2, h3, h4, h5, h6 {
   }
   
   .crm-table td[data-label="Bracelet Layout"]::before, 
+  .crm-table td[data-label="Cost"]::before,
   .crm-table td[data-label="Item"]::before,
   .crm-table td[data-label="Meanings"]::before,
   .crm-table td[data-label="Visibility"]::before,

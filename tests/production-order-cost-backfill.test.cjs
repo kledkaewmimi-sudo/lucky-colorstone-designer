@@ -1,0 +1,8 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const { createHistoricalOrderCostSnapshot } = require('../server-order-cost-snapshot.js');
+const { dryRun } = require('../scripts/backfill-order-cost-snapshots.js');
+const paid = (id, date = '2026-08-10T00:00:00.000Z') => ({ id, date, stripePaymentStatus: 'paid', finalPrice: 458, itemizedBilling: [{ type: 'stone', stoneId: 'amethyst', size: 6, quantity: 10 }] });
+const purchase = (date, cost, size = 6) => ({ item_type: 'stone', catalog_item_id: 'amethyst', size_mm: size, quantity: 10, total_cost: cost, purchased_at: date });
+test('historical snapshot uses all exact purchases and is labelled as an estimate', () => { const snapshot = createHistoricalOrderCostSnapshot(paid('A'), [purchase('2026-08-09', 100), purchase('2026-08-10', 200), purchase('2026-08-11', 1000)]); assert.equal(snapshot.status, 'backfilled'); assert.equal(Number(snapshot.materialCost.toFixed(6)), Number((1300 / 3).toFixed(6))); assert.equal(snapshot.costSource, 'purchases_all_time_weighted_average_exact_variant'); assert.equal(snapshot.historicalEstimate, true); });
+test('historical resolver rejects a different size and dry run skips snapshots and unpaid orders', () => { const unresolved = createHistoricalOrderCostSnapshot({ ...paid('B'), itemizedBilling: [{ type: 'stone', stoneId: 'amethyst', size: 10, quantity: 1 }] }, [purchase('2026-08-09', 100)]); assert.equal(unresolved.status, 'unavailable'); const result = dryRun([{ id: 'A', payload: { ...paid('A'), costSnapshot: { status: 'complete' } } }, { id: 'B', payload: { ...paid('B'), stripePaymentStatus: 'pending_payment' } }], [purchase('2026-08-09', 100)]); assert.equal(result.alreadySnapshotted, 1); assert.equal(result.eligible, 0); });
