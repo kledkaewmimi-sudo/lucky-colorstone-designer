@@ -1,6 +1,6 @@
 # UAT CRM Order Cost Snapshot Implementation
 
-Status: `IMPLEMENTED_UAT_UNDEPLOYED`
+Status: `BLOCKED_PERSISTENCE_MODEL`
 
 ## Existing Order Persistence
 
@@ -109,7 +109,17 @@ completion, checkout, customer pricing, LINE/LIFF/OA, Meta Pixel, or analytics.
 
 ## UAT Deployment
 
-UAT only. Deploy only after tests pass; owner must inspect UAT CRM manually.
+The isolated UAT Vercel project deployed commit `9065037` and reports `Ready`.
+The CRM frontend can display persisted snapshots and unresolved historic orders.
+
+Live snapshot creation cannot be verified in the current UAT runtime: its
+existing UAT backend guard blocks order/payment mutation paths and Stripe
+credentials are intentionally prohibited. No order/payment guard was loosened,
+no write probe was made, and no customer or payment behavior changed.
+
+Owner CRM inspection is required. A future UAT-only backend-release task must
+provide an approved paid-order authority before live snapshot persistence can be
+verified.
 
 ## Owner Acceptance
 
