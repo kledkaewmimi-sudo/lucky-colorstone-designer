@@ -1,6 +1,7 @@
 const DELIVERY_COST = 80;
 const COST_SOURCE = 'purchases_weighted_average_exact_variant';
 const HISTORICAL_DETERMINISTIC_COST_SOURCE = 'historical_deterministic_purchases_weighted_average_exact_variant';
+const HISTORICAL_ESTIMATED_COST_SOURCE = 'historical_reconstructed_with_earliest_known_purchase_fallback';
 
 function numberOrNull(value) {
   const number = Number(value);
@@ -141,6 +142,98 @@ function createHistoricalDeterministicCostSnapshot(order = {}, purchases = [], c
   };
 }
 
+function getComponentPurchaseIdentity(component = {}) {
+  return component.type === 'stone'
+    ? `${component.type}|${component.catalogId}|${component.sizeMm}`
+    : `${component.type}|${component.catalogId}`;
+}
+
+function getMatchingExactPurchases(component = {}, purchases = []) {
+  return purchases.filter((purchase) => {
+    const type = String(purchase?.item_type || purchase?.itemType || '').trim().toLowerCase();
+    const catalogId = String(purchase?.catalog_item_id || purchase?.catalogItemId || '').trim();
+    const sizeMm = numberOrNull(purchase?.size_mm ?? purchase?.sizeMm);
+    return type === component.type
+      && catalogId === component.catalogId
+      && (type !== 'stone' || sizeMm === component.sizeMm);
+  });
+}
+
+function getPurchaseDate(purchase = {}) {
+  const date = String(purchase?.purchased_at || purchase?.purchasedAt || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+function weightedAverageUnitCost(purchases = []) {
+  const totalQuantity = purchases.reduce((sum, purchase) => sum + Number(purchase.quantity), 0);
+  const totalCost = purchases.reduce((sum, purchase) => sum + Number(purchase.total_cost ?? purchase.totalCost), 0);
+  return totalQuantity > 0 ? totalCost / totalQuantity : null;
+}
+
+function createHistoricalReconstructedCostSnapshot(order = {}, purchases = [], calculatedAt = new Date().toISOString()) {
+  if (order?.costSnapshot) throw new Error('Refusing to overwrite an existing costSnapshot.');
+  if (!isPaidOrder(order)) return null;
+  const orderCostAsOfDate = getOrderCostCutoffDate(order);
+  if (!orderCostAsOfDate) throw new Error('A valid paid/order date is required for historical cost backfill.');
+  const finalPaidAmount = getFinalPaidAmount(order);
+  const base = { calculatedAt, orderCostAsOfDate, finalPaidAmount, deliveryCost: DELIVERY_COST };
+  if (finalPaidAmount === null) return { ...base, status: 'unavailable', costSource: HISTORICAL_DETERMINISTIC_COST_SOURCE, historicalDeterministicBackfill: true, historicalEstimatedBackfill: false, materialCost: null, totalCost: null, profit: null, marginPercent: null, components: [{ resolved: false, reason: 'missing_final_paid_amount' }] };
+
+  const components = getOrderComponents(order).map((component) => {
+    if (!component.resolved) return component;
+    const exactPurchases = getMatchingExactPurchases(component, purchases);
+    const historicalRows = exactPurchases.filter((purchase) => {
+      const date = getPurchaseDate(purchase);
+      return date && date <= orderCostAsOfDate;
+    });
+    let selectedRows = historicalRows;
+    let fallbackUsed = false;
+    let costResolutionMethod = 'historical_exact_purchase';
+    let sourcePurchaseDate = null;
+    if (selectedRows.length === 0) {
+      const futureRows = exactPurchases.filter((purchase) => {
+        const date = getPurchaseDate(purchase);
+        return date && date > orderCostAsOfDate;
+      });
+      const earliestDate = futureRows.map(getPurchaseDate).sort()[0];
+      if (earliestDate) {
+        selectedRows = futureRows.filter((purchase) => getPurchaseDate(purchase) === earliestDate);
+        fallbackUsed = true;
+        costResolutionMethod = 'historical_estimated_earliest_known_purchase';
+        sourcePurchaseDate = earliestDate;
+      }
+    }
+    const unitCost = weightedAverageUnitCost(selectedRows);
+    if (!Number.isFinite(unitCost)) return { ...component, resolved: false, reason: 'missing_exact_purchase_cost', fallbackUsed: false, costResolutionMethod: 'unresolved_no_exact_purchase' };
+    const sourcePurchaseDates = [...new Set(selectedRows.map(getPurchaseDate).filter(Boolean))].sort();
+    return {
+      ...component,
+      weightedAverageUnitCost: unitCost,
+      extendedCost: unitCost * component.quantity,
+      sourcePurchaseRowIds: selectedRows.map((purchase) => String(purchase?.id || '').trim()).filter(Boolean),
+      sourcePurchaseDate: sourcePurchaseDate || sourcePurchaseDates[0] || null,
+      sourcePurchaseDates,
+      fallbackUsed,
+      costResolutionMethod
+    };
+  });
+  const unresolved = components.some((component) => !component.resolved);
+  const fallbackUsed = components.some((component) => component.fallbackUsed === true);
+  const costSource = fallbackUsed ? HISTORICAL_ESTIMATED_COST_SOURCE : HISTORICAL_DETERMINISTIC_COST_SOURCE;
+  const metadata = { costSource, historicalDeterministicBackfill: !fallbackUsed, historicalEstimatedBackfill: fallbackUsed };
+  if (unresolved) return { ...base, ...metadata, status: 'unavailable', materialCost: null, totalCost: null, profit: null, marginPercent: null, components };
+  const materialCost = components.reduce((sum, component) => sum + component.extendedCost, 0);
+  const totalCost = materialCost + DELIVERY_COST;
+  const profit = finalPaidAmount - totalCost;
+  return { ...base, ...metadata, status: 'complete', materialCost, totalCost, profit, marginPercent: finalPaidAmount > 0 ? (profit / finalPaidAmount) * 100 : 0, components };
+}
+
+function createHistoricalBackfillDryRun(orders = [], purchases = [], calculatedAt = new Date().toISOString()) {
+  return orders
+    .filter((order) => isPaidOrder(order) && !order.costSnapshot)
+    .map((order) => ({ orderId: order.id, orderDate: getOrderCostCutoffDate(order), snapshot: createHistoricalReconstructedCostSnapshot(order, purchases, calculatedAt) }));
+}
+
 function preserveOrCreateOrderCostSnapshot(order = {}, purchases = [], calculatedAt) {
   return order?.costSnapshot ? order : { ...order, costSnapshot: createOrderCostSnapshot(order, purchases, calculatedAt) };
 }
@@ -149,9 +242,12 @@ module.exports = {
   COST_SOURCE,
   DELIVERY_COST,
   HISTORICAL_DETERMINISTIC_COST_SOURCE,
+  HISTORICAL_ESTIMATED_COST_SOURCE,
   buildWeightedCostIndexes,
   createOrderCostSnapshot,
   createHistoricalDeterministicCostSnapshot,
+  createHistoricalReconstructedCostSnapshot,
+  createHistoricalBackfillDryRun,
   getOrderCostCutoffDate,
   isPaidOrder,
   preserveOrCreateOrderCostSnapshot

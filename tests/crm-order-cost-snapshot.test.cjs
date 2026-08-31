@@ -6,6 +6,7 @@ const {
   DELIVERY_COST,
   createOrderCostSnapshot,
   createHistoricalDeterministicCostSnapshot,
+  createHistoricalReconstructedCostSnapshot,
   preserveOrCreateOrderCostSnapshot
 } = require('../server-order-cost-snapshot.js');
 
@@ -137,6 +138,36 @@ test('historical deterministic backfill uses only exact purchases on or before t
   assert.deepEqual(snapshot.components[0].sourcePurchaseRowIds, ['before']);
   assert.equal(snapshot.historicalDeterministicBackfill, true);
   assert.throws(() => createHistoricalDeterministicCostSnapshot({ ...order, costSnapshot: snapshot }, []), /Refusing to overwrite/);
+});
+
+test('historical reconstruction uses only the earliest exact future purchase date as fallback', () => {
+  const order = { ...paidOrder([
+    { type: 'stone', stoneId: 'amethyst', size: 6, quantity: 1 },
+    { type: 'spacer', spacerId: 'gold-spacer', quantity: 2 }
+  ], 100), paidAt: '2026-08-22T06:40:01.327Z' };
+  const snapshot = createHistoricalReconstructedCostSnapshot(order, [
+    { ...purchase('stone', 'amethyst', 10, 20, 6), id: 'stone-earliest-a', purchased_at: '2026-08-23' },
+    { ...purchase('stone', 'amethyst', 10, 40, 6), id: 'stone-earliest-b', purchased_at: '2026-08-23' },
+    { ...purchase('stone', 'amethyst', 10, 999, 6), id: 'stone-later', purchased_at: '2026-08-24' },
+    { ...purchase('spacer', 'gold-spacer', 10, 10), id: 'spacer-history', purchased_at: '2026-08-21' },
+    { ...purchase('stone', 'amethyst', 10, 1, 4), id: 'wrong-size', purchased_at: '2026-08-20' }
+  ], '2026-09-01T00:00:00.000Z');
+  assert.equal(snapshot.status, 'complete');
+  assert.equal(snapshot.historicalEstimatedBackfill, true);
+  assert.equal(snapshot.historicalDeterministicBackfill, false);
+  assert.equal(snapshot.components[0].weightedAverageUnitCost, 3);
+  assert.deepEqual(snapshot.components[0].sourcePurchaseRowIds, ['stone-earliest-a', 'stone-earliest-b']);
+  assert.equal(snapshot.components[0].sourcePurchaseDate, '2026-08-23');
+  assert.equal(snapshot.components[0].fallbackUsed, true);
+  assert.equal(snapshot.components[1].costResolutionMethod, 'historical_exact_purchase');
+});
+
+test('historical reconstruction keeps components without any exact Purchase unresolved', () => {
+  const order = { ...paidOrder([{ type: 'charm', charmId: 'missing-charm', quantity: 1 }]), paidAt: '2026-08-22T06:40:01.327Z' };
+  const snapshot = createHistoricalReconstructedCostSnapshot(order, []);
+  assert.equal(snapshot.status, 'unavailable');
+  assert.equal(snapshot.components[0].reason, 'missing_exact_purchase_cost');
+  assert.equal(snapshot.components[0].costResolutionMethod, 'unresolved_no_exact_purchase');
 });
 
 test('CRM renders persisted complete and unavailable snapshot states only', () => {
