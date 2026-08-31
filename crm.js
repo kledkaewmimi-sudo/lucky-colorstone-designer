@@ -4087,6 +4087,50 @@ function formatOrderCostMoney(value) {
   return `฿${Number(value).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+function getOrderCostComponentName(order = {}, component = {}) {
+  const componentType = String(component.type || '').trim().toLowerCase();
+  const catalogId = String(component.catalogId || '').trim();
+  const sizeMm = Number(component.sizeMm);
+  const item = getOrderItemizedBilling(order).find((candidate) => {
+    const candidateType = String(candidate?.type || '').trim().toLowerCase();
+    const candidateId = String(
+      candidateType === 'stone' ? candidate?.stoneId || candidate?.id :
+        candidateType === 'charm' ? candidate?.charmId || candidate?.id :
+          candidateType === 'spacer' ? candidate?.spacerId || candidate?.id : ''
+    ).trim();
+    return candidateType === componentType
+      && candidateId === catalogId
+      && (componentType !== 'stone' || Number(candidate?.size) === sizeMm);
+  });
+  return String(item?.nameTh || item?.name?.th || item?.nameEn || item?.name?.en || item?.name || catalogId || 'Unknown component').trim();
+}
+
+function renderOrderCostDiagnostic(order = {}, cost = null) {
+  if (!cost) {
+    return '<div class="order-cost-diagnostic">Historical cost snapshot missing; no current purchase cost has been applied.</div>';
+  }
+
+  const unresolved = Array.isArray(cost.components)
+    ? cost.components.filter((component) => component?.resolved === false)
+    : [];
+  if (unresolved.length === 0) return '';
+
+  const items = unresolved.map((component) => {
+    const name = getOrderCostComponentName(order, component);
+    const size = component.type === 'stone' && Number.isFinite(Number(component.sizeMm))
+      ? ` · ${Number(component.sizeMm)}mm`
+      : '';
+    const quantity = Number.isFinite(Number(component.quantity)) ? ` ×${Number(component.quantity)}` : '';
+    return `<li>${escapeHtml(`${name}${size}${quantity}`)}</li>`;
+  }).join('');
+  return `
+    <div class="order-cost-diagnostic">
+      <span>Missing cost:</span>
+      <ul>${items}</ul>
+    </div>
+  `;
+}
+
 function renderOrderCostSummary(order = {}) {
   const cost = order.costSnapshot;
   const isComplete = cost?.status === 'complete';
@@ -4099,6 +4143,7 @@ function renderOrderCostSummary(order = {}) {
       <div class="order-cost-total"><span>Total Cost</span><strong>${value(cost?.totalCost)}</strong></div>
       <div><span>Profit</span><strong>${value(cost?.profit)}</strong></div>
       <div><span>Margin</span><strong>${isComplete && Number.isFinite(Number(cost?.marginPercent)) ? `${Number(cost.marginPercent).toFixed(1)}%` : 'Unavailable'}</strong></div>
+      ${isComplete ? '' : renderOrderCostDiagnostic(order, cost)}
     </div>
   `;
 }

@@ -3129,6 +3129,24 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-navy-muted);
 }
 
+.order-cost-diagnostic {
+  display: block !important;
+  margin-top: 3px;
+  color: var(--color-navy-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.order-cost-diagnostic > span {
+  color: var(--color-gold-dark);
+  font-weight: 700;
+}
+
+.order-cost-diagnostic ul {
+  margin: 2px 0 0;
+  padding-left: 14px;
+}
+
 /* ==========================================
    PRINTABLE INVOICE PAPER (OMS EXPORT)
    ========================================== */

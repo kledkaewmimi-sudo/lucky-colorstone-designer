@@ -88,6 +88,23 @@ test('marks missing exact component cost unavailable without a zero fallback', (
   assert.equal(snapshot.components[0].reason, 'missing_exact_purchase_cost');
 });
 
+test('reports every missing component when more than one exact cost is absent', () => {
+  const snapshot = createOrderCostSnapshot(paidOrder([
+    { type: 'stone', stoneId: 'pink-tiger-eye', size: 10, quantity: 2 },
+    { type: 'charm', charmId: 'bee-heart-pink', quantity: 1 }
+  ]), []);
+  assert.equal(snapshot.status, 'unavailable');
+  assert.deepEqual(snapshot.components.map((component) => ({
+    catalogId: component.catalogId,
+    sizeMm: component.sizeMm,
+    quantity: component.quantity,
+    reason: component.reason
+  })), [
+    { catalogId: 'pink-tiger-eye', sizeMm: 10, quantity: 2, reason: 'missing_exact_purchase_cost' },
+    { catalogId: 'bee-heart-pink', sizeMm: null, quantity: 1, reason: 'missing_exact_purchase_cost' }
+  ]);
+});
+
 test('creates snapshots for paid orders only', () => {
   const pending = { ...paidOrder([{ type: 'stone', stoneId: 'amethyst', size: 6, quantity: 1 }]), stripePaymentStatus: 'pending_payment' };
   assert.equal(createOrderCostSnapshot(pending, [purchase('stone', 'amethyst', 1, 10, 6)]), null);
@@ -107,6 +124,9 @@ test('CRM renders persisted complete and unavailable snapshot states only', () =
   const crmSource = fs.readFileSync(path.join(__dirname, '..', 'crm.js'), 'utf8');
   assert.match(crmSource, /const cost = order\.costSnapshot;/);
   assert.match(crmSource, /UNKNOWN \/ UNRESOLVED COST/);
+  assert.match(crmSource, /function renderOrderCostDiagnostic/);
+  assert.match(crmSource, /Missing cost:/);
+  assert.match(crmSource, /Historical cost snapshot missing; no current purchase cost has been applied\./);
   assert.doesNotMatch(crmSource, /getHistoricPurchaseCostSummaries/);
   assert.match(crmSource, /data-label="Cost"/);
 });
