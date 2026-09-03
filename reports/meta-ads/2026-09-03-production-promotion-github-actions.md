@@ -81,7 +81,7 @@ Targeted committed-content scan found no access-token or service-role-key litera
 ## Promotion status
 
 - Workflow file present on clean branch: **YES**
-- Feature branch pushed: **PENDING**
+- Feature branch pushed: **YES** — `origin/meta-ads-github-actions-production` at `cb9f855735559b62347089f9bd9238899c8ca060`
 - `main` modified: **NO**
 - Frontend affected: **NO**
 - CRM affected: **NO**
