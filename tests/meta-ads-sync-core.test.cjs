@@ -32,7 +32,7 @@ const diagnostics = getBaselineRequestDiagnostics({ accountId: 'act_7', apiVersi
 assert.deepEqual(diagnostics.breakdowns, [HOURLY_BREAKDOWN]);
 assert.equal(diagnostics.fields.includes(HOURLY_BREAKDOWN), false);
 assert.equal(diagnostics.breakdowns.some((value) => ['publisher_platform', 'platform_position', 'device_platform'].includes(value)), false);
-assert.equal(diagnostics.action_breakdowns, '<absent>');
+assert.equal(diagnostics.action_breakdowns, 'DEFAULT / OMITTED');
 assert.equal(diagnostics.action_report_time, '<absent>');
 assert.equal(diagnostics.time_increment, '<absent>');
 assert.deepEqual(diagnostics.additional_parameters, {});
@@ -49,15 +49,19 @@ assert.equal(baselineUrl.searchParams.get('fields').includes(HOURLY_BREAKDOWN), 
 assert.deepEqual(placementBreakdowns(), ['publisher_platform', 'platform_position', 'device_platform']);
 assert.deepEqual(demographicsBreakdowns(), ['age', 'gender']);
 assert.equal(granularityBreakdown(), HOURLY_BREAKDOWN);
-const analyticsUrl = buildAnalyticsInsightsUrl({ fields: fieldsForDataset('placement'), breakdowns: [HOURLY_BREAKDOWN, 'publisher_platform'], config: { accountId: 'act_7', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
+const analyticsUrl = buildAnalyticsInsightsUrl({ fields: fieldsForDataset('placement'), breakdowns: [HOURLY_BREAKDOWN, 'publisher_platform'], config: { dataset: 'placement', accountId: 'act_7', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
 const analyticsDiagnostics = getAnalyticsRequestDiagnostics({ dataset: 'placement', url: analyticsUrl });
 assert.equal(JSON.stringify(analyticsDiagnostics).includes('do-not-print'), false);
 assert.equal(analyticsDiagnostics.breakdowns.includes('action_type'), false);
-assert.equal(analyticsDiagnostics.action_breakdowns, '<absent>');
+assert.equal(analyticsDiagnostics.action_breakdowns, 'EXPLICIT EMPTY');
 assert.equal(analyticsDiagnostics.action_report_time, '<absent>');
 assert.equal(analyticsDiagnostics.time_increment, '<absent>');
 assert.deepEqual(analyticsDiagnostics.additional_parameters, {});
-const engagementUrl = buildAnalyticsInsightsUrl({ fields: fieldsForDataset('engagement'), breakdowns: [HOURLY_BREAKDOWN], config: { accountId: 'act_7', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
+['demographics', 'geo_country', 'geo_region'].forEach((dataset) => {
+  const url = buildAnalyticsInsightsUrl({ fields: fieldsForDataset(dataset), breakdowns: [HOURLY_BREAKDOWN], config: { dataset, accountId: 'act_7', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
+  assert.equal(url.searchParams.get('action_breakdowns'), '[]');
+});
+const engagementUrl = buildAnalyticsInsightsUrl({ fields: fieldsForDataset('engagement'), breakdowns: [HOURLY_BREAKDOWN], config: { dataset: 'engagement', accountId: 'act_7', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
 assert.equal(engagementUrl.searchParams.get('action_breakdowns'), null);
 assert.equal(engagementUrl.searchParams.get('fields').includes('video_p100_watched_actions'), true);
 assert.equal(describeTransportError({ cause: { code: 'ENOTFOUND' } }), 'DNS/network failure');

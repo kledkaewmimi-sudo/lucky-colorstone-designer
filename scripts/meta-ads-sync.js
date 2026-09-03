@@ -32,7 +32,11 @@ function getSanitizedInsightsParameterMap(url) {
   const parameters = {};
   DIAGNOSTIC_PARAMETER_NAMES.forEach((name) => {
     const value = url.searchParams.get(name);
-    parameters[name] = value === null ? '<absent>' : (name === 'fields' || name === 'breakdowns' ? value.split(',') : value);
+    if (name === 'action_breakdowns') {
+      parameters[name] = value === null ? 'DEFAULT / OMITTED' : value === '[]' ? 'EXPLICIT EMPTY' : value.split(',');
+    } else {
+      parameters[name] = value === null ? '<absent>' : (name === 'fields' || name === 'breakdowns' ? value.split(',') : value);
+    }
   });
   const explicitAdditionalParameters = {};
   url.searchParams.forEach((value, name) => {

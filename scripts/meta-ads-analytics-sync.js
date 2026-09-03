@@ -6,6 +6,7 @@ const { getAllInsights, getSanitizedInsightsParameterMap, metaRequest, parseConf
 
 const GRAPH_HOST = 'https://graph.facebook.com';
 const DATASET_NAMES = Object.keys(ANALYTICS_DATASETS);
+const DIMENSION_DATASETS = new Set(['placement', 'demographics', 'geo_country', 'geo_region']);
 const PLACEMENT_STAGES = {
   publisher: ['publisher_platform'],
   position: ['publisher_platform', 'platform_position'],
@@ -63,6 +64,9 @@ function buildAnalyticsInsightsUrl({ config, fields, breakdowns }) {
   url.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
   if (breakdowns.length > 0) url.searchParams.set('breakdowns', breakdowns.join(','));
   url.searchParams.set('fields', fields.join(','));
+  // Meta v26 treats omitted action_breakdowns as its default action_type.
+  // A dimension-only pass must send an explicit empty list, not a blank value.
+  if (DIMENSION_DATASETS.has(config.dataset)) url.searchParams.set('action_breakdowns', '[]');
   url.searchParams.set('limit', '500');
   url.searchParams.set('access_token', config.accessToken);
   return url;
@@ -79,7 +83,7 @@ async function syncDataset(name, config, accountTimezone, includeImpressionDevic
   const breakdowns = [...(hourlyBreakdown ? [hourlyBreakdown] : []), ...datasetBreakdowns];
   if (name === 'placement' && includeImpressionDevice) breakdowns.push('impression_device');
   const fields = fieldsForDataset(name);
-  const url = buildAnalyticsInsightsUrl({ config, fields, breakdowns });
+  const url = buildAnalyticsInsightsUrl({ config: { ...config, dataset: name }, fields, breakdowns });
   if (config.dryRun) console.log(`Meta request: ${JSON.stringify(getAnalyticsRequestDiagnostics({ dataset: name, url }))}`);
   const fetchedAt = new Date().toISOString();
   const insights = await getAllInsights(url, config);
@@ -106,4 +110,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-analytics-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { buildAnalyticsInsightsUrl, demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset };
+module.exports = { buildAnalyticsInsightsUrl, demographicsBreakdowns, DIMENSION_DATASETS, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset };

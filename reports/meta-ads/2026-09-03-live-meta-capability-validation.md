@@ -157,7 +157,7 @@ Dry-run output now reflects the actual generated URL parameter map, with absent 
 level=ad
 fields=[...]
 breakdowns=[...]
-action_breakdowns=<absent>
+action_breakdowns=DEFAULT / OMITTED
 action_report_time=<absent>
 time_range={"since":"2026-09-01","until":"2026-09-01"}
 time_increment=<absent>
@@ -165,7 +165,9 @@ limit=500
 additional_parameters={}
 ```
 
-`access_token` is excluded from the map. Thus the implementation has no globally/shared explicit `action_breakdowns=action_type` to remove. The next owner dry-run will prove the complete clean request received by Meta; if Meta still reports `action_type`, that is Meta-side report semantics rather than an explicit parameter in this collector
+`access_token` is excluded from the map. New live evidence establishes that Meta interprets the omitted value as its default `action_type`. The official SDK defines `action_breakdowns` as a list parameter, and Meta's official Postman collection shows JSON-list serialization for the parameter. Dimension-only requests now explicitly serialise the empty list as `action_breakdowns=[]`; they do not use an undocumented blank string
+
+Diagnostics distinguish `DEFAULT / OMITTED`, `EXPLICIT EMPTY`, and a nonempty list such as `["action_type"]`. The explicit-empty setting applies only to placement, demographics, geo-country and geo-region. Baseline and engagement URL builders are unchanged
 
 Current live classifications:
 
@@ -173,11 +175,12 @@ Current live classifications:
 |---|---|
 | Baseline hourly | **SUPPORTED — 24 rows, Asia/Bangkok** |
 | Engagement hourly | **SUPPORTED — 24 rows, dry-run, no write** |
-| Demographics | **INCOMPATIBLE WITH CURRENT action_type REJECTION; NOT YET CLASSIFIED WITHOUT action_type** |
-| Geo country | **INCOMPATIBLE WITH CURRENT action_type REJECTION; NOT YET CLASSIFIED WITHOUT action_type** |
-| Placement | **INCOMPATIBLE WITH CURRENT action_type/current combination; NOT YET CLASSIFIED AFTER CLEAN REQUEST** |
+| Demographics | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
+| Geo country | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
+| Geo region | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
+| Placement | **BLOCKED BY DEFAULT action_type/current combination; pending explicit-empty retest** |
 
-Engagement remains isolated and unchanged: it retains action/video/ranking fields but has no explicit `action_breakdowns` parameter. Non-action dimension passes retain scalar-only fields and no action-array fields
+Engagement remains isolated and unchanged: it retains action/video/ranking fields and its `action_breakdowns` behavior remains default/omitted. Non-action dimension passes retain scalar-only fields, no action-array fields, and explicit-empty action breakdowns
 
 The current analytics CLI tests placement/demographics as one pass, so use a temporary read-only request runner or add a minimal validation-only selector before classifying the sub-combinations `publisher`, `publisher+position`, `age`, `gender` individually. Do not change ingestion query design based only on an unbisected error
 
