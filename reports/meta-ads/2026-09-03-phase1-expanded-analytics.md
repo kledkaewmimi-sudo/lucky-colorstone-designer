@@ -145,7 +145,7 @@ The Meta test covers hourly parsing, timezone and DST ambiguity, decimal/null me
 - added: `supabase/2026-09-03-meta-ads-analytics-expansion.sql`
 - added: this report
 
-Baseline Phase 1 commit: `d07b532999ac4872eec418b318018fad437be9ca`. The expansion commit hash is recorded after implementation is committed.
+Baseline Phase 1 commit: `d07b532999ac4872eec418b318018fad437be9ca`. Expansion commit: `784aeee2ddc881c653087a8eb100aabefe192ce1`.
 
 ## Final safety statement
 
