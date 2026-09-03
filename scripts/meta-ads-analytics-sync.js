@@ -122,4 +122,3 @@ if (require.main === module) {
 }
 
 module.exports = { buildAnalyticsInsightsUrl, demographicsBreakdowns, DIMENSION_DATASETS, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset, targetTableForDataset };
-

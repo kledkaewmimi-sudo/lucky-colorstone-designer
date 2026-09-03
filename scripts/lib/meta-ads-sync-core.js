@@ -203,4 +203,3 @@ function isRateLimitResponse(response, payload) {
 }
 
 module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, CORE_INSIGHT_FIELDS, SCALAR_INSIGHT_FIELDS, ACTION_ARRAY_FIELDS, INSIGHT_FIELDS, BASELINE_INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VALIDATION_SCALAR_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, normalizeDailyDemographicsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
-

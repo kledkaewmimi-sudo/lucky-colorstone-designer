@@ -30,4 +30,3 @@ assert.equal(workflow.includes('server.js'), false, 'workflow must not invoke th
 assert.equal(workflow.includes('render'), false, 'workflow must not invoke Render');
 
 console.log('meta-ads-scheduled-workflow.test.cjs passed');
-

@@ -38,4 +38,3 @@ jobs:
           META_ADS_SUPABASE_URL: ${{ secrets.META_ADS_SUPABASE_URL }}
           META_ADS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.META_ADS_SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/meta-ads-scheduled-worker.js --job scheduled
-

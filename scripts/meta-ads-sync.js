@@ -152,4 +152,3 @@ if (require.main === module) {
 }
 
 module.exports = { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, getSanitizedInsightsParameterMap, metaRequest, parseConfig, upsertRows };
-

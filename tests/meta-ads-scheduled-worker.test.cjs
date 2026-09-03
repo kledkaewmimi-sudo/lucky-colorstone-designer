@@ -58,4 +58,3 @@ async function testWorkerFailureIsolation() {
 testWorkerFailureIsolation()
   .then(() => console.log('meta-ads-scheduled-worker.test.cjs passed'))
   .catch((error) => { console.error(error); process.exitCode = 1; });
-

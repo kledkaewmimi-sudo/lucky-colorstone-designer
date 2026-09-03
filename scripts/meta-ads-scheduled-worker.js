@@ -170,4 +170,3 @@ if (require.main === module) {
 }
 
 module.exports = { BANGKOK_TIME_ZONE, REQUIRED_ENVIRONMENT_NAMES, acquireLocalLock, addCalendarDays, bangkokDateParts, bangkokHour, bangkokToday, buildJobPlan, lockPathFor, runCommand, runJob, safeEvent, validateRequiredEnvironment };
-
