@@ -13,6 +13,8 @@ import { invokeInitialLineAuthentication } from './initial-line-auth.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
+import { captureMetaAttribution, normalizeMetaAttribution, updateMetaAttribution } from './meta-attribution.js';
+import { getBrowserPurchaseStorageKey, normalizeBrowserPurchaseTracking } from './meta-browser-purchase.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -42,6 +44,7 @@ const ANALYTICS_SESSION_ID_KEY = 'lucky_analytics_session_id';
 const ANALYTICS_VISITOR_ID_KEY = 'lucky_colorstone_visitor_id';
 const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
 const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
+const META_ATTRIBUTION_STORAGE_KEY = 'lucky_meta_attribution_v1';
 const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
 const ANALYTICS_LAST_SEEN_AT_KEY = 'lucky_analytics_last_seen_at';
 const ANALYTICS_CURRENT_STAGE_KEY = 'lucky_analytics_current_stage';
@@ -309,6 +312,7 @@ let step2SupportRotationFrame = 0;
 let analyticsSessionId = '';
 let analyticsVisitorId = '';
 let analyticsFirstSource = null;
+let metaAttribution = null;
 let analyticsStartedAt = '';
 let analyticsLastSeenAt = '';
 let analyticsCurrentStage = '';
@@ -1523,6 +1527,24 @@ function getCurrentAnalyticsSource() {
   return source;
 }
 
+function readMetaAttribution() {
+  try {
+    return normalizeMetaAttribution(JSON.parse(localStorage.getItem(META_ATTRIBUTION_STORAGE_KEY) || 'null'));
+  } catch {
+    return null;
+  }
+}
+
+function captureAndPersistMetaAttribution({ hydrateOnly = false } = {}) {
+  try {
+    const capture = captureMetaAttribution({ href: window.location.href, referrer: document.referrer, cookieString: document.cookie, now: Date.now() });
+    metaAttribution = updateMetaAttribution(metaAttribution || readMetaAttribution() || {}, capture, { updateLastTouch: !hydrateOnly });
+    localStorage.setItem(META_ATTRIBUTION_STORAGE_KEY, JSON.stringify(metaAttribution));
+  } catch {
+    // Attribution persistence is best-effort and must never block customization or checkout.
+  }
+}
+
 function readAnalyticsFunnelStageKeys() {
   try {
     const stored = JSON.parse(localStorage.getItem(ANALYTICS_FUNNEL_STAGE_KEYS_KEY) || '[]');
@@ -1591,6 +1613,8 @@ function applyDeferredLineAuthAnalyticsContinuity(rawContinuity) {
 }
 
 function initAnalytics() {
+  captureAndPersistMetaAttribution();
+  window.setTimeout(() => captureAndPersistMetaAttribution({ hydrateOnly: true }), 1200);
   if (IS_UAT_MODE) return;
   try {
     const resolvedSession = resolveAnalyticsSession({
@@ -1662,6 +1686,7 @@ function getAnalyticsOrderFields() {
     analyticsSessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
     analyticsVisitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
     analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource(),
+    metaAttribution: normalizeMetaAttribution(metaAttribution || readMetaAttribution() || {}),
     analyticsSchemaVersion: 2,
     analyticsFunnelVersion: 2
   };
@@ -1759,13 +1784,16 @@ function trackCheckoutStarted(checkoutSessionId) {
   });
 }
 
-function trackMetaEvent(eventName, parameters = {}) {
-  if (IS_UAT_MODE) return;
+function trackMetaEvent(eventName, parameters = {}, options = null) {
+  if (IS_UAT_MODE) return false;
   try {
-    if (typeof window.fbq !== 'function') return;
-    window.fbq('track', eventName, parameters);
+    if (typeof window.fbq !== 'function') return false;
+    if (options) window.fbq('track', eventName, parameters, options);
+    else window.fbq('track', eventName, parameters);
+    return true;
   } catch {
     // Marketing tracking must never interrupt the customer or LINE flow.
+    return false;
   }
 }
 
@@ -1797,6 +1825,27 @@ function trackMetaInitiateCheckout(checkoutSessionId, amountTotal, currency) {
     currency: normalizedCurrency,
     value: normalizedAmount / 100
   });
+}
+
+function trackMetaPurchase(purchaseTracking) {
+  const purchase = normalizeBrowserPurchaseTracking(purchaseTracking);
+  if (!purchase) return false;
+  const storageKey = getBrowserPurchaseStorageKey(purchase.eventId);
+  try { if (localStorage.getItem(storageKey) === '1') return false; } catch {}
+  const sent = trackMetaEvent('Purchase', { value: purchase.value, currency: purchase.currency }, { eventID: purchase.eventId });
+  if (!sent) return false;
+  try { localStorage.setItem(storageKey, '1'); } catch {}
+  return true;
+}
+
+async function verifyAndTrackMetaPurchase(sessionId) {
+  if (!sessionId) return false;
+  try {
+    const response = await fetch(`/api/stripe/purchase-tracking?session_id=${encodeURIComponent(sessionId)}`);
+    return response.ok ? trackMetaPurchase(await response.json().catch(() => ({}))) : false;
+  } catch {
+    return false;
+  }
 }
 
 function triggerLandingStartFeedback() {
@@ -8296,6 +8345,7 @@ async function handleStripeReturnIfNeeded() {
       ? existingOrders.map((order) => normalizeSavedOrder(order)).find((order) => order?.stripeCheckoutSessionId === sessionId)
       : null;
     activatePaymentCompletedView(processedOrder || null);
+    void verifyAndTrackMetaPurchase(sessionId);
     cleanupStripeReturnParams();
     showToast("Stripe payment already confirmed.");
     return;
@@ -8334,6 +8384,7 @@ async function handleStripeReturnIfNeeded() {
     const savedOrder = existingOrder || normalizeSavedOrder(payload.order);
 
     activatePaymentCompletedView(savedOrder);
+    void verifyAndTrackMetaPurchase(sessionId);
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();
