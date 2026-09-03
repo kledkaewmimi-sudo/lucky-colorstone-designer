@@ -14,6 +14,7 @@ import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
 import { captureMetaAttribution, normalizeMetaAttribution, updateMetaAttribution } from './meta-attribution.js';
+import { getBrowserPurchaseStorageKey, normalizeBrowserPurchaseTracking } from './meta-browser-purchase.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -1829,13 +1830,19 @@ function trackCheckoutStarted(checkoutSessionId) {
   });
 }
 
-function trackMetaEvent(eventName, parameters = {}) {
-  if (IS_UAT_MODE) return;
+function trackMetaEvent(eventName, parameters = {}, options = null) {
+  if (IS_UAT_MODE) return false;
   try {
-    if (typeof window.fbq !== 'function') return;
-    window.fbq('track', eventName, parameters);
+    if (typeof window.fbq !== 'function') return false;
+    if (options) {
+      window.fbq('track', eventName, parameters, options);
+    } else {
+      window.fbq('track', eventName, parameters);
+    }
+    return true;
   } catch {
     // Marketing tracking must never interrupt the customer or LINE flow.
+    return false;
   }
 }
 
@@ -1867,6 +1874,40 @@ function trackMetaInitiateCheckout(checkoutSessionId, amountTotal, currency) {
     currency: normalizedCurrency,
     value: normalizedAmount / 100
   });
+}
+
+function trackMetaPurchase(purchaseTracking) {
+  const purchase = normalizeBrowserPurchaseTracking(purchaseTracking);
+  if (!purchase) return false;
+  const storageKey = getBrowserPurchaseStorageKey(purchase.eventId);
+  try {
+    if (localStorage.getItem(storageKey) === '1') return false;
+  } catch {
+    // Meta's event ID remains the cross-browser deduplication guard if storage is unavailable.
+  }
+  const sent = trackMetaEvent('Purchase', {
+    value: purchase.value,
+    currency: purchase.currency
+  }, { eventID: purchase.eventId });
+  if (!sent) return false;
+  try {
+    localStorage.setItem(storageKey, '1');
+  } catch {
+    // Tracking remains best-effort when browser storage is blocked.
+  }
+  return true;
+}
+
+async function verifyAndTrackMetaPurchase(sessionId) {
+  if (!sessionId) return false;
+  try {
+    const response = await fetch(`/api/stripe/purchase-tracking?session_id=${encodeURIComponent(sessionId)}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return false;
+    return trackMetaPurchase(payload);
+  } catch {
+    return false;
+  }
 }
 
 function triggerLandingStartFeedback() {
@@ -9044,6 +9085,7 @@ async function handleStripeReturnIfNeeded() {
       ? existingOrders.map((order) => normalizeSavedOrder(order)).find((order) => order?.stripeCheckoutSessionId === sessionId)
       : null;
     activatePaymentCompletedView(processedOrder || null);
+    void verifyAndTrackMetaPurchase(sessionId);
     cleanupStripeReturnParams();
     showToast("Stripe payment already confirmed.");
     return;
@@ -9082,6 +9124,7 @@ async function handleStripeReturnIfNeeded() {
     const savedOrder = existingOrder || normalizeSavedOrder(payload.order);
 
     activatePaymentCompletedView(savedOrder);
+    void verifyAndTrackMetaPurchase(sessionId);
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();

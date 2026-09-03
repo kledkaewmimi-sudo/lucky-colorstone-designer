@@ -9,7 +9,7 @@ const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const { readOrderPayloads, saveOrderPayload } = require('./server-order-persistence.js');
-const { buildMetaPurchaseEvent } = require('./meta-capi-purchase.js');
+const { buildMetaPurchaseEvent, getMetaPurchaseEventId } = require('./meta-capi-purchase.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -3579,6 +3579,18 @@ async function handleApiRequest(req, res, urlObj) {
       metadata: session.metadata || {},
       order
     });
+    return true;
+  }
+
+  if (pathname === "/api/stripe/purchase-tracking" && method === "GET") {
+    const sessionId = String(urlObj.searchParams.get("session_id") || "").trim();
+    const order = await findOrderByStripeCheckoutSessionId(sessionId);
+    const paid = String(order?.stripePaymentStatus || '').trim().toLowerCase() === 'paid';
+    const eventId = paid ? getMetaPurchaseEventId(order) : null;
+    const value = paid ? Number(getOrderTotalPrice(order)) : null;
+    sendJson(res, 200, paid && eventId && Number.isFinite(value)
+      ? { paid: true, event_id: eventId, value, currency: 'THB' }
+      : { paid: false });
     return true;
   }
 
