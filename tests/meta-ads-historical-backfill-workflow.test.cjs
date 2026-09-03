@@ -1,11 +1,13 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const workflowPath = path.join(__dirname, '..', '.github', 'workflows', 'meta-ads-historical-backfill.yml');
-const workflow = fs.readFileSync(workflowPath, 'utf8');
+const workflow = fs.readFileSync(workflowPath, 'utf8').replace(/\r\n/g, '\n');
 
 assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:/m);
 assert.doesNotMatch(workflow, /^\s+schedule:/m, 'historical backfill must not schedule itself');
@@ -36,5 +38,31 @@ assert.equal(/(META_ACCESS_TOKEN|META_ADS_SUPABASE_SERVICE_ROLE_KEY):\s*['\"]?[A
 assert.equal(workflow.includes('schedule:'), false, 'historical workflow must have no scheduled trigger');
 assert.equal(workflow.includes('server.js'), false, 'workflow must not invoke the application server');
 assert.equal(workflow.includes('render'), false, 'workflow must not invoke Render');
+
+const runMarker = '        run: |\n';
+const runStart = workflow.indexOf(runMarker);
+assert.notEqual(runStart, -1, 'backfill shell body must exist');
+const shellLines = [];
+for (const line of workflow.slice(runStart + runMarker.length).split('\n')) {
+  if (line === '') {
+    shellLines.push(line);
+  } else if (line.startsWith('          ')) {
+    shellLines.push(line.slice(10));
+  } else {
+    break;
+  }
+}
+const shellBody = shellLines.join('\n');
+assert.doesNotMatch(shellBody, /<</, 'the generated shell body must not contain heredocs with indentation-sensitive terminators');
+assert.match(shellBody, /node -e '/, 'date and summary parsing must use node -e rather than a heredoc');
+const shellPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'meta-ads-backfill-workflow-')), 'run.sh');
+try {
+  fs.writeFileSync(shellPath, shellBody, 'utf8');
+  const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+  const syntaxCheck = childProcess.spawnSync(bash, ['-n', shellPath], { encoding: 'utf8' });
+  assert.equal(syntaxCheck.status, 0, `generated backfill shell body must pass bash -n: ${syntaxCheck.stderr}`);
+} finally {
+  fs.rmSync(path.dirname(shellPath), { recursive: true, force: true });
+}
 
 console.log('meta-ads-historical-backfill-workflow.test.cjs passed');
