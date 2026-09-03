@@ -1,7 +1,9 @@
 const assert = require('assert');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const test = require('node:test');
-const { buildMetaPurchaseEvent, hashEmail, hashE164Phone } = require('../meta-capi-purchase.js');
+const { buildMetaPurchaseEvent, hashEmail, hashE164Phone, summarizeMetaCapiSuccessBody } = require('../meta-capi-purchase.js');
 const sha = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
 function build() {
@@ -25,4 +27,18 @@ test('email/phone normalize safely and ambiguous phone is omitted', () => {
   assert.equal(hashEmail('Buyer@example.com'), sha('buyer@example.com'));
   assert.equal(hashE164Phone('+66 (81) 234-5678'), sha('+66812345678'));
   assert.equal(hashE164Phone('0812345678'), null);
+});
+
+test('CAPI success observability retains only delivery metadata', () => {
+  assert.deepEqual(summarizeMetaCapiSuccessBody('{"events_received":1,"fbtrace_id":"not-logged"}'), { eventsReceived: 1, fbtraceIdPresent: true });
+  assert.deepEqual(summarizeMetaCapiSuccessBody('not json'), { eventsReceived: null, fbtraceIdPresent: false });
+});
+
+test('CAPI logs only safe attempt, accepted, and failure metadata', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
+  assert.match(source, /\[meta-capi\] Purchase attempt order=\$\{orderReference\}/);
+  assert.match(source, /\[meta-capi\] Purchase accepted order=\$\{orderReference\} events_received=\$\{delivery\.eventsReceived \?\? 'unknown'\} fbtrace_id_present=\$\{delivery\.fbtraceIdPresent\} http_status=\$\{response\.status\}/);
+  assert.match(source, /\[meta-capi\] Purchase delivery failed for order=\$\{orderReference\}/);
+  const metaLogs = source.split(/\r?\n/).filter((line) => line.includes('[meta-capi]')).join('\n');
+  assert.doesNotMatch(metaLogs, /(fbclid|_fbp|_fbc|customer_details|email|phone|access_token|META_CONVERSIONS_API_ACCESS_TOKEN|user_data|event_id|custom_data)/i);
 });
