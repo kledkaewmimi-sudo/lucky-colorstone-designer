@@ -25,6 +25,25 @@ node scripts/meta-ads-sync.js --date 2026-09-01 --dry-run
 
 The full raw Meta error body was not supplied, so this report deliberately does not invent a longer exact Meta message. The exact live classification is **INCOMPATIBLE COMBINATION** for this account/API version—not “NOT LIVE-VERIFIED YET”
 
+## Second live finding: implementation bug, not an hourly capability result
+
+After the placement dimensions were removed, owner reran the same read-only command. Meta returned HTTP 400 / code `100` stating that `hourly_stats_aggregated_by_advertiser_time_zone` is not valid for the `fields` parameter
+
+Source audit found the cause in `scripts/lib/meta-ads-sync-core.js`: `BASELINE_INSIGHT_FIELDS` was derived by removing placement entries from the old mixed `INSIGHT_FIELDS` array, but that old array also contained `HOURLY_BREAKDOWN`. The baseline URL builder correctly set `breakdowns=hourly_stats_aggregated_by_advertiser_time_zone`, but also serialised the same value inside `fields`
+
+This is an **IMPLEMENTATION BUG**. It does **not** demonstrate that hourly reporting itself is unsupported. No Supabase write occurred in the owner dry-run
+
+The corrected generated baseline request now has exactly:
+
+```text
+level=ad
+breakdowns=hourly_stats_aggregated_by_advertiser_time_zone
+fields=account_id,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,date_start,spend,impressions,reach,clicks,inline_link_clicks,ctr,cpc,cpm,frequency,actions,action_values,unique_clicks,unique_ctr,outbound_clicks,outbound_clicks_ctr,cost_per_action_type
+time_range={"since":"2026-09-01","until":"2026-09-01"}
+```
+
+No hourly identifier or placement dimension appears in `fields`. For `--dry-run` only, the collector now prints a sanitized `Meta request:` object containing `level`, `fields`, `breakdowns` and `date`; it never includes `access_token`
+
 ## Account metadata
 
 The successful request proves account access, but this task did not receive live values for account ID, timezone name, UTC offset, currency or status. They remain **NOT RECORDED** rather than inferred. `v26.0` is the API version confirmed by the owner
@@ -53,7 +72,7 @@ No SQL was executed. The new table is intentionally separate because the old tab
 | Query | Hourly | Daily | Meta result | Error code | Rows |
 |---|---:|---:|---|---:|---:|
 | baseline + publisher + position + device (original) | Yes | Not tested | **INCOMPATIBLE COMBINATION** | 100 | Not returned |
-| corrected baseline: hourly only, ad level | Not run in this shell | Not tested | PENDING — credentials absent from current shell | — | — |
+| corrected baseline: hourly only, ad level | Not rerun after bug fix | Not tested | PENDING — credential absent from current shell | — | — |
 | publisher platform | Not run | Not tested | PENDING | — | — |
 | publisher + platform position | Not run | Not tested | PENDING | — | — |
 | publisher + position + device platform | Not run | Not tested | PENDING (known original combination fails when paired with hourly) | — | — |
@@ -104,6 +123,7 @@ After the isolated correction, these checks passed:
 - `node --check scripts/meta-ads-sync.js`
 - `node --check scripts/lib/meta-ads-sync-core.js`
 - `node --test tests/meta-ads-sync-core.test.cjs` — includes baseline key without placement dimensions, rich raw metrics, prior parsing/timezone/pagination/rate-limit coverage
+- baseline URL-builder assertions: hourly is absent from `fields`, present in `breakdowns`, placement breakdowns are absent, and diagnostics cannot contain the supplied test token
 - `node tests/uat-frontend-safety.test.cjs`
 - `git diff --check` for changed isolated files
 

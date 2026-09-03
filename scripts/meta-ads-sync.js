@@ -26,6 +26,26 @@ function fail(message) { throw new Error(message); }
 function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 function safeError(payload, fallback) { return String(payload?.error?.message || payload?.message || fallback || 'request failed').replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]'); }
 
+function getBaselineRequestDiagnostics(config) {
+  return {
+    level: 'ad',
+    fields: BASELINE_INSIGHT_FIELDS,
+    breakdowns: [HOURLY_BREAKDOWN],
+    date: config.since === config.until ? config.since : { since: config.since, until: config.until }
+  };
+}
+
+function buildBaselineInsightsUrl(config) {
+  const insightsUrl = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
+  insightsUrl.searchParams.set('level', 'ad');
+  insightsUrl.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
+  insightsUrl.searchParams.set('breakdowns', HOURLY_BREAKDOWN);
+  insightsUrl.searchParams.set('fields', BASELINE_INSIGHT_FIELDS.join(','));
+  insightsUrl.searchParams.set('limit', '500');
+  insightsUrl.searchParams.set('access_token', config.accessToken);
+  return insightsUrl;
+}
+
 function parseConfig(env = process.env) {
   if (args.includes('--help') || args.includes('-h')) return { help: true };
   const date = option('--date'), since = option('--since'), until = option('--until');
@@ -82,19 +102,14 @@ async function upsertRows(rows, config, table = 'meta_ads_hourly_performance_ins
 async function main() {
   const config = parseConfig();
   if (config.help) return usage();
+  if (config.dryRun) console.log(`Meta request: ${JSON.stringify(getBaselineRequestDiagnostics(config))}`);
   const accountUrl = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}`);
   accountUrl.searchParams.set('fields', 'id,timezone_name,timezone_offset_hours_utc');
   accountUrl.searchParams.set('access_token', config.accessToken);
   const account = await metaRequest(accountUrl, config);
   const accountTimezone = String(account.timezone_name || '').trim();
   if (!accountTimezone) fail('Meta account response omitted timezone_name; refusing to write hourly data without explicit timezone metadata.');
-  const insightsUrl = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
-  insightsUrl.searchParams.set('level', 'ad');
-  insightsUrl.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
-  insightsUrl.searchParams.set('breakdowns', HOURLY_BREAKDOWN);
-  insightsUrl.searchParams.set('fields', BASELINE_INSIGHT_FIELDS.join(','));
-  insightsUrl.searchParams.set('limit', '500');
-  insightsUrl.searchParams.set('access_token', config.accessToken);
+  const insightsUrl = buildBaselineInsightsUrl(config);
   const fetchedAt = new Date().toISOString();
   const insights = await getAllInsights(insightsUrl, config);
   const rows = insights.map((insight) => normalizeBaselineInsight(insight, { accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt }));
@@ -106,4 +121,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { getAllInsights, metaRequest, parseConfig, upsertRows };
+module.exports = { buildBaselineInsightsUrl, getAllInsights, getBaselineRequestDiagnostics, metaRequest, parseConfig, upsertRows };

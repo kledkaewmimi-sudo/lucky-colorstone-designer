@@ -1,8 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { HOURLY_BREAKDOWN, BASELINE_INSIGHT_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
-const { getAllInsights, metaRequest } = require('../scripts/meta-ads-sync.js');
+const { HOURLY_BREAKDOWN, BASELINE_INSIGHT_FIELDS, ANALYTICS_COMMON_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
+const { buildBaselineInsightsUrl, getAllInsights, getBaselineRequestDiagnostics, metaRequest } = require('../scripts/meta-ads-sync.js');
 const { fieldsForDataset, syncDataset } = require('../scripts/meta-ads-analytics-sync.js');
 
 assert.equal(parseHourStart('09:00:00 - 09:59:59'), '09:00:00');
@@ -26,6 +26,18 @@ assert.equal(baseline.unique_clicks, 3);
 assert.deepEqual(baseline.raw_outbound_clicks, [{ action_type: 'outbound_click', value: '2' }]);
 assert.equal(BASELINE_INSIGHT_FIELDS.includes('publisher_platform'), false);
 assert.equal(BASELINE_INSIGHT_FIELDS.includes('unique_clicks'), true);
+assert.equal(BASELINE_INSIGHT_FIELDS.includes(HOURLY_BREAKDOWN), false);
+assert.equal(ANALYTICS_COMMON_FIELDS.includes(HOURLY_BREAKDOWN), false);
+const diagnostics = getBaselineRequestDiagnostics({ since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' });
+assert.deepEqual(diagnostics.breakdowns, [HOURLY_BREAKDOWN]);
+assert.equal(diagnostics.fields.includes(HOURLY_BREAKDOWN), false);
+assert.equal(diagnostics.breakdowns.some((value) => ['publisher_platform', 'platform_position', 'device_platform'].includes(value)), false);
+assert.equal(JSON.stringify(diagnostics).includes('do-not-print'), false);
+const baselineUrl = buildBaselineInsightsUrl({ accountId: 'act_7', accessToken: 'do-not-print', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01' });
+assert.equal(baselineUrl.searchParams.get('level'), 'ad');
+assert.deepEqual(JSON.parse(baselineUrl.searchParams.get('time_range')), { since: '2026-09-01', until: '2026-09-01' });
+assert.equal(baselineUrl.searchParams.get('breakdowns'), HOURLY_BREAKDOWN);
+assert.equal(baselineUrl.searchParams.get('fields').includes(HOURLY_BREAKDOWN), false);
 assert.deepEqual(normalizeInsight({ ...raw, publisher_platform: null, platform_position: null, device_platform: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }).insight_key, 'act_7|2026-09-01|09:00:00|ad-9|unknown|unknown|unknown');
 assert.throws(() => normalizeInsight({ ...raw, [HOURLY_BREAKDOWN]: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }), /hourly breakdown/);
 
