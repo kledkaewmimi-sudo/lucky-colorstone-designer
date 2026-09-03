@@ -7,6 +7,17 @@ const INSIGHT_FIELDS = [
   'date_start', 'spend', 'impressions', 'reach', 'clicks', 'inline_link_clicks', 'ctr', 'cpc', 'cpm', 'frequency',
   'actions', 'action_values', HOURLY_BREAKDOWN, ...PLACEMENT_BREAKDOWNS
 ];
+const RICH_TRAFFIC_FIELDS = ['unique_clicks', 'unique_ctr', 'outbound_clicks', 'outbound_clicks_ctr', 'cost_per_action_type'];
+const VIDEO_FIELDS = ['video_play_actions', 'video_thruplay_watched_actions', 'video_p25_watched_actions', 'video_p50_watched_actions', 'video_p75_watched_actions', 'video_p95_watched_actions', 'video_p100_watched_actions'];
+const RANKING_FIELDS = ['quality_ranking', 'engagement_rate_ranking', 'conversion_rate_ranking'];
+const ANALYTICS_COMMON_FIELDS = [...INSIGHT_FIELDS.filter((field) => !PLACEMENT_BREAKDOWNS.includes(field)), ...RICH_TRAFFIC_FIELDS];
+const ANALYTICS_DATASETS = {
+  placement: { table: 'meta_ads_hourly_placement_insights', breakdowns: [...PLACEMENT_BREAKDOWNS], dimensions: ['publisher_platform', 'platform_position', 'device_platform', 'impression_device'] },
+  demographics: { table: 'meta_ads_hourly_demographics', breakdowns: ['age', 'gender'], dimensions: ['age', 'gender'] },
+  geo_country: { table: 'meta_ads_hourly_geo', breakdowns: ['country'], dimensions: ['country'], geoBreakdown: 'country' },
+  geo_region: { table: 'meta_ads_hourly_geo', breakdowns: ['region'], dimensions: ['region'], geoBreakdown: 'region' },
+  engagement: { table: 'meta_ads_hourly_engagement', breakdowns: [], dimensions: [], fields: [...VIDEO_FIELDS, ...RANKING_FIELDS] }
+};
 
 function nonEmpty(value, fallback = null) {
   const result = String(value ?? '').trim();
@@ -105,9 +116,10 @@ function normalizeInsight(insight, { accountId, accountTimezone, apiVersion, fet
   return row;
 }
 
-function makeSupabaseUpsertRequest(supabaseUrl, serviceRoleKey, rows) {
+function makeSupabaseUpsertRequest(supabaseUrl, serviceRoleKey, rows, table = 'meta_ads_hourly_insights') {
   const base = new URL(String(supabaseUrl).replace(/\/+$/, ''));
-  const endpoint = new URL('/rest/v1/meta_ads_hourly_insights', base);
+  if (!/^[a-z0-9_]+$/i.test(table)) throw new Error('Invalid Supabase table name.');
+  const endpoint = new URL(`/rest/v1/${table}`, base);
   endpoint.searchParams.set('on_conflict', 'insight_key');
   return {
     url: endpoint.toString(),
@@ -115,9 +127,43 @@ function makeSupabaseUpsertRequest(supabaseUrl, serviceRoleKey, rows) {
   };
 }
 
+function rawArray(value) {
+  return Array.isArray(value) ? value : null;
+}
+
+function normalizeAnalyticsInsight(insight, { dataset, accountId, accountTimezone, apiVersion, fetchedAt = new Date().toISOString() }) {
+  const definition = ANALYTICS_DATASETS[dataset];
+  if (!definition) throw new Error(`Unknown Meta analytics dataset '${dataset}'.`);
+  const baseline = normalizeInsight(insight, { accountId, accountTimezone, apiVersion, fetchedAt });
+  const row = {
+    ...baseline,
+    unique_clicks: nullableInteger(insight.unique_clicks), unique_ctr: nullableNumber(insight.unique_ctr),
+    raw_outbound_clicks: rawArray(insight.outbound_clicks), raw_outbound_clicks_ctr: rawArray(insight.outbound_clicks_ctr),
+    raw_cost_per_action_type: rawArray(insight.cost_per_action_type)
+  };
+  if (dataset === 'placement') {
+    row.impression_device = normalizeDimension(insight.impression_device);
+  } else if (dataset === 'demographics') {
+    row.age = normalizeDimension(insight.age);
+    row.gender = normalizeDimension(insight.gender);
+  } else if (dataset === 'geo_country' || dataset === 'geo_region') {
+    row.geo_breakdown = definition.geoBreakdown;
+    row.country = normalizeDimension(insight.country);
+    row.region = normalizeDimension(insight.region);
+  } else if (dataset === 'engagement') {
+    row.quality_ranking = nonEmpty(insight.quality_ranking);
+    row.engagement_rate_ranking = nonEmpty(insight.engagement_rate_ranking);
+    row.conversion_rate_ranking = nonEmpty(insight.conversion_rate_ranking);
+    row.raw_video_metrics = Object.fromEntries(VIDEO_FIELDS.filter((field) => Object.hasOwn(insight, field)).map((field) => [field, insight[field]]));
+  }
+  const dimensions = definition.dimensions.map((field) => row[field] || 'unknown');
+  row.insight_key = [row.account_id, row.report_date, row.hour_start, row.ad_id || 'account-level', dataset, ...dimensions].join('|');
+  return row;
+}
+
 function isRateLimitResponse(response, payload) {
   const code = Number(payload?.error?.code ?? payload?.code);
   return response?.status === 429 || [4, 17, 32, 613].includes(code);
 }
 
-module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, INSIGHT_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
+module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeAnalyticsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };

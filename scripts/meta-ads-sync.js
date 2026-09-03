@@ -70,10 +70,10 @@ async function getAllInsights(firstUrl, config) {
   return results;
 }
 
-async function upsertRows(rows, config) {
+async function upsertRows(rows, config, table = 'meta_ads_hourly_insights') {
   for (let start = 0; start < rows.length; start += 250) {
     const batch = rows.slice(start, start + 250);
-    const request = makeSupabaseUpsertRequest(config.supabaseUrl, config.supabaseKey, batch);
+    const request = makeSupabaseUpsertRequest(config.supabaseUrl, config.supabaseKey, batch, table);
     const response = await fetch(request.url, request.options);
     if (!response.ok) fail(`Supabase upsert failed (${response.status}): ${safeError(await response.json().catch(() => null), 'request failed')}`);
   }

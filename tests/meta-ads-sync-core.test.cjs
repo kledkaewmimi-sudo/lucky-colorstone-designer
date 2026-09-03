@@ -1,8 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { HOURLY_BREAKDOWN, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
+const { HOURLY_BREAKDOWN, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
 const { getAllInsights, metaRequest } = require('../scripts/meta-ads-sync.js');
+const { fieldsForDataset, syncDataset } = require('../scripts/meta-ads-analytics-sync.js');
 
 assert.equal(parseHourStart('09:00:00 - 09:59:59'), '09:00:00');
 assert.equal(parseHourStart('24:00:00 - 24:59:59'), null);
@@ -50,4 +51,35 @@ async function testCollectorTransport() {
   }
 }
 
-testCollectorTransport().then(() => console.log('meta-ads-sync-core.test.cjs passed')).catch((error) => { console.error(error); process.exitCode = 1; });
+async function testExpandedDatasets() {
+  const demographics = normalizeAnalyticsInsight({ ...raw, age: '25-34', gender: 'female', unique_clicks: '3', unique_ctr: '2.5', outbound_clicks: [{ action_type: 'outbound_click', value: '2' }], cost_per_action_type: [{ action_type: 'link_click', value: '5.25' }] }, { dataset: 'demographics', accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' });
+  assert.equal(demographics.age, '25-34');
+  assert.equal(demographics.gender, 'female');
+  assert.equal(demographics.unique_clicks, 3);
+  assert.deepEqual(demographics.raw_outbound_clicks, [{ action_type: 'outbound_click', value: '2' }]);
+  assert.notEqual(demographics.insight_key, normalizeAnalyticsInsight({ ...raw, age: '35-44', gender: 'female' }, { dataset: 'demographics', accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }).insight_key);
+
+  const country = normalizeAnalyticsInsight({ ...raw, country: 'TH' }, { dataset: 'geo_country', accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' });
+  const region = normalizeAnalyticsInsight({ ...raw, region: 'Bangkok' }, { dataset: 'geo_region', accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' });
+  assert.equal(country.geo_breakdown, 'country');
+  assert.equal(region.geo_breakdown, 'region');
+  assert.notEqual(country.insight_key, region.insight_key);
+
+  const placement = normalizeAnalyticsInsight({ ...raw, impression_device: 'iPhone' }, { dataset: 'placement', accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' });
+  assert.equal(placement.impression_device, 'iPhone');
+  const engagement = normalizeAnalyticsInsight({ ...raw, quality_ranking: 'AVERAGE', video_p75_watched_actions: [{ action_type: 'video_view', value: '6' }] }, { dataset: 'engagement', accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' });
+  assert.equal(engagement.quality_ranking, 'AVERAGE');
+  assert.deepEqual(engagement.raw_video_metrics.video_p75_watched_actions, [{ action_type: 'video_view', value: '6' }]);
+  assert.match(fieldsForDataset('engagement').join(','), /video_p100_watched_actions/);
+
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+    const result = await syncDataset('geo_country', { accountId: 'act_7', accessToken: 'test', apiVersion: 'v24.0', since: '2026-09-01', until: '2026-09-01', dryRun: true }, 'Asia/Bangkok', false);
+    assert.deepEqual(result, { dataset: 'geo_country', table: 'meta_ads_hourly_geo', breakdowns: [HOURLY_BREAKDOWN, 'country'], insightsRead: 0, rowsWritten: 0 });
+  } finally {
+    global.fetch = originalFetch;
+  }
+}
+
+testCollectorTransport().then(testExpandedDatasets).then(() => console.log('meta-ads-sync-core.test.cjs passed')).catch((error) => { console.error(error); process.exitCode = 1; });
