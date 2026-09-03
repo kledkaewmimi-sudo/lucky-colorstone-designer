@@ -5,6 +5,7 @@
 - `origin/main` base: `a4ff7199f41e65de0eff41431ba8c6959f99035e`
 - Review branch: `meta-pixel-capi-production`
 - Candidate implementation commit: `2c2d9f09c6386a21a27b8b8e383425b32a63f006`
+- Remote review branch HEAD before this report-metadata update: `336a4c87760e7a7ef570d45b15aaade30bbe1df0`
 - `main` modified: **NO**
 - Production deployed: **NO**
 
