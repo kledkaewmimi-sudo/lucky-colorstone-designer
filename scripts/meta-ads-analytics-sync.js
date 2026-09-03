@@ -2,7 +2,7 @@
 'use strict';
 
 const { HOURLY_BREAKDOWN, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, normalizeAnalyticsInsight } = require('./lib/meta-ads-sync-core.js');
-const { getAllInsights, metaRequest, parseConfig, upsertRows } = require('./meta-ads-sync.js');
+const { getAllInsights, getSanitizedInsightsParameterMap, metaRequest, parseConfig, upsertRows } = require('./meta-ads-sync.js');
 
 const GRAPH_HOST = 'https://graph.facebook.com';
 const DATASET_NAMES = Object.keys(ANALYTICS_DATASETS);
@@ -57,14 +57,19 @@ function granularityBreakdown() {
   throw new Error(`Unknown granularity '${granularity}'. Use hourly or daily.`);
 }
 
-function getAnalyticsRequestDiagnostics({ dataset, fields, breakdowns, config }) {
-  return {
-    dataset,
-    level: 'ad',
-    fields,
-    breakdowns,
-    date: config.since === config.until ? config.since : { since: config.since, until: config.until }
-  };
+function buildAnalyticsInsightsUrl({ config, fields, breakdowns }) {
+  const url = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
+  url.searchParams.set('level', 'ad');
+  url.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
+  if (breakdowns.length > 0) url.searchParams.set('breakdowns', breakdowns.join(','));
+  url.searchParams.set('fields', fields.join(','));
+  url.searchParams.set('limit', '500');
+  url.searchParams.set('access_token', config.accessToken);
+  return url;
+}
+
+function getAnalyticsRequestDiagnostics({ dataset, url }) {
+  return { dataset, ...getSanitizedInsightsParameterMap(url) };
 }
 
 async function syncDataset(name, config, accountTimezone, includeImpressionDevice) {
@@ -74,14 +79,8 @@ async function syncDataset(name, config, accountTimezone, includeImpressionDevic
   const breakdowns = [...(hourlyBreakdown ? [hourlyBreakdown] : []), ...datasetBreakdowns];
   if (name === 'placement' && includeImpressionDevice) breakdowns.push('impression_device');
   const fields = fieldsForDataset(name);
-  if (config.dryRun) console.log(`Meta request: ${JSON.stringify(getAnalyticsRequestDiagnostics({ dataset: name, fields, breakdowns, config }))}`);
-  const url = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
-  url.searchParams.set('level', 'ad');
-  url.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
-  url.searchParams.set('breakdowns', breakdowns.join(','));
-  url.searchParams.set('fields', fields.join(','));
-  url.searchParams.set('limit', '500');
-  url.searchParams.set('access_token', config.accessToken);
+  const url = buildAnalyticsInsightsUrl({ config, fields, breakdowns });
+  if (config.dryRun) console.log(`Meta request: ${JSON.stringify(getAnalyticsRequestDiagnostics({ dataset: name, url }))}`);
   const fetchedAt = new Date().toISOString();
   const insights = await getAllInsights(url, config);
   const rows = insights.map((insight) => normalizeAnalyticsInsight(insight, { dataset: name, accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt }));
@@ -107,4 +106,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-analytics-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset };
+module.exports = { buildAnalyticsInsightsUrl, demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset };

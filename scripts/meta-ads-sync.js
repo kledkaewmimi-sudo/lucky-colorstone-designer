@@ -26,6 +26,22 @@ function fail(message) { throw new Error(message); }
 function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 function safeError(payload, fallback) { return String(payload?.error?.message || payload?.message || fallback || 'request failed').replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]'); }
 
+const DIAGNOSTIC_PARAMETER_NAMES = ['level', 'fields', 'breakdowns', 'action_breakdowns', 'action_report_time', 'time_range', 'time_increment', 'limit'];
+
+function getSanitizedInsightsParameterMap(url) {
+  const parameters = {};
+  DIAGNOSTIC_PARAMETER_NAMES.forEach((name) => {
+    const value = url.searchParams.get(name);
+    parameters[name] = value === null ? '<absent>' : (name === 'fields' || name === 'breakdowns' ? value.split(',') : value);
+  });
+  const explicitAdditionalParameters = {};
+  url.searchParams.forEach((value, name) => {
+    if (name !== 'access_token' && !DIAGNOSTIC_PARAMETER_NAMES.includes(name)) explicitAdditionalParameters[name] = value;
+  });
+  parameters.additional_parameters = explicitAdditionalParameters;
+  return parameters;
+}
+
 function describeTransportError(error) {
   const code = String(error?.cause?.code || error?.code || '').toUpperCase();
   const name = String(error?.name || 'Error');
@@ -37,12 +53,7 @@ function describeTransportError(error) {
 }
 
 function getBaselineRequestDiagnostics(config) {
-  return {
-    level: 'ad',
-    fields: BASELINE_INSIGHT_FIELDS,
-    breakdowns: [HOURLY_BREAKDOWN],
-    date: config.since === config.until ? config.since : { since: config.since, until: config.until }
-  };
+  return getSanitizedInsightsParameterMap(buildBaselineInsightsUrl(config));
 }
 
 function buildBaselineInsightsUrl(config) {
@@ -136,4 +147,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, metaRequest, parseConfig, upsertRows };
+module.exports = { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, getSanitizedInsightsParameterMap, metaRequest, parseConfig, upsertRows };

@@ -147,6 +147,38 @@ node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_region 
 
 `fetch failed` is not classified as a Meta capability result. Transport failures are now redacted and labelled as DNS/network failure, timeout, TLS failure, aborted request or generic network failure. A real HTTP response still reports Meta HTTP status/code/message separately
 
+## Complete parameter-map audit after action_type evidence
+
+The new owner evidence showed Meta error #100 listing `action_type` for demographics and geo-country even after scalar-only fields were displayed. The URL builders were audited end-to-end. They create a new `URL` directly and explicitly set only `level`, `time_range`, `breakdowns` (when nonempty), `fields`, `limit`, and `access_token`. They do **not** set `action_breakdowns`, `action_report_time`, `summary_action_breakdowns`, or `time_increment`
+
+Dry-run output now reflects the actual generated URL parameter map, with absent values made explicit:
+
+```text
+level=ad
+fields=[...]
+breakdowns=[...]
+action_breakdowns=<absent>
+action_report_time=<absent>
+time_range={"since":"2026-09-01","until":"2026-09-01"}
+time_increment=<absent>
+limit=500
+additional_parameters={}
+```
+
+`access_token` is excluded from the map. Thus the implementation has no globally/shared explicit `action_breakdowns=action_type` to remove. The next owner dry-run will prove the complete clean request received by Meta; if Meta still reports `action_type`, that is Meta-side report semantics rather than an explicit parameter in this collector
+
+Current live classifications:
+
+| Dataset | Classification |
+|---|---|
+| Baseline hourly | **SUPPORTED — 24 rows, Asia/Bangkok** |
+| Engagement hourly | **SUPPORTED — 24 rows, dry-run, no write** |
+| Demographics | **INCOMPATIBLE WITH CURRENT action_type REJECTION; NOT YET CLASSIFIED WITHOUT action_type** |
+| Geo country | **INCOMPATIBLE WITH CURRENT action_type REJECTION; NOT YET CLASSIFIED WITHOUT action_type** |
+| Placement | **INCOMPATIBLE WITH CURRENT action_type/current combination; NOT YET CLASSIFIED AFTER CLEAN REQUEST** |
+
+Engagement remains isolated and unchanged: it retains action/video/ranking fields but has no explicit `action_breakdowns` parameter. Non-action dimension passes retain scalar-only fields and no action-array fields
+
 The current analytics CLI tests placement/demographics as one pass, so use a temporary read-only request runner or add a minimal validation-only selector before classifying the sub-combinations `publisher`, `publisher+position`, `age`, `gender` individually. Do not change ingestion query design based only on an unbisected error
 
 For any hourly rejection, rerun the identical dimension set without `hourly_stats_aggregated_by_advertiser_time_zone` and record it as daily only only if that request succeeds. Do not test `impression_device` until the three placement stages above are recorded
