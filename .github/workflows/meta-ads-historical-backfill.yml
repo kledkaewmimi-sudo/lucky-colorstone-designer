@@ -1,0 +1,102 @@
+name: Meta Ads historical date-scoped backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: First Bangkok calendar date to backfill (YYYY-MM-DD)
+        required: true
+        default: '2026-08-01'
+        type: string
+      until:
+        description: Last Bangkok calendar date to backfill, inclusive (YYYY-MM-DD)
+        required: true
+        default: '2026-08-31'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meta-ads-historical-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Backfill Meta Ads one date at a time
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      META_API_VERSION: ${{ secrets.META_API_VERSION }}
+      META_ADS_SUPABASE_URL: ${{ secrets.META_ADS_SUPABASE_URL }}
+      META_ADS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.META_ADS_SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Backfill requested dates
+        shell: bash
+        env:
+          BACKFILL_SINCE: ${{ inputs.since }}
+          BACKFILL_UNTIL: ${{ inputs.until }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t dates < <(node - "$BACKFILL_SINCE" "$BACKFILL_UNTIL" <<'NODE'
+          const [since, until] = process.argv.slice(2);
+          function parseCalendarDate(value, name) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) throw new Error(`${name} must use YYYY-MM-DD.`);
+            const date = new Date(`${value}T00:00:00.000Z`);
+            if (Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== value) throw new Error(`${name} is not a valid calendar date.`);
+            return date;
+          }
+          const start = parseCalendarDate(since, 'since');
+          const end = parseCalendarDate(until, 'until');
+          if (start > end) throw new Error('since must not be after until.');
+          for (const day = new Date(start); day <= end; day.setUTCDate(day.getUTCDate() + 1)) {
+            console.log(day.toISOString().slice(0, 10));
+          }
+          NODE
+          )
+
+          for day in "${dates[@]}"; do
+            if ! baseline_json="$(node scripts/meta-ads-sync.js --since "$day" --until "$day" 2>&1)"; then
+              echo "::error::Baseline collector failed for date=$day"
+              exit 1
+            fi
+
+            if ! demographics_json="$(node scripts/meta-ads-analytics-sync.js --since "$day" --until "$day" --datasets demographics --demographics-stage age_gender --granularity daily 2>&1)"; then
+              echo "::error::Demographics collector failed for date=$day"
+              exit 1
+            fi
+
+            node - "$day" "$baseline_json" "$demographics_json" <<'NODE'
+            const [date, baselineText, demographicsText] = process.argv.slice(2);
+            const baseline = JSON.parse(baselineText);
+            const demographics = JSON.parse(demographicsText);
+            const result = demographics.results?.[0] || {};
+            function number(value) { return Number.isFinite(value) ? value : 0; }
+            console.log(JSON.stringify({
+              date,
+              baseline: {
+                rowsRead: number(baseline.insightsRead),
+                rowsWritten: number(baseline.rowsWritten)
+              },
+              demographics: {
+                rowsRead: number(result.insightsRead),
+                rowsWritten: number(result.rowsWritten)
+              }
+            }));
+            NODE
+          done
