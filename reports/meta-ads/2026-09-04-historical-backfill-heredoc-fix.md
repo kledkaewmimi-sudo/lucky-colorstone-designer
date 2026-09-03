@@ -59,7 +59,7 @@ The focused workflow contract test passed, including the reconstructed-script
 ## Promotion status
 
 - Branch base: `origin/main` at `fcb1153a64991517d6690471d8dc94d40ede0dc2`
-- Fix commit SHA: recorded in the review handoff after commit
+- Fix implementation commit SHA: `11e202c40117e90506be469128707d2538b13b1e`
 - No historical backfill was executed.
 - No Production data or application code was changed.
 - Owner approval and a manual workflow rerun remain required.
