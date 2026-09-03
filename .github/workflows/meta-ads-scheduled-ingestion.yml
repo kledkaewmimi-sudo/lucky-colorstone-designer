@@ -1,0 +1,41 @@
+name: Meta Ads scheduled ingestion
+
+on:
+  schedule:
+    - cron: '5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meta-ads-scheduled-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Run isolated Meta Ads worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Ingest approved Meta Ads datasets
+        env:
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_API_VERSION: ${{ secrets.META_API_VERSION }}
+          META_ADS_SUPABASE_URL: ${{ secrets.META_ADS_SUPABASE_URL }}
+          META_ADS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.META_ADS_SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/meta-ads-scheduled-worker.js --job scheduled
+
