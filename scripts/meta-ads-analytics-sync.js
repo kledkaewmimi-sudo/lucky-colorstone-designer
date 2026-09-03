@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { HOURLY_BREAKDOWN, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, normalizeAnalyticsInsight } = require('./lib/meta-ads-sync-core.js');
+const { HOURLY_BREAKDOWN, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, normalizeAnalyticsInsight, normalizeDailyDemographicsInsight } = require('./lib/meta-ads-sync-core.js');
 const { getAllInsights, getSanitizedInsightsParameterMap, metaRequest, parseConfig, upsertRows } = require('./meta-ads-sync.js');
 
 const GRAPH_HOST = 'https://graph.facebook.com';
@@ -58,6 +58,12 @@ function granularityBreakdown() {
   throw new Error(`Unknown granularity '${granularity}'. Use hourly or daily.`);
 }
 
+function targetTableForDataset(dataset, granularity) {
+  if (granularity === 'hourly') return ANALYTICS_DATASETS[dataset].table;
+  if (dataset === 'demographics') return 'meta_ads_daily_demographics';
+  throw new Error(`Daily ${dataset} is not implemented. Only daily demographics is currently supported.`);
+}
+
 function buildAnalyticsInsightsUrl({ config, fields, breakdowns }) {
   const url = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
   url.searchParams.set('level', 'ad');
@@ -73,23 +79,28 @@ function buildAnalyticsInsightsUrl({ config, fields, breakdowns }) {
 }
 
 function getAnalyticsRequestDiagnostics({ dataset, url }) {
-  return { dataset, ...getSanitizedInsightsParameterMap(url) };
+  return { dataset, granularity: url.searchParams.get('breakdowns')?.includes(HOURLY_BREAKDOWN) ? 'hourly' : 'daily', target_table: url.__targetTable, ...getSanitizedInsightsParameterMap(url) };
 }
 
 async function syncDataset(name, config, accountTimezone, includeImpressionDevice) {
   const definition = ANALYTICS_DATASETS[name];
   const datasetBreakdowns = name === 'placement' ? placementBreakdowns() : name === 'demographics' ? demographicsBreakdowns() : definition.breakdowns;
   const hourlyBreakdown = granularityBreakdown();
+  const granularity = hourlyBreakdown ? 'hourly' : 'daily';
+  const table = targetTableForDataset(name, granularity);
   const breakdowns = [...(hourlyBreakdown ? [hourlyBreakdown] : []), ...datasetBreakdowns];
   if (name === 'placement' && includeImpressionDevice) breakdowns.push('impression_device');
   const fields = fieldsForDataset(name);
   const url = buildAnalyticsInsightsUrl({ config: { ...config, dataset: name }, fields, breakdowns });
+  url.__targetTable = table;
   if (config.dryRun) console.log(`Meta request: ${JSON.stringify(getAnalyticsRequestDiagnostics({ dataset: name, url }))}`);
   const fetchedAt = new Date().toISOString();
   const insights = await getAllInsights(url, config);
-  const rows = insights.map((insight) => normalizeAnalyticsInsight(insight, { dataset: name, accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt }));
-  if (!config.dryRun && rows.length > 0) await upsertRows(rows, config, definition.table);
-  return { dataset: name, table: definition.table, breakdowns, insightsRead: insights.length, rowsWritten: config.dryRun ? 0 : rows.length };
+  const rows = insights.map((insight) => granularity === 'daily'
+    ? normalizeDailyDemographicsInsight(insight, { accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt })
+    : normalizeAnalyticsInsight(insight, { dataset: name, accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt }));
+  if (!config.dryRun && rows.length > 0) await upsertRows(rows, config, table);
+  return { dataset: name, granularity, table, breakdowns, insightsRead: insights.length, rowsWritten: config.dryRun ? 0 : rows.length };
 }
 
 async function main() {
@@ -110,4 +121,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-analytics-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { buildAnalyticsInsightsUrl, demographicsBreakdowns, DIMENSION_DATASETS, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset };
+module.exports = { buildAnalyticsInsightsUrl, demographicsBreakdowns, DIMENSION_DATASETS, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset, targetTableForDataset };

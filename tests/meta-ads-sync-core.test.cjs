@@ -1,9 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { HOURLY_BREAKDOWN, ACTION_ARRAY_FIELDS, BASELINE_INSIGHT_FIELDS, ANALYTICS_COMMON_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
+const { HOURLY_BREAKDOWN, ACTION_ARRAY_FIELDS, BASELINE_INSIGHT_FIELDS, ANALYTICS_COMMON_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, normalizeDailyDemographicsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
 const { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, metaRequest } = require('../scripts/meta-ads-sync.js');
-const { buildAnalyticsInsightsUrl, demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, syncDataset } = require('../scripts/meta-ads-analytics-sync.js');
+const { buildAnalyticsInsightsUrl, demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, syncDataset, targetTableForDataset } = require('../scripts/meta-ads-analytics-sync.js');
 
 assert.equal(parseHourStart('09:00:00 - 09:59:59'), '09:00:00');
 assert.equal(parseHourStart('24:00:00 - 24:59:59'), null);
@@ -64,6 +64,16 @@ assert.deepEqual(analyticsDiagnostics.additional_parameters, {});
 const engagementUrl = buildAnalyticsInsightsUrl({ fields: fieldsForDataset('engagement'), breakdowns: [HOURLY_BREAKDOWN], config: { dataset: 'engagement', accountId: 'act_7', apiVersion: 'v26.0', since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
 assert.equal(engagementUrl.searchParams.get('action_breakdowns'), null);
 assert.equal(engagementUrl.searchParams.get('fields').includes('video_p100_watched_actions'), true);
+assert.equal(targetTableForDataset('demographics', 'daily'), 'meta_ads_daily_demographics');
+assert.equal(targetTableForDataset('demographics', 'hourly'), 'meta_ads_hourly_demographics');
+assert.throws(() => targetTableForDataset('geo_country', 'daily'), /Only daily demographics/);
+const daily = normalizeDailyDemographicsInsight({ ...raw, age: '25-34', gender: 'female', [HOURLY_BREAKDOWN]: undefined }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v26.0' });
+assert.equal(Object.hasOwn(daily, 'hour_start'), false);
+assert.equal(Object.hasOwn(daily, 'hour_start_utc'), false);
+assert.equal(daily.insight_key.includes('|09:00:00|'), false);
+assert.notEqual(daily.insight_key, 'act_7|2026-09-01|09:00:00|ad-9|demographics|25-34|female');
+assert.deepEqual(daily.raw_insight.age, '25-34');
+assert.throws(() => normalizeDailyDemographicsInsight({ ...raw, date_start: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v26.0' }), /missing date_start/);
 assert.equal(describeTransportError({ cause: { code: 'ENOTFOUND' } }), 'DNS/network failure');
 assert.equal(describeTransportError({ cause: { code: 'ETIMEDOUT' } }), 'timeout');
 assert.equal(describeTransportError({ cause: { code: 'CERT_HAS_EXPIRED' } }), 'TLS failure');
@@ -125,7 +135,7 @@ async function testExpandedDatasets() {
   try {
     global.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
     const result = await syncDataset('geo_country', { accountId: 'act_7', accessToken: 'test', apiVersion: 'v24.0', since: '2026-09-01', until: '2026-09-01', dryRun: true }, 'Asia/Bangkok', false);
-    assert.deepEqual(result, { dataset: 'geo_country', table: 'meta_ads_hourly_geo', breakdowns: [HOURLY_BREAKDOWN, 'country'], insightsRead: 0, rowsWritten: 0 });
+    assert.deepEqual(result, { dataset: 'geo_country', granularity: 'hourly', table: 'meta_ads_hourly_geo', breakdowns: [HOURLY_BREAKDOWN, 'country'], insightsRead: 0, rowsWritten: 0 });
   } finally {
     global.fetch = originalFetch;
   }

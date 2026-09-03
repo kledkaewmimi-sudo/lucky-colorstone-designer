@@ -176,14 +176,36 @@ Current live classifications:
 | Baseline hourly | **SUPPORTED — 24 rows, Asia/Bangkok** |
 | Engagement hourly | **SUPPORTED — 24 rows, dry-run, no write** |
 | Demographics hourly age + gender | **INCOMPATIBLE COMBINATION — HTTP 400 / Meta #100 after EXPLICIT EMPTY** |
-| Demographics hourly age only | **PENDING — not yet tested** |
-| Demographics hourly gender only | **PENDING — not yet tested** |
-| Demographics daily age + gender | **PENDING — not yet tested** |
+| Demographics hourly age only | **INCOMPATIBLE COMBINATION — HTTP 400 / Meta #100** |
+| Demographics hourly gender only | **INCOMPATIBLE COMBINATION — HTTP 400 / Meta #100** |
+| Demographics daily age + gender | **PENDING RETEST AFTER DAILY NORMALIZER FIX** |
 | Geo country | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
 | Geo region | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
 | Placement | **BLOCKED BY DEFAULT action_type/current combination; pending explicit-empty retest** |
 
 Engagement remains isolated and unchanged: it retains action/video/ranking fields and its `action_breakdowns` behavior remains default/omitted. Non-action dimension passes retain scalar-only fields, no action-array fields, and explicit-empty action breakdowns
+
+## Daily demographics normalizer fix
+
+Owner’s daily `age + gender` request did not receive Meta #100. The collector instead threw locally: `Meta insight is missing a valid date_start or advertiser-timezone hourly breakdown`. This was an implementation/normalization bug: the existing analytics normalizer always required the hourly label even when `--granularity daily` intentionally omitted it
+
+Hourly live classifications are now final for this account/API v26.0:
+
+- hourly + age + gender: **INCOMPATIBLE HOURLY** — Meta #100
+- hourly + age: **INCOMPATIBLE HOURLY** — Meta #100
+- hourly + gender: **INCOMPATIBLE HOURLY** — Meta #100
+
+Daily age+gender is **not** classified as unsupported. A new daily-only normalizer requires `date_start` but does not require or fabricate `hour_start`, `hour_start_utc`, or an hourly label. Its key is `account_id|report_date|ad_id|demographics_daily|age|gender`, so daily and hourly rows cannot collide
+
+The new additive, unexecuted migration `supabase/2026-09-03-meta-ads-daily-demographics.sql` proposes `public.meta_ads_daily_demographics` with daily grain: account, report date, ad, age and gender. It preserves hierarchy, scalar delivery metrics, account timezone, raw insight, API/fetch metadata and timestamps—without hourly columns
+
+When `dataset=demographics` and `granularity=daily`, the collector now routes to `meta_ads_daily_demographics`; hourly demographics remains routed to `meta_ads_hourly_demographics`. No daily geo/placement table is introduced because live evidence has not yet shown those daily paths are needed
+
+Owner retest only:
+
+```powershell
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage age_gender --granularity daily --dry-run
+```
 
 The analytics CLI now has validation-only selectors for `publisher`, `publisher+position`, `age`, `gender` and `age+gender`; do not change ingestion query design based only on an unbisected error
 

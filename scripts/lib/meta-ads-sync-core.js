@@ -180,9 +180,26 @@ function normalizeAnalyticsInsight(insight, { dataset, accountId, accountTimezon
   return row;
 }
 
+function normalizeDailyDemographicsInsight(insight, { accountId, accountTimezone, apiVersion, fetchedAt = new Date().toISOString() }) {
+  const reportDate = nonEmpty(insight?.date_start);
+  if (!reportDate) throw new Error('Meta daily insight is missing date_start.');
+  const row = {
+    account_id: nonEmpty(insight.account_id, accountId), report_date: reportDate, account_timezone: accountTimezone,
+    campaign_id: nonEmpty(insight.campaign_id), campaign_name: nonEmpty(insight.campaign_name),
+    adset_id: nonEmpty(insight.adset_id), adset_name: nonEmpty(insight.adset_name), ad_id: nonEmpty(insight.ad_id), ad_name: nonEmpty(insight.ad_name),
+    age: normalizeDimension(insight.age), gender: normalizeDimension(insight.gender),
+    spend: nullableNumber(insight.spend), impressions: nullableInteger(insight.impressions), reach: nullableInteger(insight.reach),
+    clicks: nullableInteger(insight.clicks), link_clicks: nullableInteger(insight.inline_link_clicks), unique_clicks: nullableInteger(insight.unique_clicks),
+    ctr: nullableNumber(insight.ctr), unique_ctr: nullableNumber(insight.unique_ctr), cpc: nullableNumber(insight.cpc), cpm: nullableNumber(insight.cpm), frequency: nullableNumber(insight.frequency),
+    raw_insight: insight, api_version: apiVersion, fetched_at: fetchedAt, updated_at: fetchedAt
+  };
+  row.insight_key = [row.account_id, row.report_date, row.ad_id || 'account-level', 'demographics_daily', row.age, row.gender].join('|');
+  return row;
+}
+
 function isRateLimitResponse(response, payload) {
   const code = Number(payload?.error?.code ?? payload?.code);
   return response?.status === 429 || [4, 17, 32, 613].includes(code);
 }
 
-module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, CORE_INSIGHT_FIELDS, SCALAR_INSIGHT_FIELDS, ACTION_ARRAY_FIELDS, INSIGHT_FIELDS, BASELINE_INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VALIDATION_SCALAR_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
+module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, CORE_INSIGHT_FIELDS, SCALAR_INSIGHT_FIELDS, ACTION_ARRAY_FIELDS, INSIGHT_FIELDS, BASELINE_INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VALIDATION_SCALAR_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, normalizeDailyDemographicsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
