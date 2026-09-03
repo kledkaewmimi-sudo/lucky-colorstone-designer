@@ -1,5 +1,7 @@
 # รายงาน: Isolated Meta Ads Automated Ingestion Scheduler
 
+> **Deprecation update (2026-09-03): Render Cron is NOT SELECTED and no Render service was created. The approved deployment target is GitHub Actions; see `reports/meta-ads/2026-09-03-github-actions-scheduler.md`. The isolated worker remains valid and unchanged as the shared entry point.
+
 ## Executive summary
 
 เพิ่ม isolated worker ที่เรียกเฉพาะ collectors ที่ live-verified และ Production-verified แล้ว:
