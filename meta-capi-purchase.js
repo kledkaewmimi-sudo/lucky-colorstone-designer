@@ -1,0 +1,17 @@
+const crypto = require('crypto');
+const FBP_PATTERN = /^fb\.1\.\d{10,16}\.\d+$/;
+const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[^\s]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const text = (value) => String(value || '').trim();
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+const validMetaCookie = (value, pattern) => pattern.test(text(value)) ? text(value) : null;
+function hashEmail(value) { const email = text(value).toLowerCase(); return EMAIL_PATTERN.test(email) ? sha256(email) : null; }
+function hashE164Phone(value) { const raw = text(value); if (!raw.startsWith('+')) return null; const normalized = `+${raw.slice(1).replace(/[\s().-]/g, '')}`; return /^\+[1-9]\d{7,14}$/.test(normalized) ? sha256(normalized) : null; }
+function getOrderId(order) { return text(order?.id || order?.orderId); }
+function getOrderPhone(order) { const shipping = order?.shippingInfo && typeof order.shippingInfo === 'object' ? order.shippingInfo : {}; return text(order?.phoneNumber || order?.customerPhone || shipping.phoneNumber); }
+function getAttributionMeta(order) { const attribution = order?.metaAttribution && typeof order.metaAttribution === 'object' ? order.metaAttribution : {}; const first = attribution.firstTouch?.meta || {}; const last = attribution.lastTouch?.meta || {}; return { fbp: validMetaCookie(first.fbp, FBP_PATTERN) || validMetaCookie(last.fbp, FBP_PATTERN), fbc: validMetaCookie(first.fbc, FBC_PATTERN) || validMetaCookie(last.fbc, FBC_PATTERN) }; }
+function getEventSourceUrl(order, fallbackUrl) { const attribution = order?.metaAttribution && typeof order.metaAttribution === 'object' ? order.metaAttribution : {}; try { const parsed = new URL(text(attribution.firstTouch?.landingUrl || attribution.lastTouch?.landingUrl)); if (parsed.protocol === 'https:' && parsed.hostname === 'customize.luckycolorstone.com') return `${parsed.origin}${parsed.pathname}`; } catch {} return fallbackUrl; }
+function buildMetaPurchaseUserData({ order, stripeSession }) { const data = {}; const email = hashEmail(stripeSession?.customer_details?.email || stripeSession?.customer_email); const phone = hashE164Phone(stripeSession?.customer_details?.phone || getOrderPhone(order)); const externalId = getOrderId(order); const meta = getAttributionMeta(order); const userAgent = text(order?.analyticsSource?.user_agent).slice(0, 800); if (email) data.em = [email]; if (phone) data.ph = [phone]; if (externalId) data.external_id = [sha256(externalId)]; if (meta.fbp) data.fbp = meta.fbp; if (meta.fbc) data.fbc = meta.fbc; if (userAgent) data.client_user_agent = userAgent; return data; }
+function getMetaPurchaseEventId(order) { const sessionId = text(order?.stripeCheckoutSessionId); return sessionId ? `stripe_checkout_${sessionId}` : null; }
+function buildMetaPurchaseEvent({ order, stripeSession, totalPrice, currency = 'THB', eventTime, fallbackEventSourceUrl }) { const eventId = getMetaPurchaseEventId(order); if (!eventId || !Number.isFinite(Number(totalPrice))) return null; return { event_name: 'Purchase', event_time: Math.floor(Number(eventTime) / 1000), action_source: 'website', event_source_url: getEventSourceUrl(order, fallbackEventSourceUrl), event_id: eventId, user_data: buildMetaPurchaseUserData({ order, stripeSession }), custom_data: { currency, value: Number(totalPrice) } }; }
+module.exports = { buildMetaPurchaseEvent, buildMetaPurchaseUserData, getMetaPurchaseEventId, hashE164Phone, hashEmail };
