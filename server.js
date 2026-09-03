@@ -9,7 +9,7 @@ const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const { readOrderPayloads, saveOrderPayload } = require('./server-order-persistence.js');
-const { buildMetaPurchaseEvent, getMetaPurchaseEventId } = require('./meta-capi-purchase.js');
+const { buildMetaPurchaseEvent, getMetaPurchaseEventId, summarizeMetaCapiSuccessBody } = require('./meta-capi-purchase.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -320,6 +320,7 @@ function getMetaConversionsApiConfig() {
 
 async function sendMetaPurchaseEvent(order, stripeSession) {
   const config = getMetaConversionsApiConfig();
+  const orderReference = getOrderId(order) || 'unknown';
   const totalPrice = getOrderTotalPrice(order);
   const event = buildMetaPurchaseEvent({
     order,
@@ -333,6 +334,7 @@ async function sendMetaPurchaseEvent(order, stripeSession) {
     return { sent: false, skipped: "not_configured_or_incomplete" };
   }
 
+  console.info(`[meta-capi] Purchase attempt order=${orderReference}`);
   const timeout = new AbortController();
   const timeoutId = setTimeout(() => timeout.abort(), 8000);
   let response;
@@ -348,6 +350,13 @@ async function sendMetaPurchaseEvent(order, stripeSession) {
   }
 
   if (!response.ok) throw new Error(`Meta Conversions API returned HTTP ${response.status}.`);
+  let delivery = { eventsReceived: null, fbtraceIdPresent: false };
+  try {
+    delivery = summarizeMetaCapiSuccessBody(await response.text());
+  } catch {
+    // Response-body observability must not affect an already accepted delivery.
+  }
+  console.info(`[meta-capi] Purchase accepted order=${orderReference} events_received=${delivery.eventsReceived ?? 'unknown'} fbtrace_id_present=${delivery.fbtraceIdPresent} http_status=${response.status}`);
   return { sent: true };
 }
 

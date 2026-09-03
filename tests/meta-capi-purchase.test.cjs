@@ -8,7 +8,8 @@ const {
   buildMetaPurchaseUserData,
   getMetaPurchaseEventId,
   hashE164Phone,
-  hashEmail
+  hashEmail,
+  summarizeMetaCapiSuccessBody
 } = require('../meta-capi-purchase.js');
 
 const NOW = Date.UTC(2026, 8, 1, 10, 0, 0);
@@ -136,10 +137,22 @@ test('both Stripe paid event types retain the single authoritative webhook path'
   assert.match(source, /event\.data\?\.object\?\.payment_status === 'paid'/);
 });
 
-test('CAPI logging does not interpolate matching identifiers or raw customer PII', () => {
+test('CAPI success response observability retains only delivery metadata', () => {
+  assert.deepEqual(
+    summarizeMetaCapiSuccessBody('{"events_received":1,"fbtrace_id":"safe-to-omit"}'),
+    { eventsReceived: 1, fbtraceIdPresent: true }
+  );
+  assert.deepEqual(summarizeMetaCapiSuccessBody('not json'), { eventsReceived: null, fbtraceIdPresent: false });
+});
+
+test('CAPI logs only safe attempt, accepted, and failure metadata', () => {
   const source = fs.readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
   const capiStart = source.indexOf('async function sendMetaPurchaseEvent');
   const capi = source.slice(capiStart, source.indexOf('function getLineChannelAccessToken', capiStart));
-  assert.doesNotMatch(capi, /console\.(log|warn|error|info)/);
-  assert.doesNotMatch(source, /\[meta-capi\][^\n]*(fbclid|_fbp|_fbc|customer_details|email|phone)/i);
+  assert.match(capi, /\[meta-capi\] Purchase attempt order=\$\{orderReference\}/);
+  assert.match(capi, /\[meta-capi\] Purchase accepted order=\$\{orderReference\} events_received=\$\{delivery\.eventsReceived \?\? 'unknown'\} fbtrace_id_present=\$\{delivery\.fbtraceIdPresent\} http_status=\$\{response\.status\}/);
+  assert.match(source, /\[meta-capi\] Purchase delivery failed for order=\$\{orderReference\}/);
+  assert.match(capi, /summarizeMetaCapiSuccessBody\(await response\.text\(\)\)/);
+  const metaLogs = source.split(/\r?\n/).filter((line) => line.includes('[meta-capi]')).join('\n');
+  assert.doesNotMatch(metaLogs, /(fbclid|_fbp|_fbc|customer_details|email|phone|access_token|META_CONVERSIONS_API_ACCESS_TOKEN|user_data|event_id|custom_data)/i);
 });

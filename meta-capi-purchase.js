@@ -118,10 +118,24 @@ function buildMetaPurchaseEvent({ order, stripeSession, totalPrice, currency = '
   };
 }
 
+function summarizeMetaCapiSuccessBody(bodyText) {
+  try {
+    const payload = JSON.parse(text(bodyText));
+    const eventsReceived = Number(payload?.events_received);
+    return {
+      eventsReceived: Number.isFinite(eventsReceived) ? eventsReceived : null,
+      fbtraceIdPresent: Boolean(text(payload?.fbtrace_id))
+    };
+  } catch {
+    return { eventsReceived: null, fbtraceIdPresent: false };
+  }
+}
+
 module.exports = {
   buildMetaPurchaseEvent,
   buildMetaPurchaseUserData,
   getMetaPurchaseEventId,
   hashE164Phone,
-  hashEmail
+  hashEmail,
+  summarizeMetaCapiSuccessBody
 };
