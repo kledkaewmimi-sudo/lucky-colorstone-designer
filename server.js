@@ -9,6 +9,7 @@ const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const { readOrderPayloads, saveOrderPayload } = require('./server-order-persistence.js');
+const { buildMetaPurchaseEvent } = require('./meta-capi-purchase.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -317,32 +318,34 @@ function getMetaConversionsApiConfig() {
   return pixelId && accessToken ? { pixelId, accessToken } : null;
 }
 
-async function sendMetaPurchaseEvent(order) {
+async function sendMetaPurchaseEvent(order, stripeSession) {
   const config = getMetaConversionsApiConfig();
-  const checkoutSessionId = String(order?.stripeCheckoutSessionId || "").trim();
   const totalPrice = getOrderTotalPrice(order);
-  if (!config || !checkoutSessionId || !Number.isFinite(Number(totalPrice))) {
+  const event = buildMetaPurchaseEvent({
+    order,
+    stripeSession,
+    totalPrice,
+    currency: 'THB',
+    eventTime: Date.now(),
+    fallbackEventSourceUrl: 'https://customize.luckycolorstone.com/'
+  });
+  if (!config || !event) {
     return { sent: false, skipped: "not_configured_or_incomplete" };
   }
 
-  const response = await fetch(`https://graph.facebook.com/v22.0/${encodeURIComponent(config.pixelId)}/events`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      access_token: config.accessToken,
-      data: [{
-        event_name: "Purchase",
-        event_time: Math.floor(Date.now() / 1000),
-        action_source: "website",
-        event_source_url: "https://customize.luckycolorstone.com/",
-        event_id: `stripe_checkout_${checkoutSessionId}`,
-        custom_data: {
-          currency: "THB",
-          value: Number(totalPrice)
-        }
-      }]
-    })
-  });
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), 8000);
+  let response;
+  try {
+    response = await fetch(`https://graph.facebook.com/v22.0/${encodeURIComponent(config.pixelId)}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: timeout.signal,
+      body: JSON.stringify({ access_token: config.accessToken, data: [event] })
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) throw new Error(`Meta Conversions API returned HTTP ${response.status}.`);
   return { sent: true };
@@ -3019,7 +3022,7 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
   const paidOrder = await persistPaidOrderCostSnapshot(paidOrderWithStock);
   await saveOrderForApi(paidOrder);
   await linkAnalyticsOrderConversion(paidOrder);
-  sendMetaPurchaseEvent(paidOrder).catch((error) => {
+  sendMetaPurchaseEvent(paidOrder, session).catch((error) => {
     console.warn(`[meta-capi] Purchase delivery failed for order=${orderReference}:`, error?.message || error);
   });
   console.info(`[stripe-webhook] paid order=${orderReference} session=${sessionId} event=${eventId || '-'}`);
