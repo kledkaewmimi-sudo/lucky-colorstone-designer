@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { HOURLY_BREAKDOWN, ACTION_ARRAY_FIELDS, BASELINE_INSIGHT_FIELDS, ANALYTICS_COMMON_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, normalizeDailyDemographicsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
 const { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, metaRequest } = require('../scripts/meta-ads-sync.js');
 const { buildAnalyticsInsightsUrl, demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, syncDataset, targetTableForDataset } = require('../scripts/meta-ads-analytics-sync.js');
@@ -24,6 +26,11 @@ const baseline = normalizeBaselineInsight({ ...raw, unique_clicks: '3', outbound
 assert.equal(baseline.insight_key, 'act_7|2026-09-01|09:00:00|ad-9');
 assert.equal(baseline.unique_clicks, 3);
 assert.deepEqual(baseline.raw_outbound_clicks, [{ action_type: 'outbound_click', value: '2' }]);
+['publisher_platform', 'platform_position', 'device_platform', 'impression_device'].forEach((field) => assert.equal(Object.hasOwn(baseline, field), false, `baseline must omit ${field}`));
+const baselineSchema = fs.readFileSync(path.join(__dirname, '..', 'supabase', '2026-09-03-meta-ads-hourly-performance-baseline.sql'), 'utf8');
+const tableBody = baselineSchema.match(/create table if not exists public\.meta_ads_hourly_performance_insights \(([\s\S]*?)\n\);/i)?.[1] || '';
+assert.notEqual(tableBody, '');
+Object.keys(baseline).forEach((field) => assert.equal(tableBody.includes(field), true, `baseline payload key ${field} must exist in the baseline table schema`));
 assert.equal(BASELINE_INSIGHT_FIELDS.includes('publisher_platform'), false);
 assert.equal(BASELINE_INSIGHT_FIELDS.includes('unique_clicks'), true);
 assert.equal(BASELINE_INSIGHT_FIELDS.includes(HOURLY_BREAKDOWN), false);

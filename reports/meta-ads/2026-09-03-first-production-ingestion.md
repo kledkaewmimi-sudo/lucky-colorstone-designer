@@ -3,6 +3,14 @@
 วันที่: 2026-09-03  
 สถานะ: **NOT EXECUTED — credentials and verified Production target are absent from this shell**
 
+## Production write attempt and payload/schema bug
+
+Owner attempted the first baseline production write after table creation. The request reached Supabase but failed with HTTP 400: `Could not find the 'device_platform' column of 'meta_ads_hourly_performance_insights' in the schema cache`
+
+The table schema is correct and remains placement-independent. The bug was local: `normalizeBaselineInsight` reused a general normalizer that retained `publisher_platform`, `platform_position`, and `device_platform` in the outgoing row. The baseline normalizer now removes all four prohibited placement keys—`publisher_platform`, `platform_position`, `device_platform`, and `impression_device`—before its deterministic key and upsert payload are used
+
+No Production SQL was altered by this fix. No successful baseline rows are confirmed yet, and daily demographics ingestion has not been attempted
+
 ## Required tables and reviewed migration paths
 
 Only these two isolated tables are required for the approved first ingestion:
@@ -99,15 +107,17 @@ Engagement hourly is live-validated and **READY for the next ingestion phase onl
 
 ## Files changed and tests
 
-This task adds this report only. No application or ingestion code changed, so no new code test was required. Prior implementation commit: `90ac4eb55006762f06a4ca7967aa113db10a0aa3`
+This task changes only the isolated Meta baseline normalizer and its test; no application/runtime code changed. Prior daily-demographics implementation commit: `90ac4eb55006762f06a4ca7967aa113db10a0aa3`
+
+The payload fix adds a schema-contract test: every baseline upsert row key must appear in `supabase/2026-09-03-meta-ads-hourly-performance-baseline.sql`, and all placement keys above must be absent. Checks passed: `node --check scripts/meta-ads-sync.js`, `node --check scripts/lib/meta-ads-sync-core.js`, `node --test tests/meta-ads-sync-core.test.cjs`, and `node tests/uat-frontend-safety.test.cjs`
 
 ## Final status
 
-- Tables created: **NO**
+- Tables created: **YES — owner reports table creation before this task**
 - Baseline rows written: **0**
 - Demographics rows written: **0**
 - Idempotency rerun: **NOT RUN**
-- Production Supabase modified: **NO**
+- Production Supabase modified: **YES — table creation only before this fix; no ingestion rows confirmed**
 - Existing app tables modified: **NO**
 - Frontend affected: **NO**
 - CRM affected: **NO**

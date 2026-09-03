@@ -125,7 +125,7 @@ function normalizeInsight(insight, { accountId, accountTimezone, apiVersion, fet
 // separate from the original placement-grain table so a total ad/hour cannot
 // collide with, or be mistaken for, a placement row.
 function normalizeBaselineInsight(insight, options) {
-  const row = normalizeInsight(insight, options);
+  const { publisher_platform, platform_position, device_platform, impression_device, ...row } = normalizeInsight(insight, options);
   row.unique_clicks = nullableInteger(insight.unique_clicks);
   row.unique_ctr = nullableNumber(insight.unique_ctr);
   row.raw_outbound_clicks = rawArray(insight.outbound_clicks);
