@@ -78,7 +78,7 @@ No SQL was executed. The new table is intentionally separate because the old tab
 | publisher + position + device platform | Not run | Not tested | PENDING (known original combination fails when paired with hourly) | — | — |
 | age | Not run | Not tested | PENDING | — | — |
 | gender | Not run | Not tested | PENDING | — | — |
-| age + gender | Not run | Not tested | PENDING | — | — |
+| age + gender | Yes | Not yet run | **INCOMPATIBLE COMBINATION** | 100 | Not returned |
 | country | Not run | Not tested | PENDING | — | — |
 | region | Not run | Not tested | PENDING | — | — |
 | engagement/video/rankings | Not run | Not tested | PENDING | — | — |
@@ -138,7 +138,7 @@ node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets placement -
 # Demographics progressive scalar-only
 node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage age --dry-run
 node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage gender --dry-run
-node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage age_gender --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage age_gender --granularity daily --dry-run
 
 # Geo scalar-only; repeat with --granularity daily only after an hourly rejection
 node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_country --dry-run
@@ -175,14 +175,17 @@ Current live classifications:
 |---|---|
 | Baseline hourly | **SUPPORTED — 24 rows, Asia/Bangkok** |
 | Engagement hourly | **SUPPORTED — 24 rows, dry-run, no write** |
-| Demographics | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
+| Demographics hourly age + gender | **INCOMPATIBLE COMBINATION — HTTP 400 / Meta #100 after EXPLICIT EMPTY** |
+| Demographics hourly age only | **PENDING — not yet tested** |
+| Demographics hourly gender only | **PENDING — not yet tested** |
+| Demographics daily age + gender | **PENDING — not yet tested** |
 | Geo country | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
 | Geo region | **BLOCKED BY DEFAULT action_type; pending explicit-empty retest** |
 | Placement | **BLOCKED BY DEFAULT action_type/current combination; pending explicit-empty retest** |
 
 Engagement remains isolated and unchanged: it retains action/video/ranking fields and its `action_breakdowns` behavior remains default/omitted. Non-action dimension passes retain scalar-only fields, no action-array fields, and explicit-empty action breakdowns
 
-The current analytics CLI tests placement/demographics as one pass, so use a temporary read-only request runner or add a minimal validation-only selector before classifying the sub-combinations `publisher`, `publisher+position`, `age`, `gender` individually. Do not change ingestion query design based only on an unbisected error
+The analytics CLI now has validation-only selectors for `publisher`, `publisher+position`, `age`, `gender` and `age+gender`; do not change ingestion query design based only on an unbisected error
 
 For any hourly rejection, rerun the identical dimension set without `hourly_stats_aggregated_by_advertiser_time_zone` and record it as daily only only if that request succeeds. Do not test `impression_device` until the three placement stages above are recorded
 
