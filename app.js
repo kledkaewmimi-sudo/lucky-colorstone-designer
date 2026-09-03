@@ -13,6 +13,7 @@ import { invokeInitialLineAuthentication } from './initial-line-auth.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
+import { captureMetaAttribution, normalizeMetaAttribution, updateMetaAttribution } from './meta-attribution.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -42,6 +43,7 @@ const ANALYTICS_SESSION_ID_KEY = 'lucky_analytics_session_id';
 const ANALYTICS_VISITOR_ID_KEY = 'lucky_colorstone_visitor_id';
 const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
 const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
+const META_ATTRIBUTION_STORAGE_KEY = 'lucky_meta_attribution_v1';
 const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
 const ANALYTICS_LAST_SEEN_AT_KEY = 'lucky_analytics_last_seen_at';
 const ANALYTICS_CURRENT_STAGE_KEY = 'lucky_analytics_current_stage';
@@ -343,6 +345,7 @@ let step2SupportRotationFrame = 0;
 let analyticsSessionId = '';
 let analyticsVisitorId = '';
 let analyticsFirstSource = null;
+let metaAttribution = null;
 let analyticsStartedAt = '';
 let analyticsLastSeenAt = '';
 let analyticsCurrentStage = '';
@@ -1560,6 +1563,31 @@ function getCurrentAnalyticsSource() {
   return source;
 }
 
+function readMetaAttribution() {
+  try {
+    return normalizeMetaAttribution(JSON.parse(localStorage.getItem(META_ATTRIBUTION_STORAGE_KEY) || 'null'));
+  } catch {
+    return null;
+  }
+}
+
+function captureAndPersistMetaAttribution({ hydrateOnly = false } = {}) {
+  try {
+    const capture = captureMetaAttribution({
+      href: window.location.href,
+      referrer: document.referrer,
+      cookieString: document.cookie,
+      now: Date.now()
+    });
+    metaAttribution = updateMetaAttribution(metaAttribution || readMetaAttribution() || {}, capture, {
+      updateLastTouch: !hydrateOnly
+    });
+    localStorage.setItem(META_ATTRIBUTION_STORAGE_KEY, JSON.stringify(metaAttribution));
+  } catch {
+    // Attribution persistence is best-effort and must never block customization or checkout.
+  }
+}
+
 function readAnalyticsFunnelStageKeys() {
   try {
     const stored = JSON.parse(localStorage.getItem(ANALYTICS_FUNNEL_STAGE_KEYS_KEY) || '[]');
@@ -1628,6 +1656,10 @@ function applyDeferredLineAuthAnalyticsContinuity(rawContinuity) {
 }
 
 function initAnalytics() {
+  captureAndPersistMetaAttribution();
+  // Meta's browser cookie can appear after its existing base script has initialized.
+  // Hydration can add that real cookie value without replacing either touch source.
+  window.setTimeout(() => captureAndPersistMetaAttribution({ hydrateOnly: true }), 1200);
   if (IS_UAT_MODE) return;
   try {
     const resolvedSession = resolveAnalyticsSession({
@@ -1699,6 +1731,7 @@ function getAnalyticsOrderFields() {
     analyticsSessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
     analyticsVisitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
     analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource(),
+    metaAttribution: normalizeMetaAttribution(metaAttribution || readMetaAttribution() || {}),
     analyticsSchemaVersion: 2,
     analyticsFunnelVersion: 2
   };
