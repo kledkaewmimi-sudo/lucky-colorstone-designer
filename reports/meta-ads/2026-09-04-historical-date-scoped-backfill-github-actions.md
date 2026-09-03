@@ -82,7 +82,7 @@ trigger or application-server invocation.
 
 - Review branch: `meta-ads-historical-backfill-production`
 - Origin/main base SHA: `42ab1c1`
-- Workflow implementation commit SHA: recorded after commit in the review handoff
+- Workflow implementation commit SHA: `dc68163d03480d5b4ebc1b06c4a18eac7e515c14`
 - No merge to `main` was performed.
 - No production data was modified.
 - Owner must approve the review branch, merge it, and manually run the workflow.
