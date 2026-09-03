@@ -1,0 +1,128 @@
+# Live Meta Capability Validation — Progressive Read-only Run
+
+วันที่: 2026-09-03  
+ขอบเขต: Meta read-only / `--dry-run` เท่านั้น; ไม่มี Supabase write หรือ production mutation
+
+## Live evidence recorded
+
+Owner ทำ live read จริงแล้วด้วย:
+
+```text
+node scripts/meta-ads-sync.js --date 2026-09-01 --dry-run
+```
+
+ผลที่ได้รับจาก Meta account จริง:
+
+| Item | Result |
+|---|---|
+| Tested date | `2026-09-01` |
+| API version | `v26.0` |
+| Account reachability | Meta account reached successfully |
+| Query | `level=ad` + `hourly_stats_aggregated_by_advertiser_time_zone,publisher_platform,platform_position,device_platform` |
+| HTTP / Meta error | HTTP 400 / code `100` |
+| Meta finding | Meta rejected the requested breakdown values as invalid together |
+| Supabase write | No — `--dry-run` |
+
+The full raw Meta error body was not supplied, so this report deliberately does not invent a longer exact Meta message. The exact live classification is **INCOMPATIBLE COMBINATION** for this account/API version—not “NOT LIVE-VERIFIED YET”
+
+## Account metadata
+
+The successful request proves account access, but this task did not receive live values for account ID, timezone name, UTC offset, currency or status. They remain **NOT RECORDED** rather than inferred. `v26.0` is the API version confirmed by the owner
+
+## Minimal isolated correction
+
+The prior baseline request incorrectly coupled total ad/hour performance to placement dimensions. It has been changed only under `scripts/` to request:
+
+```text
+level=ad
+breakdowns=hourly_stats_aggregated_by_advertiser_time_zone
+```
+
+It no longer requests `publisher_platform`, `platform_position` or `device_platform`. Baseline now requests total-performance fields plus `unique_clicks`, `unique_ctr`, `outbound_clicks`, `outbound_clicks_ctr`, `cost_per_action_type`, `actions` and `action_values`
+
+The prior `public.meta_ads_hourly_insights` table remains untouched. To avoid a placement-independent total row being identified by `unknown` placement values, the new additive, unexecuted migration `supabase/2026-09-03-meta-ads-hourly-performance-baseline.sql` proposes `public.meta_ads_hourly_performance_insights`. Its deterministic key is:
+
+```text
+account_id|report_date|hour_start|ad_id-or-account-level
+```
+
+No SQL was executed. The new table is intentionally separate because the old table’s `insight_key` includes placement dimensions. The baseline collector’s future non-dry-run default target is the new table; dry runs never call the upsert path
+
+## Progressive validation matrix
+
+| Query | Hourly | Daily | Meta result | Error code | Rows |
+|---|---:|---:|---|---:|---:|
+| baseline + publisher + position + device (original) | Yes | Not tested | **INCOMPATIBLE COMBINATION** | 100 | Not returned |
+| corrected baseline: hourly only, ad level | Not run in this shell | Not tested | PENDING — credentials absent from current shell | — | — |
+| publisher platform | Not run | Not tested | PENDING | — | — |
+| publisher + platform position | Not run | Not tested | PENDING | — | — |
+| publisher + position + device platform | Not run | Not tested | PENDING (known original combination fails when paired with hourly) | — | — |
+| age | Not run | Not tested | PENDING | — | — |
+| gender | Not run | Not tested | PENDING | — | — |
+| age + gender | Not run | Not tested | PENDING | — | — |
+| country | Not run | Not tested | PENDING | — | — |
+| region | Not run | Not tested | PENDING | — | — |
+| engagement/video/rankings | Not run | Not tested | PENDING | — | — |
+
+No placement, demographic, geo, traffic, video or ranking result is classified as SUPPORTED, SUPPORTED BUT EMPTY, DAILY ONLY or UNSUPPORTED FIELD until its progressive live request completes
+
+## Required next live reads
+
+Current shell does not contain `META_AD_ACCOUNT_ID`, `META_ACCESS_TOKEN` or `META_API_VERSION`, so the corrected baseline and all progressive reads could not be executed here. This report does **not** claim those reads happened
+
+After owner sets transient trusted-shell variables, run these read-only commands for `2026-09-01`:
+
+```powershell
+node scripts/meta-ads-sync.js --date 2026-09-01 --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets placement --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_country --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_region --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets engagement --dry-run
+```
+
+The current analytics CLI tests placement/demographics as one pass, so use a temporary read-only request runner or add a minimal validation-only selector before classifying the sub-combinations `publisher`, `publisher+position`, `age`, `gender` individually. Do not change ingestion query design based only on an unbisected error
+
+For any hourly rejection, rerun the identical dimension set without `hourly_stats_aggregated_by_advertiser_time_zone` and record it as daily only only if that request succeeds. Do not test `impression_device` until the three placement stages above are recorded
+
+For engagement, start with hourly + basic fields, then add video action arrays as one group and rankings as one group. If #100 occurs, bisect the group one field at a time so an unsupported field does not obscure supported fields
+
+## Traffic, actions, video and ranking status
+
+| Category | Live status |
+|---|---|
+| clicks, inline link clicks, unique clicks, CTR, unique CTR, CPC, CPM, frequency | PENDING corrected baseline read |
+| outbound clicks / outbound CTR | PENDING; implementation preserves array form only |
+| actions / action values / cost per action type | PENDING; implementation preserves arrays only |
+| video play/thruplay/p25/p50/p75/p95/p100 | PENDING engagement read |
+| quality / engagement-rate / conversion-rate ranking | PENDING engagement read |
+
+## Tests
+
+After the isolated correction, these checks passed:
+
+- `node --check scripts/meta-ads-sync.js`
+- `node --check scripts/lib/meta-ads-sync-core.js`
+- `node --test tests/meta-ads-sync-core.test.cjs` — includes baseline key without placement dimensions, rich raw metrics, prior parsing/timezone/pagination/rate-limit coverage
+- `node tests/uat-frontend-safety.test.cjs`
+- `git diff --check` for changed isolated files
+
+No backend/UAT guard was bypassed
+
+## Files changed
+
+- modified `scripts/meta-ads-sync.js`
+- modified `scripts/lib/meta-ads-sync-core.js`
+- modified `tests/meta-ads-sync-core.test.cjs`
+- added `supabase/2026-09-03-meta-ads-hourly-performance-baseline.sql` (not executed)
+- updated this report
+
+No customer, CRM, server, order, payment, catalog, inventory, renderer, analytics or existing application table file was modified
+
+## Final status
+
+- Production modified: **NO**
+- Supabase modified: **NO**
+- Meta Ads modified: **NO**
+- Live Meta reads performed: **YES** — initial owner baseline dry-run reached Meta and returned HTTP 400 / Meta #100
+- Additional corrected/progressive live reads performed in current shell: **NO — credentials are absent**

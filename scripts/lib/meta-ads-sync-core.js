@@ -8,6 +8,7 @@ const INSIGHT_FIELDS = [
   'actions', 'action_values', HOURLY_BREAKDOWN, ...PLACEMENT_BREAKDOWNS
 ];
 const RICH_TRAFFIC_FIELDS = ['unique_clicks', 'unique_ctr', 'outbound_clicks', 'outbound_clicks_ctr', 'cost_per_action_type'];
+const BASELINE_INSIGHT_FIELDS = [...INSIGHT_FIELDS.filter((field) => !PLACEMENT_BREAKDOWNS.includes(field)), ...RICH_TRAFFIC_FIELDS];
 const VIDEO_FIELDS = ['video_play_actions', 'video_thruplay_watched_actions', 'video_p25_watched_actions', 'video_p50_watched_actions', 'video_p75_watched_actions', 'video_p95_watched_actions', 'video_p100_watched_actions'];
 const RANKING_FIELDS = ['quality_ranking', 'engagement_rate_ranking', 'conversion_rate_ranking'];
 const ANALYTICS_COMMON_FIELDS = [...INSIGHT_FIELDS.filter((field) => !PLACEMENT_BREAKDOWNS.includes(field)), ...RICH_TRAFFIC_FIELDS];
@@ -116,6 +117,20 @@ function normalizeInsight(insight, { accountId, accountTimezone, apiVersion, fet
   return row;
 }
 
+// The performance baseline intentionally has no placement dimensions.  Keep it
+// separate from the original placement-grain table so a total ad/hour cannot
+// collide with, or be mistaken for, a placement row.
+function normalizeBaselineInsight(insight, options) {
+  const row = normalizeInsight(insight, options);
+  row.unique_clicks = nullableInteger(insight.unique_clicks);
+  row.unique_ctr = nullableNumber(insight.unique_ctr);
+  row.raw_outbound_clicks = rawArray(insight.outbound_clicks);
+  row.raw_outbound_clicks_ctr = rawArray(insight.outbound_clicks_ctr);
+  row.raw_cost_per_action_type = rawArray(insight.cost_per_action_type);
+  row.insight_key = [row.account_id, row.report_date, row.hour_start, row.ad_id || 'account-level'].join('|');
+  return row;
+}
+
 function makeSupabaseUpsertRequest(supabaseUrl, serviceRoleKey, rows, table = 'meta_ads_hourly_insights') {
   const base = new URL(String(supabaseUrl).replace(/\/+$/, ''));
   if (!/^[a-z0-9_]+$/i.test(table)) throw new Error('Invalid Supabase table name.');
@@ -166,4 +181,4 @@ function isRateLimitResponse(response, payload) {
   return response?.status === 429 || [4, 17, 32, 613].includes(code);
 }
 
-module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeAnalyticsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
+module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, INSIGHT_FIELDS, BASELINE_INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, INSIGHT_FIELDS, normalizeInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('./lib/meta-ads-sync-core.js');
+const { HOURLY_BREAKDOWN, BASELINE_INSIGHT_FIELDS, normalizeBaselineInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('./lib/meta-ads-sync-core.js');
 
 const GRAPH_HOST = 'https://graph.facebook.com';
 const DEFAULT_API_VERSION = 'v24.0';
@@ -70,7 +70,7 @@ async function getAllInsights(firstUrl, config) {
   return results;
 }
 
-async function upsertRows(rows, config, table = 'meta_ads_hourly_insights') {
+async function upsertRows(rows, config, table = 'meta_ads_hourly_performance_insights') {
   for (let start = 0; start < rows.length; start += 250) {
     const batch = rows.slice(start, start + 250);
     const request = makeSupabaseUpsertRequest(config.supabaseUrl, config.supabaseKey, batch, table);
@@ -91,13 +91,13 @@ async function main() {
   const insightsUrl = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
   insightsUrl.searchParams.set('level', 'ad');
   insightsUrl.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
-  insightsUrl.searchParams.set('breakdowns', [HOURLY_BREAKDOWN, ...PLACEMENT_BREAKDOWNS].join(','));
-  insightsUrl.searchParams.set('fields', INSIGHT_FIELDS.join(','));
+  insightsUrl.searchParams.set('breakdowns', HOURLY_BREAKDOWN);
+  insightsUrl.searchParams.set('fields', BASELINE_INSIGHT_FIELDS.join(','));
   insightsUrl.searchParams.set('limit', '500');
   insightsUrl.searchParams.set('access_token', config.accessToken);
   const fetchedAt = new Date().toISOString();
   const insights = await getAllInsights(insightsUrl, config);
-  const rows = insights.map((insight) => normalizeInsight(insight, { accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt }));
+  const rows = insights.map((insight) => normalizeBaselineInsight(insight, { accountId: config.accountId, accountTimezone, apiVersion: config.apiVersion, fetchedAt }));
   if (!config.dryRun && rows.length > 0) await upsertRows(rows, config);
   console.log(JSON.stringify({ accountId: config.accountId, accountTimezone, since: config.since, until: config.until, insightsRead: insights.length, rowsWritten: config.dryRun ? 0 : rows.length, dryRun: config.dryRun }));
 }

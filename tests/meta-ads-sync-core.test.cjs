@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { HOURLY_BREAKDOWN, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
+const { HOURLY_BREAKDOWN, BASELINE_INSIGHT_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
 const { getAllInsights, metaRequest } = require('../scripts/meta-ads-sync.js');
 const { fieldsForDataset, syncDataset } = require('../scripts/meta-ads-analytics-sync.js');
 
@@ -20,6 +20,12 @@ assert.equal(row.spend, 10.5);
 assert.equal(row.link_clicks, null);
 assert.deepEqual(row.raw_actions, raw.actions);
 assert.equal(row.insight_key, 'act_7|2026-09-01|09:00:00|ad-9|instagram|stream|mobile');
+const baseline = normalizeBaselineInsight({ ...raw, unique_clicks: '3', outbound_clicks: [{ action_type: 'outbound_click', value: '2' }] }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v26.0' });
+assert.equal(baseline.insight_key, 'act_7|2026-09-01|09:00:00|ad-9');
+assert.equal(baseline.unique_clicks, 3);
+assert.deepEqual(baseline.raw_outbound_clicks, [{ action_type: 'outbound_click', value: '2' }]);
+assert.equal(BASELINE_INSIGHT_FIELDS.includes('publisher_platform'), false);
+assert.equal(BASELINE_INSIGHT_FIELDS.includes('unique_clicks'), true);
 assert.deepEqual(normalizeInsight({ ...raw, publisher_platform: null, platform_position: null, device_platform: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }).insight_key, 'act_7|2026-09-01|09:00:00|ad-9|unknown|unknown|unknown');
 assert.throws(() => normalizeInsight({ ...raw, [HOURLY_BREAKDOWN]: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }), /hourly breakdown/);
 
