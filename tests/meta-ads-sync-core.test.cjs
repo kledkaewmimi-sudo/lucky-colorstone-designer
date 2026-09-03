@@ -1,9 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { HOURLY_BREAKDOWN, BASELINE_INSIGHT_FIELDS, ANALYTICS_COMMON_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
-const { buildBaselineInsightsUrl, getAllInsights, getBaselineRequestDiagnostics, metaRequest } = require('../scripts/meta-ads-sync.js');
-const { fieldsForDataset, syncDataset } = require('../scripts/meta-ads-analytics-sync.js');
+const { HOURLY_BREAKDOWN, ACTION_ARRAY_FIELDS, BASELINE_INSIGHT_FIELDS, ANALYTICS_COMMON_FIELDS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, makeSupabaseUpsertRequest, isRateLimitResponse } = require('../scripts/lib/meta-ads-sync-core.js');
+const { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, metaRequest } = require('../scripts/meta-ads-sync.js');
+const { demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, syncDataset } = require('../scripts/meta-ads-analytics-sync.js');
 
 assert.equal(parseHourStart('09:00:00 - 09:59:59'), '09:00:00');
 assert.equal(parseHourStart('24:00:00 - 24:59:59'), null);
@@ -38,6 +38,19 @@ assert.equal(baselineUrl.searchParams.get('level'), 'ad');
 assert.deepEqual(JSON.parse(baselineUrl.searchParams.get('time_range')), { since: '2026-09-01', until: '2026-09-01' });
 assert.equal(baselineUrl.searchParams.get('breakdowns'), HOURLY_BREAKDOWN);
 assert.equal(baselineUrl.searchParams.get('fields').includes(HOURLY_BREAKDOWN), false);
+['placement', 'demographics', 'geo_country', 'geo_region'].forEach((dataset) => {
+  const fields = fieldsForDataset(dataset);
+  ACTION_ARRAY_FIELDS.forEach((field) => assert.equal(fields.includes(field), false, `${dataset} must exclude ${field}`));
+});
+assert.deepEqual(placementBreakdowns(), ['publisher_platform', 'platform_position', 'device_platform']);
+assert.deepEqual(demographicsBreakdowns(), ['age', 'gender']);
+assert.equal(granularityBreakdown(), HOURLY_BREAKDOWN);
+const analyticsDiagnostics = getAnalyticsRequestDiagnostics({ dataset: 'placement', fields: fieldsForDataset('placement'), breakdowns: [HOURLY_BREAKDOWN, 'publisher_platform'], config: { since: '2026-09-01', until: '2026-09-01', accessToken: 'do-not-print' } });
+assert.equal(JSON.stringify(analyticsDiagnostics).includes('do-not-print'), false);
+assert.equal(analyticsDiagnostics.breakdowns.includes('action_type'), false);
+assert.equal(describeTransportError({ cause: { code: 'ENOTFOUND' } }), 'DNS/network failure');
+assert.equal(describeTransportError({ cause: { code: 'ETIMEDOUT' } }), 'timeout');
+assert.equal(describeTransportError({ cause: { code: 'CERT_HAS_EXPIRED' } }), 'TLS failure');
 assert.deepEqual(normalizeInsight({ ...raw, publisher_platform: null, platform_position: null, device_platform: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }).insight_key, 'act_7|2026-09-01|09:00:00|ad-9|unknown|unknown|unknown');
 assert.throws(() => normalizeInsight({ ...raw, [HOURLY_BREAKDOWN]: null }, { accountId: 'act_7', accountTimezone: 'Asia/Bangkok', apiVersion: 'v24.0' }), /hourly breakdown/);
 
@@ -64,6 +77,8 @@ async function testCollectorTransport() {
 
     global.fetch = async () => new Response(JSON.stringify({ error: { code: 100, message: 'invalid field' } }), { status: 400 });
     await assert.rejects(() => metaRequest('https://example.test/failure', {}), /Meta API request failed \(400\): invalid field/);
+    global.fetch = async () => { const error = new TypeError('fetch failed'); error.cause = { code: 'ENOTFOUND' }; throw error; };
+    await assert.rejects(() => metaRequest('https://example.test/transport', {}), /Meta transport failure \(DNS\/network failure\): fetch failed/);
   } finally {
     global.fetch = originalFetch;
   }

@@ -26,6 +26,16 @@ function fail(message) { throw new Error(message); }
 function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 function safeError(payload, fallback) { return String(payload?.error?.message || payload?.message || fallback || 'request failed').replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]'); }
 
+function describeTransportError(error) {
+  const code = String(error?.cause?.code || error?.code || '').toUpperCase();
+  const name = String(error?.name || 'Error');
+  if (name === 'AbortError' || code === 'ABORT_ERR') return 'aborted request';
+  if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) return 'DNS/network failure';
+  if (['ETIMEDOUT', 'ESOCKETTIMEDOUT'].includes(code)) return 'timeout';
+  if (/CERT|TLS|SSL/.test(code) || /certificate|tls|ssl/i.test(String(error?.message || ''))) return 'TLS failure';
+  return 'network failure';
+}
+
 function getBaselineRequestDiagnostics(config) {
   return {
     level: 'ad',
@@ -64,7 +74,12 @@ function parseConfig(env = process.env) {
 
 async function metaRequest(url, config) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-    const response = await fetch(url);
+    let response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      fail(`Meta transport failure (${describeTransportError(error)}): ${String(error?.message || 'fetch failed').replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`);
+    }
     const text = await response.text();
     let payload;
     try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
@@ -121,4 +136,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { buildBaselineInsightsUrl, getAllInsights, getBaselineRequestDiagnostics, metaRequest, parseConfig, upsertRows };
+module.exports = { buildBaselineInsightsUrl, describeTransportError, getAllInsights, getBaselineRequestDiagnostics, metaRequest, parseConfig, upsertRows };

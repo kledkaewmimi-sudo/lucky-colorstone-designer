@@ -72,7 +72,7 @@ No SQL was executed. The new table is intentionally separate because the old tab
 | Query | Hourly | Daily | Meta result | Error code | Rows |
 |---|---:|---:|---|---:|---:|
 | baseline + publisher + position + device (original) | Yes | Not tested | **INCOMPATIBLE COMBINATION** | 100 | Not returned |
-| corrected baseline: hourly only, ad level | Not rerun after bug fix | Not tested | PENDING — credential absent from current shell | — | — |
+| corrected baseline: hourly only, ad level | Yes | — | **SUPPORTED** | — | 24 |
 | publisher platform | Not run | Not tested | PENDING | — | — |
 | publisher + platform position | Not run | Not tested | PENDING | — | — |
 | publisher + position + device platform | Not run | Not tested | PENDING (known original combination fails when paired with hourly) | — | — |
@@ -83,11 +83,11 @@ No SQL was executed. The new table is intentionally separate because the old tab
 | region | Not run | Not tested | PENDING | — | — |
 | engagement/video/rankings | Not run | Not tested | PENDING | — | — |
 
-No placement, demographic, geo, traffic, video or ranking result is classified as SUPPORTED, SUPPORTED BUT EMPTY, DAILY ONLY or UNSUPPORTED FIELD until its progressive live request completes
+No placement, demographic, geo, detailed traffic, video or ranking result is classified as SUPPORTED, SUPPORTED BUT EMPTY, DAILY ONLY or UNSUPPORTED FIELD until its progressive live request completes. Baseline hourly itself is supported
 
 ## Required next live reads
 
-Current shell does not contain `META_AD_ACCOUNT_ID`, `META_ACCESS_TOKEN` or `META_API_VERSION`, so the corrected baseline and all progressive reads could not be executed here. This report does **not** claim those reads happened
+Current shell does not contain `META_AD_ACCOUNT_ID`, `META_ACCESS_TOKEN` or `META_API_VERSION`, so the progressive placement/demographic/geo/engagement reads could not be executed here. This report does **not** claim those reads happened
 
 After owner sets transient trusted-shell variables, run these read-only commands for `2026-09-01`:
 
@@ -100,6 +100,53 @@ node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_region 
 node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets engagement --dry-run
 ```
 
+## Placement and demographics refinement after live update
+
+The owner’s new live results update the matrix as follows:
+
+| Query | Hourly | Daily | Meta result | Error code | Rows |
+|---|---:|---:|---|---:|---:|
+| corrected baseline, ad/hour | Yes | — | **SUPPORTED** | — | 24 |
+| original placement with hourly + publisher + position + device | Yes | Not tested | **INCOMPATIBLE** | 100 | Not returned |
+| demographics age + gender | Not classified | Not tested | **NOT CLASSIFIED — transport fetch failure** | — | — |
+
+Baseline dry-run also returned account timezone `Asia/Bangkok`; it did not write Supabase
+
+The rejected placement error listed `action_type` with the placement/hourly dimensions. Source audit confirms the prior placement request did not explicitly set an `action_breakdowns` parameter, but it did request action-like fields through the shared field set: `actions`, `action_values`, `cost_per_action_type`, `outbound_clicks`, and `outbound_clicks_ctr`. Therefore the exact internal Meta cause cannot be asserted beyond the #100 response, but those action-array fields were an avoidable contaminant for a delivery/placement capability test
+
+Placement, demographics and geo now use a scalar-only field set:
+
+```text
+campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,
+spend,impressions,reach,clicks,inline_link_clicks,ctr,cpc,cpm,frequency,
+unique_clicks,unique_ctr
+```
+
+They explicitly exclude `actions`, `action_values`, `cost_per_action_type`, `outbound_clicks`, `outbound_clicks_ctr`, video fields and ranking fields. Action arrays stay in the baseline or dedicated engagement pass
+
+The analytics collector prints sanitized `Meta request:` diagnostics in dry-run showing dataset, level, fields, breakdowns and date only. It never prints `access_token`. It also supports progressive modes:
+
+```powershell
+# A, B, C: placement, hourly scalar-only
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets placement --placement-stage publisher --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets placement --placement-stage position --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets placement --placement-stage device --dry-run
+
+# D: placement daily scalar-only if C is rejected
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets placement --placement-stage device --granularity daily --dry-run
+
+# Demographics progressive scalar-only
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage age --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage gender --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets demographics --demographics-stage age_gender --dry-run
+
+# Geo scalar-only; repeat with --granularity daily only after an hourly rejection
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_country --dry-run
+node scripts/meta-ads-analytics-sync.js --date 2026-09-01 --datasets geo_region --dry-run
+```
+
+`fetch failed` is not classified as a Meta capability result. Transport failures are now redacted and labelled as DNS/network failure, timeout, TLS failure, aborted request or generic network failure. A real HTTP response still reports Meta HTTP status/code/message separately
+
 The current analytics CLI tests placement/demographics as one pass, so use a temporary read-only request runner or add a minimal validation-only selector before classifying the sub-combinations `publisher`, `publisher+position`, `age`, `gender` individually. Do not change ingestion query design based only on an unbisected error
 
 For any hourly rejection, rerun the identical dimension set without `hourly_stats_aggregated_by_advertiser_time_zone` and record it as daily only only if that request succeeds. Do not test `impression_device` until the three placement stages above are recorded
@@ -110,7 +157,7 @@ For engagement, start with hourly + basic fields, then add video action arrays a
 
 | Category | Live status |
 |---|---|
-| clicks, inline link clicks, unique clicks, CTR, unique CTR, CPC, CPM, frequency | PENDING corrected baseline read |
+| clicks, inline link clicks, unique clicks, CTR, unique CTR, CPC, CPM, frequency | Baseline field availability detail not yet recorded; baseline query itself is supported |
 | outbound clicks / outbound CTR | PENDING; implementation preserves array form only |
 | actions / action values / cost per action type | PENDING; implementation preserves arrays only |
 | video play/thruplay/p25/p50/p75/p95/p100 | PENDING engagement read |
@@ -122,7 +169,7 @@ After the isolated correction, these checks passed:
 
 - `node --check scripts/meta-ads-sync.js`
 - `node --check scripts/lib/meta-ads-sync-core.js`
-- `node --test tests/meta-ads-sync-core.test.cjs` — includes baseline key without placement dimensions, rich raw metrics, prior parsing/timezone/pagination/rate-limit coverage
+- `node --test tests/meta-ads-sync-core.test.cjs` — includes baseline key without placement dimensions, scalar-only placement/demographics/geo fields, no explicit `action_type` breakdown, sanitized diagnostics, transport classification, rich raw metrics, prior parsing/timezone/pagination/rate-limit coverage
 - baseline URL-builder assertions: hourly is absent from `fields`, present in `breakdowns`, placement breakdowns are absent, and diagnostics cannot contain the supplied test token
 - `node tests/uat-frontend-safety.test.cjs`
 - `git diff --check` for changed isolated files

@@ -6,13 +6,19 @@ const { getAllInsights, metaRequest, parseConfig, upsertRows } = require('./meta
 
 const GRAPH_HOST = 'https://graph.facebook.com';
 const DATASET_NAMES = Object.keys(ANALYTICS_DATASETS);
+const PLACEMENT_STAGES = {
+  publisher: ['publisher_platform'],
+  position: ['publisher_platform', 'platform_position'],
+  device: ['publisher_platform', 'platform_position', 'device_platform']
+};
+const DEMOGRAPHICS_STAGES = { age: ['age'], gender: ['gender'], age_gender: ['age', 'gender'] };
 const args = process.argv.slice(2);
 
 function option(name) { const index = args.indexOf(name); return index === -1 ? null : args[index + 1] || null; }
 function usage() {
   console.log(`Usage:
   node scripts/meta-ads-analytics-sync.js --date YYYY-MM-DD [--datasets placement,demographics,geo_country,geo_region,engagement] [--include-impression-device] [--dry-run]
-  node scripts/meta-ads-analytics-sync.js --since YYYY-MM-DD --until YYYY-MM-DD [--datasets placement,demographics,geo_country,geo_region,engagement] [--include-impression-device] [--dry-run]
+  node scripts/meta-ads-analytics-sync.js --since YYYY-MM-DD --until YYYY-MM-DD [--datasets placement,demographics,geo_country,geo_region,engagement] [--granularity hourly|daily] [--placement-stage publisher|position|device] [--demographics-stage age|gender|age_gender] [--include-impression-device] [--dry-run]
 
 This is an isolated multi-pass collector. It never starts a scheduler or changes application APIs.
 --include-impression-device is opt-in because its live compatibility with the placement/hourly combination must be validated for the target account.`);
@@ -32,15 +38,48 @@ function fieldsForDataset(name) {
   return [...new Set([...ANALYTICS_COMMON_FIELDS, ...(definition.fields || [])])];
 }
 
+function placementBreakdowns() {
+  const stage = option('--placement-stage') || 'device';
+  if (!PLACEMENT_STAGES[stage]) throw new Error(`Unknown placement stage '${stage}'. Use publisher, position, or device.`);
+  return PLACEMENT_STAGES[stage];
+}
+
+function demographicsBreakdowns() {
+  const stage = option('--demographics-stage') || 'age_gender';
+  if (!DEMOGRAPHICS_STAGES[stage]) throw new Error(`Unknown demographics stage '${stage}'. Use age, gender, or age_gender.`);
+  return DEMOGRAPHICS_STAGES[stage];
+}
+
+function granularityBreakdown() {
+  const granularity = option('--granularity') || 'hourly';
+  if (granularity === 'hourly') return HOURLY_BREAKDOWN;
+  if (granularity === 'daily') return null;
+  throw new Error(`Unknown granularity '${granularity}'. Use hourly or daily.`);
+}
+
+function getAnalyticsRequestDiagnostics({ dataset, fields, breakdowns, config }) {
+  return {
+    dataset,
+    level: 'ad',
+    fields,
+    breakdowns,
+    date: config.since === config.until ? config.since : { since: config.since, until: config.until }
+  };
+}
+
 async function syncDataset(name, config, accountTimezone, includeImpressionDevice) {
   const definition = ANALYTICS_DATASETS[name];
-  const breakdowns = [HOURLY_BREAKDOWN, ...definition.breakdowns];
+  const datasetBreakdowns = name === 'placement' ? placementBreakdowns() : name === 'demographics' ? demographicsBreakdowns() : definition.breakdowns;
+  const hourlyBreakdown = granularityBreakdown();
+  const breakdowns = [...(hourlyBreakdown ? [hourlyBreakdown] : []), ...datasetBreakdowns];
   if (name === 'placement' && includeImpressionDevice) breakdowns.push('impression_device');
+  const fields = fieldsForDataset(name);
+  if (config.dryRun) console.log(`Meta request: ${JSON.stringify(getAnalyticsRequestDiagnostics({ dataset: name, fields, breakdowns, config }))}`);
   const url = new URL(`${GRAPH_HOST}/${config.apiVersion}/${config.accountId}/insights`);
   url.searchParams.set('level', 'ad');
   url.searchParams.set('time_range', JSON.stringify({ since: config.since, until: config.until }));
   url.searchParams.set('breakdowns', breakdowns.join(','));
-  url.searchParams.set('fields', fieldsForDataset(name).join(','));
+  url.searchParams.set('fields', fields.join(','));
   url.searchParams.set('limit', '500');
   url.searchParams.set('access_token', config.accessToken);
   const fetchedAt = new Date().toISOString();
@@ -68,4 +107,4 @@ if (require.main === module) {
   main().catch((error) => { console.error(`meta-ads-analytics-sync failed: ${String(error.message || error).replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]')}`); process.exitCode = 1; });
 }
 
-module.exports = { fieldsForDataset, selectedDatasets, syncDataset };
+module.exports = { demographicsBreakdowns, fieldsForDataset, getAnalyticsRequestDiagnostics, granularityBreakdown, placementBreakdowns, selectedDatasets, syncDataset };

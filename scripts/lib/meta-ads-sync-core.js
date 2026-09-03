@@ -7,18 +7,21 @@ const CORE_INSIGHT_FIELDS = [
   'date_start', 'spend', 'impressions', 'reach', 'clicks', 'inline_link_clicks', 'ctr', 'cpc', 'cpm', 'frequency',
   'actions', 'action_values'
 ];
+const ACTION_ARRAY_FIELDS = ['actions', 'action_values', 'outbound_clicks', 'outbound_clicks_ctr', 'cost_per_action_type'];
+const SCALAR_INSIGHT_FIELDS = CORE_INSIGHT_FIELDS.filter((field) => !['actions', 'action_values'].includes(field));
 const INSIGHT_FIELDS = [...CORE_INSIGHT_FIELDS, HOURLY_BREAKDOWN, ...PLACEMENT_BREAKDOWNS];
 const RICH_TRAFFIC_FIELDS = ['unique_clicks', 'unique_ctr', 'outbound_clicks', 'outbound_clicks_ctr', 'cost_per_action_type'];
 const BASELINE_INSIGHT_FIELDS = [...CORE_INSIGHT_FIELDS, ...RICH_TRAFFIC_FIELDS];
+const VALIDATION_SCALAR_FIELDS = [...SCALAR_INSIGHT_FIELDS, 'unique_clicks', 'unique_ctr'];
 const VIDEO_FIELDS = ['video_play_actions', 'video_thruplay_watched_actions', 'video_p25_watched_actions', 'video_p50_watched_actions', 'video_p75_watched_actions', 'video_p95_watched_actions', 'video_p100_watched_actions'];
 const RANKING_FIELDS = ['quality_ranking', 'engagement_rate_ranking', 'conversion_rate_ranking'];
-const ANALYTICS_COMMON_FIELDS = [...CORE_INSIGHT_FIELDS, ...RICH_TRAFFIC_FIELDS];
+const ANALYTICS_COMMON_FIELDS = VALIDATION_SCALAR_FIELDS;
 const ANALYTICS_DATASETS = {
   placement: { table: 'meta_ads_hourly_placement_insights', breakdowns: [...PLACEMENT_BREAKDOWNS], dimensions: ['publisher_platform', 'platform_position', 'device_platform', 'impression_device'] },
   demographics: { table: 'meta_ads_hourly_demographics', breakdowns: ['age', 'gender'], dimensions: ['age', 'gender'] },
   geo_country: { table: 'meta_ads_hourly_geo', breakdowns: ['country'], dimensions: ['country'], geoBreakdown: 'country' },
   geo_region: { table: 'meta_ads_hourly_geo', breakdowns: ['region'], dimensions: ['region'], geoBreakdown: 'region' },
-  engagement: { table: 'meta_ads_hourly_engagement', breakdowns: [], dimensions: [], fields: [...VIDEO_FIELDS, ...RANKING_FIELDS] }
+  engagement: { table: 'meta_ads_hourly_engagement', breakdowns: [], dimensions: [], fields: [...ACTION_ARRAY_FIELDS, ...VIDEO_FIELDS, ...RANKING_FIELDS] }
 };
 
 function nonEmpty(value, fallback = null) {
@@ -182,4 +185,4 @@ function isRateLimitResponse(response, payload) {
   return response?.status === 429 || [4, 17, 32, 613].includes(code);
 }
 
-module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, CORE_INSIGHT_FIELDS, INSIGHT_FIELDS, BASELINE_INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
+module.exports = { HOURLY_BREAKDOWN, PLACEMENT_BREAKDOWNS, CORE_INSIGHT_FIELDS, SCALAR_INSIGHT_FIELDS, ACTION_ARRAY_FIELDS, INSIGHT_FIELDS, BASELINE_INSIGHT_FIELDS, RICH_TRAFFIC_FIELDS, VALIDATION_SCALAR_FIELDS, VIDEO_FIELDS, RANKING_FIELDS, ANALYTICS_COMMON_FIELDS, ANALYTICS_DATASETS, parseHourStart, localHourToUtc, nullableNumber, normalizeInsight, normalizeBaselineInsight, normalizeAnalyticsInsight, insightKey, makeSupabaseUpsertRequest, isRateLimitResponse };
