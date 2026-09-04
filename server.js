@@ -5,6 +5,13 @@ const fsp = require("fs/promises");
 const path = require("path");
 const { URL } = require("url");
 const { buildMetaPurchaseEvent, getMetaPurchaseEventId, summarizeMetaCapiSuccessBody } = require('./meta-capi-purchase.js');
+const {
+  TIKTOK_EVENTS_API_URL,
+  buildTikTokCompletePaymentEvent,
+  buildTikTokEventsRequest,
+  getTikTokCompletePaymentEventId,
+  summarizeTikTokEventsApiResponse
+} = require('./tiktok-events-api.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const { validateAuthoritativeOrder } = require('./server-order-validation.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
@@ -319,6 +326,54 @@ async function sendMetaPurchaseEvent(order, stripeSession) {
     // Response-body observability must not affect an already accepted delivery.
   }
   console.info(`[meta-capi] Purchase accepted order=${orderReference} events_received=${delivery.eventsReceived ?? 'unknown'} fbtrace_id_present=${delivery.fbtraceIdPresent} http_status=${response.status}`);
+  return { sent: true };
+}
+
+function getTikTokEventsApiConfig() {
+  const pixelId = getEnvValue('TIKTOK_PIXEL_ID').trim();
+  const accessToken = getEnvValue('TIKTOK_EVENTS_API_ACCESS_TOKEN').trim();
+  const testEventCode = getEnvValue('TIKTOK_TEST_EVENT_CODE').trim();
+  return pixelId && accessToken ? { pixelId, accessToken, testEventCode } : null;
+}
+
+async function sendTikTokCompletePaymentEvent(order, stripeSession) {
+  const config = getTikTokEventsApiConfig();
+  const orderReference = getOrderId(order) || 'unknown';
+  const event = buildTikTokCompletePaymentEvent({
+    order,
+    stripeSession,
+    totalPrice: getOrderTotalPrice(order),
+    currency: 'THB',
+    eventTime: Date.now(),
+    fallbackEventSourceUrl: 'https://customize.luckycolorstone.com/'
+  });
+  const payload = config ? buildTikTokEventsRequest({
+    pixelId: config.pixelId,
+    event,
+    testEventCode: config.testEventCode
+  }) : null;
+  if (!config || !payload) return { sent: false, skipped: 'not_configured_or_incomplete' };
+
+  console.info(`[tiktok-events-api] CompletePayment attempt order=${orderReference}`);
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), 8000);
+  let response;
+  try {
+    response = await fetch(TIKTOK_EVENTS_API_URL, {
+      method: 'POST',
+      headers: { 'Access-Token': config.accessToken, 'Content-Type': 'application/json' },
+      signal: timeout.signal,
+      body: JSON.stringify(payload)
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const delivery = summarizeTikTokEventsApiResponse(await response.text());
+  if (!response.ok || delivery.code !== 0) {
+    throw new Error(`TikTok Events API rejected CompletePayment (HTTP ${response.status}, code ${delivery.code ?? 'unknown'}).`);
+  }
+  console.info(`[tiktok-events-api] CompletePayment accepted order=${orderReference} request_id_present=${delivery.requestIdPresent} http_status=${response.status}`);
   return { sent: true };
 }
 
@@ -2998,6 +3053,9 @@ async function applyStripeCheckoutPaymentEvent(session, eventId) {
   sendMetaPurchaseEvent(paidOrder, session).catch((error) => {
     console.warn(`[meta-capi] Purchase delivery failed for order=${orderReference}:`, error?.message || error);
   });
+  sendTikTokCompletePaymentEvent(paidOrder, session).catch((error) => {
+    console.warn(`[tiktok-events-api] CompletePayment delivery failed for order=${orderReference}:`, error?.message || error);
+  });
   console.info(`[stripe-webhook] paid order=${orderReference} session=${sessionId} event=${eventId || '-'}`);
   return { order: await notifyPaidOrderLineRecipients(paidOrder) };
 }
@@ -3308,6 +3366,12 @@ async function handleApiRequest(req, res, urlObj) {
       ok: true,
       eventsReceived
     });
+    return true;
+  }
+
+  if (pathname === '/api/tracking/config' && method === 'GET') {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    sendJson(res, 200, { tiktokPixelId: getEnvValue('TIKTOK_PIXEL_ID').trim() });
     return true;
   }
 
