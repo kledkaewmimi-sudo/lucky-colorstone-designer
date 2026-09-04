@@ -15,6 +15,18 @@ import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQa
 import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEventProperties, isCanonicalFunnelStage, normalizeAnalyticsContinuity, resolveAnalyticsSession, shouldTrackFunnelStage } from './analytics-tracking.js';
 import { captureMetaAttribution, normalizeMetaAttribution, updateMetaAttribution } from './meta-attribution.js';
 import { getBrowserPurchaseStorageKey, normalizeBrowserPurchaseTracking } from './meta-browser-purchase.js';
+import { captureTikTokAttribution, normalizeTikTokAttribution, updateTikTokAttribution } from './tiktok-attribution.js';
+import {
+  TIKTOK_PRODUCT_CONTENT_ID,
+  TIKTOK_PRODUCT_CONTENT_NAME,
+  TIKTOK_PRODUCT_CONTENT_TYPE,
+  getTikTokCompletePaymentStorageKey,
+  getTikTokInitiateCheckoutEventId,
+  getTikTokPageUrl,
+  initializeTikTokPixel,
+  normalizeTikTokCompletePayment,
+  trackTikTokEvent
+} from './tiktok-browser-tracking.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
@@ -45,6 +57,7 @@ const ANALYTICS_VISITOR_ID_KEY = 'lucky_colorstone_visitor_id';
 const ANALYTICS_SOURCE_KEY = 'lucky_analytics_first_source';
 const ANALYTICS_LATEST_SOURCE_KEY = 'lucky_analytics_latest_source';
 const META_ATTRIBUTION_STORAGE_KEY = 'lucky_meta_attribution_v1';
+const TIKTOK_ATTRIBUTION_STORAGE_KEY = 'lucky_tiktok_attribution_v1';
 const ANALYTICS_STARTED_AT_KEY = 'lucky_analytics_started_at';
 const ANALYTICS_LAST_SEEN_AT_KEY = 'lucky_analytics_last_seen_at';
 const ANALYTICS_CURRENT_STAGE_KEY = 'lucky_analytics_current_stage';
@@ -313,6 +326,7 @@ let analyticsSessionId = '';
 let analyticsVisitorId = '';
 let analyticsFirstSource = null;
 let metaAttribution = null;
+let tiktokAttribution = null;
 let analyticsStartedAt = '';
 let analyticsLastSeenAt = '';
 let analyticsCurrentStage = '';
@@ -1302,7 +1316,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       trackAnalyticsEvent('landing_view');
     } else if (State.currentStep >= 1 && State.currentStep <= 4) {
       trackStepView(State.currentStep);
-      if (State.currentStep < 4) trackMetaViewContent();
+      if (State.currentStep < 4) {
+        trackMetaViewContent();
+        void trackTikTokViewContent();
+      }
     }
   }
   
@@ -1377,7 +1394,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (State.currentStep >= 1 && State.currentStep <= 4) {
       trackStepView(State.currentStep);
-      if (State.currentStep < 4) trackMetaViewContent();
+      if (State.currentStep < 4) {
+        trackMetaViewContent();
+        void trackTikTokViewContent();
+      }
     }
   }
   
@@ -1545,6 +1565,24 @@ function captureAndPersistMetaAttribution({ hydrateOnly = false } = {}) {
   }
 }
 
+function readTikTokAttribution() {
+  try {
+    return normalizeTikTokAttribution(JSON.parse(localStorage.getItem(TIKTOK_ATTRIBUTION_STORAGE_KEY) || 'null'));
+  } catch {
+    return null;
+  }
+}
+
+function captureAndPersistTikTokAttribution({ hydrateOnly = false } = {}) {
+  try {
+    const capture = captureTikTokAttribution({ href: window.location.href, referrer: document.referrer, cookieString: document.cookie, now: Date.now() });
+    tiktokAttribution = updateTikTokAttribution(tiktokAttribution || readTikTokAttribution() || {}, capture, { updateLastTouch: !hydrateOnly });
+    localStorage.setItem(TIKTOK_ATTRIBUTION_STORAGE_KEY, JSON.stringify(tiktokAttribution));
+  } catch {
+    // Attribution persistence is best-effort and must never block customization or checkout.
+  }
+}
+
 function readAnalyticsFunnelStageKeys() {
   try {
     const stored = JSON.parse(localStorage.getItem(ANALYTICS_FUNNEL_STAGE_KEYS_KEY) || '[]');
@@ -1615,7 +1653,10 @@ function applyDeferredLineAuthAnalyticsContinuity(rawContinuity) {
 function initAnalytics() {
   captureAndPersistMetaAttribution();
   window.setTimeout(() => captureAndPersistMetaAttribution({ hydrateOnly: true }), 1200);
+  captureAndPersistTikTokAttribution();
+  window.setTimeout(() => captureAndPersistTikTokAttribution({ hydrateOnly: true }), 1200);
   if (IS_UAT_MODE) return;
+  void initializeTikTokPixel();
   try {
     const resolvedSession = resolveAnalyticsSession({
       sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
@@ -1687,6 +1728,7 @@ function getAnalyticsOrderFields() {
     analyticsVisitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
     analyticsSource: analyticsFirstSource || getCurrentAnalyticsSource(),
     metaAttribution: normalizeMetaAttribution(metaAttribution || readMetaAttribution() || {}),
+    tiktokAttribution: normalizeTikTokAttribution(tiktokAttribution || readTikTokAttribution() || {}),
     analyticsSchemaVersion: 2,
     analyticsFunnelVersion: 2
   };
@@ -1843,6 +1885,76 @@ async function verifyAndTrackMetaPurchase(sessionId) {
   try {
     const response = await fetch(`/api/stripe/purchase-tracking?session_id=${encodeURIComponent(sessionId)}`);
     return response.ok ? trackMetaPurchase(await response.json().catch(() => ({}))) : false;
+  } catch {
+    return false;
+  }
+}
+
+function getTikTokContentParameters(extra = {}) {
+  return {
+    content_id: TIKTOK_PRODUCT_CONTENT_ID,
+    content_name: TIKTOK_PRODUCT_CONTENT_NAME,
+    content_type: TIKTOK_PRODUCT_CONTENT_TYPE,
+    url: getTikTokPageUrl(window.location.href),
+    ...extra
+  };
+}
+
+async function trackTikTokOnce(storage, storageKey, eventName, parameters, eventId = '') {
+  try {
+    if (storage.getItem(storageKey)) return false;
+    storage.setItem(storageKey, 'pending');
+  } catch {
+    // A storage-blocked browser still receives one best-effort event per execution.
+  }
+  const sent = await trackTikTokEvent(eventName, parameters, eventId);
+  try {
+    if (sent) storage.setItem(storageKey, '1');
+    else if (storage.getItem(storageKey) === 'pending') storage.removeItem(storageKey);
+  } catch {}
+  return sent;
+}
+
+function trackTikTokViewContent() {
+  return trackTikTokOnce(
+    sessionStorage,
+    'lucky_tiktok_view_content_sent',
+    'ViewContent',
+    getTikTokContentParameters()
+  );
+}
+
+function trackTikTokInitiateCheckout(checkoutSessionId, amountTotal, currency) {
+  const normalizedAmount = Number(amountTotal);
+  const normalizedCurrency = String(currency || '').toUpperCase();
+  const eventId = getTikTokInitiateCheckoutEventId(checkoutSessionId);
+  if (!eventId || !Number.isFinite(normalizedAmount) || normalizedAmount < 0 || normalizedCurrency !== 'THB') return Promise.resolve(false);
+  return trackTikTokOnce(
+    sessionStorage,
+    `lucky_tiktok_initiate_checkout_${encodeURIComponent(eventId)}`,
+    'InitiateCheckout',
+    getTikTokContentParameters({ value: normalizedAmount / 100, currency: normalizedCurrency }),
+    eventId
+  );
+}
+
+function trackTikTokCompletePayment(purchaseTracking) {
+  const purchase = normalizeTikTokCompletePayment(purchaseTracking);
+  if (!purchase) return Promise.resolve(false);
+  return trackTikTokOnce(
+    localStorage,
+    getTikTokCompletePaymentStorageKey(purchase.eventId),
+    'CompletePayment',
+    getTikTokContentParameters({ value: purchase.value, currency: purchase.currency }),
+    purchase.eventId
+  );
+}
+
+async function verifyAndTrackTikTokCompletePayment(sessionId) {
+  if (!sessionId) return false;
+  try {
+    const response = await fetch(`/api/stripe/purchase-tracking?session_id=${encodeURIComponent(sessionId)}`);
+    return response.ok ? trackTikTokCompletePayment(await response.json().catch(() => ({}))) : false;
   } catch {
     return false;
   }
@@ -2776,6 +2888,7 @@ function setupLandingEvents() {
     markStartupPerformance('T4_step1_rendered');
     window.requestAnimationFrame(() => markStartupPerformance('T5_step1_interactive'));
     trackMetaViewContent();
+    void trackTikTokViewContent();
     if (State.currentStep === 1) {
       clearCustomizationLoginIntent();
     }
@@ -8346,6 +8459,7 @@ async function handleStripeReturnIfNeeded() {
       : null;
     activatePaymentCompletedView(processedOrder || null);
     void verifyAndTrackMetaPurchase(sessionId);
+    void verifyAndTrackTikTokCompletePayment(sessionId);
     cleanupStripeReturnParams();
     showToast("Stripe payment already confirmed.");
     return;
@@ -8385,6 +8499,7 @@ async function handleStripeReturnIfNeeded() {
 
     activatePaymentCompletedView(savedOrder);
     void verifyAndTrackMetaPurchase(sessionId);
+    void verifyAndTrackTikTokCompletePayment(sessionId);
     localStorage.setItem(processedKey, 'true');
     clearStripeOrderPayload(sessionId);
     cleanupStripeReturnParams();
@@ -8487,6 +8602,7 @@ async function handleStripeCheckout() {
     // Checkout Started is recorded only after Stripe created a session.
     trackCheckoutStarted(payload.id);
     trackMetaInitiateCheckout(payload.id, payload.amountTotal, payload.currency);
+    void trackTikTokInitiateCheckout(payload.id, payload.amountTotal, payload.currency);
     rememberStripeOrderPayload(payload.id, orderPayload);
     window.location.assign(payload.url);
   } catch (error) {
