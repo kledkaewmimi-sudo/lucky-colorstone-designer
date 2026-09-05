@@ -16,6 +16,11 @@ const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken
 const { validateAuthoritativeOrder } = require('./server-order-validation.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const {
+  attachAdminOrderNumbers,
+  buildAdminOrderNumberLine,
+  normalizeAdminOrderNumber
+} = require('./server-admin-order-numbers.js');
+const {
   DEFERRED_LOGIN_QA_TTL_MS,
   DEFERRED_LOGIN_QA_TOKEN_PATTERN,
   createDeferredLoginQaToken,
@@ -1248,7 +1253,7 @@ function buildAdminOrderItemSummary(order) {
   return remainder > 0 ? `${visibleParts.join(", ")} +${remainder} more` : visibleParts.join(", ");
 }
 
-function buildAdminOrderNotification(order) {
+function buildAdminOrderNotification(order, adminOrderNumber) {
   const orderId = getOrderId(order) || "-";
   const totalPrice = getOrderTotalPrice(order);
   const customerName = String(order?.customerName || order?.recipientName || "").trim() || "-";
@@ -1258,7 +1263,7 @@ function buildAdminOrderNotification(order) {
   const beadSize = String(order?.beadSize || order?.checkoutSummary?.beadSize || "").trim() || "-";
   const createdTime = String(order?.paidAt || order?.paymentReceivedAt || order?.date || new Date().toISOString());
 
-  const text = [
+  const lines = [
     "มีออเดอร์ใหม่ 🎉",
     `เลขออเดอร์: ${orderId}`,
     `ยอดชำระ: ${totalPrice == null ? "-" : formatLineCurrency(totalPrice)}`,
@@ -1273,7 +1278,9 @@ function buildAdminOrderNotification(order) {
     "",
     `CRM: ${buildCrmOrderUrl(order)}`,
     `รายละเอียดลูกค้า: ${getOrderDetailUrl(order)}`
-  ].join("\n");
+  ];
+  lines[1] = buildAdminOrderNumberLine(adminOrderNumber);
+  const text = lines.join("\n");
 
   return [
     {
@@ -1305,7 +1312,13 @@ async function notifyAdminOrderCreated(order) {
     return { sent: false, skipped: "no-target" };
   }
 
-  const messages = buildAdminOrderNotification(order);
+  const adminOrderNumber = await getAdminOrderNumberForOrderId(getOrderId(order));
+  if (adminOrderNumber === null) {
+    console.warn(`[admin-notify] skipped ${getOrderId(order)}: database admin order number is unavailable`);
+    return { sent: false, skipped: "missing-admin-order-number" };
+  }
+
+  const messages = buildAdminOrderNotification(order, adminOrderNumber);
   const results = [];
   for (const target of targets) {
     try {
@@ -2976,6 +2989,38 @@ async function readOrdersForApi() {
   }
 }
 
+async function readAdminOrderNumberRows() {
+  if (!isSupabaseConfigured()) return [];
+  const rows = await supabaseRequest("admin_order_numbers", {
+    params: { select: "order_id,admin_order_number" }
+  });
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function getAdminOrderNumberForOrderId(orderId) {
+  const id = String(orderId || "").trim();
+  if (!id || !isSupabaseConfigured()) return null;
+  const rows = await supabaseRequest("admin_order_numbers", {
+    params: {
+      select: "admin_order_number",
+      order_id: `eq.${id}`,
+      limit: "1"
+    }
+  });
+  return normalizeAdminOrderNumber(Array.isArray(rows) ? rows[0]?.admin_order_number : null);
+}
+
+async function readOrdersForCrmApi() {
+  const orders = await readOrdersForApi();
+  if (!isSupabaseConfigured()) return orders;
+  try {
+    return attachAdminOrderNumbers(orders, await readAdminOrderNumberRows());
+  } catch (error) {
+    console.warn("[crm-orders] admin number lookup failed:", error?.message || error);
+    return orders;
+  }
+}
+
 async function saveOrderForApi(order) {
   const orderId = getOrderId(order);
   if (isSupabaseConfigured()) {
@@ -4064,6 +4109,11 @@ async function handleApiRequest(req, res, urlObj) {
 
   if (pathname === "/api/orders" && method === "GET") {
     sendJson(res, 200, await readOrdersForApi());
+    return true;
+  }
+
+  if (pathname === "/api/crm/orders" && method === "GET") {
+    sendJson(res, 200, await readOrdersForCrmApi());
     return true;
   }
 

@@ -1751,6 +1751,16 @@ export async function getSharedOrders() {
   return ORDERS;
 }
 
+export async function getSharedCrmOrders() {
+  try {
+    const res = await fetch("/api/crm/orders");
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error("Failed to fetch CRM orders from API", e);
+  }
+  return getSharedOrders();
+}
+
 export async function addSharedOrder(orderData) {
   try {
     const res = await fetch("/api/orders", {

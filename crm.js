@@ -14,6 +14,7 @@ import {
   getSharedSettings, 
   saveSharedSettings, 
   getSharedOrders, 
+  getSharedCrmOrders,
   updateOrderStatus,
   getCatalogLayoutOrder,
   resetCatalogLayoutOrder,
@@ -829,7 +830,7 @@ async function loadDashboardData(prefetched = {}) {
   const categories = Array.isArray(prefetched.categories) ? prefetched.categories : await getSharedCategoryCatalog();
   const charms = Array.isArray(prefetched.charms) ? prefetched.charms : await getSharedCharmCatalog();
   const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
-  const orders = await getSharedOrders();
+  const orders = await getSharedCrmOrders();
   const operationalOrders = orders.filter(isOrderPaidForRevenue);
   const settings = await getSharedSettings();
   if (CRMState.activeTab === 'inventory') {
@@ -4453,6 +4454,7 @@ function renderOrdersList(orders) {
     
     tr.innerHTML = `
       <td data-label="Order ID">
+        ${order.adminOrderNumber ? `<div style="font-weight:800; color: var(--color-navy-dark);">ORDER #${order.adminOrderNumber}</div>` : ''}
         <strong style="color: var(--color-navy-dark);">${order.id}</strong>
         <div style="font-size: 10px; color: var(--color-navy-muted); margin-top:2px;">${formattedDate}</div>
       </td>
@@ -4564,7 +4566,7 @@ function getOrderSpacerDisplayText(order) {
 }
 
 async function openOrderDetailModal(orderId) {
-  const orders = await getSharedOrders();
+  const orders = await getSharedCrmOrders();
   const order = orders.find((entry) => entry.id === orderId);
   if (!order || !DOM.orderDetailBody || !DOM.orderDetailModal) return;
 
@@ -4703,7 +4705,7 @@ function closeOrderDetailModal() {
 // 10. Printable Invoice Exporting
 // ==========================================
 async function openInvoiceModal(orderId) {
-  const orders = await getSharedOrders();
+  const orders = await getSharedCrmOrders();
   const order = orders.find(o => o.id === orderId);
   if (!order) return;
   
