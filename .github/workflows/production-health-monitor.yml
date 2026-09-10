@@ -1,0 +1,70 @@
+name: Production Health Monitor
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health-monitor
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: Check production customer funnel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run non-destructive production health check
+        id: health
+        continue-on-error: true
+        env:
+          PRODUCTION_HEALTH_URL: https://customize.luckycolorstone.com/
+          HEALTH_REPORT_PATH: artifacts/production-health-report.json
+        run: npx playwright test tests/production-health-monitor.spec.mjs --reporter=line
+
+      - name: Upload failure evidence
+        if: always() && steps.health.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-health-failure-${{ github.run_id }}
+          path: |
+            artifacts/production-health-report.json
+            test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Alert LINE admin once
+        if: always() && steps.health.outcome == 'failure'
+        continue-on-error: true
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          ADMIN_LINE_GROUP_ID: ${{ secrets.ADMIN_LINE_GROUP_ID }}
+          ADMIN_LINE_USER_IDS: ${{ secrets.ADMIN_LINE_USER_IDS }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEALTH_REPORT_PATH: artifacts/production-health-report.json
+        run: node scripts/send-production-health-line-alert.mjs "$HEALTH_REPORT_PATH"
+
+      - name: Preserve original health failure
+        if: always() && steps.health.outcome == 'failure'
+        run: |
+          echo "Production health check failed. Review the uploaded evidence."
+          exit 1
