@@ -30,28 +30,77 @@ function compactFailure(value) {
     .slice(0, 180);
 }
 
+function countItems(value, fallback = 0) {
+  return Array.isArray(value) ? value.length : fallback;
+}
+
+function formatApiMetric(slowestApi) {
+  if (!slowestApi?.url) return '-';
+  try {
+    const path = new URL(slowestApi.url).pathname;
+    return `${path} — ${slowestApi.durationMs ?? '-'} ms`;
+  } catch {
+    return `- — ${slowestApi.durationMs ?? '-'} ms`;
+  }
+}
+
+function getFailureMeasurement(report, metrics) {
+  const navigationThreshold = report.thresholdsMs?.fail ?? 2000;
+  if (Number(metrics.step23Ms) > navigationThreshold) {
+    return { measured: `${metrics.step23Ms} ms`, threshold: `${navigationThreshold} ms` };
+  }
+  if (Number(metrics.step34Ms) > navigationThreshold) {
+    return { measured: `${metrics.step34Ms} ms`, threshold: `${navigationThreshold} ms` };
+  }
+  const apiThreshold = report.thresholdsMs?.apiFail ?? 10000;
+  if (Number(metrics.slowestApi?.durationMs) > apiThreshold) {
+    return { measured: `${metrics.slowestApi.durationMs} ms`, threshold: `${apiThreshold} ms` };
+  }
+  return null;
+}
+
 export function buildHealthAlert(report = {}, runUrl = '') {
   const metrics = report.metrics || {};
-  const slowestApi = metrics.slowestApi;
-  const lines = [
-    'Lucky Colorstone Health Alert',
-    '',
-    `Status: ${report.status || 'FAIL'}`,
-    `Time: ${bangkokTime(report.timestamp)}`,
-    `Check: ${compactFailure(report.failedCheck)}`,
-    `Step 2→3: ${metrics.step23Ms ?? '-'} ms`,
-    `Step 3→4: ${metrics.step34Ms ?? '-'} ms`,
-    `Navigation fail threshold: ${report.thresholdsMs?.fail ?? 2000} ms`,
-    `Broken assets: ${Array.isArray(report.brokenAssets) ? report.brokenAssets.length : 0}`,
-    `HTTP 5xx: ${Array.isArray(report.http5xx) ? report.http5xx.length : 0}`
-  ];
-  if (slowestApi?.url) lines.push(`Slowest API: ${slowestApi.durationMs ?? '-'} ms`);
-  if (runUrl) lines.push('', `GitHub run: ${runUrl}`);
+  const status = report.status === 'PASS' ? 'PASS' : 'FAIL';
+  const brokenImages = countItems(report.brokenAssets);
+  const http5xx = countItems(report.http5xx, metrics.http5xxCount || 0);
+  const jsErrors = Number(metrics.uncaughtPageErrorCount ?? countItems(report.pageErrors));
+  const lines = status === 'PASS'
+    ? [
+        'Lucky Colorstone Health Check',
+        '',
+        'Status: PASS ✅',
+        `Time: ${bangkokTime(report.timestamp)}`,
+        `Step 2→3: ${metrics.step23Ms ?? '-'} ms`,
+        `Step 3→4: ${metrics.step34Ms ?? '-'} ms`,
+        `Broken images: ${brokenImages}`,
+        `HTTP 5xx: ${http5xx}`,
+        `JS errors: ${jsErrors}`,
+        `Slowest API: ${formatApiMetric(metrics.slowestApi)}`
+      ]
+    : [
+        'Lucky Colorstone Health Alert',
+        '',
+        'Status: FAIL 🚨',
+        `Time: ${bangkokTime(report.timestamp)}`,
+        `Failed check: ${compactFailure(report.failedCheck)}`
+      ];
+  if (status === 'FAIL') {
+    const failureMeasurement = getFailureMeasurement(report, metrics);
+    if (failureMeasurement) {
+      lines.push(`Measured: ${failureMeasurement.measured}`, `Threshold: ${failureMeasurement.threshold}`);
+    }
+    lines.push(
+      `Broken images: ${brokenImages}`,
+      `HTTP 5xx: ${http5xx}`,
+      `JS errors: ${jsErrors}`
+    );
+    if (runUrl) lines.push('', `GitHub run: ${runUrl}`);
+  }
   return lines.join('\n').slice(0, 4900);
 }
 
 export async function sendHealthAlert({ report, env = process.env, fetchImpl = fetch } = {}) {
-  if (report?.status !== 'FAIL') return { sent: false, skipped: 'health-pass' };
   const token = String(env.LINE_CHANNEL_ACCESS_TOKEN || '').trim();
   const target = resolveAdminTarget(env);
   if (!token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not configured.');
@@ -90,16 +139,12 @@ async function main() {
   const dryRun = args.includes('--dry-run');
   const reportPath = args.find((value) => value !== '--dry-run') || 'artifacts/production-health-report.json';
   const report = await readReport(reportPath);
-  if (report.status !== 'FAIL') {
-    console.log('LINE health alert skipped: health status is not FAIL.');
-    return;
-  }
   if (dryRun) {
     console.log(buildHealthAlert(report, process.env.GITHUB_RUN_URL || ''));
     return;
   }
   await sendHealthAlert({ report });
-  console.log('LINE health alert sent.');
+  console.log('LINE health summary sent.');
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

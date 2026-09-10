@@ -59,15 +59,34 @@ test('monitor detects catalog image, HTTP 5xx, request, and page failures', () =
   assert.match(monitor, /data-catalog-section/);
 });
 
-test('PASS health status skips LINE without reading a target', async () => {
-  let calls = 0;
+test('PASS health status sends one concise LINE success summary', async () => {
+  const requests = [];
   const result = await sendHealthAlert({
-    report: { status: 'PASS' },
-    env: {},
-    fetchImpl: async () => { calls += 1; return { ok: true }; }
+    report: {
+      timestamp: '2026-09-10T12:00:00.000Z',
+      status: 'PASS',
+      metrics: {
+        step23Ms: 120,
+        step34Ms: 180,
+        http5xxCount: 0,
+        uncaughtPageErrorCount: 0,
+        slowestApi: { url: 'https://customize.luckycolorstone.com/api/stones', durationMs: 420 }
+      },
+      brokenAssets: [],
+      http5xx: [],
+      pageErrors: []
+    },
+    env: { LINE_CHANNEL_ACCESS_TOKEN: 'test-token', ADMIN_LINE_GROUP_ID: 'test-group' },
+    fetchImpl: async (url, options) => { requests.push({ url, options }); return { ok: true, status: 200 }; }
   });
-  assert.deepEqual(result, { sent: false, skipped: 'health-pass' });
-  assert.equal(calls, 0);
+  assert.deepEqual(result, { sent: true });
+  assert.equal(requests.length, 1);
+  const text = JSON.parse(requests[0].options.body).messages[0].text;
+  assert.match(text, /Lucky Colorstone Health Check/);
+  assert.match(text, /Status: PASS/);
+  assert.match(text, /Step 2→3: 120 ms/);
+  assert.match(text, /Slowest API: \/api\/stones — 420 ms/);
+  assert.doesNotMatch(text, /test-token|test-group/);
 });
 
 test('FAIL health status sends one concise redacted LINE alert', async () => {
@@ -76,6 +95,7 @@ test('FAIL health status sends one concise redacted LINE alert', async () => {
     timestamp: '2026-09-10T12:00:00.000Z',
     status: 'FAIL',
     failedCheck: 'Step 2 to Step 3 performance',
+    thresholdsMs: { fail: 2000, apiFail: 10000 },
     metrics: {
       step23Ms: 3214,
       step34Ms: 80,
@@ -102,8 +122,9 @@ test('FAIL health status sends one concise redacted LINE alert', async () => {
   const payload = JSON.parse(requests[0].options.body);
   assert.equal(payload.messages.length, 1);
   assert.match(payload.messages[0].text, /Status: FAIL/);
-  assert.match(payload.messages[0].text, /Step 2→3: 3214 ms/);
-  assert.match(payload.messages[0].text, /Navigation fail threshold: 2000 ms/);
+  assert.match(payload.messages[0].text, /Failed check: Step 2 to Step 3 performance/);
+  assert.match(payload.messages[0].text, /Measured: 3214 ms/);
+  assert.match(payload.messages[0].text, /Threshold: 2000 ms/);
   assert.doesNotMatch(payload.messages[0].text, /test-token|test-group/);
 });
 
@@ -114,6 +135,29 @@ test('LINE targeting reuses existing admin environment names and selects one tar
   assert.match(workflow, /secrets\.ADMIN_LINE_GROUP_ID/);
   assert.match(workflow, /secrets\.ADMIN_LINE_USER_IDS/);
   assert.doesNotMatch(workflow, /LINE_CHANNEL_SECRET/);
+});
+
+test('workflow invokes exactly one LINE notification step for every health result', () => {
+  const notificationStep = workflow.match(/- name: Send one LINE health summary[\s\S]*?(?=\n\s+- name:)/)?.[0] || '';
+  assert.match(notificationStep, /if: always\(\)/);
+  assert.equal((workflow.match(/send-production-health-line-alert\.mjs/g) || []).length, 1);
+  assert.doesNotMatch(notificationStep, /steps\.health\.outcome/);
+});
+
+test('LINE delivery failure stays explicit without replacing the health result', async () => {
+  let calls = 0;
+  await assert.rejects(
+    sendHealthAlert({
+      report: { status: 'PASS', metrics: {}, brokenAssets: [], http5xx: [], pageErrors: [] },
+      env: { LINE_CHANNEL_ACCESS_TOKEN: 'test-token', ADMIN_LINE_GROUP_ID: 'test-group' },
+      fetchImpl: async () => { calls += 1; return { ok: false, status: 503 }; }
+    }),
+    /LINE push API returned HTTP 503/
+  );
+  assert.equal(calls, 1);
+  assert.match(workflow, /Send one LINE health summary[\s\S]*continue-on-error: true/);
+  assert.match(workflow, /Preserve original health failure/);
+  assert.match(fs.readFileSync('scripts/send-production-health-line-alert.mjs', 'utf8'), /LINE health alert failed:/);
 });
 
 test('alert text excludes PII and secret material', () => {

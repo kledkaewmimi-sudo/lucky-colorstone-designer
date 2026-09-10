@@ -59,14 +59,16 @@ measured separately and does not fail a responsive visible transition by itself.
 - Triple-click activations: 1 for each transition; duplicate toasts: 0.
 - Intercepted writes: 34; production mutation requests forwarded: 0.
 
-## Failure artifacts and alerting
+## Failure artifacts and notifications
 
 On failure, Actions uploads the JSON report plus Playwright screenshot and trace
-for 14 days. The alert step sends one short LINE push, then a final step restores
-the original health failure even if LINE delivery failed.
+for 14 days. Every scheduled or manual run attempts exactly one LINE push: a
+concise health check summary for PASS or a concise alert for FAIL. A final step
+restores the original health failure even if LINE delivery failed.
 
 A controlled failure produced the expected FAIL report, screenshot, trace, and
-redacted dry-run alert. A PASS report invokes no alert request.
+redacted dry-run alert. Focused tests verify that simulated PASS and FAIL reports
+each make exactly one LINE request and contain no token, target ID, or PII.
 
 Required repository secrets:
 
