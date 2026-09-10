@@ -276,6 +276,20 @@ function nextRandomOrderId() {
   return `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 }
 
+function normalizeStripeCheckoutAttemptId(value) {
+  const attemptId = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{16,80}$/.test(attemptId) ? attemptId : '';
+}
+
+function resolveStripeCheckoutAttemptId(value) {
+  return value === undefined ? crypto.randomUUID() : normalizeStripeCheckoutAttemptId(value);
+}
+
+function getStripeCheckoutOrderId(attemptId) {
+  const digest = crypto.createHash('sha256').update(attemptId).digest();
+  return `ORD-${100000 + (digest.readUInt32BE(0) % 900000)}`;
+}
+
 function getEnvValue(name, defaultValue = "") {
   const value = process.env[name];
   return value && String(value).trim() ? String(value) : defaultValue;
@@ -1550,7 +1564,7 @@ function getStripeSessionShippingDetails(session) {
   return shippingDetails.name || shippingDetails.address ? shippingDetails : null;
 }
 
-async function createStripeCheckoutSession({ order, origin }) {
+async function createStripeCheckoutSession({ order, origin, idempotencyKey }) {
   const stripeSecretKey = getStripeSecretKey();
   if (!stripeSecretKey) {
     throw new Error("STRIPE_SECRET_KEY is not configured.");
@@ -1617,6 +1631,7 @@ async function createStripeCheckoutSession({ order, origin }) {
     method: "POST",
     headers: {
       Authorization: `Bearer ${stripeSecretKey}`,
+      'Idempotency-Key': idempotencyKey,
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body: form
@@ -3591,9 +3606,18 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    const checkoutAttemptId = resolveStripeCheckoutAttemptId(bodyObj.checkoutAttemptId);
+    if (!checkoutAttemptId) {
+      sendJson(res, 400, { error: 'A valid checkout attempt ID is required.' });
+      return true;
+    }
+
     let authoritativeOrder;
     try {
-      authoritativeOrder = await buildAuthoritativeStripeOrder(bodyObj.order);
+      authoritativeOrder = await buildAuthoritativeStripeOrder({
+        ...bodyObj.order,
+        id: getStripeCheckoutOrderId(checkoutAttemptId)
+      });
       await validateOrderStockOrThrow(authoritativeOrder);
     } catch (error) {
       sendJson(res, error.statusCode || 409, {
@@ -3605,7 +3629,8 @@ async function handleApiRequest(req, res, urlObj) {
 
     const session = await createStripeCheckoutSession({
       order: authoritativeOrder,
-      origin: bodyObj.origin
+      origin: bodyObj.origin,
+      idempotencyKey: checkoutAttemptId
     });
 
     const pendingOrder = {
