@@ -277,6 +277,10 @@ let berylCatalogPreviewController = null;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
+let step2ToStep3TransitionInProgress = false;
+let step3ToStep4TransitionInProgress = false;
+let step4AuthorizationInProgress = false;
+let stripeCheckoutInProgress = false;
 let liffLoginInProgress = false;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
@@ -3605,10 +3609,20 @@ async function renderApp() {
 
 async function renderStep2ToStep3Atomically() {
   syncShellVisibility();
-  await renderStepViews();
+  syncActiveStepView();
+  DOM.stepViews[2]?.setAttribute('aria-busy', 'true');
   renderStepper();
   saveState();
   persistLandingDismissed();
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await renderStepViews({ activeViewCommitted: true });
+}
+
+function syncActiveStepView() {
+  DOM.stepViews.forEach((view, idx) => {
+    const stepNum = idx + 1;
+    view.classList.toggle('active', stepNum === State.currentStep);
+  });
 }
 
 // Stepper bar rendering logic
@@ -3764,8 +3778,9 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
   return validationState;
 }
 
-async function renderStepViews() {
-  if (State.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4()) {
+async function renderStepViews({ activeViewCommitted = false } = {}) {
+  const requestedStep = State.currentStep;
+  if (State.currentStep === 4 && !step4AuthorizationInProgress && requiresLineOaFriendshipForOperationalStep4()) {
     const canEnterStep4 = await canEnterOperationalStep4();
     if (!canEnterStep4) {
       State.currentStep = 3;
@@ -3780,6 +3795,10 @@ async function renderStepViews() {
     // Catalog-dependent designer and checkout work starts at Step 3; Step 1 and Step 2 do not need it.
     await startCustomerCatalogWarmup();
     legacyCharmCatalogCache = await getLegacyCharmCatalog();
+    if (State.currentStep !== requestedStep) {
+      if (requestedStep === 3) DOM.stepViews[2]?.removeAttribute('aria-busy');
+      return;
+    }
     migrateSlotPlaceableCharmSelectionsIntoLoop();
     State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
     syncSelectedCharmState();
@@ -3788,14 +3807,7 @@ async function renderStepViews() {
     }
   }
 
-  DOM.stepViews.forEach((view, idx) => {
-    const stepNum = idx + 1;
-    if (stepNum === State.currentStep) {
-      view.classList.add('active');
-    } else {
-      view.classList.remove('active');
-    }
-  });
+  if (!activeViewCommitted) syncActiveStepView();
 
   // Render specific step data
   if (State.currentStep === 1) {
@@ -3804,6 +3816,7 @@ async function renderStepViews() {
     renderStep2();
   } else if (State.currentStep === 3) {
     renderStep3();
+    DOM.stepViews[2]?.removeAttribute('aria-busy');
   } else if (State.currentStep === 4) {
     await renderStep4();
     if (State.orderDetailLoadError) {
@@ -3841,6 +3854,8 @@ async function goToStep(step) {
     }
     const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: State.currentStep === 3 });
     if (!canEnterStep4) return false;
+    if (State.currentStep !== previousStep) return false;
+    step4AuthorizationInProgress = true;
   }
   if (State.currentStep === 3 && step !== 3) {
     dismissStep3CategoryHint();
@@ -3850,10 +3865,14 @@ async function goToStep(step) {
     resetStep3DesignState(`step3-back-to-${step}`);
   }
   State.currentStep = step;
-  if (previousStep === 2 && step === 3) {
-    await renderStep2ToStep3Atomically();
-  } else {
-    await renderApp();
+  try {
+    if (previousStep === 2 && step === 3) {
+      await renderStep2ToStep3Atomically();
+    } else {
+      await renderApp();
+    }
+  } finally {
+    if (step === 4) step4AuthorizationInProgress = false;
   }
   trackStepView(step);
   return true;
@@ -3941,12 +3960,25 @@ function setupNavigationEvents() {
   });
   
   DOM.btnNext.addEventListener('click', async () => {
+    if (step2ToStep3TransitionInProgress) return;
+    if (State.currentStep === 3 && step3ToStep4TransitionInProgress) return;
     if (State.currentStep === 4) {
       if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
-      if (State.currentStep === 2 && !hasExplicitBeadSizeSelection()) {
-        showToast('กรุณาเลือกขนาดหินก่อน', 3000);
+      if (State.currentStep === 2) {
+        if (!hasExplicitBeadSizeSelection()) {
+          showToast('กรุณาเลือกขนาดหินก่อน', 3000);
+          return;
+        }
+        step2ToStep3TransitionInProgress = true;
+        DOM.btnNext.disabled = true;
+        try {
+          await goToStep(3);
+        } finally {
+          step2ToStep3TransitionInProgress = false;
+          if (State.currentStep === 3) configureFooterNavigation();
+        }
         return;
       }
       if (State.currentStep === 3) {
@@ -3956,18 +3988,26 @@ function setupNavigationEvents() {
           showToast('กรุณาใส่หินให้เต็มวงกำไล', 3000);
           return;
         }
-        const hasStock = await validateCurrentDesignStockWithLatestCatalog();
-        if (!hasStock) return;
-        const deferredAuth = await beginDeferredStep3AuthBoundary();
-        if (deferredAuth.handled) {
-          if (!deferredAuth.ok) {
-            showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
+        step3ToStep4TransitionInProgress = true;
+        DOM.btnNext.disabled = true;
+        try {
+          const deferredAuth = await beginDeferredStep3AuthBoundary();
+          if (State.currentStep !== 3) return;
+          if (deferredAuth.handled) {
+            if (!deferredAuth.ok) {
+              showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
+            }
+            return;
           }
-          return;
+          trackAnalyticsEvent('bracelet_completed', {
+            item_count: getSelectedStoneItems().length
+          });
+          await goToStep(4);
+        } finally {
+          step3ToStep4TransitionInProgress = false;
+          if (State.currentStep === 3) configureFooterNavigation();
         }
-        trackAnalyticsEvent('bracelet_completed', {
-          item_count: getSelectedStoneItems().length
-        });
+        return;
       }
       await goToStep(State.currentStep + 1);
     }
@@ -7969,7 +8009,7 @@ function renderOrderDetailErrorState(message) {
 }
 
 async function renderStep4() {
-  if (requiresLineOaFriendshipForOperationalStep4()) {
+  if (!step4AuthorizationInProgress && requiresLineOaFriendshipForOperationalStep4()) {
     const canEnterStep4 = await canEnterOperationalStep4();
     if (!canEnterStep4) {
       State.currentStep = 3;
@@ -8527,41 +8567,56 @@ async function handleStripeCheckout() {
     return;
   }
 
-  ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
-
-  const fitEligibility = getCurrentCheckoutFitEligibility();
-  if (!fitEligibility.eligible) {
-    showToast(fitEligibility.reason);
-    return;
-  }
-
-  if (getSelectedStoneItems().length === 0) {
-    showToast("Bracelet is empty!");
-    return;
-  }
-
-  const hasStock = await validateCurrentDesignStockWithLatestCatalog();
-  if (!hasStock) {
-    return;
-  }
-
-  const hasLineLogin = await requireLineLoginForCustomization();
-  if (!hasLineLogin) {
-    return;
-  }
-
-  const canEnterStep4 = await canEnterOperationalStep4();
-  if (!canEnterStep4) return;
-
-  const shippingInfo = validateShippingInfo();
-  if (!shippingInfo) {
-    return;
-  }
+  if (stripeCheckoutInProgress) return;
 
   const checkoutButton = State.currentStep === 4 ? DOM.btnNext : DOM.btnPayWithStripe;
   if (!checkoutButton) return;
 
   const originalMarkup = checkoutButton.innerHTML;
+  const releaseCheckout = () => {
+    stripeCheckoutInProgress = false;
+    checkoutButton.disabled = false;
+    checkoutButton.removeAttribute('aria-busy');
+    checkoutButton.innerHTML = originalMarkup;
+  };
+  stripeCheckoutInProgress = true;
+  checkoutButton.disabled = true;
+  checkoutButton.setAttribute('aria-busy', 'true');
+  checkoutButton.textContent = 'กำลังพาไปชำระเงิน...';
+
+  ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
+
+  const fitEligibility = getCurrentCheckoutFitEligibility();
+  if (!fitEligibility.eligible) {
+    showToast(fitEligibility.reason);
+    releaseCheckout();
+    return;
+  }
+
+  if (getSelectedStoneItems().length === 0) {
+    releaseCheckout();
+    showToast("Bracelet is empty!");
+    return;
+  }
+
+  const hasLineLogin = await requireLineLoginForCustomization();
+  if (!hasLineLogin) {
+    releaseCheckout();
+    return;
+  }
+
+  const canEnterStep4 = await canEnterOperationalStep4();
+  if (!canEnterStep4) {
+    releaseCheckout();
+    return;
+  }
+
+  const shippingInfo = validateShippingInfo();
+  if (!shippingInfo) {
+    releaseCheckout();
+    return;
+  }
+
   checkoutButton.disabled = true;
   checkoutButton.textContent = 'กำลังพาไปชำระเงิน...';
   State.landingDismissed = true;
@@ -8569,6 +8624,9 @@ async function handleStripeCheckout() {
 
   try {
     await ensureBraceletPreviewImage();
+    const checkoutAttemptId = typeof window.crypto?.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : [Date.now(), Math.random().toString(36).slice(2), Math.random().toString(36).slice(2)].join('-');
     const orderPayload = buildCurrentOrderPayload({
       shippingInfo,
       recipientName: shippingInfo.recipientName,
@@ -8584,6 +8642,7 @@ async function handleStripeCheckout() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         origin: window.location.origin,
+        checkoutAttemptId,
         order: orderPayload
       })
     });
@@ -8613,8 +8672,7 @@ async function handleStripeCheckout() {
         .map((issue) => `${issue.name || issue.id} (${issue.requiredQty}/${issue.stockQty})`)
         .join(', ');
       showToast(`\u0E2A\u0E15\u0E47\u0E2D\u0E01\u0E44\u0E21\u0E48\u0E1E\u0E2D: ${issueText} \u0E01\u0E23\u0E38\u0E13\u0E32\u0E1B\u0E23\u0E31\u0E1A\u0E01\u0E33\u0E44\u0E25`);
-      checkoutButton.disabled = false;
-      checkoutButton.innerHTML = originalMarkup;
+      releaseCheckout();
       return;
     }
     trackAnalyticsEvent('payment_failed', {
@@ -8625,8 +8683,7 @@ async function handleStripeCheckout() {
       message: error?.message || String(error || ''),
       source: 'stripe_checkout'
     });
-    checkoutButton.disabled = false;
-    checkoutButton.innerHTML = originalMarkup;
+    releaseCheckout();
     showToast(error.message || "Stripe Checkout could not be started.");
   }
 }

@@ -55,7 +55,7 @@ test('every mobile operational Step 4 entry uses the centralized friendship guar
   const navigationStart = source.indexOf('async function goToStep(step)');
   const navigationEnd = source.indexOf('// Stepper bar rendering logic', navigationStart);
   const navigation = source.slice(navigationStart, navigationEnd);
-  const renderStart = source.indexOf('async function renderStepViews()');
+  const renderStart = source.indexOf('async function renderStepViews(');
   const renderEnd = source.indexOf('// Navigate to step', renderStart);
   const render = source.slice(renderStart, renderEnd);
   const checkoutStart = source.indexOf('async function handleStripeCheckout()');
@@ -71,7 +71,7 @@ test('every mobile operational Step 4 entry uses the centralized friendship guar
   assert.match(gate, /lineOaFriendshipStep4ResumePending = queueStep3Resume && State\.currentStep === 3/);
   assert.match(gate, /await openLineOaAddFriendExperience\(\)/);
   assert.ok(navigation.indexOf('await canEnterOperationalStep4') < navigation.indexOf('State.currentStep = step'));
-  assert.match(render, /State\.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4\(\)/);
+  assert.match(render, /State\.currentStep === 4 && !step4AuthorizationInProgress && requiresLineOaFriendshipForOperationalStep4\(\)/);
   assert.match(render, /State\.currentStep = 3/);
   assert.match(step4, /const canEnterStep4 = await canEnterOperationalStep4\(\)/);
   assert.ok(checkout.indexOf('await canEnterOperationalStep4') < checkout.indexOf("fetch('/api/stripe/checkout-session'"));

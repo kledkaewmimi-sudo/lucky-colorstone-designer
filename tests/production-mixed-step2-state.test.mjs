@@ -31,9 +31,9 @@ test('Step 2 cards retain the approved exact order and Thai mixed copy', () => {
 });
 
 test('Step 2 blocks Next without explicit selection and uses the Thai selection toast', () => {
-  assert.match(appSource, /State\.currentStep === 2 && !hasExplicitBeadSizeSelection\(\)/);
+  assert.match(appSource, /State\.currentStep === 2[\s\S]*if \(!hasExplicitBeadSizeSelection\(\)\)/);
   assert.ok(appSource.includes(selectionToast));
-  assert.match(appSource, /await goToStep\(State\.currentStep \+ 1\)/);
+  assert.match(appSource, /step2ToStep3TransitionInProgress = true[\s\S]*await goToStep\(3\)/);
 });
 
 test('all four canonical selections are valid without a default coercion', () => {
