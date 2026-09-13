@@ -1,6 +1,3 @@
-// ==========================================
-
-import { normalizeCrmOrderDetailResponse } from './crm-order-details.js';
 // LUCKY.COLORSTONE - Shared Database & Sync Layer (REST API)
 // ==========================================
 
