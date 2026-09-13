@@ -3048,7 +3048,7 @@ function applyCrmPaidOrderFilter(params) {
 
 async function readCrmOrderProjection({ page = null, limit = null, paidOnly = false } = {}) {
   if (!isSupabaseConfigured()) return readOrdersForCrmApi();
-  const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
+  const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,braceletSequence:payload->braceletSequence,costSnapshotStatus:payload->costSnapshot->>status,costSnapshotMaterialCost:payload->costSnapshot->>materialCost,costSnapshotDeliveryCost:payload->costSnapshot->>deliveryCost,costSnapshotTotalCost:payload->costSnapshot->>totalCost,costSnapshotProfit:payload->costSnapshot->>profit,costSnapshotMarginPercent:payload->costSnapshot->>marginPercent,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
   const params = { select, order: 'date.desc.nullslast,created_at.desc' };
   if (paidOnly) applyCrmPaidOrderFilter(params);
   if (Number.isInteger(page) && Number.isInteger(limit)) { params.limit = limit; params.offset = (page - 1) * limit; }
@@ -3057,6 +3057,15 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
   const numbers = new Map(adminRows.map((row) => [row.order_id, normalizeAdminOrderNumber(row.admin_order_number)]));
   return (Array.isArray(rows) ? rows : []).map((row) => ({
     ...row,
+    braceletSequence: row.braceletSequence,
+    costSnapshot: {
+      status: row.costSnapshotStatus,
+      materialCost: row.costSnapshotMaterialCost,
+      deliveryCost: row.costSnapshotDeliveryCost,
+      totalCost: row.costSnapshotTotalCost,
+      profit: row.costSnapshotProfit,
+      marginPercent: row.costSnapshotMarginPercent
+    },
     checkoutSummary: {
       subtotal: row.checkoutSubtotal,
       discountPercent: row.checkoutDiscountPercent,

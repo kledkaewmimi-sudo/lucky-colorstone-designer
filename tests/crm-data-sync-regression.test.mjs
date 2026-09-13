@@ -12,7 +12,7 @@ const crmSource = fs.readFileSync(path.join(root, 'crm.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 const orders = [
-  { id: 'paid-new', date: '2026-01-05', stripePaymentStatus: 'paid', totalPrice: 50, wristSize: 16, beadSize: 6, totalBeads: 23, hasCharm: 'true', subtotal: 60, discountAmount: 10, adminOrderNumber: 12, braceletPreviewImage: 'large' },
+  { id: 'paid-new', date: '2026-01-05', stripePaymentStatus: 'paid', totalPrice: 50, wristSize: 16, beadSize: 6, totalBeads: 23, hasCharm: 'true', subtotal: 60, discountAmount: 10, adminOrderNumber: 12, braceletPreviewImage: 'large', braceletSequence: [{ id: 'stone-1', type: 'stone', sizeMm: 6 }], costSnapshot: { status: 'complete', materialCost: 20, deliveryCost: 80, totalCost: 100, profit: 40, marginPercent: 40 } },
   { id: 'pending', date: '2026-01-04', stripePaymentStatus: 'pending_payment', totalPrice: 40, braceletPreviewImage: 'large' },
   { id: 'paid-old', date: '2026-01-03', paymentStatus: 'PAID', totalPrice: 30, braceletPreviewImage: 'large' },
   { id: 'unpaid', date: '2026-01-02', paymentStatus: 'unpaid', totalPrice: 20, braceletPreviewImage: 'large' }
@@ -34,6 +34,8 @@ test('compact order summaries retain list fields and exclude preview data', () =
     { wristSize: summary.wristSize, beadSize: summary.beadSize, totalBeads: summary.totalBeads, hasCharm: summary.hasCharm, subtotal: summary.subtotal, discountAmount: summary.discountAmount, totalPrice: summary.totalPrice, adminOrderNumber: summary.adminOrderNumber },
     { wristSize: 16, beadSize: 6, totalBeads: 23, hasCharm: true, subtotal: 60, discountAmount: 10, totalPrice: 50, adminOrderNumber: 12 }
   );
+assert.deepEqual(summary.braceletSequence, [{ id: 'stone-1', type: 'stone', sizeMm: 6 }]);
+  assert.deepEqual(summary.costSnapshot, { status: 'complete', materialCost: 20, deliveryCost: 80, totalCost: 100, profit: 40, marginPercent: 40 });
   assert.equal('braceletPreviewImage' in summary, false);
 });
 

@@ -4475,12 +4475,12 @@ function renderOrdersList(orders) {
       ? `${orderSpacerItems.length} ${CRM_COMPONENT_LABELS.spacer}`
       : (order.hasSpacer ? `${order.spacerCount} ${CRM_COMPONENT_LABELS.spacer}` : `No ${CRM_COMPONENT_LABELS.spacer}`);
     
-    const braceletPreviewHtml = order.isCrmCompactListRow
-      ? '<span class=text-muted>Available in detail</span>'
-      : renderOrderBraceletPreview(order, {
-        className: 'order-bracelet-preview-compact',
-        title: `Bracelet layout for ${order.id}`
-      });
+    // Compact rows carry only braceletSequence, which feeds the established
+    // lightweight SVG preview renderer without transferring stored image blobs.
+    const braceletPreviewHtml = renderOrderBraceletPreview(order, {
+      className: 'order-bracelet-preview-compact',
+      title: `Bracelet layout for ${order.id}`
+    });
     
     // Price summary details
     const displaySubtotal = getOrderSubtotal(order);
@@ -4498,9 +4498,8 @@ function renderOrdersList(orders) {
         <div style="font-weight:700; color: var(--color-gold); font-size:13px; margin-top:2px;">Total: ฿${order.netPrice.toLocaleString()}</div>
       </div>
     `;
-    const costText = order.isCrmCompactListRow
-      ? '<span class="text-muted">Available in detail</span>'
-      : renderOrderCostSummary(order);
+    // The paginated read model supplies the stored cost snapshot scalars.
+    const costText = renderOrderCostSummary(order);
     
     // Workflow status dropdown selector
     const currentStatus = order.status || 'New Order';

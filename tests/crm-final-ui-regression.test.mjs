@@ -41,9 +41,14 @@ test('genuine missing snapshots remain unavailable while detail renders stored s
   assert.match(crmSource, /getCrmOrderDetail\(orderId\)/);
 });
 
-test('compact order rows keep preview and cost structures out of the list response/rendering', () => {
-  assert.match(crmSource, /order\.isCrmCompactListRow\n\s*\? '<span class="text-muted">Available in detail<\/span>'/);
-  assert.doesNotMatch(serverSource.match(/const select = '[^']+'/)?.[0] || '', /braceletPreviewImage|costSnapshot/);
+test('compact order rows restore original card preview and stored cost snapshot without preview blobs', () => {
+  const projection = serverSource.match(/const select = '[^']+'/)?.[0] || '';
+  assert.match(projection, /braceletSequence:payload->braceletSequence/);
+  assert.match(projection, /costSnapshotMaterialCost:payload->costSnapshot->>materialCost/);
+  assert.doesNotMatch(projection, /braceletPreviewImage/);
+  assert.match(crmSource, /const braceletPreviewHtml = renderOrderBraceletPreview\(order/);
+  assert.match(crmSource, /const costText = renderOrderCostSummary\(order\)/);
+  assert.doesNotMatch(crmSource, /Available in detail/);
   assert.match(dataSource, /fetch\(`\/api\/crm\/orders\/\$\{encodeURIComponent\(orderId\)\}`\)/);
   assert.match(dataSource, /fetch\(`\/api\/crm\/orders\?\$\{params\.toString\(\)\}`\)/);
 });

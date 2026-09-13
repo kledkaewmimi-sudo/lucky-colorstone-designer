@@ -7,6 +7,29 @@ function asBoolean(value) {
   return value === true || String(value || '').trim().toLowerCase() === 'true';
 }
 
+function parseCompactBraceletSequence(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function toCompactCostSnapshot(order = {}) {
+  const snapshot = order.costSnapshot && typeof order.costSnapshot === 'object' ? order.costSnapshot : {};
+  return {
+    status: snapshot.status || order.costSnapshotStatus || 'unavailable',
+    materialCost: snapshot.materialCost ?? order.costSnapshotMaterialCost ?? null,
+    deliveryCost: snapshot.deliveryCost ?? order.costSnapshotDeliveryCost ?? null,
+    totalCost: snapshot.totalCost ?? order.costSnapshotTotalCost ?? null,
+    profit: snapshot.profit ?? order.costSnapshotProfit ?? null,
+    marginPercent: snapshot.marginPercent ?? order.costSnapshotMarginPercent ?? null
+  };
+}
+
 function isCrmPaidOrder(order = {}) {
   return String(order.stripePaymentStatus || order.paymentStatus || '').trim().toLowerCase() === 'paid';
 }
@@ -51,6 +74,10 @@ function toCrmOrderSummary(order = {}) {
     charmSizeCm: asNumber(order.charmSizeCm),
     hasSpacer: asBoolean(order.hasSpacer),
     spacerCount: asNumber(order.spacerCount),
+    // Keep card visuals lightweight: sequence powers the pre-existing SVG renderer;
+    // never include the persisted full-resolution braceletPreviewImage in a list row.
+    braceletSequence: parseCompactBraceletSequence(order.braceletSequence),
+    costSnapshot: toCompactCostSnapshot(order),
     subtotal: asNumber(checkoutSummary.subtotal ?? order.subtotal),
     discountPercent: asNumber(checkoutSummary.discountPercent ?? order.discountPercent),
     discountAmount: asNumber(checkoutSummary.discountAmount ?? order.discountAmount),
@@ -83,6 +110,8 @@ function paginateCrmOrders(orders = [], page = 1, limit = 20) {
 }
 
 module.exports = {
+  parseCompactBraceletSequence,
+  toCompactCostSnapshot,
   isCrmPaidOrder,
   getCrmOrderTotal,
   sortCrmOrders,
