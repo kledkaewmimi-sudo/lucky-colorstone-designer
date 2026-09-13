@@ -2018,8 +2018,10 @@ function isCatalogItemAvailable(item) {
 function mergeCatalogRowAvailability(row) {
   if (!row?.payload || typeof row.payload !== "object") return null;
   const payload = { ...row.payload };
-  if (row.in_stock === false) payload.inStock = false;
-  if (row.is_active === false) payload.isActive = false;
+  // Database columns are authoritative even when an older payload omits or
+  // retains a stale availability flag.
+  if (typeof row.in_stock === "boolean") payload.inStock = row.in_stock;
+  if (typeof row.is_active === "boolean") payload.isActive = row.is_active;
   return payload;
 }
 

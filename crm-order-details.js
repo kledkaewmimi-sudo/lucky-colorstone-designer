@@ -12,6 +12,21 @@ export function getOrderFinalBraceletPreviewImage(order = {}) {
   return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
 }
 
+// CRM detail responses may be returned directly or under an `order` key by a
+// compatible backend. Normalize only the transport shape; stored snapshots
+// and the selected-order preview remain untouched.
+export function normalizeCrmOrderDetailResponse(response = {}) {
+  const order = response?.order && typeof response.order === 'object'
+    ? response.order
+    : response;
+  if (!order || typeof order !== 'object') return null;
+
+  const normalized = { ...order };
+  const preview = getOrderFinalBraceletPreviewImage(order);
+  if (!normalized.braceletPreviewImage && preview) normalized.braceletPreviewImage = preview;
+  return normalized;
+}
+
 export function buildCopyReadyShippingLabel(shippingInfo = {}) {
   const recipientName = String(shippingInfo.recipientName || '').trim();
   const addressLine = String(shippingInfo.addressLine || '').trim();

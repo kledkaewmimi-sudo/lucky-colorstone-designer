@@ -1,6 +1,10 @@
 // ==========================================
+
+import { normalizeCrmOrderDetailResponse } from './crm-order-details.js';
 // LUCKY.COLORSTONE - Shared Database & Sync Layer (REST API)
 // ==========================================
+
+import { normalizeCrmOrderDetailResponse } from './crm-order-details.js';
 
 const CANONICAL_CATEGORY_LABELS = {
   all: { en: "All", th: "ทั้งหมด" },
@@ -1777,7 +1781,7 @@ export async function getCrmOrderPage(page = 1, limit = 20) {
 export async function getCrmOrderDetail(orderId) {
   const res = await fetch(`/api/crm/orders/${encodeURIComponent(orderId)}`);
   if (!res.ok) throw new Error(`GET /api/crm/orders/:id failed with HTTP ${res.status}`);
-  return res.json();
+  return normalizeCrmOrderDetailResponse(await res.json());
 }
 
 export async function addSharedOrder(orderData) {

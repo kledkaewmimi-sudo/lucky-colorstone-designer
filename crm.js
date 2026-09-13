@@ -38,7 +38,7 @@ import {
 } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { buildCopyReadyShippingLabel, getOrderFinalBraceletPreviewImage } from './crm-order-details.js';
-import { createCrmSettingsLoader, loadCrmOverviewWithFallback } from './crm-runtime-loaders.mjs';
+import { createCrmSettingsLoader, getCrmStoneOverviewMetrics, loadCrmOverviewWithFallback } from './crm-runtime-loaders.mjs';
 
 const CLEAN_EDGE_STONE_IDS = new Set([BERYL_STONE_ID, 'sunstone', 'green_jade']);
 const loadCrmSettings = createCrmSettingsLoader(getSharedSettings);
@@ -839,9 +839,14 @@ async function loadDashboardData(prefetched = {}) {
   if (CRMState.activeTab === 'overview' && !prefetched.legacyOverview) {
     return loadCrmOverviewWithFallback({
       requestOverview: getCrmOverview,
-      renderOverview: (overview) => {
+      renderOverview: async (overview) => {
         DOM.metricTotalOrders.textContent = Number(overview.paidOrderCount).toLocaleString();
         DOM.metricTotalRevenue.textContent = `฿${Number(overview.revenue).toLocaleString()}`;
+        const stones = await getSharedCatalog();
+        const { activeStonesCount, outOfStockCount } = getCrmStoneOverviewMetrics(stones);
+        DOM.metricActiveStones.textContent = activeStonesCount;
+        DOM.metricOosAlert.textContent = `${outOfStockCount} Out of Stock`;
+        DOM.metricOosAlert.className = outOfStockCount > 0 ? 'metric-sub text-red' : 'metric-sub';
         renderRecentOrdersList(overview.recentOrders.map((order) => ({ ...order, wristSize: Number(order.wristSize || 0), totalBeads: Number(order.totalBeads || 0) })));
       },
       fallback: () => loadDashboardData({ ...prefetched, legacyOverview: true }),
@@ -4493,7 +4498,9 @@ function renderOrdersList(orders) {
         <div style="font-weight:700; color: var(--color-gold); font-size:13px; margin-top:2px;">Total: ฿${order.netPrice.toLocaleString()}</div>
       </div>
     `;
-    const costText = renderOrderCostSummary(order);
+    const costText = order.isCrmCompactListRow
+      ? '<span class="text-muted">Available in detail</span>'
+      : renderOrderCostSummary(order);
     
     // Workflow status dropdown selector
     const currentStatus = order.status || 'New Order';
@@ -4768,6 +4775,11 @@ async function openOrderDetailModal(orderId) {
           { label: 'Final Total', value: detailMoneyValue(detailFinalPrice), rawHtml: true },
           { label: 'Currency', value: 'THB' }
         ])}
+      </section>
+
+      <section class="order-detail-section">
+        <h4>Cost &amp; Profit</h4>
+        ${renderOrderCostSummary(order)}
       </section>
 
       <section class="order-detail-section order-detail-section-wide">

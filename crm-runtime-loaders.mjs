@@ -35,11 +35,28 @@ export function isValidCrmOverview(overview) {
     && Array.isArray(overview?.recentOrders);
 }
 
+// The historical overview card labelled "Active Stones" counted stones that
+// can currently be sold (in stock). Keep that legacy label/meaning while
+// taking explicit database-column values over stale payload values.
+export function getCrmStoneOverviewMetrics(stones = []) {
+  const list = Array.isArray(stones) ? stones : [];
+  const isInStock = (stone = {}) => {
+    if (typeof stone.in_stock === 'boolean') return stone.in_stock;
+    if (typeof stone.inStock === 'boolean') return stone.inStock;
+    if (typeof stone.availability?.inStock === 'boolean') return stone.availability.inStock;
+    return true;
+  };
+  return {
+    activeStonesCount: list.filter(isInStock).length,
+    outOfStockCount: list.filter((stone) => !isInStock(stone)).length
+  };
+}
+
 export async function loadCrmOverviewWithFallback({ requestOverview, renderOverview, fallback, onFallback }) {
   try {
     const overview = await requestOverview();
     if (!isValidCrmOverview(overview)) throw new Error('Invalid CRM overview response.');
-    renderOverview(overview);
+    await renderOverview(overview);
     return { source: 'compact', overview };
   } catch (error) {
     onFallback?.(error);
