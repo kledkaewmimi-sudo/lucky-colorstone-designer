@@ -38,7 +38,7 @@ test('Green Jade 6 mm and Lucky Clover use the complete lavender new label', () 
 });
 
 test('shared badge dimensions leave room for Thai marks and sparkle without clipping', () => {
-  assert.match(productBadgeCss, /width:\s*58px;[\s\S]*?height:\s*22px;[\s\S]*?line-height:\s*1\.5;[\s\S]*?overflow:\s*visible;/);
+  assert.match(productBadgeCss, /width:\s*52px;[\s\S]*?height:\s*18px;[\s\S]*?line-height:\s*1\.35;[\s\S]*?overflow:\s*visible;/);
   assert.doesNotMatch(productBadgeCss, /overflow:\s*hidden;/);
   assert.match(productBadgeCss, /font-family:\s*"Noto Sans Thai",\s*"Leelawadee UI",\s*system-ui,\s*sans-serif;/);
 });
