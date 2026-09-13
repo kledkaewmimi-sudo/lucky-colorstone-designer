@@ -1761,6 +1761,25 @@ export async function getSharedCrmOrders() {
   return getSharedOrders();
 }
 
+export async function getCrmOverview() {
+  const res = await fetch('/api/crm/overview');
+  if (!res.ok) throw new Error(`GET /api/crm/overview failed with HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function getCrmOrderPage(page = 1, limit = 20) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  const res = await fetch(`/api/crm/orders?${params.toString()}`);
+  if (!res.ok) throw new Error(`GET /api/crm/orders failed with HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function getCrmOrderDetail(orderId) {
+  const res = await fetch(`/api/crm/orders/${encodeURIComponent(orderId)}`);
+  if (!res.ok) throw new Error(`GET /api/crm/orders/:id failed with HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function addSharedOrder(orderData) {
   try {
     const res = await fetch("/api/orders", {
