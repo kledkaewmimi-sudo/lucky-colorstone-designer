@@ -2672,21 +2672,21 @@ option {
 }
 
 .product-badge {
-  width: 58px;
-  height: 22px;
+  width: 52px;
+  height: 18px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   position: absolute;
-  top: -6px;
-  left: -6px;
+  top: 6px;
+  left: 6px;
   z-index: 2;
   border-radius: 999px;
   font-family: "Noto Sans Thai", "Leelawadee UI", system-ui, sans-serif;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: visible;
   pointer-events: none;
