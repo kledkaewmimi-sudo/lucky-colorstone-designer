@@ -5,6 +5,7 @@ import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGu
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
 import { createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
+import { getProductCardBadge } from './product-card-badges.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
@@ -4629,6 +4630,7 @@ function buildStoneCard({
   imageClassName = 'stone-img',
   imageStyle = null,
   mediaLabel = '',
+  badge = null,
   nameTh,
   nameEn,
   priceText,
@@ -4651,6 +4653,13 @@ function buildStoneCard({
 
   if (dataAttributeName) {
     card.setAttribute(`data-${dataAttributeName}`, dataAttributeValue ?? '');
+  }
+
+  if (badge) {
+    const badgeElement = document.createElement('span');
+    badgeElement.className = `product-badge product-badge--${badge.variant}`;
+    badgeElement.textContent = badge.label;
+    card.appendChild(badgeElement);
   }
 
   if (onInfoClick) {
@@ -6091,6 +6100,7 @@ function renderCharmOptions() {
       nameTh: charmMeta.nameTh,
       nameEn: charmMeta.nameEn,
       priceText: formatDisplayPrice(charm.price),
+      badge: getProductCardBadge('charms', charm.id),
       isSelected,
       onCardClick: () => selectCharm(charm.id),
       onInfoClick: () => openCharmInfoModal(charm),
@@ -6634,6 +6644,7 @@ function renderCatalogGrid() {
       nameTh: stone.nameTh,
       nameEn: stone.name,
       priceText: catalogPrice === null ? 'Select a size' : formatDisplayPrice(catalogPrice),
+      badge: getProductCardBadge('stones', stone.id, catalogCurrentSize),
       isSelected: selectedCount > 0,
       selectedClassName: 'stone-card-selected',
       onCardClick: () => addStoneToBracelet(stone.id),
