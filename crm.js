@@ -14,9 +14,6 @@ import {
   getSharedSettings, 
   saveSharedSettings, 
   getSharedOrders, 
-  getCrmOverview,
-  getCrmOrderPage,
-  getCrmOrderDetail,
   getSharedCrmOrders,
   updateOrderStatus,
   getCatalogLayoutOrder,
@@ -38,10 +35,8 @@ import {
 } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { buildCopyReadyShippingLabel, getOrderFinalBraceletPreviewImage } from './crm-order-details.js';
-import { createCrmSettingsLoader, loadCrmOverviewWithFallback } from './crm-runtime-loaders.mjs';
 
 const CLEAN_EDGE_STONE_IDS = new Set([BERYL_STONE_ID, 'sunstone', 'green_jade']);
-const loadCrmSettings = createCrmSettingsLoader(getSharedSettings);
 let orderBraceletPreviewInstance = 0;
 
 // ==========================================
@@ -88,9 +83,6 @@ const CRMState = {
   categorySearch: '',
   analyticsRange: '7d',
   analyticsLoading: false,
-  crmOrdersPage: 1,
-  crmOrdersLimit: 20,
-  crmOrdersPagination: null,
   selectedInvoiceOrder: null // Order details populated in invoice modal
 };
 
@@ -834,32 +826,13 @@ async function triggerSyncUpdate(keyName) {
 // 7. Load / Calculate Dashboard Stats
 // ==========================================
 async function loadDashboardData(prefetched = {}) {
-  if (CRMState.activeTab === 'overview' && !prefetched.legacyOverview) {
-    return loadCrmOverviewWithFallback({
-      requestOverview: getCrmOverview,
-      renderOverview: (overview) => {
-        DOM.metricTotalOrders.textContent = Number(overview.paidOrderCount).toLocaleString();
-        DOM.metricTotalRevenue.textContent = `฿${Number(overview.revenue).toLocaleString()}`;
-        renderRecentOrdersList(overview.recentOrders.map((order) => ({ ...order, wristSize: Number(order.wristSize || 0), totalBeads: Number(order.totalBeads || 0) })));
-      },
-      fallback: () => loadDashboardData({ ...prefetched, legacyOverview: true }),
-      onFallback: (error) => {
-        console.warn('CRM compact overview unavailable; using the one-time legacy overview fallback.', error);
-        addLog('CRM compact overview unavailable; using legacy overview fallback.', 'warn');
-      }
-    });
-  }
-  if (CRMState.activeTab === 'orders' && !prefetched.legacyOrders) {
-    await loadCrmOrdersPage();
-    return;
-  }
   const stones = Array.isArray(prefetched.stones) ? prefetched.stones : await getSharedCatalog();
   const categories = Array.isArray(prefetched.categories) ? prefetched.categories : await getSharedCategoryCatalog();
   const charms = Array.isArray(prefetched.charms) ? prefetched.charms : await getSharedCharmCatalog();
   const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
   const orders = await getSharedCrmOrders();
   const operationalOrders = orders.filter(isOrderPaidForRevenue);
-  const settings = await loadCrmSettings();
+  const settings = await getSharedSettings();
   if (CRMState.activeTab === 'inventory') {
     CRMState.purchaseCostSummaries = prefetched.purchaseCostSummaries
       || await getSharedPurchaseCostSummaries();
@@ -914,17 +887,6 @@ async function loadDashboardData(prefetched = {}) {
         : settings.discountEnabled !== false;
     }
   }
-}
-
-async function loadCrmOrdersPage(page = CRMState.crmOrdersPage, limit = CRMState.crmOrdersLimit) {
-  const result = await getCrmOrderPage(page, limit);
-  CRMState.crmOrdersPage = Number(result?.page) || page;
-  CRMState.crmOrdersLimit = Number(result?.limit) || limit;
-  CRMState.crmOrdersPagination = result;
-  renderOrdersList((Array.isArray(result?.orders) ? result.orders : []).map((order) => ({
-    ...order,
-    isCrmCompactListRow: true
-  })));
 }
 
 function normalizeUtmValue(value) {
@@ -4404,10 +4366,9 @@ function renderOrdersList(orders) {
     });
     
     // Wrist specs
-    const wristSize = Number(order.wristSize);
-    const wristText = Number.isFinite(wristSize) ? `${wristSize.toFixed(1)} cm` : '—';
-    const beadText = order.beadSize === 'mixed' ? 'Mixed' : (order.beadSize ? `${order.beadSize}mm` : '—');
-    const beadCountText = Number.isFinite(Number(order.totalBeads)) ? `${order.totalBeads} beads` : '—';
+    const wristText = `${order.wristSize.toFixed(1)} cm`;
+    const beadText = order.beadSize === 'mixed' ? 'Mixed' : `${order.beadSize}mm`;
+    const beadCountText = `${order.totalBeads} beads`;
     const orderCharmItems = getOrderCharmItems(order);
     const orderSpacerItems = getOrderSpacerItems(order);
     const charmText = orderCharmItems.length > 0
@@ -4417,12 +4378,10 @@ function renderOrdersList(orders) {
       ? `${orderSpacerItems.length} ${CRM_COMPONENT_LABELS.spacer}`
       : (order.hasSpacer ? `${order.spacerCount} ${CRM_COMPONENT_LABELS.spacer}` : `No ${CRM_COMPONENT_LABELS.spacer}`);
     
-    const braceletPreviewHtml = order.isCrmCompactListRow
-      ? '<span class=text-muted>Available in detail</span>'
-      : renderOrderBraceletPreview(order, {
-        className: 'order-bracelet-preview-compact',
-        title: `Bracelet layout for ${order.id}`
-      });
+    const braceletPreviewHtml = renderOrderBraceletPreview(order, {
+      className: 'order-bracelet-preview-compact',
+      title: `Bracelet layout for ${order.id}`
+    });
     
     // Price summary details
     const displaySubtotal = getOrderSubtotal(order);
@@ -4607,7 +4566,8 @@ function getOrderSpacerDisplayText(order) {
 }
 
 async function openOrderDetailModal(orderId) {
-  const order = await getCrmOrderDetail(orderId);
+  const orders = await getSharedCrmOrders();
+  const order = orders.find((entry) => entry.id === orderId);
   if (!order || !DOM.orderDetailBody || !DOM.orderDetailModal) return;
 
   const shippingInfo = getOrderShippingInfo(order);
@@ -4745,7 +4705,8 @@ function closeOrderDetailModal() {
 // 10. Printable Invoice Exporting
 // ==========================================
 async function openInvoiceModal(orderId) {
-  const order = await getCrmOrderDetail(orderId);
+  const orders = await getSharedCrmOrders();
+  const order = orders.find(o => o.id === orderId);
   if (!order) return;
   
   CRMState.selectedInvoiceOrder = order;
@@ -5350,13 +5311,12 @@ function setupFunctionalEvents() {
       return;
     }
     
-    const settings = await loadCrmSettings();
+    const settings = await getSharedSettings();
     settings.globalDiscountPercent = discountVal;
     settings.discountEnabled = DOM.discountEnabled ? DOM.discountEnabled.checked : true;
     settings.showDiscountBanner = settings.discountEnabled;
     
     await saveSharedSettings(settings);
-    loadCrmSettings.clear();
     addLog(`Changed global discount rate to ${discountVal}% and discount ${settings.discountEnabled ? 'enabled' : 'disabled'}.`);
     showToast(`Global settings saved.`);
     await loadDashboardData();
