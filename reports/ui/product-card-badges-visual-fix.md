@@ -8,7 +8,7 @@ Presentation-only local/UAT change. No mapping identities, catalog data, product
 
 The previous bestseller string omitted the Thai final mark and sparkle in the source label; it was not only a CSS clipping problem. The corrected literal content is `ขายดี✨` (no intervening space). The new badge content is `ใหม่`.
 
-The shared badge has been adjusted to **66px × 28px** with `line-height: 1.6`, a Thai-capable font fallback sequence, and `overflow: visible`. This gives Thai combining marks and the emoji vertical room without changing any card or grid dimensions. The bestseller treatment is deep red `#c8102e` with white text; lavender new treatment remains `#eee8ff`. The info control stacks above the decorative, pointer-inert badge.
+The shared badge has been adjusted to **58px × 22px** with `line-height: 1.5`, a Thai-capable font fallback sequence, and `overflow: visible`. This gives Thai combining marks and the emoji vertical room without changing any card or grid dimensions. The bestseller treatment is deep red `#c8102e` with white text; lavender new treatment remains `#eee8ff`. The info control stacks above the decorative, pointer-inert badge.
 
 ## Files changed
 
