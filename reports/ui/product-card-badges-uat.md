@@ -31,9 +31,9 @@ Unmatched exactly: 4 mm Silver Sand Stone (`silver_sand_stone`) is not available
 ## Verification
 
 - Focused tests verify every matched bestseller, unlisted sizes, Green Jade, Lucky Clover, other unbadged products, shared dimensions, and unchanged selection handlers.
-- `node --check app.js`: pending final run.
-- `git diff --check`: pending final run.
-- Mobile 390 × 844 verification: pending UAT deployment.
+- `node --check app.js`: PASS.
+- `git diff --check`: PASS.
+- Mobile 390 × 844 verification: PASS. Step 3 at 6 mm rendered five expected badges (three bestseller, Green Jade new, Lucky Clover new), with no horizontal overflow. An Amethyst card remained selectable on tap. No HTTP errors were observed.
 
 ## Files changed
 
@@ -45,4 +45,4 @@ Unmatched exactly: 4 mm Silver Sand Stone (`silver_sand_stone`) is not available
 
 ## Deployment
 
-UAT deployment pending tests. Production deployment: **not performed**.
+UAT deployment: `https://lucky-colorstone-b09cpqbfm-lucky-colorstone.vercel.app` (Ready; commit `c8ed865`). Production deployment: **not performed**.
