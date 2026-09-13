@@ -20,7 +20,7 @@ const {
   buildAdminOrderNumberLine,
   normalizeAdminOrderNumber
 } = require('./server-admin-order-numbers.js');
-const { buildCrmOverview, paginateCrmOrders } = require('./crm-order-read-model.js');
+const { buildCrmOverview, paginateCrmOrders, toCrmOrderSummary } = require('./crm-order-read-model.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
   DEFERRED_LOGIN_QA_TOKEN_PATTERN,
@@ -3037,19 +3037,41 @@ async function readOrdersForCrmApi() {
   }
 }
 
-async function readCrmOrderProjection({ page = null, limit = null } = {}) {
+function applyCrmPaidOrderFilter(params) {
+  // stripePaymentStatus is authoritative when present; paymentStatus is only the
+  // historical fallback when the Stripe field is absent.
+  params.or = '(payload->>stripePaymentStatus.ilike.paid,and(payload->>stripePaymentStatus.is.null,payload->>paymentStatus.ilike.paid))';
+  return params;
+}
+
+async function readCrmOrderProjection({ page = null, limit = null, paidOnly = false } = {}) {
   if (!isSupabaseConfigured()) return readOrdersForCrmApi();
-  const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
+  const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
   const params = { select, order: 'date.desc.nullslast,created_at.desc' };
+  if (paidOnly) applyCrmPaidOrderFilter(params);
   if (Number.isInteger(page) && Number.isInteger(limit)) { params.limit = limit; params.offset = (page - 1) * limit; }
   const rows = await supabaseRequest('orders', { params });
   const adminRows = await readAdminOrderNumberRows();
   const numbers = new Map(adminRows.map((row) => [row.order_id, normalizeAdminOrderNumber(row.admin_order_number)]));
   return (Array.isArray(rows) ? rows : []).map((row) => ({
     ...row,
-    checkoutSummary: { totalPrice: row.checkoutTotalPrice, finalPrice: row.checkoutFinalPrice, netPrice: row.checkoutNetPrice },
+    checkoutSummary: {
+      subtotal: row.checkoutSubtotal,
+      discountPercent: row.checkoutDiscountPercent,
+      discountAmount: row.checkoutDiscountAmount,
+      totalPrice: row.checkoutTotalPrice,
+      finalPrice: row.checkoutFinalPrice,
+      netPrice: row.checkoutNetPrice
+    },
     adminOrderNumber: numbers.get(row.id) ?? null
   }));
+}
+
+async function readCrmPaidOrderCount() {
+  if (!isSupabaseConfigured()) return (await readOrdersForCrmApi()).filter((order) => String(order.stripePaymentStatus || order.paymentStatus || '').trim().toLowerCase() === 'paid').length;
+  const params = applyCrmPaidOrderFilter({ select: 'id:payload->>id' });
+  const rows = await supabaseRequest('orders', { params });
+  return Array.isArray(rows) ? rows.length : 0;
 }
 
 async function saveOrderForApi(order) {
@@ -3414,13 +3436,13 @@ async function handleApiRequest(req, res, urlObj) {
   const method = req.method;
 
   if (pathname === '/api/crm/overview' && method === 'GET') {
-    sendJson(res, 200, buildCrmOverview(await readCrmOrderProjection()));
+    sendJson(res, 200, buildCrmOverview(await readCrmOrderProjection({ paidOnly: true })));
     return true;
   }
 
   if (pathname.startsWith('/api/crm/orders/') && method === 'GET') {
     const orderId = decodeURIComponent(pathname.slice('/api/crm/orders/'.length));
-    const rows = await supabaseRequest('orders', { params: { select: 'payload', id: `eq.${orderId}`, limit: '1' } });
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', 'payload->>id': `eq.${orderId}`, limit: '1' } });
     const order = Array.isArray(rows) && rows[0] ? rows[0].payload : null;
     if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
     order.adminOrderNumber = await getAdminOrderNumberForOrderId(orderId);
@@ -3431,8 +3453,13 @@ async function handleApiRequest(req, res, urlObj) {
   if (pathname === '/api/crm/orders' && method === 'GET') {
     const page = Math.max(1, Math.trunc(Number(urlObj.searchParams.get('page')) || 1));
     const limit = Math.min(100, Math.max(1, Math.trunc(Number(urlObj.searchParams.get('limit')) || 20)));
-    const orders = await readCrmOrderProjection({ page, limit });
-    sendJson(res, 200, { page, limit, orders, hasMore: orders.length === limit });
+    const [rows, total] = await Promise.all([
+      readCrmOrderProjection({ page, limit, paidOnly: true }),
+      readCrmPaidOrderCount()
+    ]);
+    const orders = rows.map(toCrmOrderSummary);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    sendJson(res, 200, { page, limit, total, totalPages, orders, hasMore: page < totalPages });
     return true;
   }
 

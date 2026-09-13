@@ -673,9 +673,12 @@ function updatePurchaseSizes() { const e = purchaseElements(); if (e.type.value 
 function updatePurchaseCustomStoneMode() { const e = purchaseElements(); const isCustomStone = e.type.value === 'stone' && e.item.value === CUSTOM_STONE_OPTION; const needsFreeText = e.type.value === 'other' || isCustomStone; e.otherName.hidden = !needsFreeText; e.otherName.required = needsFreeText; e.otherName.placeholder = isCustomStone ? 'ชื่อหิน' : 'ชื่อรายการ'; }
 function setPurchaseType(category = 'stone') { const e = purchaseElements(); const normalized = PURCHASE_CATEGORY_LABELS[category] ? category : 'stone'; e.type.value = normalized; const isStone = normalized === 'stone'; const isOther = normalized === 'other'; document.querySelectorAll('[data-purchase-type]').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.purchaseType === normalized)); e.item.hidden = isOther; e.item.required = !isOther; e.size.hidden = !isStone; e.size.required = isStone; e.qty.placeholder = isStone ? 'จำนวนเม็ด' : 'จำนวนชิ้น'; e.item.innerHTML = `<option value="">${isOther ? '' : `เลือก${PURCHASE_CATEGORY_LABELS[normalized]}`}</option>` + getPurchaseCatalog(normalized).map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(getPurchaseCatalogName(item))}</option>`).join('') + (isStone ? `<option value="${CUSTOM_STONE_OPTION}">+ หินอื่นๆ</option>` : ''); updatePurchaseCustomStoneMode(); updatePurchaseSizes(); updatePurchaseUnitCost(); }
 function resetPurchaseForm() { const e = purchaseElements(); document.getElementById('purchaseForm').reset(); e.edit.value = ''; e.date.value = new Date().toISOString().slice(0, 10); document.getElementById('purchaseCancelEdit').hidden = true; setPurchaseType('stone'); }
-async function loadPurchases() {
+async function loadPurchases(prefetched = {}) {
   const e = purchaseElements();
-  const [stones, charms, spacers, entries] = await Promise.all([getSharedCatalog(), getSharedCharmCatalog(), getSharedSpacerCatalog(), getSharedPurchaseEntries()]);
+  const [{ stones, charms, spacers }, entries] = await Promise.all([
+    loadCrmCatalogBundle(prefetched),
+    getSharedPurchaseEntries()
+  ]);
   CRMState.simulatorCatalogCache = { ...CRMState.simulatorCatalogCache, stones, charms, spacers };
   if (!e.date.value) e.date.value = new Date().toISOString().slice(0, 10);
   CRMState.purchaseEntries = entries;
@@ -747,7 +750,6 @@ async function switchTab(tabName) {
   
   addLog(`Switched view to ${tabName}.`);
   await loadDashboardData();
-  if (tabName === 'purchases') await loadPurchases();
 }
 
 // ==========================================
@@ -853,11 +855,51 @@ async function loadDashboardData(prefetched = {}) {
     await loadCrmOrdersPage();
     return;
   }
+
+  if (CRMState.activeTab === 'purchases') {
+    await loadPurchases(prefetched);
+    return;
+  }
+
+  if (CRMState.activeTab === 'analytics') {
+    renderAnalyticsSummary(await fetchAnalyticsSummary());
+    return;
+  }
+
+  if (CRMState.activeTab === 'settings') {
+    const settings = await loadCrmSettings();
+    DOM.globalDiscountPercent.value = settings.globalDiscountPercent || 0;
+    if (DOM.discountEnabled) {
+      DOM.discountEnabled.checked = settings.discountEnabled === undefined
+        ? settings.showDiscountBanner !== false
+        : settings.discountEnabled !== false;
+    }
+    return;
+  }
+
+  if (CRMState.activeTab === 'inventory' || CRMState.activeTab === 'simulator' || CRMState.activeTab === 'charms') {
+    const { stones, categories, charms, spacers } = await loadCrmCatalogBundle(prefetched);
+    if (CRMState.activeTab === 'inventory') {
+      CRMState.purchaseCostSummaries = prefetched.purchaseCostSummaries
+        || await getSharedPurchaseCostSummaries();
+      renderInventoryCatalog(stones, charms, spacers, CRMState.purchaseCostSummaries);
+    } else if (CRMState.activeTab === 'simulator') {
+      await loadSimulatorPresetFromStorage();
+      renderBraceletLayoutSimulator(stones, charms, spacers);
+    } else {
+      syncCategoryAssignmentSelects(categories);
+      renderCharmCatalog(charms, categories);
+    }
+    return;
+  }
+
   const stones = Array.isArray(prefetched.stones) ? prefetched.stones : await getSharedCatalog();
   const categories = Array.isArray(prefetched.categories) ? prefetched.categories : await getSharedCategoryCatalog();
   const charms = Array.isArray(prefetched.charms) ? prefetched.charms : await getSharedCharmCatalog();
   const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
-  const orders = await getSharedCrmOrders();
+  // This legacy branch is reached only by the observable overview fallback.
+  // It intentionally retains the original full-order behavior for availability.
+  const orders = await getSharedOrders();
   const operationalOrders = orders.filter(isOrderPaidForRevenue);
   const settings = await loadCrmSettings();
   if (CRMState.activeTab === 'inventory') {
@@ -925,6 +967,17 @@ async function loadCrmOrdersPage(page = CRMState.crmOrdersPage, limit = CRMState
     ...order,
     isCrmCompactListRow: true
   })));
+}
+
+async function loadCrmCatalogBundle(prefetched = {}) {
+  const [stones, categories, charms, spacers] = await Promise.all([
+    Array.isArray(prefetched.stones) ? prefetched.stones : getSharedCatalog(),
+    Array.isArray(prefetched.categories) ? prefetched.categories : getSharedCategoryCatalog(),
+    Array.isArray(prefetched.charms) ? prefetched.charms : getSharedCharmCatalog(),
+    Array.isArray(prefetched.spacers) ? prefetched.spacers : getSharedSpacerCatalog()
+  ]);
+  CRMState.simulatorCatalogCache = { stones, charms, spacers };
+  return { stones, categories, charms, spacers };
 }
 
 function normalizeUtmValue(value) {
