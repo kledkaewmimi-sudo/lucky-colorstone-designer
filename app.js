@@ -321,7 +321,10 @@ const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
   rejectCustomerStartupBootstrap = reject;
 });
 let customerCatalogStartupPromise = null;
-let catalogRefreshPollingTimer = null;
+let customerCatalogRefreshPromise = null;
+let customerCatalogRefreshEventsBound = false;
+let customerCatalogLastRefreshAt = 0;
+const CUSTOMER_CATALOG_RESUME_DEBOUNCE_MS = 5000;
 const lineDebugStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 const lineDebugEvents = [];
 let lineDebugOutput = null;
@@ -1432,7 +1435,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await completeCustomizationStartResume();
   }
   resolveCustomerStartupBootstrap();
-  startCatalogRefreshPollingAfterWarmup();
+  startCustomerCatalogWarmup();
+  bindCustomerCatalogRefreshEvents();
   } catch (error) {
     console.error('Customer startup bootstrap failed.', error);
     rejectCustomerStartupBootstrap(error);
@@ -1475,46 +1479,67 @@ function applySharedCustomerSettings(sharedSettings) {
   State.showDiscountBanner = State.discountEnabled && sharedSettings?.showDiscountBanner !== false;
 }
 
+function refreshCustomerCatalog({ includeLayoutOrder = false, renderStep3AfterRefresh = false } = {}) {
+  if (customerCatalogRefreshPromise) return customerCatalogRefreshPromise;
+
+  const tasks = [
+    refreshCatalog(),
+    refreshCharmCatalog(),
+    refreshCustomerSpacerCatalog()
+  ];
+  if (includeLayoutOrder) tasks.push(refreshCatalogLayoutOrder(), getSharedSettings());
+
+  const pending = Promise.all(tasks).then((results) => {
+    const sharedSettings = includeLayoutOrder ? results[4] : null;
+    if (sharedSettings) applySharedCustomerSettings(sharedSettings);
+    customerCatalogLastRefreshAt = Date.now();
+    // Repaint only the current designer; selected bracelet state remains intact.
+    if (renderStep3AfterRefresh && State.currentStep === 3) renderStep3();
+    return true;
+  });
+
+  customerCatalogRefreshPromise = pending.finally(() => {
+    customerCatalogRefreshPromise = null;
+  });
+  return customerCatalogRefreshPromise;
+}
+
+function requestCustomerCatalogRefresh({ renderStep3AfterRefresh = false, force = false } = {}) {
+  if (customerCatalogRefreshPromise) return customerCatalogRefreshPromise;
+  if (!force && Date.now() - customerCatalogLastRefreshAt < CUSTOMER_CATALOG_RESUME_DEBOUNCE_MS) return Promise.resolve(false);
+  return refreshCustomerCatalog({ renderStep3AfterRefresh });
+}
+
 function startCustomerCatalogWarmup() {
   if (customerCatalogStartupPromise) return customerCatalogStartupPromise;
 
-  customerCatalogStartupPromise = Promise.all([
-    refreshCatalog(),
-    refreshCharmCatalog(),
-    refreshCustomerSpacerCatalog(),
-    refreshCatalogLayoutOrder(),
-    getSharedSettings()
-  ]).then(([, , , , sharedSettings]) => {
-    applySharedCustomerSettings(sharedSettings);
-    markStartupPerformance('T6_catalog_ready');
-    return true;
-  }).catch((error) => {
-    // Keep Step 1 available when shared catalog persistence is slow or unavailable.
-    console.warn('Customer catalog warmup failed; catalog fallbacks remain available.', error);
-    return false;
-  });
+  customerCatalogStartupPromise = refreshCustomerCatalog({ includeLayoutOrder: true })
+    .then(() => {
+      markStartupPerformance('T6_catalog_ready');
+      return true;
+    }).catch((error) => {
+      // Keep Step 1 available when shared catalog persistence is slow or unavailable.
+      console.warn('Customer catalog warmup failed; catalog fallbacks remain available.', error);
+      return false;
+    });
 
   return customerCatalogStartupPromise;
 }
 
-function startCatalogRefreshPollingAfterWarmup() {
-  if (catalogRefreshPollingTimer) return;
-
-  startCustomerCatalogWarmup().finally(() => {
-    if (catalogRefreshPollingTimer) return;
-    catalogRefreshPollingTimer = window.setInterval(async () => {
-      const [updatedStones, updatedCharms, updatedSpacers] = await Promise.all([
-        refreshCatalog(),
-        refreshCharmCatalog(),
-        refreshCustomerSpacerCatalog()
-      ]);
-      if (updatedStones || updatedCharms || updatedSpacers) {
-        await renderApp();
-      }
-    }, 3000);
-  });
+function refreshCustomerCatalogForStep3Entry() {
+  requestCustomerCatalogRefresh({ renderStep3AfterRefresh: true, force: true })
+    .catch((error) => console.warn('Customer catalog Step 3 refresh failed; keeping current design.', error));
 }
 
+function bindCustomerCatalogRefreshEvents() {
+  if (customerCatalogRefreshEventsBound) return;
+  customerCatalogRefreshEventsBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || State.currentStep < 3 || State.currentStep > 4) return;
+    requestCustomerCatalogRefresh({ renderStep3AfterRefresh: State.currentStep === 3 })
+      .catch((error) => console.warn('Customer catalog resume refresh failed; keeping current design.', error));
+  });
+}
 function createAnalyticsSessionId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `lcs_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
@@ -3805,6 +3830,7 @@ async function goToStep(step) {
   } else {
     await renderApp();
   }
+  if (step === 3 && previousStep !== 3) refreshCustomerCatalogForStep3Entry();
   trackStepView(step);
   if (previousStep === 2 && step === 3) recordStep2Debug('AFTER_GOTO_STEP3', { goToStepResult: true });
   return true;
