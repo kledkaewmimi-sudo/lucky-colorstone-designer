@@ -2672,33 +2672,40 @@ option {
 }
 
 .product-badge {
-  width: 58px;
-  height: 22px;
+  width: 66px;
+  height: 28px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   position: absolute;
-  top: -6px;
+  top: -9px;
   left: -6px;
   z-index: 2;
   border-radius: 999px;
-  font-size: 9px;
+  font-family: "Noto Sans Thai", "Leelawadee UI", system-ui, sans-serif;
+  font-size: 10px;
   font-weight: 700;
+  line-height: 1.6;
   white-space: nowrap;
+  overflow: visible;
   pointer-events: none;
 }
 
 .product-badge--bestseller {
-  background: #6f4a1d;
-  color: #fff8e8;
-  box-shadow: 0 2px 6px rgba(84, 54, 18, 0.2);
+  background: #c8102e;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(150, 13, 38, 0.24);
 }
 
 .product-badge--new {
   background: #eee8ff;
   color: #644aa8;
   box-shadow: 0 2px 6px rgba(100, 74, 168, 0.16);
+}
+
+.stone-card .info-icon-btn {
+  z-index: 3;
 }
 button.stone-card {
   width: 100%;
