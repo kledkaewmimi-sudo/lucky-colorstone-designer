@@ -5,6 +5,7 @@ const baseUrl = process.env.CRM_ACCEPTANCE_BASE_URL || 'http://127.0.0.1:8000';
 const preview = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="2" height="2"%3E%3Crect width="2" height="2" fill="purple"/%3E%3C/svg%3E';
 const completeOrders = [
   { id: 'ORD-363745', materialCost: 107.12594861279071, deliveryCost: 80, totalCost: 187.1259486127907, profit: 329.8740513872093, marginPercent: 63.805425800233905 },
+  { id: 'ORD-530674', materialCost: 208.32987990706425, deliveryCost: 80, totalCost: 288.32987990706425, profit: 552.6701200929358, marginPercent: 65.71582878631817 },
   { id: 'ORD-875039', materialCost: 123.63617999442742, deliveryCost: 80, totalCost: 203.63617999442744, profit: 294.36382000557256, marginPercent: 59.10920080433184 },
   { id: 'ORD-905998', materialCost: 38.8057497189507, deliveryCost: 80, totalCost: 118.8057497189507, profit: 219.1942502810493, marginPercent: 64.85036990563589 }
 ];
@@ -27,9 +28,8 @@ const listOrders = [...completeOrders, unavailableOrder].map((order, index) => {
     discountAmount: 0,
     totalPrice: 517,
     adminOrderNumber: index + 1,
-    // This is the lightweight list contract: a visual sequence and scalar
-    // snapshot only. The persisted base64 braceletPreviewImage is absent.
-    braceletSequence: [{ id: 'fixture-stone', type: 'stone', sizeMm: 6, color: '#7E57C2', name: 'Fixture stone' }],
+    // The card source is exactly the stored data URL used by View Detail.
+    braceletPreviewImage: preview,
     costSnapshot: complete
       ? { status: 'complete', materialCost: complete.materialCost, deliveryCost: complete.deliveryCost, totalCost: complete.totalCost, profit: complete.profit, marginPercent: complete.marginPercent }
       : { status: 'unavailable', materialCost: null, deliveryCost: unavailableOrder.deliveryCost, totalCost: null, profit: null, marginPercent: null }
@@ -37,7 +37,7 @@ const listOrders = [...completeOrders, unavailableOrder].map((order, index) => {
 });
 const detailFor = (id) => {
   const complete = completeOrders.find((entry) => entry.id === id);
-  const base = { ...listOrders.find((entry) => entry.id === id), braceletPreviewImage: preview, braceletSequence: [] };
+  const base = { ...listOrders.find((entry) => entry.id === id) };
   return complete
     ? { ...base, costSnapshot: { status: 'complete', materialCost: complete.materialCost, deliveryCost: complete.deliveryCost, totalCost: complete.totalCost, profit: complete.profit, marginPercent: complete.marginPercent } }
     : { ...base, costSnapshot: { status: 'unavailable', materialCost: null, deliveryCost: unavailableOrder.deliveryCost, totalCost: null, profit: null, marginPercent: null } };
@@ -61,21 +61,22 @@ try {
     return route.fulfill({ json: detailFor(id) });
   });
   await page.goto(`${baseUrl}/crm.html`, { waitUntil: 'networkidle' });
-  await page.locator('[data-tab="orders"]').first().click();
+  await page.locator('[data-tab="orders"]:visible').click();
   await page.locator('.btn-order-detail').first().waitFor();
   console.log('browser-stage=card-and-detail');
 
   for (const expected of completeOrders) {
     const row = page.locator('tr').filter({ has: page.locator(`.btn-order-detail[data-id="${expected.id}"]`) });
-    const visualPreview = row.locator('svg.order-bracelet-preview-svg[role="img"]');
-    assert.equal(await visualPreview.count(), 1, `compact card preview missing for ${expected.id}`);
+    const visualPreview = row.locator('img.order-bracelet-preview-img');
+    assert.equal(await visualPreview.count(), 1, `card image missing for ${expected.id}`);
+    assert.equal(await visualPreview.getAttribute('src'), preview, `card source differs from Detail for ${expected.id}`);
     const cardText = await row.innerText();
     assert.match(cardText, new RegExp(`Material Cost\\s*${money(expected.materialCost).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(cardText, new RegExp(`Delivery Cost\\s*${baht}80`));
     assert.match(cardText, new RegExp(`Total Cost\\s*${money(expected.totalCost).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(cardText, new RegExp(`Profit\\s*${money(expected.profit).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(cardText, new RegExp(`Margin\\s*${expected.marginPercent.toFixed(1)}%`));
-    assert.equal('braceletPreviewImage' in listOrders.find((entry) => entry.id === expected.id), false);
+    assert.equal(listOrders.find((entry) => entry.id === expected.id).braceletPreviewImage, preview);
 
     await page.locator(`.btn-order-detail[data-id="${expected.id}"]`).click();
     const modal = page.locator('#orderDetailModal');
@@ -93,7 +94,7 @@ try {
   }
 
   const controlRow = page.locator('tr').filter({ has: page.locator(`.btn-order-detail[data-id="${unavailableOrder.id}"]`) });
-  assert.equal(await controlRow.locator('svg.order-bracelet-preview-svg[role="img"]').count(), 1);
+  assert.equal(await controlRow.locator('img.order-bracelet-preview-img').getAttribute('src'), preview);
   const controlCardText = await controlRow.innerText();
   assert.match(controlCardText, /Material Cost\s*Unavailable/);
   assert.match(controlCardText, /Total Cost\s*Unavailable/);

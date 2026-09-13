@@ -4475,8 +4475,8 @@ function renderOrdersList(orders) {
       ? `${orderSpacerItems.length} ${CRM_COMPONENT_LABELS.spacer}`
       : (order.hasSpacer ? `${order.spacerCount} ${CRM_COMPONENT_LABELS.spacer}` : `No ${CRM_COMPONENT_LABELS.spacer}`);
     
-    // Compact rows carry only braceletSequence, which feeds the established
-    // lightweight SVG preview renderer without transferring stored image blobs.
+    // Compact rows carry the same saved data URL used by View Detail; do not
+    // reconstruct a simplified bracelet from sequence data for Order cards.
     const braceletPreviewHtml = renderOrderBraceletPreview(order, {
       className: 'order-bracelet-preview-compact',
       title: `Bracelet layout for ${order.id}`

@@ -41,11 +41,11 @@ test('genuine missing snapshots remain unavailable while detail renders stored s
   assert.match(crmSource, /getCrmOrderDetail\(orderId\)/);
 });
 
-test('compact order rows restore original card preview and stored cost snapshot without preview blobs', () => {
-  const projection = serverSource.match(/const select = '[^']+'/)?.[0] || '';
-  assert.match(projection, /braceletSequence:payload->braceletSequence/);
-  assert.match(projection, /costSnapshotMaterialCost:payload->costSnapshot->>materialCost/);
-  assert.doesNotMatch(projection, /braceletPreviewImage/);
+test('compact order rows use the exact View Detail preview source and stored cost snapshot', () => {
+  assert.match(serverSource, /includePreview \? 'braceletPreviewImage:payload->>braceletPreviewImage,braceletPreviewDataUrl:payload->>braceletPreviewDataUrl/);
+  assert.match(serverSource, /costSnapshotMaterialCost:payload->costSnapshot->>materialCost/);
+  assert.doesNotMatch(serverSource, /braceletSequence:payload->braceletSequence/);
+  assert.match(serverSource, /readCrmOrderProjection\(\{ page, limit, paidOnly: true, includePreview: true \}\)/);
   assert.match(crmSource, /const braceletPreviewHtml = renderOrderBraceletPreview\(order/);
   assert.match(crmSource, /const costText = renderOrderCostSummary\(order\)/);
   assert.doesNotMatch(crmSource, /Available in detail/);

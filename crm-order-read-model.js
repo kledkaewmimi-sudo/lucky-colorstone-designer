@@ -7,15 +7,18 @@ function asBoolean(value) {
   return value === true || String(value || '').trim().toLowerCase() === 'true';
 }
 
-function parseCompactBraceletSequence(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== 'string' || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function resolveCrmOrderPreviewSource(order = {}) {
+  const checkoutSummary = order.checkoutSummary && typeof order.checkoutSummary === 'object' ? order.checkoutSummary : {};
+  const candidates = [
+    order.braceletPreviewImage,
+    order.braceletPreviewDataUrl,
+    order.braceletPreviewSnapshot,
+    checkoutSummary.braceletPreviewImage,
+    checkoutSummary.braceletPreviewDataUrl,
+    checkoutSummary.braceletPreviewSnapshot
+  ];
+  // Mirrors getOrderFinalBraceletPreviewImage in crm-order-details.js exactly.
+  return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
 }
 
 function toCompactCostSnapshot(order = {}) {
@@ -74,9 +77,8 @@ function toCrmOrderSummary(order = {}) {
     charmSizeCm: asNumber(order.charmSizeCm),
     hasSpacer: asBoolean(order.hasSpacer),
     spacerCount: asNumber(order.spacerCount),
-    // Keep card visuals lightweight: sequence powers the pre-existing SVG renderer;
-    // never include the persisted full-resolution braceletPreviewImage in a list row.
-    braceletSequence: parseCompactBraceletSequence(order.braceletSequence),
+    // The Order card must use the exact immutable preview source displayed in View Detail.
+    braceletPreviewImage: resolveCrmOrderPreviewSource(order),
     costSnapshot: toCompactCostSnapshot(order),
     subtotal: asNumber(checkoutSummary.subtotal ?? order.subtotal),
     discountPercent: asNumber(checkoutSummary.discountPercent ?? order.discountPercent),
@@ -86,12 +88,20 @@ function toCrmOrderSummary(order = {}) {
   };
 }
 
+function toCrmOverviewOrderSummary(order = {}) {
+  const summary = toCrmOrderSummary(order);
+  // Overview must never carry stored preview blobs; only the paginated Orders
+  // list needs the exact View Detail source.
+  delete summary.braceletPreviewImage;
+  return summary;
+}
+
 function buildCrmOverview(orders = []) {
   const paidOrders = sortCrmOrders(orders.filter(isCrmPaidOrder));
   return {
     paidOrderCount: paidOrders.length,
     revenue: paidOrders.reduce((sum, order) => sum + getCrmOrderTotal(order), 0),
-    recentOrders: paidOrders.slice(0, 4).map(toCrmOrderSummary)
+    recentOrders: paidOrders.slice(0, 4).map(toCrmOverviewOrderSummary)
   };
 }
 
@@ -110,12 +120,13 @@ function paginateCrmOrders(orders = [], page = 1, limit = 20) {
 }
 
 module.exports = {
-  parseCompactBraceletSequence,
+  resolveCrmOrderPreviewSource,
   toCompactCostSnapshot,
   isCrmPaidOrder,
   getCrmOrderTotal,
   sortCrmOrders,
   toCrmOrderSummary,
+  toCrmOverviewOrderSummary,
   buildCrmOverview,
   paginateCrmOrders
 };
