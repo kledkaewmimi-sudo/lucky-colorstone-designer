@@ -1,6 +1,6 @@
 # Catalog polling Option E — UAT implementation
 
-**Status:** UAT-only local implementation. Production was not changed or deployed.
+**Status:** UAT-only implementation deployed through the isolated `lucky-colorstone-uat` Vercel project. Production was not changed or deployed.
 
 ## Change
 
@@ -19,7 +19,7 @@
 | One Step 3 entry | Timer continues thereafter | One deliberate bundle: settings indirectly via `refreshCatalog`, plus stones, charms, spacers (four effective reads) |
 | One visible resume at Step 3 | Timer may already be running/throttled | One guarded deliberate bundle, unless within 5-second debounce or an in-flight bundle exists |
 
-The exact UAT browser request count after deployment remains owner/device verification work. Local source contracts prove no catalog timer remains and only these deliberate trigger points exist.
+Automated source contracts and the deployed UAT bundle verify zero periodic catalog calls. A live 390px UAT page-load smoke check returned HTTP 200 and rendered Step 1. The exact owner-device Step 3/resume network capture remains a UAT acceptance check; it was not fabricated by this report.
 
 ## State and authority safety
 
@@ -41,8 +41,14 @@ The exact UAT browser request count after deployment remains owner/device verifi
 - `tests/catalog-polling-option-e.test.mjs`
 - `reports/infrastructure/catalog-polling-option-e-uat.md`
 
-## Deployment and risk
+## UAT deployment and risk
 
-No deployment has occurred at the time of this report. Before production consideration, deploy only UAT and verify at 390px: Step 1→4, one idle 60-second Step 3 period, one mobile background/resume, return to Step 3, and checkout entry without payment. Expected loop-driven quota reduction for long-lived tabs is >99%.
+- UAT project: `lucky-colorstone-uat` (`prj_vqw69sQ7A9pJj0wGhGeK6Fmzzpin`)
+- Code commit deployed: `7072bf9` (`feat: replace catalog polling with event refresh`)
+- Verified UAT deployment: `https://lucky-colorstone-hzfxp0b7g-lucky-colorstone.vercel.app` (Ready)
+- Mobile smoke: 390 × 844 viewport, `https://uat.customize.luckycolorstone.com/`, HTTP 200, title and Step 1 shell rendered; no payment interaction occurred.
+- Production deployment: **not performed**.
 
-**Production recommendation:** promote only after UAT mobile request capture and owner acceptance; do not alter backend checkout authority.
+Residual UAT acceptance: capture one real-device Step 3 idle 60-second network trace, one background/resume event, re-enter Step 3, and stop before payment. Expected loop-driven quota reduction for long-lived tabs is >99%.
+
+**Production recommendation:** promote only after that owner UAT mobile request capture and acceptance; do not alter backend checkout authority.
