@@ -681,7 +681,9 @@
     "name": "Blue Cat eye",
     "color": "#5C8FD6",
     "image": "assets/Blue Cat eye.png",
-    "sizes": [6],
+    "sizes": [
+      6
+    ],
     "nameTh": "บลูแคทอาย",
     "inStock": true,
     "meaning": "Supports confidence, courage, clear decision-making, and protection from negative energy.",
@@ -705,7 +707,9 @@
     "name": "Gold sand stone",
     "color": "#C7A24C",
     "image": "assets/Gold sand stone.png",
-    "sizes": [6],
+    "sizes": [
+      6
+    ],
     "nameTh": "ทรายทอง",
     "inStock": true,
     "meaning": "Supports inspiration, ambition, success, prosperity, and positive energy for taking action.",
@@ -729,7 +733,9 @@
     "name": "Silver sand stone",
     "color": "#A7ADB5",
     "image": "assets/Silver sand stone.png",
-    "sizes": [6],
+    "sizes": [
+      6
+    ],
     "nameTh": "ทรายเงิน",
     "inStock": true,
     "meaning": "Supports opportunity, mental clarity, stability, and success in work and finances.",
@@ -753,7 +759,10 @@
     "name": "Amethyst quartz",
     "color": "#B99AD9",
     "image": "assets/Amethyst quartz.png",
-    "sizes": [6, 10],
+    "sizes": [
+      6,
+      10
+    ],
     "nameTh": "อเมทิสต์ โป่งข่าม",
     "inStock": true,
     "meaning": "Supports mindfulness, concentration, wisdom, inner calm, and spiritual protection.",
@@ -777,7 +786,9 @@
     "name": "Blue agate",
     "color": "#4F86C6",
     "image": "assets/Blue agate.png",
-    "sizes": [6],
+    "sizes": [
+      6
+    ],
     "nameTh": "บลูอาเกต",
     "inStock": true,
     "meaning": "Promotes calm, emotional balance, steady communication, and mindful self-expression.",
@@ -789,6 +800,30 @@
     "categoryId": "calm",
     "categoryTh": "",
     "displayOrder": 370,
+    "manualCost4mm": 0,
+    "manualCost6mm": 0,
+    "manualCost10mm": 0
+  },
+  {
+    "id": "kyanite",
+    "p4": 0,
+    "p6": 0,
+    "p10": 38,
+    "name": "Kyanite",
+    "image": "assets/Kyanite.webp",
+    "sizes": [
+      10
+    ],
+    "nameTh": "ไคยาไนต์",
+    "inStock": true,
+    "category": "wealth",
+    "isActive": true,
+    "stockQty": 21,
+    "meaningTh": "ช่วยเสริมการสื่อสาร สมาธิ และความมั่นใจ ลดความสับสน เหมาะกับงานและการเรียน",
+    "stock_qty": 21,
+    "categoryId": "wealth",
+    "categoryTh": "โชคลาภ/การงาน",
+    "displayOrder": 380,
     "manualCost4mm": 0,
     "manualCost6mm": 0,
     "manualCost10mm": 0

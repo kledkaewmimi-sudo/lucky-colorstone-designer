@@ -1172,6 +1172,7 @@ function normalizeSpacerRecord(record, index = 0) {
     collection: record.collection || "spacer",
     color: record.color || "",
     manualCost,
+    presentation: record.presentation || 'inline',
     image: {
       primary: record.image?.primary || record.image || ""
     },
@@ -1182,6 +1183,9 @@ function normalizeSpacerRecord(record, index = 0) {
       sizeMm: displaySizeMm,
       displaySizeMm,
       effectiveLengthMm,
+      renderWidthMm: toFiniteNumber(record.business?.renderWidthMm ?? record.renderWidthMm, 0),
+      renderHeightMm: toFiniteNumber(record.business?.renderHeightMm ?? record.renderHeightMm, 0),
+      attachmentLoopMm: toFiniteNumber(record.business?.attachmentLoopMm ?? record.attachmentLoopMm, 0),
       renderSizeMm: toFiniteNumber(record.business?.renderSizeMm ?? record.renderSizeMm, displaySizeMm),
       thicknessMm: toFiniteNumber(record.business?.thicknessMm ?? record.thicknessMm, 0)
     },

@@ -478,11 +478,15 @@ function adaptSpacerRecordForCustomer(record) {
     nameTh: record.name?.th || record.nameTh || record.name?.en || record.nameEn || record.id,
     nameEn: record.name?.en || record.nameEn || record.name?.th || record.nameTh || record.id,
     type: record.type || 'spacer',
+    presentation: record.presentation || 'inline',
     color: record.color || '',
     image: record.image?.primary || record.image || '',
     displaySizeMm: Number(record.business?.displaySizeMm || record.displaySizeMm || record.sizeMm || 0),
     effectiveLengthMm: Number(record.business?.effectiveLengthMm || record.effectiveLengthMm || record.footprintMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
     renderSizeMm: Number(record.business?.renderSizeMm || record.renderSizeMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
+    renderWidthMm: Number(record.business?.renderWidthMm || record.renderWidthMm || 0),
+    renderHeightMm: Number(record.business?.renderHeightMm || record.renderHeightMm || 0),
+    attachmentLoopMm: Number(record.business?.attachmentLoopMm || record.attachmentLoopMm || 0),
     thicknessMm: Number(record.business?.thicknessMm || record.thicknessMm || 0),
     price: Number(record.pricing?.base || record.price || 0),
     displayOrder: Number(record.displayOrder || 0),
@@ -4882,6 +4886,32 @@ const DEFAULT_CHARM_RENDER_TUNING = Object.freeze({
   anchor: 'top'
 });
 
+// Preview metadata only: catalog business values remain authoritative.
+const HANGING_SPACER_PREVIEW_TUNING = Object.freeze({
+  mallow: Object.freeze({
+    renderWidthMm: 14.45,
+    renderHeightMm: 28.475,
+    outwardOffsetMm: 7.2,
+    visualScale: 1,
+    attachmentAnchorX: 0.5197,
+    attachmentAnchorY: 0.1704,
+    assetWidth: 3375,
+    assetHeight: 4219,
+    visibleBounds: Object.freeze({ minX: 857, minY: 640, maxX: 2537, maxY: 3724 })
+  }),
+  pony: Object.freeze({
+    renderWidthMm: 21,
+    renderHeightMm: 30,
+    outwardOffsetMm: 7.2,
+    visualScale: 1,
+    attachmentAnchorX: 0.3369,
+    attachmentAnchorY: 0.1887,
+    assetWidth: 3375,
+    assetHeight: 4219,
+    visibleBounds: Object.freeze({ minX: 710, minY: 720, maxX: 2700, maxY: 3175 })
+  })
+});
+
 function normalizeCharmVisualScale(value) {
   const fallback = DEFAULT_CHARM_RENDER_TUNING.visualScale;
   const numericValue = Number(value);
@@ -5877,9 +5907,19 @@ function buildCheckoutSummary() {
   });
 }
 
+function isHangingSpacerComponent(component) {
+  return component?.type === 'spacer' && component?.presentation === 'hanging';
+}
+
+function getHangingSpacerPreviewComponent(component) {
+  if (!isHangingSpacerComponent(component)) return component;
+  const previewTuning = HANGING_SPACER_PREVIEW_TUNING[component.spacerId || component.sourceId || component.id];
+  return previewTuning ? { ...component, ...previewTuning } : component;
+}
+
 function getResolvedNodeRotationRad(node) {
-  if (node?.component?.type === 'charm') {
-    const isOutwardFacingBeeHeart = node.component.charmType === 'bee_heart';
+  if (node?.component?.type === 'charm' || isHangingSpacerComponent(node?.component)) {
+    const isOutwardFacingBeeHeart = node.component.charmType === 'bee_heart' || isHangingSpacerComponent(node.component);
     // Most charm assets are authored upright and need a quarter-turn to lie
     // across the bracelet. Bee heart pendants should hang outward instead.
     const baseRotation = isOutwardFacingBeeHeart
@@ -5912,6 +5952,29 @@ function getCharmRenderFrameDimensions(component, scaleMmToPx) {
 function getCharmOutwardOffsetPx(component, scaleMmToPx) {
   const offsetMm = Number(component?.outwardOffsetMm);
   return Number.isFinite(offsetMm) ? offsetMm * scaleMmToPx : 0;
+}
+
+function getFixedHangingSpacerPlacement(component, frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null) {
+  const stableSourceWidth = Number(component?.assetWidth) || sourceWidth || 1;
+  const stableSourceHeight = Number(component?.assetHeight) || sourceHeight || 1;
+  const stableBounds = normalizeImageBounds(component?.visibleBounds || bounds, stableSourceWidth, stableSourceHeight);
+  const rawVisualScale = Number(component?.visualScale);
+  const visualScale = Number.isFinite(rawVisualScale) ? Math.max(0.1, rawVisualScale) : 1;
+  const scale = Math.min(frameWidth / stableBounds.width, frameHeight / stableBounds.height) * visualScale;
+  const anchorX = Math.min(1, Math.max(0, Number(component?.attachmentAnchorX))) * stableSourceWidth;
+  const anchorY = Math.min(1, Math.max(0, Number(component?.attachmentAnchorY))) * stableSourceHeight;
+  const renderHeightMm = Number(component?.renderHeightMm);
+  const outwardOffsetMm = Number(component?.outwardOffsetMm);
+  const attachmentInsetRatio = Number.isFinite(renderHeightMm) && renderHeightMm > 0 && Number.isFinite(outwardOffsetMm)
+    ? Math.min(0.45, Math.max(0, outwardOffsetMm / renderHeightMm))
+    : 0;
+
+  return {
+    width: stableSourceWidth * scale,
+    height: stableSourceHeight * scale,
+    x: (frameWidth / 2) - (anchorX * scale),
+    y: (frameHeight * (0.5 - attachmentInsetRatio)) - (anchorY * scale)
+  };
 }
 
 async function removeSelectedCharm(selectionIndex = null, showToastNotification = true) {
@@ -6152,6 +6215,7 @@ function renderSpacerOptions() {
       nameTh: spacer.nameTh,
       nameEn: spacer.nameEn,
       priceText: `${formatDisplayPrice(spacer.price)} • ${spacer.effectiveLengthMm}mm`,
+      badge: getProductCardBadge('spacers', spacer.id),
       isSelected: quantity > 0,
       onCardClick: () => addSpacerToBracelet(spacer.id),
       onActionClick: () => addSpacerToBracelet(spacer.id),
@@ -6975,6 +7039,10 @@ function createBraceletComponentList() {
           displaySizeMm: spacer.displaySizeMm,
           effectiveLengthMm: spacer.effectiveLengthMm,
           renderSizeMm: spacer.renderSizeMm || spacer.displaySizeMm,
+          renderWidthMm: spacer.renderWidthMm || null,
+          renderHeightMm: spacer.renderHeightMm || null,
+          attachmentLoopMm: spacer.attachmentLoopMm || null,
+          presentation: spacer.presentation || 'inline',
           thicknessMm: spacer.thicknessMm || null,
           price: Number(spacer.price || 0),
           sizeMm: spacer.effectiveLengthMm,
@@ -7393,6 +7461,18 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
   svg.innerHTML = '';
   svg.appendChild(defs);
 
+  const previewInteractionClipId = 'bracelet-preview-interaction-clip';
+  const previewInteractionClip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+  previewInteractionClip.setAttribute('id', previewInteractionClipId);
+  previewInteractionClip.setAttribute('clipPathUnits', 'userSpaceOnUse');
+  const previewInteractionRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  previewInteractionRect.setAttribute('x', '0');
+  previewInteractionRect.setAttribute('y', '0');
+  previewInteractionRect.setAttribute('width', '250');
+  previewInteractionRect.setAttribute('height', '250');
+  previewInteractionClip.appendChild(previewInteractionRect);
+  defs.appendChild(previewInteractionClip);
+
   const {
     braceletConfig,
     nodes,
@@ -7423,16 +7503,18 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       const component = node.component;
       group.setAttribute("class", `bead-node placed ${node.isNewlyAdded ? 'newly-added' : ''}`);
 
-      if (component.type === 'charm') {
-        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, summary.scaleMmToPx);
-        const charmOutwardOffsetPx = getCharmOutwardOffsetPx(component, summary.scaleMmToPx);
+      if (component.type === 'charm' || isHangingSpacerComponent(component)) {
+        const isHangingSpacer = isHangingSpacerComponent(component);
+        const renderComponent = getHangingSpacerPreviewComponent(component);
+        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(renderComponent, summary.scaleMmToPx);
+        const charmOutwardOffsetPx = getCharmOutwardOffsetPx(renderComponent, summary.scaleMmToPx);
         const charmCenterX = bx + (Math.cos(node.centerAngle) * charmOutwardOffsetPx);
         const charmCenterY = by + (Math.sin(node.centerAngle) * charmOutwardOffsetPx);
         const halfCharmWidth = charmFrameWidthPx / 2;
         const halfCharmHeight = charmFrameHeightPx / 2;
         const charmImageUrl = withCatalogImageVersion(component.image || '', component);
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
-        const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
+        const useCharmClip = !isHangingSpacer && component.edgeFitMode !== 'horizontal_fill';
         let clipId = '';
         if (useCharmClip) {
           clipId = `clip-${component.uniqueId}`;
@@ -7449,6 +7531,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 
         const charmImage = document.createElementNS("http://www.w3.org/2000/svg", "image");
         charmImage.setAttributeNS("http://www.w3.org/1999/xlink", "href", charmImageUrl);
+        charmImage.setAttribute('pointer-events', 'none');
         if (useCharmClip) {
           charmImage.setAttribute("clip-path", `url(#${clipId})`);
         }
@@ -7457,7 +7540,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         const angleDeg = rotationRad * 180 / Math.PI;
         if (charmBounds) {
           const placement = getCharmRenderPlacement(
-            component,
+            renderComponent,
             charmFrameWidthPx,
             charmFrameHeightPx,
             { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
@@ -7471,7 +7554,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           charmImage.setAttribute("height", placement.height);
         } else {
           const fallbackPlacement = getCharmRenderPlacement(
-            component,
+            renderComponent,
             charmFrameWidthPx,
             charmFrameHeightPx,
             null,
@@ -7490,8 +7573,19 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${charmCenterX}, ${charmCenterY})`);
         group.appendChild(charmImage);
+        const charmHitbox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        charmHitbox.setAttribute('class', 'charm-preview-hitbox');
+        charmHitbox.setAttribute('x', charmImage.getAttribute('x'));
+        charmHitbox.setAttribute('y', charmImage.getAttribute('y'));
+        charmHitbox.setAttribute('width', charmImage.getAttribute('width'));
+        charmHitbox.setAttribute('height', charmImage.getAttribute('height'));
+        charmHitbox.setAttribute('transform', charmImage.getAttribute('transform'));
+        charmHitbox.setAttribute('clip-path', `url(#${previewInteractionClipId})`);
+        charmHitbox.setAttribute('fill', 'transparent');
+        charmHitbox.setAttribute('pointer-events', 'all');
+        group.appendChild(charmHitbox);
         group.addEventListener('click', async () => {
-          if (isSlotPlaceableCharmType(component.charmType)) {
+          if (isHangingSpacer || isSlotPlaceableCharmType(component.charmType)) {
             removeLoopItemFromBracelet(node.sourceIndex);
           } else {
             await removeSelectedCharm(component.selectionIndex);
@@ -9013,8 +9107,11 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
 }
 
 function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null, rotationRad = 0, centerAngle = 0) {
-  const sourceWidth = image?.naturalWidth || image?.width || 0;
-  const sourceHeight = image?.naturalHeight || image?.height || 0;
+  const sourceWidth = image?.naturalWidth || image?.width || Number(component?.assetWidth) || 0;
+  const sourceHeight = image?.naturalHeight || image?.height || Number(component?.assetHeight) || 0;
+  if (isHangingSpacerComponent(component)) {
+    return getFixedHangingSpacerPlacement(component, frameWidth, frameHeight, sourceWidth, sourceHeight, bounds);
+  }
   if (isSlotPlaceableCharmType(component?.charmType)) {
     return getFixedBeeHeartPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds, component);
   }
@@ -9162,8 +9259,9 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const bRadiusPx = node.renderRadiusPx;
     const imgUrl = getComponentRenderImageUrl(component);
     const imgObj = imageCache[imgUrl];
-    const outwardOffsetPx = component.type === 'charm'
-      ? getCharmOutwardOffsetPx(component, node.renderScalePxPerMm || 0)
+    const renderComponent = getHangingSpacerPreviewComponent(component);
+    const outwardOffsetPx = (component.type === 'charm' || isHangingSpacerComponent(component))
+      ? getCharmOutwardOffsetPx(renderComponent, node.renderScalePxPerMm || 0)
       : 0;
     const renderCenterX = bx + (Math.cos(node.centerAngle) * outwardOffsetPx);
     const renderCenterY = by + (Math.sin(node.centerAngle) * outwardOffsetPx);
@@ -9172,12 +9270,13 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     ctx.translate(renderCenterX, renderCenterY);
     ctx.rotate(node.renderRotationRad); // Rotate to face outward
 
-    if (component.type === 'charm') {
+    if (component.type === 'charm' || isHangingSpacerComponent(component)) {
       if (imgObj) {
-        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, node.renderScalePxPerMm || 0);
+        const isHangingSpacer = isHangingSpacerComponent(component);
+        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(renderComponent, node.renderScalePxPerMm || 0);
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getCharmRenderPlacement(component, charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
-        const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
+        const placement = getCharmRenderPlacement(renderComponent, charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
+        const useCharmClip = !isHangingSpacer && component.edgeFitMode !== 'horizontal_fill';
         ctx.save();
         if (useCharmClip) {
           ctx.beginPath();

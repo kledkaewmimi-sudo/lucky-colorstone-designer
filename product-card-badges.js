@@ -8,10 +8,15 @@ const PRODUCT_CARD_BADGES = Object.freeze({
     'lapis_lazuli:6': Object.freeze({ label: 'ขายดี✨', variant: 'bestseller' }),
     'golden_rutile:4': Object.freeze({ label: 'ขายดี✨', variant: 'bestseller' }),
     'tigers_eye:4': Object.freeze({ label: 'ขายดี✨', variant: 'bestseller' }),
-    'green_jade:6': Object.freeze({ label: 'ใหม่', variant: 'new' })
+    'green_jade:6': Object.freeze({ label: 'ใหม่', variant: 'new' }),
+    'kyanite:10': Object.freeze({ label: 'ใหม่', variant: 'new' })
   }),
   charms: Object.freeze({
     cl01: Object.freeze({ label: 'ใหม่', variant: 'new' })
+  }),
+  spacers: Object.freeze({
+    mallow: Object.freeze({ label: 'ใหม่', variant: 'new' }),
+    pony: Object.freeze({ label: 'ใหม่', variant: 'new' })
   })
 });
 
