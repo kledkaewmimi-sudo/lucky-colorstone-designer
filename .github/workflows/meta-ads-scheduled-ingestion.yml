@@ -4,6 +4,29 @@ on:
   schedule:
     - cron: '5 * * * *'
   workflow_dispatch:
+    inputs:
+      from_date:
+        description: 'YYYY-MM-DD (Meta ad-account local date)'
+        required: true
+        type: string
+      to_date:
+        description: 'YYYY-MM-DD (Meta ad-account local date)'
+        required: true
+        type: string
+      mode:
+        description: 'Dataset to pull'
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - hourly
+          - demographics
+      dry_run:
+        description: 'Read Meta only; do not write Supabase'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -30,7 +53,31 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Validate manual Meta pull worker
+        if: github.event_name == 'workflow_dispatch'
+        run: node --test tests/meta-ads-manual-worker.test.cjs
+
+      - name: Run manual Meta Ads pull
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_API_VERSION: ${{ secrets.META_API_VERSION }}
+          META_ADS_SUPABASE_URL: ${{ secrets.META_ADS_SUPABASE_URL }}
+          META_ADS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.META_ADS_SUPABASE_SERVICE_ROLE_KEY }}
+          META_MANUAL_FROM_DATE: ${{ inputs.from_date }}
+          META_MANUAL_TO_DATE: ${{ inputs.to_date }}
+          META_MANUAL_MODE: ${{ inputs.mode }}
+          META_MANUAL_DRY_RUN: ${{ inputs.dry_run }}
+        run: >-
+          node scripts/meta-ads-manual-worker.js
+          --from-date "$META_MANUAL_FROM_DATE"
+          --to-date "$META_MANUAL_TO_DATE"
+          --mode "$META_MANUAL_MODE"
+          $([[ "$META_MANUAL_DRY_RUN" == "true" ]] && echo --dry-run)
+
       - name: Ingest approved Meta Ads datasets
+        if: github.event_name == 'schedule'
         env:
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
