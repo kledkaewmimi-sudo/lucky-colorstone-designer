@@ -1792,6 +1792,36 @@ function createSupabaseRestUrl(tableName, params = {}) {
   return endpoint;
 }
 
+function isVerifiedUatSupabaseDiagnosticEnvironment() {
+  return String(process.env.APP_ENV || "").trim().toLowerCase() === "uat"
+    && String(process.env.UAT_BACKEND || "").trim().toLowerCase() === "true";
+}
+
+function safeUatSupabaseDiagnosticText(value) {
+  if (value === undefined || value === null) return null;
+  return String(value)
+    .replace(/https?:\/\/[^\s)]+/gi, "[url-redacted]")
+    .replace(/Bearer\s+[^\s,;]+/gi, "Bearer [redacted]")
+    .replace(/sb_secret_[A-Za-z0-9_-]+/g, "sb_secret_[redacted]")
+    .replace(/eyJ[A-Za-z0-9._-]+/g, "[jwt-redacted]")
+    .slice(0, 500);
+}
+
+function logUatSupabaseFetchDiagnostic(error) {
+  if (!isVerifiedUatSupabaseDiagnosticEnvironment()) return;
+  const cause = error && typeof error === "object" ? error.cause : null;
+  const present = (name) => Boolean(String(process.env[name] || "").trim());
+  console.error("[uat-supabase-fetch-diagnostic]", JSON.stringify({
+    error: { name: safeUatSupabaseDiagnosticText(error?.name), message: safeUatSupabaseDiagnosticText(error?.message), code: safeUatSupabaseDiagnosticText(error?.code) },
+    cause: { name: safeUatSupabaseDiagnosticText(cause?.name), message: safeUatSupabaseDiagnosticText(cause?.message), code: safeUatSupabaseDiagnosticText(cause?.code), errno: safeUatSupabaseDiagnosticText(cause?.errno), syscall: safeUatSupabaseDiagnosticText(cause?.syscall), hostname: safeUatSupabaseDiagnosticText(cause?.hostname) },
+    envPresence: { APP_ENV: present("APP_ENV"), UAT_BACKEND: present("UAT_BACKEND"), UAT_SUPABASE_URL: present("UAT_SUPABASE_URL"), UAT_SUPABASE_PROJECT_REF: present("UAT_SUPABASE_PROJECT_REF"), UAT_SUPABASE_SERVICE_ROLE_KEY: present("UAT_SUPABASE_SERVICE_ROLE_KEY") }
+  }));
+}
+
+function logUatSupabaseHttpDiagnostic(status) {
+  if (!isVerifiedUatSupabaseDiagnosticEnvironment()) return;
+  console.error("[uat-supabase-http-diagnostic]", JSON.stringify({ category: "http_response", status }));
+}
 async function supabaseRequest(tableName, { method = "GET", params = {}, body = null, prefer = "" } = {}) {
   const { serviceRoleKey } = getSupabaseConfig();
   const headers = buildUatSupabaseAuthHeaders(serviceRoleKey);
@@ -1803,11 +1833,17 @@ async function supabaseRequest(tableName, { method = "GET", params = {}, body = 
     headers.Prefer = prefer;
   }
 
-  const response = await fetch(createSupabaseRestUrl(tableName, params), {
-    method,
-    headers,
-    body: body === null ? undefined : JSON.stringify(body)
-  });
+  let response;
+  try {
+    response = await fetch(createSupabaseRestUrl(tableName, params), {
+      method,
+      headers,
+      body: body === null ? undefined : JSON.stringify(body)
+    });
+  } catch (error) {
+    logUatSupabaseFetchDiagnostic(error);
+    throw error;
+  }
 
   const text = await response.text();
   let payload = null;
