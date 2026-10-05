@@ -280,6 +280,20 @@ function nextRandomOrderId() {
   return `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 }
 
+function normalizeStripeCheckoutAttemptId(value) {
+  const attemptId = String(value || "").trim();
+  return /^[A-Za-z0-9_-]{16,80}$/.test(attemptId) ? attemptId : "";
+}
+
+function resolveStripeCheckoutAttemptId(value) {
+  return value === undefined ? crypto.randomUUID() : normalizeStripeCheckoutAttemptId(value);
+}
+
+function getStripeCheckoutOrderId(attemptId) {
+  const digest = crypto.createHash("sha256").update(attemptId).digest();
+  return `ORD-${100000 + (digest.readUInt32BE(0) % 900000)}`;
+}
+
 function getEnvValue(name, defaultValue = "") {
   const value = process.env[name];
   return value && String(value).trim() ? String(value) : defaultValue;
@@ -1531,7 +1545,7 @@ function getStripeSessionShippingDetails(session) {
   return shippingDetails.name || shippingDetails.address ? shippingDetails : null;
 }
 
-async function createStripeCheckoutSession({ order, origin }) {
+async function createStripeCheckoutSession({ order, origin, idempotencyKey }) {
   const stripeSecretKey = getStripeSecretKey();
   if (!stripeSecretKey) {
     throw new Error("STRIPE_SECRET_KEY is not configured.");
@@ -1598,7 +1612,8 @@ async function createStripeCheckoutSession({ order, origin }) {
     method: "POST",
     headers: {
       Authorization: `Bearer ${stripeSecretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded"
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": idempotencyKey
     },
     body: form
   });
@@ -1855,6 +1870,7 @@ async function supabaseRequest(tableName, { method = "GET", params = {}, body = 
     }
   }
   if (!response.ok) {
+    logUatSupabaseHttpDiagnostic(response.status);
     const detail = payload?.message || payload?.error || text || `HTTP ${response.status}`;
     throw new Error(`${tableName} ${method} failed: ${detail}`);
   }
@@ -3000,6 +3016,62 @@ async function readOrdersForApi() {
   }
 }
 
+// Landing social proof (READ-ONLY). Aggregate display count + up to 4 recent bracelet previews from
+// real successful orders. Never exposes customer identity: only the bracelet image is returned.
+const SOCIAL_PROOF_BASE_COUNT = 1035;
+const SOCIAL_PROOF_ORDER_MULTIPLIER = 3;
+const SOCIAL_PROOF_MAX_IMAGE_LENGTH = 600000;
+function isSuccessfulOrderPayload(order) {
+  const nested = order && typeof order.order === "object" && order.order ? order.order : order || {};
+  const status = String(nested.status || order?.status || "").trim().toLowerCase();
+  const stripeStatus = String(
+    nested.stripePaymentStatus ||
+    nested.paymentStatus ||
+    order?.stripe_payment_status ||
+    order?.stripePaymentStatus ||
+    order?.paymentStatus ||
+    ""
+  ).trim().toLowerCase();
+  return status === "payment received" ||
+    status === "paid" ||
+    stripeStatus === "paid" ||
+    Boolean(nested.paidAt || nested.paymentReceivedAt || nested.notifications?.paymentReceivedSentAt);
+}
+function extractBraceletPreviewImage(order) {
+  const nested = order && typeof order.order === "object" && order.order ? order.order : order || {};
+  const candidates = [
+    nested.braceletPreviewImage,
+    nested.braceletPreviewDataUrl,
+    order?.braceletPreviewImage,
+    order?.braceletPreviewDataUrl,
+    order?.checkoutSummary?.braceletPreviewImage,
+    order?.checkoutSummary?.braceletPreviewDataUrl
+  ];
+  const snapshot = nested.braceletPreviewSnapshot || order?.braceletPreviewSnapshot;
+  if (snapshot) candidates.push(typeof snapshot === "string" ? snapshot : snapshot?.image || snapshot?.dataUrl || snapshot?.src);
+  return candidates.find((value) => typeof value === "string" && value.trim().length > 32) || null;
+}
+async function readSocialProofForApi() {
+  try {
+    const orders = await readOrdersForApi();
+    const successfulOrders = (Array.isArray(orders) ? orders : []).filter(isSuccessfulOrderPayload);
+    const recentBracelets = [];
+    for (const order of successfulOrders) {
+      const image = extractBraceletPreviewImage(order);
+      if (!image || image.length > SOCIAL_PROOF_MAX_IMAGE_LENGTH) continue;
+      recentBracelets.push({ image });
+      if (recentBracelets.length >= 4) break;
+    }
+    return {
+      displayCount: SOCIAL_PROOF_BASE_COUNT + successfulOrders.length * SOCIAL_PROOF_ORDER_MULTIPLIER,
+      successfulOrderCount: successfulOrders.length,
+      recentBracelets
+    };
+  } catch (error) {
+    console.warn("[/api/social-proof] unavailable; returning safe defaults.", error?.message || error);
+    return { displayCount: SOCIAL_PROOF_BASE_COUNT, successfulOrderCount: 0, recentBracelets: [] };
+  }
+}
 async function saveOrderForApi(order) {
   const orderId = getOrderId(order);
   if (isSupabaseConfigured()) {
@@ -3568,9 +3640,18 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
+    const checkoutAttemptId = resolveStripeCheckoutAttemptId(bodyObj.checkoutAttemptId);
+    if (!checkoutAttemptId) {
+      sendJson(res, 400, { error: "A valid checkout attempt ID is required." });
+      return true;
+    }
+
     let authoritativeOrder;
     try {
-      authoritativeOrder = await buildAuthoritativeStripeOrder(bodyObj.order);
+      authoritativeOrder = await buildAuthoritativeStripeOrder({
+        ...bodyObj.order,
+        id: getStripeCheckoutOrderId(checkoutAttemptId)
+      });
       await validateOrderStockOrThrow(authoritativeOrder);
     } catch (error) {
       sendJson(res, error.statusCode || 409, {
@@ -3582,7 +3663,8 @@ async function handleApiRequest(req, res, urlObj) {
 
     const session = await createStripeCheckoutSession({
       order: authoritativeOrder,
-      origin: bodyObj.origin
+      origin: bodyObj.origin,
+      idempotencyKey: checkoutAttemptId
     });
 
     const pendingOrder = {
@@ -4081,6 +4163,11 @@ async function handleApiRequest(req, res, urlObj) {
       sendJson(res, 200, nextRecord);
       return true;
     }
+  }
+
+  if (pathname === "/api/social-proof" && method === "GET") {
+    sendJson(res, 200, await readSocialProofForApi());
+    return true;
   }
 
   if (pathname === "/api/orders" && method === "GET") {

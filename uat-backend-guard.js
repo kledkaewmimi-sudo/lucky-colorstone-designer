@@ -75,7 +75,8 @@ function isUatReadOnlyApiRequest(method, pathname) {
     '/api/stones',
     '/api/charms',
     '/api/spacers',
-    '/api/settings'
+    '/api/settings',
+    '/api/social-proof'
   ].includes(pathname);
 }
 
