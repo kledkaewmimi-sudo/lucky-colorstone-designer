@@ -1,0 +1,48 @@
+# Publish only what the running customer/CRM application needs.
+# Mirrors the repository-root .vercelignore (owner-approved O3 exclusion, 2026-10-08) and adds the
+# server-side / archive files that exist in this deployable set. Every excluded path was checked
+# against the computed client-required module graph (index.html + crm.html + transitive imports):
+# none of the 27 required frontend modules, /data/*.json fixtures, /assets/**, /api/liff-config.js
+# or _redirects is excluded.
+reports/
+tests/
+test-results/
+node_modules/
+.git/
+.playwright-cli/
+.serena/
+.worktrees/
+.migration-staging/
+supabase/
+scripts/
+tiktok-pixel-events-*/
+production-backups/
+assets_backup/
+docs/
+.github/
+*.md
+*.log
+*.zip
+.env*
+kyanite-modal-visual-gate-temp.png
+
+# Server-side implementation (runs on Render, not needed for the static Vercel artifact).
+server.js
+server.ps1
+server-admin-order-numbers.js
+server-order-persistence.js
+server-order-validation.js
+server-order-cost-snapshot.js
+crm-order-read-model.js
+uat-backend-guard.js
+uat-supabase-auth.js
+meta-capi-purchase.js
+tiktok-events-api.js
+
+# LINE/deferred-auth modules loaded from the backend or bundled elsewhere, not by the frontend graph.
+line-auth-handoff.js
+line-handoff-client.js
+line-liff-profile-sync.js
+line-login-start-diagnostic.js
+deferred-initial-line-login.js
+deferred-login-qa-session.js

@@ -29,5 +29,11 @@
     {
       "handle": "filesystem"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "hotfix/security-data-exposure": false,
+      "hotfix/*": false
+    }
+  }
 }
