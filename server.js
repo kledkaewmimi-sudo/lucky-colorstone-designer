@@ -71,14 +71,97 @@ const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8"
 };
+
+// ============================================================================
+// SECURITY HOTFIX 2026-10-10 - public static asset policy (Render origin).
+//
+// The static fallback used to serve ANY file that existed under the workspace:
+// server.js, server.ps1, lucky-colorstone-designer.zip, package.json,
+// .env.local, reports/, tests/ and the writable data stores were all publicly
+// downloadable from the Render origin. Static serving is now an explicit
+// ALLOWLIST: only web assets whose extension is public are served, and every
+// internal path class is denied first.
+//
+// A denied path is reported exactly like a missing file, so the response cannot
+// be used to confirm that server-side source, archives or backups exist on disk.
+// ============================================================================
+const PUBLIC_STATIC_EXTENSIONS = new Set([
+  ".html", ".css", ".js", ".mjs", ".json", ".png", ".jpg", ".jpeg", ".webp",
+  ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".webmanifest", ".txt"
+]);
+
+// Directories that are never public (server code, tooling, docs, tests, stores).
+const PUBLIC_STATIC_DENY_SEGMENTS = new Set([
+  "reports", "tests", "test-results", "scripts", "docs", "supabase",
+  "node_modules", "production-backups", "assets_backup", "backup", "backups",
+  "logs", "tmp", "temp", "private", "internal", "secrets", "server", "api-backup"
+]);
+
+// Files whose extension is public but whose content is not.
+const PUBLIC_STATIC_DENY_FILES = new Set([
+  "server.js", "server.cjs", "server.mjs", "server.ps1", "package.json",
+  "package-lock.json", "npm-shrinkwrap.json", "vercel.json", "procfile",
+  "dockerfile", "docker-compose.yml", "orders.json", "analytics_events.json",
+  "analytics_sessions.json", "analytics_errors.json", "admin_order_numbers.json",
+  "purchase_entries.json", "stone_purchase_entries.json"
+]);
+
+// Extensions that must never be served, even if a future allowlist entry slips.
+const PUBLIC_STATIC_DENY_EXTENSIONS = new Set([
+  ".zip", ".tar", ".gz", ".tgz", ".rar", ".7z", ".md", ".log", ".yml", ".yaml",
+  ".sql", ".sh", ".bash", ".ps1", ".bat", ".cmd", ".ini", ".cfg", ".conf",
+  ".bak", ".backup", ".orig", ".rej", ".patch", ".diff", ".key", ".pem", ".crt",
+  ".cer", ".p12", ".pfx", ".map", ".csv", ".tsv", ".db", ".sqlite", ".env"
+]);
+
+// Extension-less files that the release package classifies as client-required.
+const PUBLIC_STATIC_EXCEPTION_FILES = new Set(["_redirects"]);
+
+function isPublicStaticAsset(relativePath) {
+  const raw = String(relativePath || "");
+  if (!raw || raw.length > 512) return false;
+  if (raw.startsWith("/") || raw.includes("\\") || raw.includes("\0")) return false;
+
+  const segments = raw.split("/");
+  if (!segments.length) return false;
+  for (const segment of segments) {
+    if (!segment || segment === "." || segment === "..") return false;
+    // Dotfiles/dotdirs, trailing dot or space (Windows normalises them away),
+    // any whitespace, NTFS alternate data streams, 8.3 short names and any
+    // remaining escape/encoding artefact are all rejected outright.
+    if (segment.startsWith(".") || segment.endsWith(".") || segment.endsWith(" ")) return false;
+    if (/[\s~:]/.test(segment)) return false;
+    if (/%[0-9a-f]{2}/i.test(segment)) return false;
+  }
+
+  const lower = segments.map((segment) => segment.toLowerCase());
+  if (lower.some((segment) => PUBLIC_STATIC_DENY_SEGMENTS.has(segment))) return false;
+
+  const base = lower[lower.length - 1];
+  if (PUBLIC_STATIC_DENY_FILES.has(base)) return false;
+  if (PUBLIC_STATIC_EXCEPTION_FILES.has(base)) return true;
+
+  const dot = base.lastIndexOf(".");
+  const ext = dot > 0 ? base.slice(dot) : "";
+  if (!ext) return false;
+  if (PUBLIC_STATIC_DENY_EXTENSIONS.has(ext)) return false;
+  return PUBLIC_STATIC_EXTENSIONS.has(ext);
+}
 
 function stripBom(text = "") {
   return String(text).replace(/^\uFEFF+/, "");
@@ -214,6 +297,237 @@ function hasDeferredLoginQaAdminAccess(req) {
   const expectedBuffer = Buffer.from(expected, 'utf8');
   const providedBuffer = Buffer.from(provided, 'utf8');
   return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+// ============================================================================
+// SECURITY HOTFIX 2026-10-09 — server-verified authorization for customer and
+// CRM data. Nothing else in this file was changed: routes, order payloads,
+// pricing, Stripe and PromptPay behaviour are untouched.
+// ============================================================================
+
+// ---- admin (CRM) authorization -------------------------------------------
+// A server-side shared secret must be configured. If it is missing the admin
+// API fails CLOSED (503) instead of exposing data.
+function getAdminApiSecret() {
+  return getEnvValue('ADMIN_API_SECRET') || getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET');
+}
+function adminApiConfigured() { return Boolean(getAdminApiSecret()); }
+function hasAdminApiAccess(req) {
+  const secret = getAdminApiSecret();
+  const provided = String(req.headers['x-admin-secret'] || '');
+  if (secret && provided) {
+    const expectedBuffer = Buffer.from(secret, 'utf8');
+    const providedBuffer = Buffer.from(provided, 'utf8');
+    if (expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer)) return true;
+  }
+  return Boolean(getAdminSession(req));
+}
+function denyAdminApi(res) {
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (!adminApiConfigured()) {
+    sendJson(res, 503, { error: 'Admin API is not configured.' });
+    return;
+  }
+  sendJson(res, 401, { error: 'Admin authorization required.' });
+}
+
+// ---- admin operator sessions --------------------------------------------
+// Operators exchange the server master secret for a short-lived, HttpOnly, signed
+// session cookie plus a CSRF token bound to that session. Cookie-authenticated
+// state changes must also present the CSRF token, so a cross-site page can never
+// replay an operator session. The master secret is never stored in frontend source
+// and never persisted in browser storage.
+const ADMIN_SESSION_COOKIE = 'lcs_admin_session';
+const ADMIN_CSRF_COOKIE = 'lcs_admin_csrf';
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const ADMIN_LOGIN_MAX_ATTEMPTS = 10;
+const adminLoginAttempts = new Map();
+const revokedAdminSessions = new Map();
+
+function getAdminUsername() { return String(getEnvValue('ADMIN_USERNAME') || 'admin').trim() || 'admin'; }
+function getClientIp(req) {
+  // Behind Vercel/Render the edge appends the address of the peer it actually saw, so the LAST entry
+  // is the one the trusted hop supplied. Every earlier entry (including anything the client sent) is
+  // attacker-controlled and must never key the rate limiter, or a spoofed x-forwarded-for could bypass it.
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((v) => v.trim()).filter(Boolean);
+  if (chain.length) return chain[chain.length - 1];
+  return String(req.socket?.remoteAddress || 'unknown');
+}
+function getAdminSessionKey() {
+  const base = getAdminApiSecret() || getEnvValue('SUPABASE_SERVICE_ROLE_KEY');
+  if (!base) return null;
+  return crypto.createHmac('sha256', base).update('lcs-admin-session-v1').digest();
+}
+function base64UrlEncode(value) { return Buffer.from(value, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function base64UrlDecode(value) { const padded = String(value || '').replace(/-/g, '+').replace(/_/g, '/'); return Buffer.from(padded + '='.repeat((4 - (padded.length % 4)) % 4), 'base64').toString('utf8'); }
+function createAdminSessionToken(ttlMs = ADMIN_SESSION_TTL_MS) {
+  const key = getAdminSessionKey();
+  if (!key) return null;
+  const payload = { exp: Date.now() + ttlMs, csrf: crypto.randomBytes(24).toString('hex'), user: getAdminUsername(), jti: crypto.randomBytes(12).toString('hex') };
+  const body = base64UrlEncode(JSON.stringify(payload));
+  const sig = crypto.createHmac('sha256', key).update(body).digest('hex');
+  return { token: body + '.' + sig, payload };
+}
+function verifyAdminSessionToken(token) {
+  const key = getAdminSessionKey();
+  const value = String(token || '').trim();
+  if (!key || !value.includes('.')) return null;
+  const parts = value.split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const expected = crypto.createHmac('sha256', key).update(parts[0]).digest('hex');
+  const a = Buffer.from(expected, 'utf8'); const b = Buffer.from(parts[1], 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let payload = null;
+  try { payload = JSON.parse(base64UrlDecode(parts[0])); } catch { return null; }
+  if (!payload || !Number.isFinite(payload.exp) || Date.now() > payload.exp) return null;
+  if (payload.jti && revokedAdminSessions.has(payload.jti)) {
+    if (revokedAdminSessions.get(payload.jti) > Date.now()) return null;
+    revokedAdminSessions.delete(payload.jti);
+  }
+  return payload;
+}
+function getAdminSession(req) { return verifyAdminSessionToken(getRequestCookie(req, ADMIN_SESSION_COOKIE)); }
+function isAdminCookieAuthenticated(req) { return Boolean(getAdminSession(req)); }
+function hasValidAdminCsrf(req) {
+  const session = getAdminSession(req);
+  if (!session) return false;
+  const provided = String(req.headers['x-csrf-token'] || '');
+  return Boolean(provided) && provided === session.csrf;
+}
+function adminSessionCookieAttributes(maxAgeSeconds) {
+  return 'Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=' + Math.max(0, Math.trunc(maxAgeSeconds));
+}
+function setAdminSessionCookies(res, session) {
+  const maxAge = Math.ceil(ADMIN_SESSION_TTL_MS / 1000);
+  res.setHeader('Set-Cookie', [
+    ADMIN_SESSION_COOKIE + '=' + session.token + '; ' + adminSessionCookieAttributes(maxAge),
+    ADMIN_CSRF_COOKIE + '=' + session.payload.csrf + '; Path=/; Secure; SameSite=Strict; Max-Age=' + maxAge
+  ]);
+}
+function clearAdminSessionCookies(res) {
+  res.setHeader('Set-Cookie', [
+    ADMIN_SESSION_COOKIE + '=; ' + adminSessionCookieAttributes(0),
+    ADMIN_CSRF_COOKIE + '=; Path=/; Secure; SameSite=Strict; Max-Age=0'
+  ]);
+}
+function adminLoginRateLimited(req) {
+  const entry = adminLoginAttempts.get(getClientIp(req));
+  if (!entry || Date.now() - entry.first > ADMIN_LOGIN_WINDOW_MS) return false;
+  return entry.count >= ADMIN_LOGIN_MAX_ATTEMPTS;
+}
+function recordAdminLoginFailure(req) {
+  const ip = getClientIp(req); const now = Date.now();
+  const entry = adminLoginAttempts.get(ip);
+  if (!entry || now - entry.first > ADMIN_LOGIN_WINDOW_MS) adminLoginAttempts.set(ip, { first: now, count: 1 });
+  else { entry.count += 1; adminLoginAttempts.set(ip, entry); }
+}
+function clearAdminLoginFailures(req) { adminLoginAttempts.delete(getClientIp(req)); }
+
+// Single gate for every administrative read and write. Fails closed when no server
+// secret is configured, and requires a CSRF token for cookie-authenticated writes.
+function requireAdminAccess(req, res, { write = false } = {}) {
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (!adminApiConfigured()) { sendJson(res, 503, { error: 'Admin API is not configured.' }); return false; }
+  if (!hasAdminApiAccess(req)) { sendJson(res, 401, { error: 'Admin authorization required.' }); return false; }
+  if (write && isAdminCookieAuthenticated(req) && !hasValidAdminCsrf(req)) { sendJson(res, 403, { error: 'CSRF token required for admin changes.' }); return false; }
+  return true;
+}
+
+// ---- customer order access tokens ----------------------------------------
+// A signed, order-scoped, expiring token. The HMAC key is derived from an
+// existing server-only secret with a domain-separation label, so no new
+// secret material is required and the token can never be forged by a client.
+const ORDER_ACCESS_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+function getOrderAccessTokenKey() {
+  const base = getEnvValue('SUPABASE_SERVICE_ROLE_KEY') || getEnvValue('STRIPE_WEBHOOK_SECRET') || getEnvValue('LINE_CHANNEL_SECRET');
+  if (!base) return null;
+  return crypto.createHmac('sha256', base).update('lcs-order-access-token-v1').digest();
+}
+function signOrderAccessToken(orderId, expiresAt) {
+  const key = getOrderAccessTokenKey();
+  if (!key || !orderId) return null;
+  return crypto.createHmac('sha256', key).update('order:' + orderId + ':' + expiresAt).digest('hex');
+}
+function createOrderAccessToken(orderId, ttlMs = ORDER_ACCESS_TOKEN_TTL_MS) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  const expiresAt = Date.now() + ttlMs;
+  const signature = signOrderAccessToken(id, expiresAt);
+  return signature ? expiresAt + '.' + signature : null;
+}
+function verifyOrderAccessToken(orderId, token) {
+  const id = String(orderId || '').trim();
+  const value = String(token || '').trim();
+  if (!id || !value) return false;
+  const [rawExpiry, signature] = value.split('.');
+  const expiresAt = Number(rawExpiry);
+  if (!Number.isFinite(expiresAt) || !signature) return false;
+  if (Date.now() > expiresAt) return false;
+  const expected = signOrderAccessToken(id, expiresAt);
+  if (!expected) return false;
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(signature, 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// ---- scoped order reads (server-side filtering, never "download all") ----
+async function readOrderByIdScoped(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', 'payload->>id': 'eq.' + id, limit: '1' } });
+    return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+  }
+  return readJsonArray('orders').find((entry) => getOrderId(entry) === id) || null;
+}
+async function readOrderBySessionIdScoped(sessionId) {
+  const value = String(sessionId || '').trim();
+  if (!value) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', stripe_checkout_session_id: 'eq.' + value, limit: '1' } });
+    return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+  }
+  return readJsonArray('orders').find((entry) => entry?.stripeCheckoutSessionId === value) || null;
+}
+// ---- LINE-verified customer reauthorization ------------------------------
+// Legacy order links (created before signed tokens existed) can still be opened safely when
+// the customer proves ownership: the browser returns a LINE ID token from LIFF, the server
+// verifies it with LINE, and only that verified customer's own orders are ever returned.
+function getLineLoginChannelId() {
+  const explicit = getEnvValue('LINE_LOGIN_CHANNEL_ID') || getEnvValue('LINE_CHANNEL_ID');
+  if (explicit) return String(explicit).trim();
+  const liffId = String(getEnvValue('PRODUCTION_LIFF_ID') || getEnvValue('LINE_LIFF_ID') || '2010525799-qImIuhla').trim();
+  const prefix = liffId.split('-')[0];
+  return /^[0-9]+$/.test(prefix) ? prefix : '';
+}
+async function verifyLineIdToken(idToken, channelId) {
+  const endpoint = String(getEnvValue('LINE_TOKEN_VERIFY_URL') || 'https://api.line.me/oauth2/v2.1/verify').trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id_token: idToken, client_id: channelId }).toString(),
+      signal: controller.signal
+    });
+    if (!response.ok) return '';
+    const payload = await response.json().catch(() => null);
+    const sub = String(payload?.sub || '').trim();
+    return /^U[0-9a-f]{32}$/i.test(sub) ? sub : '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function readOrdersByLineUserIdScoped(lineUserId) {
+  const id = String(lineUserId || '').trim();
+  if (!id) return [];
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', line_user_id: 'eq.' + id, order: 'created_at.desc', limit: '50' } });
+    return (Array.isArray(rows) ? rows : []).map((row) => row?.payload).filter(Boolean);
+  }
+  return readJsonArray('orders').filter((entry) => String(entry?.lineUserId || '').trim() === id).slice(0, 50);
 }
 
 function hasCorruptedThaiText(value) {
@@ -808,6 +1122,10 @@ function buildOrderDetailUrl(order) {
   const url = new URL(getPublicCustomerOrigin());
   if (orderId) {
     url.searchParams.set("orderId", orderId);
+    // SECURITY HOTFIX: server-generated order links carry a signed, expiring
+    // order-scoped token so the customer can still open their own order.
+    const token = createOrderAccessToken(orderId);
+    if (token) url.searchParams.set("t", token);
   }
   return url.toString();
 }
@@ -2982,6 +3300,88 @@ function sortOrdersForApi(orders) {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Landing-page social proof (additive route merged 2026-10-10 from the full UAT feature migration)
+//
+// This is the ONLY backend change the migration brings: a read-only public aggregate. It is ported
+// onto the hardened production server rather than adopting the candidate's pre-hotfix server.js,
+// so every security control added by the hotfix (session auth, entitlement-scoped order reads,
+// static allowlist, rate limiting, webhook signature checks) is preserved verbatim.
+//
+// Deliberate integration decisions, recorded for the release audit:
+//   * no customer PII crosses the boundary: the payload carries a display count, a successful-order
+//     count and up to four bracelet preview images;
+//   * the payload is cached briefly. Supabase egress was the owner-reported Free-plan constraint,
+//     and an uncached public endpoint that reads the whole order collection on every landing-page
+//     view would amplify it directly;
+//   * any failure degrades to a safe default payload instead of throwing.
+const SOCIAL_PROOF_BASE_COUNT = 1035;
+const SOCIAL_PROOF_ORDER_MULTIPLIER = 3;
+const SOCIAL_PROOF_MAX_IMAGE_LENGTH = 600000;
+const SOCIAL_PROOF_CACHE_MS = 60000;
+let socialProofCache = { at: 0, payload: null };
+
+function isSuccessfulOrderPayload(order) {
+  const nested = order && typeof order.order === "object" && order.order ? order.order : order || {};
+  const status = String(nested.status || order?.status || "").trim().toLowerCase();
+  const stripeStatus = String(
+    nested.stripePaymentStatus ||
+    nested.paymentStatus ||
+    order?.stripe_payment_status ||
+    order?.stripePaymentStatus ||
+    order?.paymentStatus ||
+    ""
+  ).trim().toLowerCase();
+  return status === "payment received" ||
+    status === "paid" ||
+    stripeStatus === "paid" ||
+    Boolean(nested.paidAt || nested.paymentReceivedAt || nested.notifications?.paymentReceivedSentAt);
+}
+
+function extractBraceletPreviewImage(order) {
+  const nested = order && typeof order.order === "object" && order.order ? order.order : order || {};
+  const candidates = [
+    nested.braceletPreviewImage,
+    nested.braceletPreviewDataUrl,
+    order?.braceletPreviewImage,
+    order?.braceletPreviewDataUrl,
+    order?.checkoutSummary?.braceletPreviewImage,
+    order?.checkoutSummary?.braceletPreviewDataUrl
+  ];
+  const snapshot = nested.braceletPreviewSnapshot || order?.braceletPreviewSnapshot;
+  if (snapshot) candidates.push(typeof snapshot === "string" ? snapshot : snapshot?.image || snapshot?.dataUrl || snapshot?.src);
+  return candidates.find((value) => typeof value === "string" && value.trim().length > 32) || null;
+}
+
+async function readSocialProofForApi() {
+  const now = Date.now();
+  if (socialProofCache.payload && now - socialProofCache.at < SOCIAL_PROOF_CACHE_MS) {
+    return socialProofCache.payload;
+  }
+  let payload;
+  try {
+    const orders = await readOrdersForApi();
+    const successfulOrders = (Array.isArray(orders) ? orders : []).filter(isSuccessfulOrderPayload);
+    const recentBracelets = [];
+    for (const order of successfulOrders) {
+      const image = extractBraceletPreviewImage(order);
+      if (!image || image.length > SOCIAL_PROOF_MAX_IMAGE_LENGTH) continue;
+      recentBracelets.push({ image });
+      if (recentBracelets.length >= 4) break;
+    }
+    payload = {
+      displayCount: SOCIAL_PROOF_BASE_COUNT + successfulOrders.length * SOCIAL_PROOF_ORDER_MULTIPLIER,
+      successfulOrderCount: successfulOrders.length,
+      recentBracelets
+    };
+  } catch (error) {
+    console.warn("[/api/social-proof] unavailable; returning safe defaults.", error?.message || error);
+    payload = { displayCount: SOCIAL_PROOF_BASE_COUNT, successfulOrderCount: 0, recentBracelets: [] };
+  }
+  socialProofCache = { at: now, payload };
+  return payload;
+}
+
 async function readOrdersForApi() {
   if (!isSupabaseConfigured()) {
     const jsonOrders = sortOrdersForApi(readJsonArray("orders"));
@@ -3046,8 +3446,17 @@ function applyCrmPaidOrderFilter(params) {
   return params;
 }
 
+function stripOrderListPreview(order) {
+  if (!order || typeof order !== 'object') return order;
+  const { braceletPreviewImage, braceletPreviewDataUrl, braceletPreviewSnapshot, ...rest } = order;
+  return rest;
+}
+
 async function readCrmOrderProjection({ page = null, limit = null, paidOnly = false, includePreview = false } = {}) {
-  if (!isSupabaseConfigured()) return readOrdersForCrmApi();
+  if (!isSupabaseConfigured()) {
+    const rows = await readOrdersForCrmApi();
+    return includePreview ? rows : rows.map(stripOrderListPreview);
+  }
   const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,' + (includePreview ? 'braceletPreviewImage:payload->>braceletPreviewImage,braceletPreviewDataUrl:payload->>braceletPreviewDataUrl,braceletPreviewSnapshot:payload->>braceletPreviewSnapshot,checkoutBraceletPreviewImage:payload->checkoutSummary->>braceletPreviewImage,checkoutBraceletPreviewDataUrl:payload->checkoutSummary->>braceletPreviewDataUrl,checkoutBraceletPreviewSnapshot:payload->checkoutSummary->>braceletPreviewSnapshot,' : '') + 'costSnapshotStatus:payload->costSnapshot->>status,costSnapshotMaterialCost:payload->costSnapshot->>materialCost,costSnapshotDeliveryCost:payload->costSnapshot->>deliveryCost,costSnapshotTotalCost:payload->costSnapshot->>totalCost,costSnapshotProfit:payload->costSnapshot->>profit,costSnapshotMarginPercent:payload->costSnapshot->>marginPercent,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
   const params = { select, order: 'date.desc.nullslast,created_at.desc' };
   if (paidOnly) applyCrmPaidOrderFilter(params);
@@ -3449,15 +3858,31 @@ async function handleApiRequest(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = req.method;
 
+  // SECURITY HOTFIX: sensitive order/CRM/payment/business responses must never be cached by
+  // shared caches or intermediaries. Applied to the whole sensitive surface up front.
+  if (pathname === '/api/orders' ||
+      pathname === '/api/analytics/summary' ||
+      pathname === '/api/stripe/checkout-session' ||
+      pathname === '/api/stripe/purchase-tracking' ||
+      pathname === '/api/purchases' ||
+      pathname.startsWith('/api/purchases/') ||
+      pathname === '/api/purchase-costs' ||
+      pathname.startsWith('/api/purchase-costs/') ||
+      pathname.startsWith('/api/crm/') ||
+      pathname.startsWith('/api/admin/')) {
+    res.setHeader('Cache-Control', 'private, no-store');
+  }
+
   if (pathname === '/api/crm/overview' && method === 'GET') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     sendJson(res, 200, buildCrmOverview(await readCrmOrderProjection({ paidOnly: true })));
     return true;
   }
 
   if (pathname.startsWith('/api/crm/orders/') && method === 'GET') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     const orderId = decodeURIComponent(pathname.slice('/api/crm/orders/'.length));
-    const rows = await supabaseRequest('orders', { params: { select: 'payload', 'payload->>id': `eq.${orderId}`, limit: '1' } });
-    const order = Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+    const order = await readOrderByIdScoped(orderId);
     if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
     order.adminOrderNumber = await getAdminOrderNumberForOrderId(orderId);
     sendJson(res, 200, order);
@@ -3465,10 +3890,11 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === '/api/crm/orders' && method === 'GET') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     const page = Math.max(1, Math.trunc(Number(urlObj.searchParams.get('page')) || 1));
     const limit = Math.min(100, Math.max(1, Math.trunc(Number(urlObj.searchParams.get('limit')) || 20)));
     const [rows, total] = await Promise.all([
-      readCrmOrderProjection({ page, limit, paidOnly: true, includePreview: true }),
+      readCrmOrderProjection({ page, limit, paidOnly: true, includePreview: urlObj.searchParams.get('includePreview') === '1' }),
       readCrmPaidOrderCount()
     ]);
     const orders = rows.map(toCrmOrderSummary);
@@ -3537,6 +3963,44 @@ async function handleApiRequest(req, res, urlObj) {
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
+
+  // ---- admin operator session endpoints (Phase 2) --------------------------
+  if (pathname === '/api/admin/session' && method === 'GET') {
+    if (!adminApiConfigured()) { sendJson(res, 503, { authenticated: false, error: 'Admin API is not configured.' }); return true; }
+    const session = getAdminSession(req);
+    if (!session) { sendJson(res, 200, { authenticated: false, csrf: '', username: '' }); return true; }
+    sendJson(res, 200, { authenticated: true, csrf: String(session.csrf || ''), username: String(session.user || getAdminUsername()) });
+    return true;
+  }
+  if (pathname === '/api/admin/login' && method === 'POST') {
+    if (!adminApiConfigured()) { sendJson(res, 503, { authenticated: false, error: 'Admin API is not configured.' }); return true; }
+    if (adminLoginRateLimited(req)) { sendJson(res, 429, { authenticated: false, error: 'Too many attempts. Try again later.' }); return true; }
+    const secret = getAdminApiSecret();
+    const username = String(bodyObj?.username || '').trim();
+    const password = String(bodyObj?.password || bodyObj?.secret || '');
+    const userOk = username === '' || username === getAdminUsername();
+    const passBuffer = Buffer.from(password, 'utf8');
+    const secretBuffer = Buffer.from(secret, 'utf8');
+    const passOk = passBuffer.length === secretBuffer.length && crypto.timingSafeEqual(passBuffer, secretBuffer);
+    if (!userOk || !passOk) {
+      recordAdminLoginFailure(req);
+      sendJson(res, 401, { authenticated: false, error: 'Invalid credentials.' });
+      return true;
+    }
+    clearAdminLoginFailures(req);
+    const session = createAdminSessionToken();
+    if (!session) { sendJson(res, 503, { authenticated: false, error: 'Admin session unavailable.' }); return true; }
+    setAdminSessionCookies(res, session);
+    sendJson(res, 200, { authenticated: true, csrf: session.payload.csrf, username: session.payload.user });
+    return true;
+  }
+  if (pathname === '/api/admin/logout' && method === 'POST') {
+    const active = getAdminSession(req);
+    if (active && active.jti) revokedAdminSessions.set(active.jti, Number(active.exp) || (Date.now() + ADMIN_SESSION_TTL_MS));
+    clearAdminSessionCookies(res);
+    sendJson(res, 200, { authenticated: false });
+    return true;
+  }
 
   if (pathname === '/api/internal/deferred-login-qa-sessions' && method === 'POST') {
     if (!hasDeferredLoginQaAdminAccess(req)) {
@@ -3663,6 +4127,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/uploads/image" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
@@ -3769,6 +4234,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/storage/status" && method === "GET") {
+    if (!requireAdminAccess(req, res)) return true;
     sendJson(res, 200, {
       mode: getStorageMode(),
       supabaseConfigured: isSupabaseConfigured(),
@@ -3800,6 +4266,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if ((pathname === "/api/analytics/summary" || pathname === "/api/crm/analytics/summary") && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     try {
       sendJson(res, 200, await buildAnalyticsSummary(urlObj.searchParams));
     } catch (error) {
@@ -3829,6 +4296,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchases" && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const entries = await supabaseRequest('stone_purchase_entries', { params: { select: '*', order: 'purchased_at.desc,created_at.desc' } });
     sendJson(res, 200, Array.isArray(entries) ? entries : []);
@@ -3836,6 +4304,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchase-costs/stones" && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Stone purchase costs require Supabase.');
     const entries = await supabaseRequest('stone_purchase_entries', { params: { select: 'catalog_item_id,size_mm,quantity,total_cost', item_type: 'eq.stone', catalog_item_id: 'not.is.null' } });
     const summaries = new Map();
@@ -3853,6 +4322,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchase-costs" && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase costs require Supabase.');
     const entries = await supabaseRequest('stone_purchase_entries', { params: { select: 'item_type,catalog_item_id,size_mm,quantity,total_cost', item_type: 'in.(stone,charm,spacer)', catalog_item_id: 'not.is.null' } });
     const summaries = { stones: new Map(), charms: new Map(), spacers: new Map() };
@@ -3886,6 +4356,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchases" && method === "POST") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);
     const entry = normalizePurchaseEntry(bodyObj, { stones, charms, spacers });
@@ -3895,6 +4366,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith('/api/purchases/') && pathname.endsWith('/catalog-link') && method === 'PATCH') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length, -'/catalog-link'.length));
     const catalogItemId = String(bodyObj?.catalogItemId || '').trim();
@@ -3933,6 +4405,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith('/api/purchases/') && method === 'PUT') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
     const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);
@@ -3944,6 +4417,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith('/api/purchases/') && method === 'DELETE') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
     const rows = await supabaseRequest('stone_purchase_entries', { method: 'DELETE', params: { id: `eq.${id}` }, prefer: 'return=representation' });
@@ -3958,6 +4432,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/stones/save" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
@@ -3991,6 +4466,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/stones/delete" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { success: false, error: "Missing ID" });
       return true;
@@ -4020,6 +4496,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith("/api/stones/") && method === "DELETE") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     const stoneId = decodeURIComponent(pathname.slice("/api/stones/".length));
     if (!stoneId) {
       sendJson(res, 400, { error: "Missing stone ID" });
@@ -4060,6 +4537,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/charms" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { error: "Missing charm ID" });
       return true;
@@ -4090,6 +4568,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/charms/delete" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { error: "Missing charm ID" });
       return true;
@@ -4119,6 +4598,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith("/api/charms/")) {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     const charmId = decodeURIComponent(pathname.slice("/api/charms/".length));
     if (!charmId) {
       sendJson(res, 400, { error: "Missing charm ID" });
@@ -4184,6 +4664,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith("/api/spacers/")) {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     const spacerId = decodeURIComponent(pathname.slice("/api/spacers/".length));
     if (!spacerId) {
       sendJson(res, 400, { error: "Missing spacer ID" });
@@ -4212,12 +4693,73 @@ async function handleApiRequest(req, res, urlObj) {
     }
   }
 
+  if (pathname === "/api/social-proof" && method === "GET") {
+    sendJson(res, 200, await readSocialProofForApi());
+    return true;
+  }
+
   if (pathname === "/api/orders" && method === "GET") {
-    sendJson(res, 200, await readOrdersForApi());
+    // SECURITY HOTFIX: the full order collection is never returned to a client.
+    // A caller must present either the Stripe checkout session id (the existing
+    // server-validated Stripe-return entitlement) or a signed, expiring,
+    // order-scoped access token.
+    res.setHeader('Cache-Control', 'private, no-store');
+    const sessionId = String(urlObj.searchParams.get('session_id') || '').trim();
+    const orderId = String(urlObj.searchParams.get('orderId') || '').trim();
+    const orderToken = String(urlObj.searchParams.get('t') || '').trim();
+    if (sessionId) {
+      const order = await readOrderBySessionIdScoped(sessionId);
+      if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
+      sendJson(res, 200, [order]);
+      return true;
+    }
+    if (orderId && verifyOrderAccessToken(orderId, orderToken)) {
+      const order = await readOrderByIdScoped(orderId);
+      if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
+      sendJson(res, 200, [order]);
+      return true;
+    }
+    sendJson(res, 403, { error: 'Order access requires a valid session or order access token.' });
+    return true;
+  }
+
+  if (pathname === '/api/orders/reauthorize' && method === 'POST') {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const idToken = String(bodyObj?.idToken || bodyObj?.id_token || '').trim();
+    const requestedOrderId = String(bodyObj?.orderId || '').trim();
+    if (!idToken) { sendJson(res, 400, { error: 'A LINE ID token is required.' }); return true; }
+    const channelId = getLineLoginChannelId();
+    if (!channelId) { sendJson(res, 503, { error: 'LINE reauthorization is not configured.' }); return true; }
+    let lineUserId = '';
+    try {
+      lineUserId = await verifyLineIdToken(idToken, channelId);
+    } catch (error) {
+      console.warn('[orders] LINE reauthorization verify failed:', error?.message || error);
+    }
+    if (!lineUserId) { sendJson(res, 401, { error: 'LINE identity could not be verified.' }); return true; }
+    try {
+      const owned = await readOrdersByLineUserIdScoped(lineUserId);
+      const scoped = requestedOrderId ? owned.filter((order) => getOrderId(order) === requestedOrderId) : owned;
+      if (requestedOrderId && scoped.length === 0) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
+      const orders = scoped.slice(0, 50).map((order) => ({
+        id: getOrderId(order),
+        date: order?.date || '',
+        status: order?.status || '',
+        totalPrice: Number(order?.totalPrice ?? order?.finalPrice ?? order?.netPrice ?? 0),
+        token: createOrderAccessToken(getOrderId(order))
+      })).filter((entry) => entry.id && entry.token);
+      sendJson(res, 200, { orders });
+    } catch (error) {
+      console.warn('[orders] reauthorization lookup failed:', error?.message || error);
+      sendJson(res, 500, { error: 'Unable to load orders.' });
+    }
     return true;
   }
 
   if (pathname === "/api/crm/orders" && method === "GET") {
+    // Defensive: this branch is unreachable (the paginated handler above always returns first),
+    // but it must never become an unguarded path if the route order ever changes.
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     sendJson(res, 200, await readOrdersForCrmApi());
     return true;
   }
@@ -4308,6 +4850,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/orders/update-status" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id || bodyObj.status == null) {
       sendJson(res, 400, { error: "Missing parameters" });
       return true;
@@ -4375,6 +4918,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/settings/save" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
@@ -4390,6 +4934,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/reset" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     restoreSeedData();
     sendJson(res, 200, { success: true });
     return true;
@@ -4407,22 +4952,43 @@ function resolveRootDocument(req) {
 }
 
 function sanitizeStaticPath(pathname) {
-  const decoded = decodeURIComponent(pathname || "/");
-  if (decoded === "/") {
-    return resolveRootDocument({ headers: { host: "" } });
+  // Returns a safe relative path, or null when the request is not a plain,
+  // single-encoded static path. Traversal is rejected instead of silently
+  // rewritten, so two different requests can never alias the same file.
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(String(pathname || "/"));
+  } catch {
+    return null; // malformed percent-encoding
   }
+  if (!decoded.startsWith("/")) return null;
+  if (/%[0-9a-f]{2}/i.test(decoded)) return null; // double-encoded input
+  if (decoded.includes("\0") || decoded.includes("\\")) return null;
 
-  const normalized = path.normalize(decoded).replace(/^(\.\.(\/|\\|$))+/, "");
-  return normalized.replace(/^[/\\]+/, "");
+  const normalized = path.posix.normalize(decoded);
+  if (!normalized.startsWith("/")) return null;
+
+  const relative = normalized.replace(/^\/+/, "");
+  if (!relative) return null;
+  if (relative.split("/").some((segment) => segment === "." || segment === ".." || segment === "")) return null;
+  return relative;
 }
 
 async function serveStaticFile(req, res, urlObj) {
   const relativePath = urlObj.pathname === "/"
     ? resolveRootDocument(req)
     : sanitizeStaticPath(urlObj.pathname);
-  const localFile = path.join(workspaceDir, relativePath);
 
-  if (!localFile.startsWith(workspaceDir)) {
+  // SECURITY HOTFIX: static serving is an allowlist. A path that is not an
+  // approved public web asset is answered exactly like a missing file.
+  if (!relativePath || !isPublicStaticAsset(relativePath)) {
+    sendText(res, 404, `File Not Found: ${urlObj.pathname}`);
+    return;
+  }
+
+  const localFile = path.join(workspaceDir, relativePath);
+  const workspaceBoundary = workspaceDir.endsWith(path.sep) ? workspaceDir : workspaceDir + path.sep;
+  if (localFile !== workspaceDir && !localFile.startsWith(workspaceBoundary)) {
     sendText(res, 403, "Forbidden");
     return;
   }
@@ -4434,7 +5000,15 @@ async function serveStaticFile(req, res, urlObj) {
       return;
     }
 
-    const content = await fsp.readFile(localFile);
+    // Containment is re-checked on the resolved target so a symlink inside the
+    // workspace cannot be used to read a file outside it.
+    const realFile = await fsp.realpath(localFile);
+    if (realFile !== workspaceDir && !realFile.startsWith(workspaceBoundary)) {
+      sendText(res, 403, "Forbidden");
+      return;
+    }
+
+    const content = await fsp.readFile(realFile);
     const ext = path.extname(localFile).toLowerCase();
     res.statusCode = 200;
     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
@@ -4460,6 +5034,15 @@ const server = http.createServer(async (req, res) => {
     }
 
     const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+    // SECURITY HOTFIX: a request target beginning with "//" is parsed as a protocol-relative
+    // URL, so `new URL("//server.js", base)` would silently turn "server.js" into a host and
+    // resolve the path to "/". Such a target is never a legitimate static request - reject it
+    // instead of answering with the application document.
+    if (/^\/\//.test(String(req.url || ""))) {
+      sendText(res, 404, `File Not Found: ${req.url}`);
+      return;
+    }
 
     if (urlObj.pathname.startsWith("/api/")) {
       try {
