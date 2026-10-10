@@ -3301,56 +3301,52 @@ function sortOrdersForApi(orders) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Landing-page social proof (additive route merged 2026-10-10 from the full UAT feature migration)
+// Landing-page social proof (additive route merged 2026-10-10 from the full UAT feature migration).
 //
-// This is the ONLY backend change the migration brings: a read-only public aggregate. It is ported
-// onto the hardened production server rather than adopting the candidate's pre-hotfix server.js,
-// so every security control added by the hotfix (session auth, entitlement-scoped order reads,
-// static allowlist, rate limiting, webhook signature checks) is preserved verbatim.
+// This is the ONLY backend change the migration brings: a read-only, PUBLIC, AGGREGATE-ONLY counter.
+// It is ported onto the hardened production server rather than adopting the candidate's pre-hotfix
+// server.js, so every security control added by the hotfix (session auth, entitlement-scoped order
+// reads, static allowlist, rate limiting, webhook signature checks) is preserved verbatim.
 //
-// Deliberate integration decisions, recorded for the release audit:
-//   * no customer PII crosses the boundary: the payload carries a display count, a successful-order
-//     count and up to four bracelet preview images;
-//   * the payload is cached briefly. Supabase egress was the owner-reported Free-plan constraint,
-//     and an uncached public endpoint that reads the whole order collection on every landing-page
-//     view would amplify it directly;
-//   * any failure degrades to a safe default payload instead of throwing.
+// PRIVACY (2026-10-10): the first merged revision reused the frozen candidate's design, which returned
+// up to four real customer bracelet preview images. That design was rejected and never deployed to the
+// backend. This revision publishes a NUMBER ONLY:
+//   * the response body is exactly { displayCount, successfulOrderCount }: no images, no order ids,
+//     no names, no phone numbers, no addresses, no payment data and no base64 payloads of any kind;
+//   * the count is obtained without reading order records - a PostgREST exact-count request filtered by
+//     the CRM's own paid-order filter and projecting a single id column, with the existing
+//     readCrmPaidOrderCount() helper as the fallback when the count header is unavailable;
+//   * the payload is cached in-process for 60s, so a public page view cannot amplify Supabase reads
+//     (the owner-reported Free-plan egress constraint) or hammer the database;
+//   * any failure degrades to the static base count instead of throwing.
 const SOCIAL_PROOF_BASE_COUNT = 1035;
 const SOCIAL_PROOF_ORDER_MULTIPLIER = 3;
-const SOCIAL_PROOF_MAX_IMAGE_LENGTH = 600000;
 const SOCIAL_PROOF_CACHE_MS = 60000;
 let socialProofCache = { at: 0, payload: null };
 
-function isSuccessfulOrderPayload(order) {
-  const nested = order && typeof order.order === "object" && order.order ? order.order : order || {};
-  const status = String(nested.status || order?.status || "").trim().toLowerCase();
-  const stripeStatus = String(
-    nested.stripePaymentStatus ||
-    nested.paymentStatus ||
-    order?.stripe_payment_status ||
-    order?.stripePaymentStatus ||
-    order?.paymentStatus ||
-    ""
-  ).trim().toLowerCase();
-  return status === "payment received" ||
-    status === "paid" ||
-    stripeStatus === "paid" ||
-    Boolean(nested.paidAt || nested.paymentReceivedAt || nested.notifications?.paymentReceivedSentAt);
-}
-
-function extractBraceletPreviewImage(order) {
-  const nested = order && typeof order.order === "object" && order.order ? order.order : order || {};
-  const candidates = [
-    nested.braceletPreviewImage,
-    nested.braceletPreviewDataUrl,
-    order?.braceletPreviewImage,
-    order?.braceletPreviewDataUrl,
-    order?.checkoutSummary?.braceletPreviewImage,
-    order?.checkoutSummary?.braceletPreviewDataUrl
-  ];
-  const snapshot = nested.braceletPreviewSnapshot || order?.braceletPreviewSnapshot;
-  if (snapshot) candidates.push(typeof snapshot === "string" ? snapshot : snapshot?.image || snapshot?.dataUrl || snapshot?.src);
-  return candidates.find((value) => typeof value === "string" && value.trim().length > 32) || null;
+// Aggregate paid-order count. Returns a number only; it never reads or returns customer records and
+// never touches bracelet previews.
+async function readPaidOrderCountAggregate() {
+  if (!isSupabaseConfigured()) {
+    // Local/JSON mode (development and the offline harnesses): count in place, still without
+    // surfacing any field of any order.
+    return sortOrdersForApi(readJsonArray("orders")).filter((order) =>
+      String(order?.stripePaymentStatus || order?.paymentStatus || "").trim().toLowerCase() === "paid").length;
+  }
+  try {
+    const { serviceRoleKey } = getSupabaseConfig();
+    const params = applyCrmPaidOrderFilter({ select: "id:payload->>id", limit: 1 });
+    const response = await fetch(createSupabaseRestUrl("orders", params), {
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: "count=exact" }
+    });
+    if (response.ok) {
+      const total = Number(String(response.headers.get("content-range") || "").split("/")[1]);
+      if (Number.isFinite(total) && total >= 0) return total;
+    }
+  } catch (error) {
+    console.warn("[/api/social-proof] exact count unavailable; using the fallback count.", error?.message || error);
+  }
+  return readCrmPaidOrderCount();
 }
 
 async function readSocialProofForApi() {
@@ -3358,26 +3354,16 @@ async function readSocialProofForApi() {
   if (socialProofCache.payload && now - socialProofCache.at < SOCIAL_PROOF_CACHE_MS) {
     return socialProofCache.payload;
   }
-  let payload;
+  let successfulOrderCount = 0;
   try {
-    const orders = await readOrdersForApi();
-    const successfulOrders = (Array.isArray(orders) ? orders : []).filter(isSuccessfulOrderPayload);
-    const recentBracelets = [];
-    for (const order of successfulOrders) {
-      const image = extractBraceletPreviewImage(order);
-      if (!image || image.length > SOCIAL_PROOF_MAX_IMAGE_LENGTH) continue;
-      recentBracelets.push({ image });
-      if (recentBracelets.length >= 4) break;
-    }
-    payload = {
-      displayCount: SOCIAL_PROOF_BASE_COUNT + successfulOrders.length * SOCIAL_PROOF_ORDER_MULTIPLIER,
-      successfulOrderCount: successfulOrders.length,
-      recentBracelets
-    };
+    successfulOrderCount = await readPaidOrderCountAggregate();
   } catch (error) {
-    console.warn("[/api/social-proof] unavailable; returning safe defaults.", error?.message || error);
-    payload = { displayCount: SOCIAL_PROOF_BASE_COUNT, successfulOrderCount: 0, recentBracelets: [] };
+    console.warn("[/api/social-proof] count unavailable; returning the safe default.", error?.message || error);
   }
+  const payload = {
+    displayCount: SOCIAL_PROOF_BASE_COUNT + successfulOrderCount * SOCIAL_PROOF_ORDER_MULTIPLIER,
+    successfulOrderCount
+  };
   socialProofCache = { at: now, payload };
   return payload;
 }
