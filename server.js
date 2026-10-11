@@ -3592,7 +3592,10 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
     return includePreview ? rows : rows.map(stripOrderListPreview);
   }
   const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,' + (includePreview ? 'braceletPreviewImage:payload->>braceletPreviewImage,braceletPreviewDataUrl:payload->>braceletPreviewDataUrl,braceletPreviewSnapshot:payload->>braceletPreviewSnapshot,checkoutBraceletPreviewImage:payload->checkoutSummary->>braceletPreviewImage,checkoutBraceletPreviewDataUrl:payload->checkoutSummary->>braceletPreviewDataUrl,checkoutBraceletPreviewSnapshot:payload->checkoutSummary->>braceletPreviewSnapshot,' : '') + 'costSnapshotStatus:payload->costSnapshot->>status,costSnapshotMaterialCost:payload->costSnapshot->>materialCost,costSnapshotDeliveryCost:payload->costSnapshot->>deliveryCost,costSnapshotTotalCost:payload->costSnapshot->>totalCost,costSnapshotProfit:payload->costSnapshot->>profit,costSnapshotMarginPercent:payload->costSnapshot->>marginPercent,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
-  const params = { select, order: 'date.desc.nullslast,created_at.desc' };
+  // The authenticated CRM order cards present the same shipping information as View Detail, so the
+  // projection carries the recipient/phone/address fields. No public route reads this projection.
+  const selectWithShipping = select + ',recipientName:payload->>recipientName,phoneNumber:payload->>phoneNumber,addressLine:payload->>addressLine,province:payload->>province,postalCode:payload->>postalCode,shippingInfo:payload->shippingInfo';
+  const params = { select: selectWithShipping, order: 'date.desc.nullslast,created_at.desc' };
   if (paidOnly) applyCrmPaidOrderFilter(params);
   if (Number.isInteger(page) && Number.isInteger(limit)) { params.limit = limit; params.offset = (page - 1) * limit; }
   const rows = await supabaseRequest('orders', { params });
@@ -3603,6 +3606,14 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
     braceletPreviewImage: row.braceletPreviewImage,
     braceletPreviewDataUrl: row.braceletPreviewDataUrl,
     braceletPreviewSnapshot: row.braceletPreviewSnapshot,
+    // Fall back to the legacy top-level address fields exactly like getOrderShippingInfo in crm.js.
+    shippingInfo: {
+      recipientName: row.shippingInfo?.recipientName ?? row.recipientName ?? '',
+      phoneNumber: row.shippingInfo?.phoneNumber ?? row.phoneNumber ?? '',
+      addressLine: row.shippingInfo?.addressLine ?? row.addressLine ?? '',
+      province: row.shippingInfo?.province ?? row.province ?? '',
+      postalCode: row.shippingInfo?.postalCode ?? row.postalCode ?? ''
+    },
     checkoutSummary: { braceletPreviewImage: row.checkoutBraceletPreviewImage, braceletPreviewDataUrl: row.checkoutBraceletPreviewDataUrl, braceletPreviewSnapshot: row.checkoutBraceletPreviewSnapshot },
     costSnapshot: {
       status: row.costSnapshotStatus,

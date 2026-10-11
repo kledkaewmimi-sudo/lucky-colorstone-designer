@@ -21,6 +21,19 @@ function resolveCrmOrderPreviewSource(order = {}) {
   return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
 }
 
+// Mirrors getOrderShippingInfo in crm.js: the order card shows the same shipping presentation as
+// View Detail, so the paginated list projection has to carry the recipient/phone/address fields.
+function resolveCrmOrderShippingInfo(order = {}) {
+  const shippingInfo = order.shippingInfo && typeof order.shippingInfo === 'object' ? order.shippingInfo : {};
+  return {
+    recipientName: shippingInfo.recipientName || order.recipientName || '',
+    phoneNumber: shippingInfo.phoneNumber || order.phoneNumber || '',
+    addressLine: shippingInfo.addressLine || order.addressLine || '',
+    province: shippingInfo.province || order.province || '',
+    postalCode: shippingInfo.postalCode || order.postalCode || ''
+  };
+}
+
 function toCompactCostSnapshot(order = {}) {
   const snapshot = order.costSnapshot && typeof order.costSnapshot === 'object' ? order.costSnapshot : {};
   return {
@@ -79,6 +92,7 @@ function toCrmOrderSummary(order = {}) {
     spacerCount: asNumber(order.spacerCount),
     // The Order card must use the exact immutable preview source displayed in View Detail.
     braceletPreviewImage: resolveCrmOrderPreviewSource(order),
+    shippingInfo: resolveCrmOrderShippingInfo(order),
     costSnapshot: toCompactCostSnapshot(order),
     subtotal: asNumber(checkoutSummary.subtotal ?? order.subtotal),
     discountPercent: asNumber(checkoutSummary.discountPercent ?? order.discountPercent),
@@ -93,6 +107,8 @@ function toCrmOverviewOrderSummary(order = {}) {
   // Overview must never carry stored preview blobs; only the paginated Orders
   // list needs the exact View Detail source.
   delete summary.braceletPreviewImage;
+  // The overview list shows no shipping presentation, so customer addresses stay out of it.
+  delete summary.shippingInfo;
   return summary;
 }
 
@@ -121,6 +137,7 @@ function paginateCrmOrders(orders = [], page = 1, limit = 20) {
 
 module.exports = {
   resolveCrmOrderPreviewSource,
+  resolveCrmOrderShippingInfo,
   toCompactCostSnapshot,
   isCrmPaidOrder,
   getCrmOrderTotal,
