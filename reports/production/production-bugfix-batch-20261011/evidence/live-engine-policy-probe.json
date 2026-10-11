@@ -1,0 +1,316 @@
+{
+ "ranAt": "2026-10-11T13:20:05.297Z",
+ "base": "https://customize.luckycolorstone.com",
+ "cases": 28,
+ "recommended": 28,
+ "accepted": 28,
+ "forbiddenStoneViolations": 0,
+ "unsaleableSizeViolations": 0,
+ "cloverCases": 28,
+ "excludedFromModule": [
+  "malachite",
+  "labradorite",
+  "howlite",
+  "sodalite",
+  "pyrite"
+ ],
+ "moduleExcludesAll": true,
+ "catalogSizes": {
+  "golden_rutile": [
+   4,
+   6,
+   10
+  ],
+  "rutilated_quartz": [
+   10
+  ],
+  "rutilated_prices": {
+   "p4": 88,
+   "p6": 88,
+   "p10": 60
+  }
+ },
+ "nonRecommended": [],
+ "rows": [
+  {
+   "weekday": "sunday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "sunday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "sunday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "sunday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "monday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "monday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "monday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "monday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "tuesday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "tuesday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "tuesday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "tuesday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "wednesday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "wednesday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "wednesday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "wednesday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "thursday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "thursday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "thursday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "thursday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "friday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "friday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "friday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "friday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "saturday",
+   "bead": "4",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "saturday",
+   "bead": "6",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "saturday",
+   "bead": "10",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  },
+  {
+   "weekday": "saturday",
+   "bead": "mixed",
+   "status": "RECOMMENDED",
+   "code": "",
+   "forbidden": [],
+   "unsaleable": [],
+   "hasClover": true,
+   "acceptance": "READY_TO_ACCEPT"
+  }
+ ]
+}

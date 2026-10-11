@@ -1869,11 +1869,33 @@ option {
 /* SVG loop nodes animation */
 .bead-node {
   cursor: pointer;
-  transition: var(--transition-smooth);
+  /* iOS Safari: opt out of the double-tap-zoom disambiguation (which delayed the synthetic click),
+     of the grey tap flash and of text selection on the ring. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.bead-node:hover {
-  transform: scale(1.08);
+/* Hover affordances only exist on devices that really hover. A touch device applies :hover on the
+   tapped element (sticky hover) and the 300 ms "all" transition then animated the scale, which is the
+   stretched bead the owner saw on iPhone. */
+@media (hover: hover) and (pointer: fine) {
+  .bead-node {
+    transition: var(--transition-smooth);
+  }
+
+  .bead-node:hover {
+    transform: scale(1.08);
+  }
+}
+
+/* Immediate removal feedback: the tapped node leaves the ring on the very next paint while the
+   authoritative re-render reconciles the loop. */
+.bead-node.is-removing {
+  opacity: 0 !important;
+  transition: none !important;
+  pointer-events: none;
 }
 
 

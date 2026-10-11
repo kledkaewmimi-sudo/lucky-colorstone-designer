@@ -6596,6 +6596,7 @@ let undoBaseline = null;
 let undoRestoring = false;
 let undoCaptureBound = false;
 let undoCaptureTimer = null;
+let undoCaptureSnapshot = null;
 let undoSuppressUntil = 0;
 let pendingLuckyUndoSnapshot = null;
 // Burst window for duplicate DOM events belonging to the SAME user action (see pushUndoSnapshot).
@@ -6739,9 +6740,28 @@ function bindUndoHistoryCapture() {
   if (undoCaptureBound) return;
   undoCaptureBound = true;
   const schedule = (before) => {
+    // One gesture delivers several events (pointerdown, then pointerup which mutates, then the
+    // trailing click). The earliest observation holds the pre-action state, so a later event of the
+    // same gesture must never cancel it: doing exactly that lost every bead removal once the removal
+    // moved to pointerup (Turn 6), which made one Undo jump back several actions.
+    const pendingHoldsPreActionState = undoCaptureTimer !== null
+      && undoSnapshotSignature(undoCaptureSnapshot) !== undoSnapshotSignature(captureUndoSnapshot());
+    if (pendingHoldsPreActionState) return;
     window.clearTimeout(undoCaptureTimer);
+    undoCaptureSnapshot = before;
     recordUndoFrom(before);
-    undoCaptureTimer = window.setTimeout(() => recordUndoFrom(before), 260);
+    undoCaptureTimer = window.setTimeout(() => {
+      undoCaptureTimer = null;
+      const pending = undoCaptureSnapshot;
+      undoCaptureSnapshot = null;
+      recordUndoFrom(pending);
+      // A second action can start inside the settle window (rapid taps). Its own pre-action state is
+      // the current one, so arm one more capture for it - otherwise that action would never become
+      // undoable and a single Undo would jump back two actions.
+      if (undoSnapshotSignature(pending) !== undoSnapshotSignature(captureUndoSnapshot())) {
+        schedule(captureUndoSnapshot());
+      }
+    }, 260);
   };
   const capture = (event) => {
     if (undoRestoring || State.currentStep !== 3) return;
@@ -7602,6 +7622,74 @@ function removeStoneFromBracelet(index) {
   removeLoopItemFromBracelet(index);
 }
 
+// TASK A (owner report 2026-10-11): on iOS Safari the removal used to run from the synthetic `click`
+// of an SVG group. Safari decides tap-vs-double-tap first and keeps a sticky :hover on the tapped
+// node, so the bead animated its 300 ms `all` transition (the "stretched bead") and only disappeared
+// after the click and the following full ring rebuild - Android Chrome dispatches the click at once,
+// which is why only iOS showed it. The interaction now:
+//   * runs on the physical release (pointerup, with a click fallback only for engines without Pointer
+//     Events) so there is exactly one activation per gesture and no synthetic-click delay,
+//   * hides the tapped node in the same frame for immediate visual feedback while the authoritative
+//     state mutation, geometry, price and Undo history stay exactly as they were,
+//   * ignores a gesture that moved (scroll / pinch) so scrolling and other gestures keep working.
+function hideLoopItemForImmediateFeedback(group) {
+  if (!group) return;
+  group.classList.add('is-removing');
+  group.setAttribute('pointer-events', 'none');
+}
+
+function bindLoopItemActivation(group, { sourceIndex, uniqueId } = {}) {
+  let gestureStart = null;
+  let lastActivationAt = 0;
+  const activate = (event) => {
+    if (!group.isConnected || group.classList.contains('is-removing')) return;
+    // Some engines emit more than one release event for a single tap (pointerup plus a synthesised
+    // second release, or pointerup plus the trailing click). One tap must record exactly one removal
+    // and exactly one Undo step, so a repeat activation of this same node inside the burst window is
+    // ignored.
+    const now = Date.now();
+    if (now - lastActivationAt < 600) return;
+    lastActivationAt = now;
+    // Record the pre-removal state explicitly. The generic settle capture depends on event order; now
+    // that the mutation happens on pointerup (before the trailing click) it would miss the action, so
+    // the undo entry is created here. pushUndoSnapshot's burst guard absorbs the settle push of the
+    // same state, so one tap still yields exactly one Undo step.
+    // Cancel any settle capture this gesture armed: the explicit entry below is the authoritative one
+    // for the removal, and letting the timer push the same state again after the burst window would
+    // add a no-op Undo step.
+    window.clearTimeout(undoCaptureTimer);
+    undoCaptureTimer = null;
+    undoCaptureSnapshot = null;
+    pushUndoSnapshot(captureUndoSnapshot());
+    hideLoopItemForImmediateFeedback(group);
+    // The hide and the authoritative reconcile share one task on purpose: the node is already hidden
+    // when the ring is rebuilt, so the browser paints the bead gone in the same frame as the rerender
+    // (deferring the mutation to a later frame was measured to double-apply the removal in WebKit).
+    removeLoopItemFromBracelet(sourceIndex, true, event, uniqueId ?? null);
+  };
+  const movedTooFar = (event) => {
+    if (!gestureStart) return false;
+    const point = event.changedTouches?.[0] || event;
+    const dx = Number(point.clientX) - gestureStart.x;
+    const dy = Number(point.clientY) - gestureStart.y;
+    return Number.isFinite(dx) && Number.isFinite(dy) && Math.hypot(dx, dy) > 12;
+  };
+  group.addEventListener('pointerdown', (event) => {
+    gestureStart = { x: event.clientX, y: event.clientY };
+  });
+  group.addEventListener('pointercancel', () => { gestureStart = null; });
+  group.addEventListener('pointerup', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) { gestureStart = null; return; }
+    const moved = movedTooFar(event);
+    gestureStart = null;
+    if (moved) return;
+    activate(event);
+  });
+  // Mouse/keyboard path, and the only activation source on engines that dispatch a click without a
+  // matching pointerup. The per-node burst guard above keeps one touch tap from removing twice.
+  group.addEventListener('click', (event) => activate(event));
+}
+
 function createBraceletConfig(source = State) {
   const wristSize = Number(source.wristSize);
   const beadSize = String(source.beadSize);
@@ -8361,7 +8449,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           group.appendChild(img);
         }
 
-        if (interactive) group.addEventListener('click', (event) => removeLoopItemFromBracelet(node.sourceIndex, true, event, component.uniqueId));
+        if (interactive) bindLoopItemActivation(group, { sourceIndex: node.sourceIndex, uniqueId: component.uniqueId });
       } else {
         const stoneId = component.stoneId;
         const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
@@ -8436,7 +8524,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         
         const currentIdx = node.sourceIndex;
-        if (interactive) group.addEventListener('click', (event) => removeLoopItemFromBracelet(currentIdx, true, event, component.uniqueId));
+        if (interactive) bindLoopItemActivation(group, { sourceIndex: currentIdx, uniqueId: component.uniqueId });
       }
       
     } else {

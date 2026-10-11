@@ -1,17 +1,17 @@
 {
  "product": "lucky-colorstone-designer",
  "release": "full-uat-feature-migration",
- "createdAt": "2026-10-11T09:19:58.179Z",
+ "createdAt": "2026-10-11T13:12:51.021Z",
  "sourceTree": "lucky-colorstone-uat/reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
  "git": {
-  "head": "609164067b25d5658b0ef576b3bb442fa4ef9621",
+  "head": "66fefd6154b7a4894511e693662a9d3af0e5519f",
   "branch": "uat",
   "originMain": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d"
  },
  "vercel": {
-  "files": 291,
-  "bytes": 106128828,
-  "fingerprint": "bed7ba5a27df89c7175e00466b25f7a8d3687a49f82c155d3e501e0250c90738",
+  "files": 292,
+  "bytes": 106136578,
+  "fingerprint": "c37924f0a67c58b24a5747fa8db9557ace270c0495387d8535df5b129e2b6d2e",
   "entries": [
    {
     "path": ".gitignore",
@@ -40,8 +40,8 @@
    },
    {
     "path": "app.js",
-    "bytes": 461953,
-    "sha256": "a51662f02c4b39bf9eea4e0531c79a197b247585201300d12b56ce4c02aacb84"
+    "bytes": 467079,
+    "sha256": "d711387e4dbf1d6e4ee6581e036e3890a78a818aae466a73b20db4e99ae67d90"
    },
    {
     "path": "assets/Amethyst quartz.png",
@@ -1015,8 +1015,8 @@
    },
    {
     "path": "index.css",
-    "bytes": 262371,
-    "sha256": "e78caeef5de45d1452afd5d1e7d6c95e109f3e94e188d3f183851a5bb733ce22"
+    "bytes": 263237,
+    "sha256": "eaa8e7b061bde6cb0d0400740be3da964626f4d9669f9876aeb516b00941dab8"
    },
    {
     "path": "index.html",
@@ -1175,8 +1175,8 @@
    },
    {
     "path": "lumi/import/step3-import.js",
-    "bytes": 5411,
-    "sha256": "dad0e5118096e98ffb2a80e80aeb9b6bc9ae40aa029add49026e403c531e0f37"
+    "bytes": 5636,
+    "sha256": "e904d85ad18c02fa961c21004bdde2a8b09ee3d2959eece005a3ecbd80a57fac"
    },
    {
     "path": "lumi/integration/index.js",
@@ -1207,6 +1207,11 @@
     "path": "lumi/knowledge/discontinued-materials.js",
     "bytes": 1012,
     "sha256": "a6fe6afdc931d9f2b6b49bdfa874514f5311fcabc4b2fefecdee87544629a903"
+   },
+   {
+    "path": "lumi/knowledge/engine-excluded-stones.js",
+    "bytes": 985,
+    "sha256": "003dbeb6aaf4c8ca2693a395c7f9019ee622877f8334489b51032e9ec6fdfbde"
    },
    {
     "path": "lumi/knowledge/goals.js",
@@ -1375,8 +1380,8 @@
    },
    {
     "path": "lumi/scoring/eligibility.js",
-    "bytes": 5112,
-    "sha256": "1ded168de72dd97ce97e3527be131448cac2e4783ebe60dd94c46681ecc1643c"
+    "bytes": 5660,
+    "sha256": "4847593bc9a784594d5348285504110fb8873f3461409bf3e4bc47860328f56d"
    },
    {
     "path": "lumi/scoring/index.js",
