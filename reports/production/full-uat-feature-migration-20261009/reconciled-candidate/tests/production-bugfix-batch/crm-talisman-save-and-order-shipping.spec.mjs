@@ -445,12 +445,14 @@ test('TASK B: order cards carry their own complete shipping information', async 
     expect(text).toContain(shipping.province);
     expect(text).toContain(shipping.postalCode);
     expect(text).toContain(shipping.phoneNumber);
-    // The card styles the field labels uppercase, and innerText reflects that rendering.
+    // Exactly one shipping presentation per card: the compact formatted block, no duplicated rows.
+    expect(await row.locator('.order-shipping-label-block').count()).toBe(1);
+    expect(await row.locator('.order-shipping-label-text').count()).toBe(1);
+    expect(await row.locator('td[data-label="Shipping Information"] .order-detail-field').count()).toBe(0);
     const labels = text.toUpperCase();
-    expect(labels).toContain('RECIPIENT NAME');
-    expect(labels).toContain('FULL ADDRESS');
-    expect(labels).toContain('POSTAL CODE');
-    expect(labels).toContain('PHONE NUMBER');
+    expect(labels).not.toContain('RECIPIENT NAME');
+    expect(labels).not.toContain('FULL ADDRESS');
+    expect(labels).not.toContain('POSTAL CODE');
     expect(await row.locator('.order-copy-shipping-label').count()).toBe(1);
   }
 
@@ -474,6 +476,8 @@ test('TASK B: order cards carry their own complete shipping information', async 
   // The copy button copies this order's own label.
   await rowFor(ORDERS[0].id).locator('.order-copy-shipping-label').click();
   await rowFor(ORDERS[1].id).locator('.order-copy-shipping-label').click();
+  // Copying must never open the order detail modal.
+  await expect(page.locator('#orderDetailModal')).not.toHaveClass(/show/);
   const copied = await page.evaluate(() => window.__copiedLabels);
   expect(copied).toHaveLength(2);
   for (const [index, order] of ORDERS.entries()) {
@@ -532,6 +536,14 @@ test('TASK B: order cards carry their own complete shipping information', async 
   expect(await shippingCell.evaluate((cell) => getComputedStyle(cell).flexDirection)).toBe('column');
   expect((await mobileRow.innerText())).toContain(ORDERS[0].shippingInfo.postalCode);
   expect(await mobileRow.locator('.order-copy-shipping-label').count()).toBe(1);
+  expect(await mobileRow.locator('.order-shipping-label-block').count()).toBe(1);
+  // The retained block still carries recipient, address (province + postal code) and phone.
+  const mobileBlockText = await mobileRow.locator('.order-shipping-label-text').innerText();
+  expect(mobileBlockText.split('\n')[0]).toBe(ORDERS[0].shippingInfo.recipientName);
+  expect(mobileBlockText).toContain(ORDERS[0].shippingInfo.addressLine);
+  expect(mobileBlockText).toContain(ORDERS[0].shippingInfo.province);
+  expect(mobileBlockText).toContain(ORDERS[0].shippingInfo.postalCode);
+  expect(mobileBlockText).toContain(ORDERS[0].shippingInfo.phoneNumber);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 

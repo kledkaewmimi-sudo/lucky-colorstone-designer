@@ -1275,8 +1275,28 @@ function normalizeCharmRecord(record, index = 0) {
   );
   const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
 
+  // Owner-reported 2026-10-11: the CRM form writes status through the nested availability object, but
+  // a record that was disabled earlier still carries flat inStock:false / isActive:false at the top
+  // level. ANDing both representations let the stale flat copy win forever, so re-enabling a talisman
+  // could never be saved. An explicitly present nested value is authoritative; the flat keys are then
+  // kept in sync so every reader (CRM, customer catalog, backend payload) agrees.
+  const nestedInStock = record.availability && record.availability.inStock !== undefined
+    ? record.availability.inStock !== false
+    : null;
+  const nestedIsActive = record.availability && record.availability.isActive !== undefined
+    ? record.availability.isActive !== false
+    : null;
+  const flatInStock = record.inStock === undefined ? null : record.inStock !== false;
+  const flatIsActive = record.isActive === undefined ? null : record.isActive !== false;
+  const availabilityInStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const availabilityIsActive = nestedIsActive ?? flatIsActive ?? true;
+
   return {
     ...safeRecord,
+    inStock: availabilityInStock,
+    isActive: availabilityIsActive,
+    stockQty,
+    stock_qty: stockQty,
     business: {
       sizeCm: safeSizeCm,
       footprintMm: safeFootprintMm
@@ -1286,9 +1306,10 @@ function normalizeCharmRecord(record, index = 0) {
       th: record.meaning?.th || record.meaningTh || ""
     },
     availability: {
-      inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
-      isActive: record.availability?.isActive !== false && record.isActive !== false,
-      stockQty
+      inStock: availabilityInStock,
+      isActive: availabilityIsActive,
+      stockQty,
+      stock_qty: stockQty
     },
     renderTuning: {
       visualScale: record.renderTuning?.visualScale ?? record.visualScale,

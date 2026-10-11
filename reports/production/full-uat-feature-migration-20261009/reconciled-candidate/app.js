@@ -6598,6 +6598,10 @@ let undoCaptureBound = false;
 let undoCaptureTimer = null;
 let undoSuppressUntil = 0;
 let pendingLuckyUndoSnapshot = null;
+// Burst window for duplicate DOM events belonging to the SAME user action (see pushUndoSnapshot).
+const UNDO_DUPLICATE_BURST_MS = 400;
+let lastUndoPushSignature = '';
+let lastUndoPushAt = 0;
 
 function captureUndoSnapshot() {
   return Object.freeze({
@@ -6619,7 +6623,9 @@ function undoSnapshotSignature(snapshot) {
 }
 
 function syncUndoButtonState() {
-  const button = DOM.btnUndoBracelet;
+  // Resolve the live node: a re-render must never leave the visible control out of sync with the
+  // history, and the control itself stays usable because its handler is delegated (see below).
+  const button = document.getElementById('btnUndoBracelet') || DOM.btnUndoBracelet;
   if (!button) return;
   const enabled = !undoRestoring && undoHistory.length > 0;
   button.disabled = !enabled;
@@ -6632,6 +6638,8 @@ function resetUndoHistory() {
   undoHistory = [];
   undoBaseline = { signature: undoSnapshotSignature(captureUndoSnapshot()) };
   pendingLuckyUndoSnapshot = null;
+  lastUndoPushSignature = '';
+  lastUndoPushAt = 0;
   syncUndoButtonState();
 }
 
@@ -6643,12 +6651,17 @@ function syncUndoBaseline() {
 function pushUndoSnapshot(snapshot) {
   if (undoRestoring || !snapshot) return false;
   const signature = undoSnapshotSignature(snapshot);
-  // Ignore a repeat of either of the last two entries: a single user action can surface through more
-  // than one DOM event (pointerdown + click + change) and a duplicate would silently consume an undo
-  // step. Genuine A -> B -> A editing still pushes B and A because they are not consecutive repeats.
-  const tail = undoHistory.slice(-2);
-  if (tail.some((entry) => undoSnapshotSignature(entry) === signature)) return false;
+  const now = Date.now();
+  // Owner-reported 2026-10-11 (manual editing): one user action can surface through several DOM
+  // events (pointerdown + click + change) plus the settle re-check, and those arrive within a few
+  // milliseconds of each other, so only that burst counts as a duplicate. Comparing a new snapshot
+  // against the previous HISTORY entries instead silently dropped genuine edits whenever a removal
+  // returned the bracelet to a composition the history already recorded (removing the stones that
+  // were just added), which is exactly the kind of lost step that makes Undo stop walking back.
+  if (signature === lastUndoPushSignature && now - lastUndoPushAt < UNDO_DUPLICATE_BURST_MS) return false;
   undoHistory.push(snapshot);
+  lastUndoPushSignature = signature;
+  lastUndoPushAt = now;
   if (undoHistory.length > UNDO_HISTORY_LIMIT) undoHistory.shift();
   syncUndoButtonState();
   return true;
@@ -6750,14 +6763,17 @@ function setupDesignerEvents() {
   // Undo Button (issue 6). Its handler only restores editor state: it never resets, navigates,
   // generates a Lucky design or reaches checkout.
   bindUndoHistoryCapture();
-  if (DOM.btnUndoBracelet) {
-    DOM.btnUndoBracelet.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      undoLastBraceletAction();
-    });
-    syncUndoButtonState();
-  }
+  // Delegated so the control keeps working even if the Step 3 toolbar is re-rendered: a listener
+  // bound to the cached node would die with the node and Undo would appear to stop after one press.
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') return;
+    if (!target.closest('#btnUndoBracelet')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    undoLastBraceletAction();
+  }, true);
+  syncUndoButtonState();
 
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {

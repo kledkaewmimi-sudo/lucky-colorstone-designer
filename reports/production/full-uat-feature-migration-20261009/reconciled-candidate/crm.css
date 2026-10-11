@@ -2993,26 +2993,11 @@ h1, h2, h3, h4, h5, h6 {
   justify-self: start;
 }
 
-/* The order card carries the same complete shipping presentation as View Detail, so the field rows
-   stack inside the card's narrower column instead of fighting for two columns. */
+/* The order card shows the compact formatted shipping block only (owner requirement 2026-10-11):
+   one address presentation plus its copy button, no duplicated field rows. */
 .order-card-shipping {
   display: grid;
-  gap: 10px;
   min-width: 0;
-}
-
-.order-card-shipping .order-detail-field {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  padding: 6px 0;
-}
-
-.order-card-shipping .order-detail-field span {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--color-navy-muted);
 }
 
 .order-card-shipping .order-shipping-label-block {

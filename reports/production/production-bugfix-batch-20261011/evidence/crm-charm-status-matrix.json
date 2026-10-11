@@ -1,0 +1,706 @@
+{
+ "harness": "CRM talisman status persistence matrix (issue 1)",
+ "ranAt": "2026-10-11T09:21:13.702Z",
+ "dataDir": "C:\\Users\\Aou\\AppData\\Local\\Temp\\lcs-charm-status-6xeavD",
+ "passed": 32,
+ "failed": 0,
+ "results": [
+  {
+   "id": "synthetic operator login succeeds and returns CSRF",
+   "pass": true,
+   "detail": "HTTP 200 csrf=true"
+  },
+  {
+   "id": "fixture starts in the owner-observed disabled state with stock 1000",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "owner step 3: disable saves and persists",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "stock quantity 1000 survives the status-only disable",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "owner step 5: reopening shows both checkboxes unchecked",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "owner step 8: re-enabling both checkboxes persists (the reported failure)",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "owner step 9: a fresh authenticated read shows both flags restored",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "the reactivating request carried explicit true flags",
+   "pass": true,
+   "detail": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "id": "1a true/true: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "1b false/false: out of stock (qty 1000) + inactive persists",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "1c true/true again: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "2a false/true: out of stock (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":true,\"availabilityInStock\":false,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "2b true/true again: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "3a true/false: IN STOCK (qty 1000) + inactive persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":false,\"availabilityInStock\":true,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "3b true/true again: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "4a false/false: out of stock (qty 1000) + inactive persists",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "4b false/inactive -> true/inactive: IN STOCK (qty 1000) + inactive persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":false,\"availabilityInStock\":true,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "4c true/true again: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "5 duplicate save: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "6 save after a page refresh persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "8a status-only edit: out of stock (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":true,\"availabilityInStock\":false,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "8b status-only edit back: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "8 stock quantity 1000 is untouched by status-only edits",
+   "pass": true,
+   "detail": "stock 1000 -> 1000"
+  },
+  {
+   "id": "9 zero stock with active status stores inStock:false + isActive:true",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":true,\"availabilityInStock\":false,\"availabilityIsActive\":true,\"stockQty\":0}"
+  },
+  {
+   "id": "9b restore: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "9c the reactivated zero-stock record keeps 1000 units and both flags",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "7a hide + deactivate: out of stock (qty 1000) + inactive persists",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":false,\"availabilityInStock\":false,\"availabilityIsActive\":false,\"stockQty\":1000}"
+  },
+  {
+   "id": "7b re-enable the hidden/inactive record: IN STOCK (qty 1000) + ACTIVE persists",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "7 previously hidden/inactive existing record can be re-enabled",
+   "pass": true,
+   "detail": "{\"inStock\":true,\"isActive\":true,\"availabilityInStock\":true,\"availabilityIsActive\":true,\"stockQty\":1000}"
+  },
+  {
+   "id": "10 unauthenticated PUT /api/charms/:id is still rejected",
+   "pass": true,
+   "detail": "HTTP 403"
+  },
+  {
+   "id": "10 cookie-authenticated PUT without x-csrf-token is still rejected",
+   "pass": true,
+   "detail": "HTTP 403"
+  },
+  {
+   "id": "no unrelated field changed (price + render tuning intact)",
+   "pass": true,
+   "detail": "price=290"
+  }
+ ],
+ "requests": [
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":0,\"stock_qty\":0,\"availability\":"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":0,\"stock_qty\":0,\"availability\""
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":0,\"stock_qty\":0,\"availability\""
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":true,\"stockQty\":0,\"stock_qty\":0,\"availability\""
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availab"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":false,\"isActive\":false,\"stockQty\":1000,\"stock_qty\":1000,\"availa"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 200,
+   "body": "{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabil"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 403,
+   "body": "{\"error\":\"CSRF token required for admin changes.\"}"
+  },
+  {
+   "method": "PUT",
+   "url": "/api/charms/qa-cl01",
+   "status": 403,
+   "body": "{\"error\":\"CSRF token required for admin changes.\"}"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  },
+  {
+   "method": "GET",
+   "url": "/api/charms",
+   "status": 200,
+   "body": "[{\"id\":\"qa-cl01\",\"entityType\":\"charm\",\"sku\":\"QA-CL01\",\"slug\":\"qa-cl01\",\"type\":\"bee_heart\",\"categoryId\":\"clover\",\"collection\":\"clover\",\"name\":{\"en\":\"QA Clover\",\"th\":\"\"},\"image\":{\"primary\":\"/assets/charms/_placeholder.png\"},\"pricing\":{\"base\":290},\"business\":{\"sizeCm\":2.7,\"footprintMm\":4.2},\"meaning\":{\"en\":\"QA fixture\",\"th\":\"\"},\"inStock\":true,\"isActive\":true,\"stockQty\":1000,\"stock_qty\":1000,\"availabi"
+  }
+ ],
+ "serverLog": "Server started at http://localhost:50240/\n"
+}

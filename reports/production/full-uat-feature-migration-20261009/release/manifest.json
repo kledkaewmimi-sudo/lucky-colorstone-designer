@@ -1,17 +1,17 @@
 {
  "product": "lucky-colorstone-designer",
  "release": "full-uat-feature-migration",
- "createdAt": "2026-10-11T08:13:43.115Z",
+ "createdAt": "2026-10-11T09:19:58.179Z",
  "sourceTree": "lucky-colorstone-uat/reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
  "git": {
-  "head": "a6d1730cfc6c37bb75436970f5342ebd272bfc5b",
+  "head": "609164067b25d5658b0ef576b3bb442fa4ef9621",
   "branch": "uat",
   "originMain": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d"
  },
  "vercel": {
   "files": 291,
-  "bytes": 106126894,
-  "fingerprint": "66b42b5ebc561c40cec84d39f44236897fc9344ccd33829f81d09d74973a1e03",
+  "bytes": 106128828,
+  "fingerprint": "bed7ba5a27df89c7175e00466b25f7a8d3687a49f82c155d3e501e0250c90738",
   "entries": [
    {
     "path": ".gitignore",
@@ -40,8 +40,8 @@
    },
    {
     "path": "app.js",
-    "bytes": 460813,
-    "sha256": "ec418a8f4aaa3a2da0e7764e1e9fe5a9dbe39db941d4b7e6b0aba566e1c0169c"
+    "bytes": 461953,
+    "sha256": "a51662f02c4b39bf9eea4e0531c79a197b247585201300d12b56ce4c02aacb84"
    },
    {
     "path": "assets/Amethyst quartz.png",
@@ -940,8 +940,8 @@
    },
    {
     "path": "crm.css",
-    "bytes": 80155,
-    "sha256": "f39b0a43cc105037eccb476505575d7ad1be7efb41efb78aa8f116d2ea0a3b62"
+    "bytes": 79841,
+    "sha256": "0485f5e34bcdef0275fad655b604f6c0043043bd904dfc43c11369de5488c734"
    },
    {
     "path": "crm.html",
@@ -950,13 +950,13 @@
    },
    {
     "path": "crm.js",
-    "bytes": 262244,
-    "sha256": "f64b7cc1d74a2bf7958ad3d484503b1faffb792c124e0d2b37c446e65425d420"
+    "bytes": 262208,
+    "sha256": "2137d217e64ddba7901845e827627bd381ea15dc13776d634c169832a4900770"
    },
    {
     "path": "data.js",
-    "bytes": 77814,
-    "sha256": "86b0b41f5a676350a79e1fd642f0fb4b683a486488423682a4ad5e2dd8e860b7"
+    "bytes": 78958,
+    "sha256": "5f18c12b260568bf296ca903b5ff74b4b3dc021da7b5ab7f018a642a89e4d0b0"
    },
    {
     "path": "data/analytics_errors.json",
@@ -1472,8 +1472,8 @@
  },
  "render": {
   "files": 11,
-  "bytes": 295748,
-  "fingerprint": "c0e192133de7bd3dcc0ac067dddc94958d7235227b74bef4b2a53eb81029feaa",
+  "bytes": 296624,
+  "fingerprint": "f207998a062fc8ff2c07380204ac2f5114bb0a455fab5891de6390aef5620033",
   "entries": [
    {
     "path": "crm-order-read-model.js",
@@ -1522,8 +1522,8 @@
    },
    {
     "path": "server.js",
-    "bytes": 209855,
-    "sha256": "d427b295abb74fd192ff23c001ffbfb37ecad97537b2532531ed694f9b789ac5"
+    "bytes": 210731,
+    "sha256": "b48990263dcb0a182e235641e4d4d0f01a1939cee6d73ea4816bcf3b70179bd9"
    },
    {
     "path": "tiktok-events-api.js",

@@ -74,10 +74,17 @@ test('the order card renders the shipping section between pricing and cost and c
   assert.ok(pricing > 0 && shipping > pricing && cost > shipping, 'card columns must read pricing -> shipping -> cost');
 
   assert.match(crmSource, /const cardShippingInfo = getOrderShippingInfo\(order\);/);
-  assert.match(crmSource, /const cardShippingLabel = buildCopyReadyShippingLabel\(cardShippingInfo\);/);
-  assert.match(crmSource, /cardCopyShippingButton\?\.addEventListener\('click', \(\) => copyOrderShippingLabel\(cardShippingLabel\)\);/);
+  assert.match(crmSource, /bindOrderCardShippingCell\(tr\.querySelector\('td\[data-label="Shipping Information"\]'\), cardShippingInfo\);/);
   assert.match(crmSource, /const shippingInfoText = renderOrderCardShipping\(cardShippingInfo\);/);
-  assert.match(crmSource, /renderCopyReadyShippingLabel\(shippingInfo\)/);
+  assert.match(crmSource, /bindOrderCardShippingCell\(cell, shippingInfo\);/);
+  assert.match(crmSource, /event\.stopPropagation\(\);/);
+  // Exactly one shipping presentation and one copy button per card: the compact formatted block only.
+  const cardShippingRenderer = crmSource.slice(
+    crmSource.indexOf('function renderOrderCardShipping('),
+    crmSource.indexOf('async function hydrateOrderCardShipping')
+  );
+  assert.match(cardShippingRenderer, /return `<div class="order-card-shipping">\$\{renderCopyReadyShippingLabel\(shippingInfo\)\}<\/div>`;/);
+  assert.doesNotMatch(cardShippingRenderer, /renderOrderDetailFields/, 'the card must not repeat the field-by-field rows');
   assert.match(crmSource, /<td data-label="Shipping Information" data-order-id="\$\{escapeHtml\(order\.id\)\}">/);
   // A list payload without the shipping fields is completed from the detail endpoint, bounded to the
   // rendered page and never blocking the list render.
@@ -86,6 +93,7 @@ test('the order card renders the shipping section between pricing and cost and c
   assert.match(crmSource, /const isOrderCardShippingMissing = \(shippingInfo = \{\}\) => !\(/);
   assert.match(htmlSource, /<th width="320">Visual Bead Sequence Map \(Artisan Layout\)<\/th>\s*<th>Price Summary<\/th>\s*<th>Shipping Information<\/th>\s*<th>COST<\/th>/);
   assert.match(cssSource, /\.order-card-shipping \{/);
+  assert.doesNotMatch(cssSource, /\.order-card-shipping \.order-detail-field/);
   assert.match(cssSource, /\.crm-table td\[data-label="Shipping Information"\],/);
   assert.match(cssSource, /\.crm-table td\[data-label="Shipping Information"\]::before,/);
 });

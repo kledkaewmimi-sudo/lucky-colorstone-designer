@@ -1,0 +1,1001 @@
+{
+ "ranAt": "2026-10-11T09:18:15.192Z",
+ "base": "https://customize.luckycolorstone.com",
+ "liveCl01": {
+  "inStock": false,
+  "isActive": false,
+  "stockQty": 1000
+ },
+ "scenarios": {
+  "cl01-inactive": {
+   "label": "cl01 inactive (current production state)",
+   "expected": "NO_RECOMMENDATION",
+   "cases": 28,
+   "recommended": 0,
+   "accepted": 0,
+   "withoutCloverAmongRecommended": 0,
+   "pyriteUses": 0,
+   "failureCodes": [
+    "INVALID_INPUT:LUMI_COMPOSITION_NO_CHARM"
+   ],
+   "rows": [
+    {
+     "weekday": "sunday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "sunday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "sunday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "sunday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "monday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "monday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "monday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "monday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "thursday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "thursday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "thursday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "thursday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "friday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "friday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "friday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "friday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "saturday",
+     "bead": "4",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "saturday",
+     "bead": "6",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "saturday",
+     "bead": "10",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    },
+    {
+     "weekday": "saturday",
+     "bead": "mixed",
+     "status": "INVALID_INPUT",
+     "code": "LUMI_COMPOSITION_NO_CHARM"
+    }
+   ]
+  },
+  "cl01-active-zero-stock": {
+   "label": "cl01 active with zero stock (policy fixture)",
+   "expected": "RECOMMENDED",
+   "cases": 28,
+   "recommended": 28,
+   "accepted": 28,
+   "withoutCloverAmongRecommended": 0,
+   "pyriteUses": 0,
+   "failureCodes": [],
+   "rows": [
+    {
+     "weekday": "sunday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "sunday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "sunday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "sunday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    }
+   ]
+  },
+  "cl01-active-1000": {
+   "label": "cl01 active with 1000 units (after the CRM reactivation)",
+   "expected": "RECOMMENDED",
+   "cases": 28,
+   "recommended": 28,
+   "accepted": 28,
+   "withoutCloverAmongRecommended": 0,
+   "pyriteUses": 0,
+   "failureCodes": [],
+   "rows": [
+    {
+     "weekday": "sunday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "sunday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "sunday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "sunday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "monday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "tuesday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "wednesday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "thursday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "friday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "4",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "6",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "10",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    },
+    {
+     "weekday": "saturday",
+     "bead": "mixed",
+     "status": "RECOMMENDED",
+     "code": "",
+     "charms": [
+      "tg01",
+      "cl01"
+     ],
+     "hasClover": true,
+     "hasPyrite": false,
+     "acceptance": "READY_TO_ACCEPT",
+     "acceptanceCode": ""
+    }
+   ]
+  }
+ }
+}

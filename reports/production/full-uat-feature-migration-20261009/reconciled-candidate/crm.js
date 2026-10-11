@@ -4275,23 +4275,20 @@ const isOrderCardShippingMissing = (shippingInfo = {}) => !(
 );
 
 function renderOrderCardShipping(shippingInfo = {}) {
-  return `
-    <div class="order-card-shipping">
-      ${renderOrderDetailFields([
-        { label: 'Recipient Name', value: shippingInfo.recipientName },
-        { label: 'Phone Number', value: shippingInfo.phoneNumber },
-        { label: 'Full Address', value: shippingInfo.addressLine },
-        { label: 'Province', value: shippingInfo.province },
-        { label: 'Postal Code', value: shippingInfo.postalCode }
-      ])}
-      ${renderCopyReadyShippingLabel(shippingInfo)}
-    </div>
-  `;
+  // Owner requirement 2026-10-11: the Order Card shows the compact shipping block only - one
+  // presentation, one copy button. The field-by-field rows duplicated the same recipient, phone and
+  // address above the block (the address line already carries province and postal code), so they are
+  // not rendered in the card any more. View Detail keeps its full field list.
+  return `<div class="order-card-shipping">${renderCopyReadyShippingLabel(shippingInfo)}</div>`;
 }
 
 function bindOrderCardShippingCell(cell, shippingInfo) {
   const shippingLabel = buildCopyReadyShippingLabel(shippingInfo);
-  cell?.querySelector('.order-copy-shipping-label')?.addEventListener('click', () => copyOrderShippingLabel(shippingLabel));
+  cell?.querySelector('.order-copy-shipping-label')?.addEventListener('click', (event) => {
+    // The card row is a clickable surface in some layouts; copying must never open View Detail.
+    event.stopPropagation();
+    copyOrderShippingLabel(shippingLabel);
+  });
 }
 
 // The shipping presentation is projected into the CRM order list. If a deployment has not published
@@ -4707,9 +4704,7 @@ function renderOrdersList(orders) {
     });
 
     // Each card copies its own order's shipping label.
-    const cardCopyShippingButton = tr.querySelector('.order-copy-shipping-label');
-    const cardShippingLabel = buildCopyReadyShippingLabel(cardShippingInfo);
-    cardCopyShippingButton?.addEventListener('click', () => copyOrderShippingLabel(cardShippingLabel));
+    bindOrderCardShippingCell(tr.querySelector('td[data-label="Shipping Information"]'), cardShippingInfo);
     if (shippingInfoNeedsFallback) missingShippingOrderIds.push(order.id);
     
     const detailBtn = tr.querySelector('.btn-order-detail');
