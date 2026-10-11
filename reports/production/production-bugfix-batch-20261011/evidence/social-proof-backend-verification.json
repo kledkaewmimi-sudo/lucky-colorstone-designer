@@ -1,0 +1,53 @@
+{
+ "ranAt": "2026-10-11T03:57:53.470Z",
+ "passed": 9,
+ "failed": 0,
+ "checks": [
+  {
+   "id": "endpoint answers 200 with a cacheable public response",
+   "pass": true,
+   "detail": "200 public, max-age=300, s-maxage=300, stale-while-revalidate=600"
+  },
+  {
+   "id": "aggregate count uses only paid orders",
+   "pass": true,
+   "detail": "{\"orders\":9,\"displayCount\":1062,\"successfulOrderCount\":9}"
+  },
+  {
+   "id": "exactly four previews are published",
+   "pass": true,
+   "detail": "count=4"
+  },
+  {
+   "id": "response exposes only the imagery and the aggregate count",
+   "pass": true,
+   "detail": "displayCount,successfulOrderCount,recentBracelets"
+  },
+  {
+   "id": "no order identifiers, customer details or payment fields in the payload",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "every preview is an optimized 176px webp thumbnail",
+   "pass": true,
+   "detail": "[[\"176x176\",140],[\"176x176\",138],[\"176x176\",146],[\"176x176\",140]]"
+  },
+  {
+   "id": "the four previews are the newest eligible orders, newest first",
+   "pass": true,
+   "detail": "[[1,255,255],[255,255,0],[0,0,255],[0,200,1]] expected [[0,255,255],[255,255,0],[0,0,255],[0,200,0]]"
+  },
+  {
+   "id": "repeat requests are served from the in-process cache (identical payload)",
+   "pass": true,
+   "detail": "first=926b second=926b"
+  },
+  {
+   "id": "personalized content never enters the public payload",
+   "pass": true,
+   "detail": "stripped-image text scanned"
+  }
+ ],
+ "serverLog": "Server started at http://localhost:53497/\n"
+}

@@ -1,0 +1,83 @@
+{
+ "product": "lucky-colorstone-designer",
+ "batch": "production-bugfix-batch-issues-1-2-2026-10-11",
+ "executedAt": "2026-10-11 10:30-11:40 +07:00",
+ "sourceTree": "reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
+ "artifact": {
+  "vercel": {
+   "files": 291,
+   "bytes": 106114147,
+   "sha256Fingerprint": "8efa9edfd1e74c5330c90a2f56dcaa5818e8e14bf3cd1508ba2e772f54030c03",
+   "previousFingerprint": "ce84f95b48373412506653e8003aba9880840bfb50f161f49a5dd2abf3012fa3",
+   "changedFiles": ["app.js", "index.html", "lumi/ui/lumi-ui.js"]
+  },
+  "render": {
+   "files": 11,
+   "sha256Fingerprint": "219f766b372940c8ea06ea6ab35600e58ea9f7b910cf87486acae655e09ef609",
+   "serverJsSha256": "44e5e6e843d437b517f29df1c7c08acf1356a0a4761dd05df79bffa125e54071",
+   "changed": true
+  }
+ },
+ "vercel": {
+  "project": "lucky-colorstone-designer",
+  "scope": "lucky-colorstone",
+  "deploymentId": "dpl_6pZ1wqiM4JQokku1YwrqQJCmaE4B",
+  "deploymentUrl": "https://lucky-colorstone-designer-5jzn3np9f-lucky-colorstone.vercel.app",
+  "target": "production",
+  "status": "Ready",
+  "createdAt": "2026-10-11T11:10:30+07:00",
+  "aliases": ["customize.luckycolorstone.com", "crm.luckycolorstone.com"],
+  "rollbackTarget": "dpl_9dLNZfWVS63UcKjCkJ99htNgKXem"
+ },
+ "render": {
+  "deployedByThisWorkspace": false,
+  "releaseCommit": "fe282deaeebb644ccf1bd3fc5e8de70cdce7b44f",
+  "releaseBranch": "release/uat-feature-migration-20261010",
+  "parentCommit": "dde5b5c99c364446e0f8b141e0113797ac3b2945",
+  "commitDelta": "server.js only (+152/-1)",
+  "deployedCommitBeforeThisBatch": "dde5b5c99c364446e0f8b141e0113797ac3b2945",
+  "ownerAction": "Render -> lucky-colorstone-designer -> Manual Deploy -> Deploy a specific commit -> branch release/uat-feature-migration-20261010 -> commit fe282deaeebb644ccf1bd3fc5e8de70cdce7b44f (never Deploy latest, never main)"
+ },
+ "git": {
+  "mainUnchanged": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d",
+  "uatUnchanged": "0d02b60164cab845d601442053efd3bfafeb742e"
+ },
+ "fixes": [
+  {
+   "issue": 1,
+   "verdict": "PARTIAL",
+   "detail": "GET /api/social-proof publishes the four newest eligible bracelet previews as optimized inline thumbnails next to the aggregate count; the landing strip is live with the four positions. The backend release commit is pushed and awaits the owner's Render deploy."
+  },
+  {
+   "issue": 2,
+   "verdict": "PASS",
+   "detail": "The Lucky fallback states rendered the literal string 'undefined' as their only call-to-action; each state now carries its own Thai copy and action. Reproduced from the owner's recording and verified live."
+  },
+  { "issue": 3, "verdict": "PASS (preserved)" },
+  { "issue": 4, "verdict": "PASS (preserved)" },
+  { "issue": 5, "verdict": "PASS (preserved)" },
+  { "issue": 6, "verdict": "PASS (preserved)" }
+ ],
+ "tests": {
+  "productionRegression": "250/250 PASS",
+  "securityHarnesses": "226/226 PASS",
+  "socialProofPrivacyAndPublication": "21/21 PASS",
+  "socialProofBackendPublication": "9/9 PASS",
+  "landingStripUi": "5/5 PASS",
+  "luckyFallbackCopyAndVideoScenario": "5/5 PASS",
+  "preservedFixSuites": "7/7 PASS",
+  "luckyExclusivity": "216 runs, 0 pyrite, 0 inactive components",
+  "releaseArtifactGate": "9/9 PASS",
+  "liveArtifactIdentity": "44/44 files byte-identical",
+  "liveProductionChecks": "23/23 PASS on https://customize.luckycolorstone.com"
+ },
+ "production": {
+  "deploymentsPerformed": ["vercel production dpl_6pZ1wqiM4JQokku1YwrqQJCmaE4B", "git push release/uat-feature-migration-20261010 fe282dea"],
+  "environmentChanges": false,
+  "databaseChanges": false,
+  "schemaChanges": false,
+  "productionDataModified": false,
+  "securityControlsWeakened": false,
+  "paymentsExecuted": false
+ }
+}

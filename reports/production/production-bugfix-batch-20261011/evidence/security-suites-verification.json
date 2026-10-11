@@ -1,0 +1,90 @@
+{
+ "ranAt": "2026-10-11T04:02:47.356Z",
+ "candidate": "D:\\Projects\\lucky-colorstone-uat\\reports\\production\\full-uat-feature-migration-20261009\\reconciled-candidate",
+ "suites": [
+  {
+   "suite": "_hf-security-tests.mjs",
+   "exitCode": 0,
+   "passed": 26,
+   "total": 26,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 26,  \"total\": 26",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-write-security-tests.mjs",
+   "exitCode": 0,
+   "passed": 43,
+   "total": 43,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 43,  \"total\": 43",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-supabase-mode-tests.mjs",
+   "exitCode": 0,
+   "passed": 8,
+   "total": 8,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 8,  \"total\": 8",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-payment-tests.mjs",
+   "exitCode": 0,
+   "passed": 21,
+   "total": 21,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 21,  \"total\": 21",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-predeploy-topology-tests.mjs",
+   "exitCode": 0,
+   "passed": 28,
+   "total": 28,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 28,  \"total\": 28",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-legacy-order-link-tests.mjs",
+   "exitCode": 0,
+   "passed": 8,
+   "total": 8,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 8,  \"total\": 8",
+   "stderrTail": "o \\\\?\\D:\\Projects\\lucky-colorstone-uat\\reports\\production\\full-uat-feature-migration-20261009\\reconciled-candidate\\package.json.\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  {
+   "suite": "_hf-webhook-compat-tests.mjs",
+   "exitCode": 0,
+   "passed": 8,
+   "total": 8,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 8,  \"total\": 8",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-rollback-safety-tests.mjs",
+   "exitCode": 0,
+   "passed": 6,
+   "total": 6,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,  \"passed\": 6,  \"total\": 6",
+   "stderrTail": ""
+  },
+  {
+   "suite": "_hf-static-exposure-tests.mjs",
+   "exitCode": 0,
+   "passed": 78,
+   "total": 78,
+   "failed": null,
+   "summaryLine": "   \"pass\": true,    \"pass\": true,    \"pass\": true,",
+   "stderrTail": ""
+  }
+ ],
+ "totalPassed": 226,
+ "totalAssertions": 226,
+ "failedSuites": []
+}

@@ -1,0 +1,23 @@
+{
+ "passed": true,
+ "summary": {
+  "ranAt": "2026-10-11T04:04:51.737Z",
+  "recommendationRuns": 216,
+  "pyriteRecommendations": 0,
+  "inactiveComponentUses": 0,
+  "pyriteListedAsDiscontinued": true,
+  "pyriteCatalogPresence": {
+   "id": "pyrite",
+   "inStock": true,
+   "sizes": [
+    4,
+    6,
+    10
+   ]
+  },
+  "samples": {
+   "pyriteUses": [],
+   "unavailable": []
+  }
+ }
+}

@@ -1,0 +1,58 @@
+{
+ "artifactFingerprint": "8efa9edfd1e74c5330c90a2f56dcaa5818e8e14bf3cd1508ba2e772f54030c03",
+ "renderFingerprint": "219f766b372940c8ea06ea6ab35600e58ea9f7b910cf87486acae655e09ef609",
+ "changedThisTurn": [
+  "app.js",
+  "index.html",
+  "lumi/ui/lumi-ui.js"
+ ],
+ "passed": 9,
+ "failed": [],
+ "checks": [
+  {
+   "id": "routing still targets the Production Render service",
+   "pass": true,
+   "detail": "https://lucky-colorstone-designer.onrender.com/api/$1"
+  },
+  {
+   "id": "routing never targets UAT",
+   "pass": true,
+   "detail": "https://lucky-colorstone-designer.onrender.com/api/$1"
+  },
+  {
+   "id": "both production host rules are intact",
+   "pass": true,
+   "detail": "customize.luckycolorstone.com, crm.luckycolorstone.com"
+  },
+  {
+   "id": "four social-proof thumbnail slots are declared",
+   "pass": true,
+   "detail": "4"
+  },
+  {
+   "id": "the landing client renders the published previews",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "undo control, no auto Step 4 and the Lucky copy fix are all present",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "this turn changed only the landing client files",
+   "pass": true,
+   "detail": "app.js, index.html, lumi/ui/lumi-ui.js"
+  },
+  {
+   "id": "the asset set from the previous batch is untouched",
+   "pass": true,
+   "detail": "35 asset files differ from the pre-batch release"
+  },
+  {
+   "id": "the packaged Render artifact carries the approved backend",
+   "pass": true,
+   "detail": "44e5e6e843d437b5"
+  }
+ ]
+}

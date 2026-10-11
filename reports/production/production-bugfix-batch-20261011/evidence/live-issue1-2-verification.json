@@ -1,0 +1,124 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "ranAt": "2026-10-11T04:27:44.392Z",
+ "passed": 23,
+ "failed": 0,
+ "checks": [
+  {
+   "id": "landing social-proof strip renders with the count and four positions",
+   "pass": true,
+   "detail": "{\"strip\":true,\"count\":\"1,329\",\"slots\":4,\"images\":0,\"inlineImages\":true,\"loaded\":true,\"heart\":true,\"text\":\"มีผู้ Custom กำไลไปแล้ว 1,329 เส้น\",\"hydratedFrom\":\"1,329\"}"
+  },
+  {
+   "id": "the strip count matches the public endpoint aggregate",
+   "pass": true,
+   "detail": "displayed 1,329 vs endpoint 1329"
+  },
+  {
+   "id": "no customer/order data in the strip text",
+   "pass": true,
+   "detail": "มีผู้ Custom กำไลไปแล้ว 1,329 เส้น"
+  },
+  {
+   "id": "public social-proof response exposes only the count and previews",
+   "pass": true,
+   "detail": "200 displayCount,successfulOrderCount"
+  },
+  {
+   "id": "backend preview release pending: strip degrades to the designed fallback without breaking",
+   "pass": true,
+   "detail": "no previews published yet (backend commit awaiting the owner's Render deploy); count=1,329"
+  },
+  {
+   "id": "recorded Lucky flow (Monday 07-07-2003, charm, all six goals) selected all goals",
+   "pass": true,
+   "detail": "goals=6"
+  },
+  {
+   "id": "the no-recommendation card shows real copy, never \"undefined\"",
+   "pass": true,
+   "detail": "\"น้อง Lucky ยังหาแบบที่พอดีกับตัวเลือกนี้ไม่ได้ คุณกลับไปออกแบบต่อเองได้ โดยตัวเลือกที่เลือกไว้จะยังอยู่ กลับไปออกแบบเอง\""
+  },
+  {
+   "id": "the no-recommendation card offers a working way back to the editor",
+   "pass": true,
+   "detail": "[{\"action\":\"close\",\"label\":\"กลับไปออกแบบเอง\"}]"
+  },
+  {
+   "id": "closing the fallback card returns to the Step 3 editor unchanged",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "Undo still restores the previous bracelet state",
+   "pass": true,
+   "detail": "0 -> 1 -> 0"
+  },
+  {
+   "id": "the goals page accepted the selected goal",
+   "pass": true,
+   "detail": "love pressed=true"
+  },
+  {
+   "id": "Lucky produced a result page for the preserved-fix pass",
+   "pass": true,
+   "detail": "{\"page1\":false,\"page2\":false,\"page3\":true,\"message\":false,\"designing\":false,\"generateDisabled\":null,\"goalsSelected\":0,\"text\":\"Lucky.Colorstone Lucky ได้คัดสรรพลังงานพิเศษ ที่ออกแบบมาเพื่อคุณ เรื่องราวของกำไลเส้นนี้ สำหรับคุณที่เกิดวันจันทร์ และอยากเติมเต็มเรื่องความ\"}"
+  },
+  {
+   "id": "accepting a Lucky design still keeps the customer on Step 3",
+   "pass": true,
+   "detail": "{\"step3\":true,\"step4\":false,\"placed\":25,\"charms\":1,\"charmNodes\":1,\"undefinedText\":false}"
+  },
+  {
+   "id": "talisman design still renders in the Step 3 bracelet",
+   "pass": true,
+   "detail": "{\"step3\":true,\"step4\":false,\"placed\":25,\"charms\":1,\"charmNodes\":1,\"undefinedText\":false}"
+  },
+  {
+   "id": "no \"undefined\" anywhere after applying a design",
+   "pass": true,
+   "detail": "undefined=false"
+  },
+  {
+   "id": "Lucky result page still shows its material images",
+   "pass": true,
+   "detail": "[{\"src\":\"/assets/charms/takrud/tg01.webp\",\"loaded\":true},{\"src\":\"assets/Opal.webp\",\"loaded\":true},{\"src\":\"assets/Lavender Quartz.webp\",\"loaded\":true},{\"src\":\"assets/Cherry Quartz.webp\",\"loaded\":true}]"
+  },
+  {
+   "id": "the second Lucky design accepted its goal",
+   "pass": true,
+   "detail": "money pressed=true"
+  },
+  {
+   "id": "the second Lucky design produced a result page",
+   "pass": true,
+   "detail": "{\"page1\":false,\"page2\":false,\"page3\":true,\"message\":false,\"designing\":false,\"generateDisabled\":null,\"goalsSelected\":0,\"text\":\"Lucky.Colorstone Lucky ได้คัดสรรพลังงานพิเศษ ที่ออกแบบมาเพื่อคุณ เรื่องราวของกำไลเส้นนี้ สำหรับคุณที่เกิดวันเสาร์ และอยากเติมเต็มเรื่องความร\"}"
+  },
+  {
+   "id": "the second Lucky design still shows the replacement confirmation",
+   "pass": true,
+   "detail": "visible=true heading=ต้องการใช้แบบใหม่แทนที่เส้นเดิม"
+  },
+  {
+   "id": "cancelling the replacement still keeps the current bracelet",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "replacement still lands on Step 3 (no automatic Step 4)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "stone assets are still served as the transparent cut-outs",
+   "pass": true,
+   "detail": "HTTP 200 30862 bytes format=webp alpha=true 800x800"
+  },
+  {
+   "id": "no page errors during the whole live pass",
+   "pass": true,
+   "detail": ""
+  }
+ ],
+ "problems": []
+}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lucky fallback copy harness</title>
+<link rel="stylesheet" href="/index.css"></head>
+<body>
+<main id="stepView3"><div class="canvas-info-row" id="entry"></div></main>
+<script type="module">
+// Issue 2 harness: loads the production lumi-ui module and renders either a forced fallback state or the
+// real engine flow recorded in the owner's video (Monday / 07-07-2003 / with charm / all six goals).
+import { createLumiUi } from '/lumi/ui/lumi-ui.js';
+import { createLumiAnalytics } from '/lumi/analytics/lumi-analytics.js';
+
+const params = new URLSearchParams(location.search);
+const forcedState = params.get('state') || '';
+const useRealEngine = params.get('engine') === 'video';
+const ledger = { generateCalls: 0, commitCalls: 0, prepareCalls: 0, accepted: false, events: [], closed: false };
+
+const options = {
+  getContext: () => ({ wristSizeCm: 16, beadMode: '6', mixedPlacingSize: 6 }),
+  getSnapshot: () => ({ stones: [], charms: [], spacers: [], catalogVersion: 'qa' }),
+  getState: () => ({ selectedStones: [], selectedCharmIds: [], wristSize: 16, beadSize: '6' }),
+  getComponentName: (id) => id,
+  getComponentDetails: () => null,
+  hasExistingDesign: () => false,
+  onAccepted: () => { ledger.accepted = true; },
+  analytics: createLumiAnalytics({ track: (name, properties) => ledger.events.push({ name, properties }) }),
+  previewRenderer: ({ container }) => { container.innerHTML = '<svg class="qa-preview"></svg>'; },
+  testFixture: forcedState ? { state: forcedState, result: null } : null
+};
+
+if (!useRealEngine) {
+  options.integration = {
+    generate: () => { ledger.generateCalls += 1; return { status: 'NO_RECOMMENDATION' }; },
+    prepare: () => { ledger.prepareCalls += 1; return { status: 'READY_TO_ACCEPT', designContract: {}, recommendationId: 'qa' }; },
+    commit: () => { ledger.commitCalls += 1; return { status: 'ACCEPTED' }; }
+  };
+}
+
+const ui = createLumiUi(options);
+window.__luckyQa = { ledger, ui, params };
+ui.open();
+</script>
+</body></html>

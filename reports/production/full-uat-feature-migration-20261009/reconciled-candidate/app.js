@@ -1591,19 +1591,54 @@ function initLandingSocialProof() {
   const section = document.getElementById('landingSocialProof');
   if (!section) return;
   const countEl = document.getElementById('landingSocialProofCount');
+  const thumbsEl = document.getElementById('landingSocialProofThumbs');
   const renderCount = (value) => {
     if (!countEl || !Number.isFinite(value) || value <= 0) return;
     countEl.textContent = Math.round(value).toLocaleString('en-US');
   };
+  // Owner-authorised publication (2026-10-11): the strip shows the four newest eligible bracelet
+  // previews supplied by /api/social-proof. The payload is treated as untrusted input: only bounded
+  // inline image data URLs are accepted, so the endpoint can never inject a remote URL, a tracking
+  // pixel, an oversized document or any markup into the landing page. Anything else leaves the slot
+  // empty (the CSS pastel-circle fallback), and a failed image removes itself instead of showing a
+  // broken thumbnail. No customer detail is ever rendered - the images are bracelet renders only.
+  const renderThumbs = (images) => {
+    if (!thumbsEl) return;
+    const slots = [...thumbsEl.querySelectorAll('.sp-thumb')];
+    slots.forEach((slot, index) => {
+      const raw = Array.isArray(images) ? images[index] : '';
+      const src = typeof raw === 'string' && raw.startsWith('data:image/') && raw.length <= 640000 ? raw : '';
+      const existing = slot.querySelector('img');
+      if (!src) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (existing) {
+        if (existing.getAttribute('src') !== src) existing.setAttribute('src', src);
+        return;
+      }
+      const img = document.createElement('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.addEventListener('error', () => img.remove(), { once: true });
+      img.src = src;
+      slot.appendChild(img);
+    });
+  };
   renderCount(LANDING_SOCIAL_PROOF_BASE_COUNT);
-  // PRIVACY (2026-10-10): the social-proof endpoint is aggregate-only. Real customer bracelet images
-  // are never requested, rendered or cached by the landing page, and the markup no longer declares
-  // thumbnail slots. The counter therefore shows the server's aggregate or the static base value.
+  // Non-blocking hydration: the strip paints with the static base count and the CSS fallback circles,
+  // then upgrades to the live aggregate count and the newest previews. Every failure path keeps the
+  // safe defaults, so the landing page never depends on the endpoint being reachable.
   fetch('/api/social-proof', { cache: 'no-store' })
     .then((response) => (response.ok ? response.json() : Promise.reject(new Error('HTTP ' + response.status))))
     .then((payload) => {
       const display = Number(payload?.displayCount);
       if (Number.isFinite(display) && display >= LANDING_SOCIAL_PROOF_BASE_COUNT) renderCount(display);
+      const images = Array.isArray(payload?.recentBracelets)
+        ? payload.recentBracelets.map((entry) => (typeof entry === 'string' ? entry : entry?.image)).filter((src) => typeof src === 'string' && src.startsWith('data:image/'))
+        : [];
+      if (images.length) renderThumbs(images);
     })
     .catch((error) => {
       console.warn('[landing] social proof unavailable; keeping safe defaults.', error);
