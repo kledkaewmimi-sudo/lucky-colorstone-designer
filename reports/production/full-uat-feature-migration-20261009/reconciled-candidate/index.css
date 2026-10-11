@@ -4321,7 +4321,19 @@ button.stone-card {
 }
 
 #stepView3 .wrist-context-label {
-  display: none;
+  /* TASK D (owner request 2026-10-11): the ดูตัวอย่างกำไล button was removed, so this area now shows
+     only the wrist size chosen in Step 1 (e.g. "16.0 cm"). */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--color-navy-dark);
+  background-color: var(--color-lavender-light);
+  border: 1px solid var(--color-lavender);
+  border-radius: 12px;
+  padding: 3px 10px;
 }
 
 .helper-tooltip {
@@ -5198,7 +5210,14 @@ html.callback-bootstrap-hold .app-container {
   }
 
   #stepView3 .wrist-context-label {
-    display: none;
+    /* TASK D: the wrist size stays visible in the compact mobile info row too. */
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 11px;
   }
 
   #stepView3 .helper-tooltip {
@@ -7395,23 +7414,30 @@ body:has(.lumi-shell){height:100%;overflow:hidden;overscroll-behavior:none}
 #stepView3 .canvas-container .lumi-center-entry.is-invitation{animation:luckyCtaBreath 2.4s ease-in-out infinite}
 #stepView3 .canvas-container .lumi-center-entry.is-invitation .lumi-entry-mascot{
   opacity:1;position:static;left:auto;top:auto;transform:none;
-  max-width:clamp(54px,16vw,68px);max-height:clamp(50px,15vw,63px);
 }
 #stepView3 .canvas-container .lumi-center-entry.is-invitation .lumi-entry-label{font-size:9px;line-height:1.25}
 
-/* MASCOT_ONLY_PERSIST: mascot only, no centre text, no hand icon */
-#stepView3 .canvas-container .lumi-center-entry.is-permanent .lumi-entry-mascot,
-#stepView3 .canvas-container .lumi-center-entry.is-text .lumi-entry-mascot{
-  opacity:1;position:static;left:auto;top:auto;transform:none;
+/* Owner flow 2026-10-11: the centre CTA alternates
+     PAIR            mascot + the callout bubble
+     TEXT_ONLY       hand-tap icon + two text lines, mascot hidden
+     MASCOT_ONLY     mascot only
+   so the mascot keeps ONE constant size in every state (it must not scale between phases), the hand
+   icon belongs to the text phases only, and the label is the two-line prompt. */
+#stepView3 .canvas-container .lumi-center-entry .lumi-entry-mascot{
   max-width:clamp(71px,20.8vw,85px);max-height:clamp(66px,19.4vw,79px);
 }
-#stepView3 .canvas-container .lumi-center-entry.is-permanent .lumi-entry-icon,
-#stepView3 .canvas-container .lumi-center-entry.is-text .lumi-entry-icon{display:none}
-
-/* TEXT_ONLY: the centre label was removed on owner request, so this phase now shows the mascot
-   (the hand icon belonged to the removed text). Timing and transitions are unchanged. */
+#stepView3 .canvas-container .lumi-center-entry.is-permanent .lumi-entry-mascot,
+#stepView3 .canvas-container .lumi-center-entry.is-mascot .lumi-entry-mascot{
+  opacity:1;position:static;left:auto;top:auto;transform:none;
+}
+#stepView3 .canvas-container .lumi-center-entry.is-text .lumi-entry-mascot{
+  /* The mascot keeps its box (no layout shift) but is invisible while the text prompt is shown. */
+  opacity:0;position:static;left:auto;top:auto;transform:none;
+}
+#stepView3 .canvas-container .lumi-center-entry.is-permanent .lumi-entry-icon{display:none}
+#stepView3 .canvas-container .lumi-center-entry.is-text .lumi-entry-icon{display:block;animation:luckyEntryFadeIn 300ms ease-out both}
 #stepView3 .canvas-container .lumi-center-entry.is-text .lumi-entry-label{font-size:10.5px;line-height:1.35}
-/* The centre CTA is icon-only now: an empty label must not reserve flex height. */
+/* An empty label must not reserve flex height outside the text phases. */
 #stepView3 .canvas-container .lumi-center-entry .lumi-entry-label:empty{display:none}
 
 /* Outer callout bubble: ~20% larger bubble and text, default placement left/centred */

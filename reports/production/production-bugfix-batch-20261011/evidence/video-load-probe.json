@@ -1,0 +1,125 @@
+{
+ "ranAt": "2026-10-11T15:09:40.394Z",
+ "throttleBytesPerSecond": 614400,
+ "variants": {
+  "before": {
+   "file": "C:\\Users\\Aou\\AppData\\Local\\Temp\\lcs-live-before-video.mp4",
+   "size": 5772399,
+   "atoms": [
+    {
+     "type": "ftyp",
+     "offset": 0
+    },
+    {
+     "type": "uuid",
+     "offset": 32
+    },
+    {
+     "type": "mdat",
+     "offset": 12206
+    },
+    {
+     "type": "moov",
+     "offset": 5764072
+    }
+   ],
+   "moovOffset": 5764072,
+   "mdatOffset": 12206,
+   "faststart": false,
+   "chromiumThrottled": {
+    "throttled": true,
+    "marks": {
+     "loadstart": 1.5,
+     "error": 4.3
+    },
+    "readyState": 0,
+    "duration": null,
+    "currentTime": 0
+   },
+   "webkitLocal": {
+    "throttled": false,
+    "marks": {
+     "loadstart": 8,
+     "loadedmetadata": 2690,
+     "canplay": 2764,
+     "playing": 2765
+    },
+    "readyState": 4,
+    "duration": 10,
+    "currentTime": 0
+   },
+   "webkitPaced": {
+    "throttled": false,
+    "marks": {
+     "loadstart": 22,
+     "stalled": 3267,
+     "loadedmetadata": 10056,
+     "canplay": 10133,
+     "playing": 10133
+    },
+    "readyState": 4,
+    "duration": 10,
+    "currentTime": 0.02
+   }
+  },
+  "after": {
+   "file": "D:\\Projects\\lucky-colorstone-uat\\reports\\production\\full-uat-feature-migration-20261009\\reconciled-candidate\\assets\\lucky\\videos\\lucky-bracelet-designing.mp4",
+   "size": 5760240,
+   "atoms": [
+    {
+     "type": "ftyp",
+     "offset": 0
+    },
+    {
+     "type": "moov",
+     "offset": 32
+    },
+    {
+     "type": "free",
+     "offset": 8366
+    },
+    {
+     "type": "mdat",
+     "offset": 8374
+    }
+   ],
+   "moovOffset": 32,
+   "mdatOffset": 8374,
+   "faststart": true,
+   "chromiumThrottled": {
+    "throttled": true,
+    "marks": {
+     "loadstart": 1.9,
+     "error": 4.6
+    },
+    "readyState": 0,
+    "duration": null,
+    "currentTime": 0
+   },
+   "webkitLocal": {
+    "throttled": false,
+    "marks": {
+     "loadstart": 20,
+     "loadedmetadata": 384,
+     "canplay": 486,
+     "playing": 486
+    },
+    "readyState": 4,
+    "duration": 10,
+    "currentTime": 0
+   },
+   "webkitPaced": {
+    "throttled": false,
+    "marks": {
+     "loadstart": 14,
+     "loadedmetadata": 364,
+     "canplay": 3159,
+     "playing": 3161
+    },
+    "readyState": 4,
+    "duration": 10,
+    "currentTime": 0.01
+   }
+  }
+ }
+}

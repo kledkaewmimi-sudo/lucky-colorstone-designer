@@ -1,17 +1,17 @@
 {
  "product": "lucky-colorstone-designer",
  "release": "full-uat-feature-migration",
- "createdAt": "2026-10-11T13:12:51.021Z",
+ "createdAt": "2026-10-11T15:38:11.957Z",
  "sourceTree": "lucky-colorstone-uat/reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
  "git": {
-  "head": "66fefd6154b7a4894511e693662a9d3af0e5519f",
+  "head": "8f436d5afac74c3abc6c5d350e3577e22d936e9b",
   "branch": "uat",
   "originMain": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d"
  },
  "vercel": {
-  "files": 292,
-  "bytes": 106136578,
-  "fingerprint": "c37924f0a67c58b24a5747fa8db9557ace270c0495387d8535df5b129e2b6d2e",
+  "files": 293,
+  "bytes": 106228594,
+  "fingerprint": "c5ca6a33e67a58238c13dc517f4d3571abcc78dc9d9dcf51288774d8709de9c4",
   "entries": [
    {
     "path": ".gitignore",
@@ -40,8 +40,8 @@
    },
    {
     "path": "app.js",
-    "bytes": 467079,
-    "sha256": "d711387e4dbf1d6e4ee6581e036e3890a78a818aae466a73b20db4e99ae67d90"
+    "bytes": 469787,
+    "sha256": "fb9810d79f1dbfbb04b37784e89f0bf1a8fa73325a261f42f6aa560c00dc9c2e"
    },
    {
     "path": "assets/Amethyst quartz.png",
@@ -655,8 +655,8 @@
    },
    {
     "path": "assets/lucky/onboarding/Kawaii Star Tutorial UI Overlay.webp",
-    "bytes": 171082,
-    "sha256": "5027259464c95f27b643f680972b01827ac94de0be1c5d73200b1a2a363a6a13"
+    "bytes": 235378,
+    "sha256": "48b3e03f9c7a908689b052e299837860815c054edb7ee6bc8a6766ebf569d9b6"
    },
    {
     "path": "assets/lucky/onboarding/Lucky Star Tap Guide.webp",
@@ -669,9 +669,14 @@
     "sha256": "3e5aae31888eabb9a6ca240e1e59376ff97c14888c0af099a42656cf9b059064"
    },
    {
+    "path": "assets/lucky/videos/lucky-bracelet-designing-poster.webp",
+    "bytes": 34012,
+    "sha256": "696081bce0281394f5e166add6407f8f194e689f367fc8fe536b5a670a052472"
+   },
+   {
     "path": "assets/lucky/videos/lucky-bracelet-designing.mp4",
-    "bytes": 5772399,
-    "sha256": "36a61a7eec70f018710534014a04e69488f5fe2b37dbadddc7c0e18f309b6da3"
+    "bytes": 5760240,
+    "sha256": "a4aa66790ecb2b10dac1d7fe25f38acb0980b9cfb07c5662be74640e41764178"
    },
    {
     "path": "assets/lumi/lumi-idle.webp",
@@ -1015,13 +1020,13 @@
    },
    {
     "path": "index.css",
-    "bytes": 263237,
-    "sha256": "eaa8e7b061bde6cb0d0400740be3da964626f4d9669f9876aeb516b00941dab8"
+    "bytes": 264358,
+    "sha256": "d24942aab0fd6b93e1a20b28af7d06439cbaa5d43b864a289cc6487ce3b2bf7a"
    },
    {
     "path": "index.html",
-    "bytes": 46229,
-    "sha256": "a44e4c9c5490a1900cf32aa0d63f67330873858a3aea2754eb4d48aafb269530"
+    "bytes": 45422,
+    "sha256": "f1b9e72079c91681c4a310433f4a2735387bb9b130b663493bf879af55cbc437"
    },
    {
     "path": "initial-line-auth.js",
@@ -1255,13 +1260,13 @@
    },
    {
     "path": "lumi/onboarding/step3-onboarding-machine.js",
-    "bytes": 13308,
-    "sha256": "3c73754b92d9bba5d12654f7521f30902955977cafa7615b0d61da707c6247eb"
+    "bytes": 13595,
+    "sha256": "b4239f4c2f1b187049509e03e4e9548272bf17f5f87c0f84e3346a2371215bf9"
    },
    {
     "path": "lumi/onboarding/step3-onboarding-smooth.js",
-    "bytes": 19458,
-    "sha256": "39b84ffe65369f1679b58c5138c0d58a45997437a648075bd53d4474ac2504a5"
+    "bytes": 21258,
+    "sha256": "8422d143e7a8fc4f312ca30ea3032e0245394a992d1bf84a5e24ffaa8af630d1"
    },
    {
     "path": "lumi/onboarding/step3-onboarding.js",
@@ -1425,8 +1430,8 @@
    },
    {
     "path": "lumi/ui/lumi-ui.js",
-    "bytes": 72379,
-    "sha256": "12a70d147cd2592162f0b925fe34e4cf33f1864bbf631e200424e03b3bf1f3ca"
+    "bytes": 73137,
+    "sha256": "7a0945c0e33c7306557da76629d3e3c6ff9d006e54d00e2db32a39c5d1a932ea"
    },
    {
     "path": "meta-attribution.js",

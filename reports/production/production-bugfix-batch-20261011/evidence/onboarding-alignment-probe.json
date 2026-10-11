@@ -1,0 +1,221 @@
+{
+ "ranAt": "2026-10-11T14:51:29.980Z",
+ "results": [
+  {
+   "profile": "android-412",
+   "viewport": {
+    "width": 412,
+    "height": 839
+   },
+   "assetSizes": [
+    {
+     "src": "/assets/lucky/onboarding/Kawaii Star Tutorial UI Overlay.webp",
+     "width": 1774,
+     "height": 887
+    },
+    {
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp",
+     "width": 1536,
+     "height": 1024
+    }
+   ],
+   "measurement": {
+    "art": {
+     "left": -35,
+     "top": 177,
+     "width": 412,
+     "height": 274.65625
+    },
+    "image": {
+     "left": -35,
+     "top": 177,
+     "width": 412,
+     "height": 274.65625,
+     "naturalWidth": 1536,
+     "naturalHeight": 1024,
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp?v=20261008"
+    },
+    "real": {
+     "left": 150.3828125,
+     "top": 215.3828125,
+     "width": 111.234375,
+     "height": 111.234375
+    },
+    "baked": {
+     "centerX": 205.60799999999998,
+     "centerY": 271.42681875,
+     "width": 109.18,
+     "diameter": 111.234375
+    },
+    "deltaPx": {
+     "x": -0.4,
+     "y": 0.4
+    },
+    "sizeDeltaPx": -2.1,
+    "transform": "none"
+   }
+  },
+  {
+   "profile": "android-360",
+   "viewport": {
+    "width": 360,
+    "height": 740
+   },
+   "assetSizes": [
+    {
+     "src": "/assets/lucky/onboarding/Kawaii Star Tutorial UI Overlay.webp",
+     "width": 1774,
+     "height": 887
+    },
+    {
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp",
+     "width": 1536,
+     "height": 1024
+    }
+   ],
+   "measurement": {
+    "art": {
+     "left": -30,
+     "top": 188,
+     "width": 360,
+     "height": 240
+    },
+    "image": {
+     "left": -30,
+     "top": 188,
+     "width": 360,
+     "height": 240,
+     "naturalWidth": 1536,
+     "naturalHeight": 1024,
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp?v=20261008"
+    },
+    "real": {
+     "left": 131.40625,
+     "top": 222.40625,
+     "width": 97.1875,
+     "height": 97.1875
+    },
+    "baked": {
+     "centerX": 180.23999999999998,
+     "centerY": 270.512,
+     "width": 95.4,
+     "diameter": 97.1875
+    },
+    "deltaPx": {
+     "x": 0.2,
+     "y": -0.5
+    },
+    "sizeDeltaPx": -1.8,
+    "transform": "none"
+   }
+  },
+  {
+   "profile": "iphone-390",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "assetSizes": [
+    {
+     "src": "/assets/lucky/onboarding/Kawaii Star Tutorial UI Overlay.webp",
+     "width": 1774,
+     "height": 887
+    },
+    {
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp",
+     "width": 1536,
+     "height": 1024
+    }
+   ],
+   "measurement": {
+    "art": {
+     "left": -33,
+     "top": 182,
+     "width": 390,
+     "height": 260
+    },
+    "image": {
+     "left": -33,
+     "top": 182,
+     "width": 390,
+     "height": 260,
+     "naturalWidth": 1536,
+     "naturalHeight": 1024,
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp?v=20261008"
+    },
+    "real": {
+     "left": 142.5,
+     "top": 218.5,
+     "width": 105.296875,
+     "height": 105.296875
+    },
+    "baked": {
+     "centerX": 194.76,
+     "centerY": 271.38800000000003,
+     "width": 103.35000000000001,
+     "diameter": 105.296875
+    },
+    "deltaPx": {
+     "x": -0.4,
+     "y": 0.2
+    },
+    "sizeDeltaPx": -1.9,
+    "transform": "none"
+   }
+  },
+  {
+   "profile": "iphone-375",
+   "viewport": {
+    "width": 375,
+    "height": 667
+   },
+   "assetSizes": [
+    {
+     "src": "/assets/lucky/onboarding/Kawaii Star Tutorial UI Overlay.webp",
+     "width": 1774,
+     "height": 887
+    },
+    {
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp",
+     "width": 1536,
+     "height": 1024
+    }
+   ],
+   "measurement": {
+    "art": {
+     "left": -31,
+     "top": 185,
+     "width": 375,
+     "height": 250
+    },
+    "image": {
+     "left": -31,
+     "top": 185,
+     "width": 375,
+     "height": 250,
+     "naturalWidth": 1536,
+     "naturalHeight": 1024,
+     "src": "/assets/lucky/onboarding/Lucky Star Tap Guide.webp?v=20261008"
+    },
+    "real": {
+     "left": 137,
+     "top": 220.5,
+     "width": 101.25,
+     "height": 101.25
+    },
+    "baked": {
+     "centerX": 188,
+     "centerY": 270.95,
+     "width": 99.375,
+     "diameter": 101.25
+    },
+    "deltaPx": {
+     "x": 0.4,
+     "y": -0.2
+    },
+    "sizeDeltaPx": -1.9,
+    "transform": "none"
+   }
+  }
+ ]
+}

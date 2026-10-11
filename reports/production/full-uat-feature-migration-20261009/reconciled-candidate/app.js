@@ -5372,10 +5372,9 @@ function applySelectedCharm(charmId) {
     adjustBeadsToNewCapacity();
     saveState();
     updateEstimationText();
-    renderCharmOptions();
 
     if (State.currentStep === 3) {
-      renderStep3();
+      requestCompositionRender();
       syncStep3NextValidationUI();
     }
     return;
@@ -5437,10 +5436,9 @@ function applySelectedCharm(charmId) {
   adjustBeadsToNewCapacity();
   saveState();
   updateEstimationText();
-  renderCharmOptions();
 
   if (State.currentStep === 3) {
-    renderStep3();
+    requestCompositionRender();
     syncStep3NextValidationUI();
   }
   trackAnalyticsEvent('item_added', {
@@ -7435,7 +7433,7 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
   slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
   captureSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION', createCurrentBraceletResolvedLayout());
   markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
-  renderStep3();
+  requestCompositionRender();
   saveState();
   syncStep3NextValidationUI();
   return true;
@@ -7492,7 +7490,7 @@ function addStoneToBracelet(stoneId) {
   slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
   captureSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION', createCurrentBraceletResolvedLayout());
   markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
-  renderStep3();
+  requestCompositionRender();
   saveState();
   
   syncStep3NextValidationUI();
@@ -7551,7 +7549,7 @@ function addSpacerToBracelet(spacerId) {
   slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
   captureSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION', createCurrentBraceletResolvedLayout());
   markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
-  renderStep3();
+  requestCompositionRender();
   saveState();
   syncStep3NextValidationUI();
   trackAnalyticsEvent('item_added', {
@@ -7606,8 +7604,7 @@ function removeLoopItemFromBracelet(index, showToastNotification = true, event =
   }
 
   updateEstimationText();
-  renderCharmOptions();
-  renderStep3();
+  requestCompositionRender();
   saveState();
   syncStep3NextValidationUI();
   trackAnalyticsEvent('item_removed', {
@@ -7638,6 +7635,11 @@ function hideLoopItemForImmediateFeedback(group) {
   group.setAttribute('pointer-events', 'none');
 }
 
+// Timestamp of the last pointer-release driven removal: a synthetic click that follows a release
+// within this window belongs to the gesture that was already handled (see bindLoopItemActivation).
+const LOOP_ITEM_CLICK_SUPPRESS_MS = 500;
+let lastPointerActivationAt = 0;
+
 function bindLoopItemActivation(group, { sourceIndex, uniqueId } = {}) {
   let gestureStart = null;
   let lastActivationAt = 0;
@@ -7667,6 +7669,15 @@ function bindLoopItemActivation(group, { sourceIndex, uniqueId } = {}) {
     // (deferring the mutation to a later frame was measured to double-apply the removal in WebKit).
     removeLoopItemFromBracelet(sourceIndex, true, event, uniqueId ?? null);
   };
+  // A touch tap produces ONE pointer release followed by a synthetic click a few milliseconds later.
+  // While the ring rebuild is deferred to the next frame the tapped node is still in the DOM, so that
+  // trailing click can be re-targeted to a NEIGHBOURING bead node and remove a second bead. Only the
+  // trailing click is suppressed (deliberate taps arrive as pointer releases, and keyboard/legacy
+  // clicks carry no preceding release), so fast intentional taps still remove one bead each.
+  const activateByClick = (event) => {
+    if (Date.now() - lastPointerActivationAt < LOOP_ITEM_CLICK_SUPPRESS_MS) return;
+    activate(event);
+  };
   const movedTooFar = (event) => {
     if (!gestureStart) return false;
     const point = event.changedTouches?.[0] || event;
@@ -7683,11 +7694,12 @@ function bindLoopItemActivation(group, { sourceIndex, uniqueId } = {}) {
     const moved = movedTooFar(event);
     gestureStart = null;
     if (moved) return;
+    lastPointerActivationAt = Date.now();
     activate(event);
   });
   // Mouse/keyboard path, and the only activation source on engines that dispatch a click without a
-  // matching pointerup. The per-node burst guard above keeps one touch tap from removing twice.
-  group.addEventListener('click', (event) => activate(event));
+  // matching pointerup.
+  group.addEventListener('click', (event) => activateByClick(event));
 }
 
 function createBraceletConfig(source = State) {
@@ -9251,7 +9263,19 @@ function createSvgDefs() {
 }
 
 // Render step 3 workspace elements
-function renderStep3() {
+// Owner report 2026-10-11 (iPhone): adding/removing beads quickly felt laggy because EVERY tap ran the
+// full Step 3 render, which rebuilds all 27 catalog cards (and the charm/spacer section) plus the ring.
+// Composition edits now ask for a coalesced render: the ring and the numbers are painted on the next
+// frame (one render per frame no matter how fast the taps arrive) and the heavy catalog/charm sections
+// are refreshed once, after the burst settles. State, pricing, geometry and Undo stay synchronous.
+const STEP3_CATALOG_SETTLE_MS = 140;
+let step3RenderFrame = null;
+let step3CatalogSettleTimer = null;
+
+function renderStep3(options = {}) {
+  const withCatalog = options.catalog !== false;
+  const withCharmSection = options.charmSection !== false;
+  const withEntry = options.entry !== false;
   ensureCurrentDesignMatchesBeadSize();
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);
@@ -9304,7 +9328,9 @@ function renderStep3() {
   // Update wrist context label
   const wristContext = document.getElementById('canvasWristContext');
   if (wristContext) {
-    wristContext.textContent = `ข้อมือ ${State.wristSize.toFixed(1)} cm`;
+    // TASK D (owner request 2026-10-11): the preview-bracelet button was removed from this area, so it
+    // now shows only the wrist size chosen in Step 1, e.g. "16.0 cm" / "17.5 cm".
+    wristContext.textContent = `${State.wristSize.toFixed(1)} cm`;
   }
   
   // Center label inside circular design canvas
@@ -9320,17 +9346,37 @@ function renderStep3() {
   // Render SVG loop and catalog
   renderBraceletCanvas(resolvedLayout);
   markStep2ToStep3Timing('T4_bracelet_render_complete');
-  renderCatalogGrid();
-  renderActiveCharmSpacerSection();
+  if (withCatalog) renderCatalogGrid();
+  if (withCharmSection) renderActiveCharmSpacerSection();
   markStep2ToStep3Timing('T5_catalog_cards_complete');
   settleStep3ImagesForTiming();
   syncCatalogSectionFilter();
   syncStep3NextValidationUI(validationState);
   showStep3CategoryHint();
-  renderLumiStep3Entry();
+  if (withEntry) renderLumiStep3Entry();
   
   // Clear newly added IDs after rendering so they only animate on insertion
   State.newlyAddedIds = [];
+}
+
+// Composition edits (add / remove / replace) use this instead of a full synchronous render: one ring
+// render per animation frame, then a single catalog/charm refresh once the taps have settled.
+function requestCompositionRender() {
+  if (step3RenderFrame === null) {
+    step3RenderFrame = window.requestAnimationFrame(() => {
+      step3RenderFrame = null;
+      if (State.currentStep !== 3) return;
+      renderStep3({ catalog: false, charmSection: false, entry: false });
+    });
+  }
+  window.clearTimeout(step3CatalogSettleTimer);
+  step3CatalogSettleTimer = window.setTimeout(() => {
+    step3CatalogSettleTimer = null;
+    if (State.currentStep !== 3) return;
+    renderCatalogGrid();
+    renderActiveCharmSpacerSection();
+    settleStep3ImagesForTiming();
+  }, STEP3_CATALOG_SETTLE_MS);
 }
 
 // First-time onboarding owns the first Step 3 visit, so the legacy Step 3 tab-hint
