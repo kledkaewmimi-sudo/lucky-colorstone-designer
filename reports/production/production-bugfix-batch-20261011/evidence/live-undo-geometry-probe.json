@@ -1,0 +1,332 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "ranAt": "2026-10-11T06:05:56.883Z",
+ "tests": {
+  "undo": {
+   "steps": [
+    {
+     "label": "baseline",
+     "stones": 0,
+     "spacers": 0,
+     "empties": 0,
+     "total": 0,
+     "charms": 0,
+     "placedNodes": 0,
+     "placeholderNodes": 29,
+     "beadPx": null,
+     "ringDiameterPx": null,
+     "placeholderPx": 15.76,
+     "price": "฿0",
+     "beadCount": "0 / 29 beads",
+     "space": "เหลือ 175.0 mm",
+     "undoDisabled": true,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "add-1",
+     "stones": 1,
+     "spacers": 0,
+     "empties": 0,
+     "total": 1,
+     "charms": 0,
+     "placedNodes": 1,
+     "placeholderNodes": 28,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": null,
+     "placeholderPx": 15.76,
+     "price": "฿35",
+     "beadCount": "1 / 29 beads",
+     "space": "เหลือ 169.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "add-2",
+     "stones": 2,
+     "spacers": 0,
+     "empties": 0,
+     "total": 2,
+     "charms": 0,
+     "placedNodes": 2,
+     "placeholderNodes": 27,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": null,
+     "placeholderPx": 15.76,
+     "price": "฿64",
+     "beadCount": "2 / 29 beads",
+     "space": "เหลือ 163.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "add-3",
+     "stones": 3,
+     "spacers": 0,
+     "empties": 0,
+     "total": 3,
+     "charms": 0,
+     "placedNodes": 3,
+     "placeholderNodes": 26,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": {
+      "width": 33.4,
+      "height": 11.3
+     },
+     "placeholderPx": 15.76,
+     "price": "฿96",
+     "beadCount": "3 / 29 beads",
+     "space": "เหลือ 157.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "add-4",
+     "stones": 4,
+     "spacers": 0,
+     "empties": 0,
+     "total": 4,
+     "charms": 0,
+     "placedNodes": 4,
+     "placeholderNodes": 25,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": {
+      "width": 47.5,
+      "height": 22
+     },
+     "placeholderPx": 15.76,
+     "price": "฿111",
+     "beadCount": "4 / 29 beads",
+     "space": "เหลือ 151.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "add-5",
+     "stones": 5,
+     "spacers": 0,
+     "empties": 0,
+     "total": 5,
+     "charms": 0,
+     "placedNodes": 5,
+     "placeholderNodes": 24,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": {
+      "width": 59,
+      "height": 35.5
+     },
+     "placeholderPx": 15.76,
+     "price": "฿146",
+     "beadCount": "5 / 29 beads",
+     "space": "เหลือ 145.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "undo-1",
+     "stones": 4,
+     "spacers": 0,
+     "empties": 0,
+     "total": 4,
+     "charms": 0,
+     "placedNodes": 4,
+     "placeholderNodes": 25,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": {
+      "width": 47.5,
+      "height": 22
+     },
+     "placeholderPx": 15.76,
+     "price": "฿111",
+     "beadCount": "4 / 29 beads",
+     "space": "เหลือ 151.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "undo-2",
+     "stones": 3,
+     "spacers": 0,
+     "empties": 0,
+     "total": 3,
+     "charms": 0,
+     "placedNodes": 3,
+     "placeholderNodes": 26,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": {
+      "width": 33.4,
+      "height": 11.3
+     },
+     "placeholderPx": 15.76,
+     "price": "฿96",
+     "beadCount": "3 / 29 beads",
+     "space": "เหลือ 157.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "undo-3",
+     "stones": 2,
+     "spacers": 0,
+     "empties": 0,
+     "total": 2,
+     "charms": 0,
+     "placedNodes": 2,
+     "placeholderNodes": 27,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": null,
+     "placeholderPx": 15.76,
+     "price": "฿64",
+     "beadCount": "2 / 29 beads",
+     "space": "เหลือ 163.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "undo-4",
+     "stones": 1,
+     "spacers": 0,
+     "empties": 0,
+     "total": 1,
+     "charms": 0,
+     "placedNodes": 1,
+     "placeholderNodes": 28,
+     "beadPx": {
+      "width": 23.1,
+      "scale": 1
+     },
+     "ringDiameterPx": null,
+     "placeholderPx": 15.76,
+     "price": "฿35",
+     "beadCount": "1 / 29 beads",
+     "space": "เหลือ 169.0 mm",
+     "undoDisabled": false,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "undo-5",
+     "stones": 0,
+     "spacers": 0,
+     "empties": 0,
+     "total": 0,
+     "charms": 0,
+     "placedNodes": 0,
+     "placeholderNodes": 29,
+     "beadPx": null,
+     "ringDiameterPx": null,
+     "placeholderPx": 15.76,
+     "price": "฿0",
+     "beadCount": "0 / 29 beads",
+     "space": "เหลือ 175.0 mm",
+     "undoDisabled": true,
+     "undoLabel": "เลิกทำ"
+    },
+    {
+     "label": "undo-6",
+     "skipped": "button disabled"
+    }
+   ],
+   "stonesAdded": 5,
+   "undoClicksAccepted": 5,
+   "restoredBaseline": false
+  },
+  "geometry": [
+   {
+    "label": "after-lucky-accept",
+    "stones": 24,
+    "spacers": 0,
+    "empties": 0,
+    "total": 24,
+    "charms": 1,
+    "placedNodes": 25,
+    "placeholderNodes": 0,
+    "beadPx": {
+     "width": 23.1,
+     "scale": 1
+    },
+    "ringDiameterPx": {
+     "width": 163.8,
+     "height": 161.4
+    },
+    "placeholderPx": null,
+    "price": "฿1,058",
+    "beadCount": "24 / 24 beads",
+    "space": "เหลือ 1.0 mm",
+    "undoDisabled": false,
+    "undoLabel": "เลิกทำ"
+   },
+   {
+    "label": "after-removing-4-stones",
+    "stones": 20,
+    "spacers": 0,
+    "empties": 4,
+    "total": 24,
+    "charms": 1,
+    "placedNodes": 21,
+    "placeholderNodes": 4,
+    "beadPx": {
+     "width": 23.1,
+     "scale": 1
+    },
+    "ringDiameterPx": {
+     "width": 163.8,
+     "height": 161.4
+    },
+    "placeholderPx": 15.76,
+    "price": "฿974",
+    "beadCount": "20 / 24 beads",
+    "space": "เหลือ 25.0 mm",
+    "undoDisabled": false,
+    "undoLabel": "เลิกทำ"
+   },
+   {
+    "label": "after-adding-talisman",
+    "stones": 19,
+    "spacers": 0,
+    "empties": 4,
+    "total": 23,
+    "charms": 2,
+    "placedNodes": 21,
+    "placeholderNodes": 4,
+    "beadPx": {
+     "width": 20.3,
+     "scale": 1
+    },
+    "ringDiameterPx": {
+     "width": 163.7,
+     "height": 164
+    },
+    "placeholderPx": 13.62,
+    "price": "฿1,543",
+    "beadCount": "19 / 19 beads",
+    "space": "เหลือ 1.0 mm",
+    "undoDisabled": false,
+    "undoLabel": "เลิกทำ"
+   }
+  ]
+ },
+ "problems": []
+}

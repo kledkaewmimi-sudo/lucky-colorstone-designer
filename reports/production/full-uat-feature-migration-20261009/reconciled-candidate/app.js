@@ -4898,9 +4898,31 @@ function adjustBeadsToNewCapacity() {
     keptCount += 1;
   }
 
-  if (keptCount < State.selectedStones.length) {
+  const trimmed = keptCount < State.selectedStones.length;
+  if (trimmed) {
     State.selectedStones = State.selectedStones.slice(0, keptCount);
     State.activeSlotIndex = null;
+  }
+
+  // Bugfix 2026-10-11 (task 5): a retained empty slot is an editor position for a deleted bead, not a
+  // physical component. It may only survive while bead space is still free (it is the "refill here"
+  // affordance). Once a new stone or talisman consumes that free space, keeping the retained slot
+  // leaves a ghost ring position behind: the canvas then draws the deleted bead's footprint as well as
+  // the new talisman, so the rendered loop no longer matches the physical bracelet (beads shrink and
+  // the ring is over-filled) and the customer sees empty positions that cannot be filled. Consume them
+  // here so the rendered circumference always equals the physical one.
+  const retainedSlotLengthMm = State.selectedStones.reduce((sum, item) => (
+    isEmptyLoopSlot(item) ? sum + Number(item?.size || 0) : sum
+  ), 0);
+  if ((usedLengthMm + retainedSlotLengthMm) > usableBeadLengthMm + 1.0) {
+    const hadRetainedSlot = State.selectedStones.some((item) => isEmptyLoopSlot(item));
+    if (hadRetainedSlot) {
+      State.selectedStones = State.selectedStones.filter((item) => !isEmptyLoopSlot(item));
+      State.activeSlotIndex = null;
+    }
+  }
+
+  if (trimmed) {
     showToast(`Removed trailing components to fit new size capacity.`);
   }
 }
@@ -6566,7 +6588,7 @@ function renderSpacerOptions() {
 // pipeline, so preview, item list, price and capacity checks are always re-derived from the restored
 // composition. History is client-side only, contains catalog ids and sizes (no personal, order or
 // payment data), and is bounded at 30 snapshots - comfortably above the required 20.
-const UNDO_HISTORY_LIMIT = 30;
+const UNDO_HISTORY_LIMIT = 40;
 // 'เลิกทำแล้ว' (undo applied) - encoded to keep the literal byte-exact.
 const UNDO_TOAST_TEXT = String.fromCodePoint(0x0e40, 0x0e25, 0x0e34, 0x0e01, 0x0e17, 0x0e33, 0x0e41, 0x0e25, 0x0e49, 0x0e27);
 let undoHistory = [];
@@ -6574,6 +6596,7 @@ let undoBaseline = null;
 let undoRestoring = false;
 let undoCaptureBound = false;
 let undoCaptureTimer = null;
+let undoSuppressUntil = 0;
 let pendingLuckyUndoSnapshot = null;
 
 function captureUndoSnapshot() {
@@ -6620,8 +6643,11 @@ function syncUndoBaseline() {
 function pushUndoSnapshot(snapshot) {
   if (undoRestoring || !snapshot) return false;
   const signature = undoSnapshotSignature(snapshot);
-  const last = undoHistory[undoHistory.length - 1];
-  if (last && undoSnapshotSignature(last) === signature) return false;
+  // Ignore a repeat of either of the last two entries: a single user action can surface through more
+  // than one DOM event (pointerdown + click + change) and a duplicate would silently consume an undo
+  // step. Genuine A -> B -> A editing still pushes B and A because they are not consecutive repeats.
+  const tail = undoHistory.slice(-2);
+  if (tail.some((entry) => undoSnapshotSignature(entry) === signature)) return false;
   undoHistory.push(snapshot);
   if (undoHistory.length > UNDO_HISTORY_LIMIT) undoHistory.shift();
   syncUndoButtonState();
@@ -6630,6 +6656,10 @@ function pushUndoSnapshot(snapshot) {
 
 function recordUndoFrom(previousSnapshot) {
   if (undoRestoring || !previousSnapshot) return;
+  // A settle timer scheduled by an edit must never record history after the customer has already
+  // undone: that would push a stale "pre-undo" snapshot back onto the stack and make the next Undo
+  // restore the state the customer just left.
+  if (Date.now() < undoSuppressUntil) return;
   if (undoSnapshotSignature(previousSnapshot) === undoSnapshotSignature(captureUndoSnapshot())) return;
   pushUndoSnapshot(previousSnapshot);
   syncUndoBaseline();
@@ -6655,6 +6685,11 @@ function undoLastBraceletAction() {
     return false;
   }
   const snapshot = undoHistory[undoHistory.length - 1];
+  // Cancel any pending post-edit settle push and ignore settles for the next moment, so undoing twice
+  // in quick succession keeps walking backwards through the history.
+  window.clearTimeout(undoCaptureTimer);
+  undoCaptureTimer = null;
+  undoSuppressUntil = Date.now() + 700;
   undoRestoring = true;
   try {
     restoreUndoSnapshot(snapshot);

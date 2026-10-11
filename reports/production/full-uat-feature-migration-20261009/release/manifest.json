@@ -1,17 +1,17 @@
 {
  "product": "lucky-colorstone-designer",
  "release": "full-uat-feature-migration",
- "createdAt": "2026-10-11T04:09:29.085Z",
+ "createdAt": "2026-10-11T06:19:00.401Z",
  "sourceTree": "lucky-colorstone-uat/reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
  "git": {
-  "head": "e9e814fcd3f5ddc18aae9d89ac949fc98ca653ef",
+  "head": "9437930f66f845d27503d66b51fb0d3b17f7a115",
   "branch": "uat",
   "originMain": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d"
  },
  "vercel": {
   "files": 291,
-  "bytes": 106114147,
-  "fingerprint": "8efa9edfd1e74c5330c90a2f56dcaa5818e8e14bf3cd1508ba2e772f54030c03",
+  "bytes": 106116229,
+  "fingerprint": "4842bd2226db9ded775389a55571f4d477b2cd77d241238f167a9e25ba5c7890",
   "entries": [
    {
     "path": ".gitignore",
@@ -40,8 +40,8 @@
    },
    {
     "path": "app.js",
-    "bytes": 458090,
-    "sha256": "a368455196207ba56d0d611193ac90656f38429825509ea47927a6ff6989cb42"
+    "bytes": 460207,
+    "sha256": "17d0eb83b203dafeeb1cfa4ff0dcf24ac12d004d70d27a5b8c9cc1664e5a05b4"
    },
    {
     "path": "assets/Amethyst quartz.png",
@@ -1020,8 +1020,8 @@
    },
    {
     "path": "index.html",
-    "bytes": 46264,
-    "sha256": "78a3ec8414d4f0e9124ac39736dace3274180edddb4910f75864069363977174"
+    "bytes": 46229,
+    "sha256": "a44e4c9c5490a1900cf32aa0d63f67330873858a3aea2754eb4d48aafb269530"
    },
    {
     "path": "initial-line-auth.js",

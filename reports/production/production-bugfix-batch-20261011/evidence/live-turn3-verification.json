@@ -1,0 +1,74 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "ranAt": "2026-10-11T06:20:51.255Z",
+ "passed": 13,
+ "failed": 0,
+ "checks": [
+  {
+   "id": "live index.html matches the release artifact",
+   "pass": true,
+   "detail": "a44e4c9c5490a190"
+  },
+  {
+   "id": "live app.js matches the release artifact",
+   "pass": true,
+   "detail": "17d0eb83b203dafe"
+  },
+  {
+   "id": "live index.css matches the release artifact",
+   "pass": true,
+   "detail": "e78caeef5de45d14"
+  },
+  {
+   "id": "live lumi/ui/lumi-ui.js matches the release artifact",
+   "pass": true,
+   "detail": "12a70d147cd25921"
+  },
+  {
+   "id": "Undo control is labelled exactly \"Undo\"",
+   "pass": true,
+   "detail": "label=\"Undo\""
+  },
+  {
+   "id": "retained ghost slots are consumed by the shipped geometry fix",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "displayCount = 1035 + successfulOrderCount * 3",
+   "pass": true,
+   "detail": "{\"displayCount\":1329,\"successfulOrderCount\":98,\"recentBracelets\":[\"data:image/webp;base64,"
+  },
+  {
+   "id": "four real previews remain published",
+   "pass": true,
+   "detail": "previews=4"
+  },
+  {
+   "id": "no PII in the public payload",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "id": "live Undo button shows the new label",
+   "pass": true,
+   "detail": "{\"stones\":0,\"ghosts\":0,\"charms\":0,\"ghostNodes\":0,\"price\":\"฿0\",\"undoLabel\":\"Undo\"}"
+  },
+  {
+   "id": "live: Lucky design applied",
+   "pass": true,
+   "detail": "{\"stones\":24,\"ghosts\":0,\"charms\":1,\"ghostNodes\":0,\"price\":\"฿1,058\",\"undoLabel\":\"Undo\"}"
+  },
+  {
+   "id": "live: four stones removed left retained gaps",
+   "pass": true,
+   "detail": "{\"stones\":20,\"ghosts\":4,\"charms\":1,\"ghostNodes\":4,\"price\":\"฿974\",\"undoLabel\":\"Undo\"}"
+  },
+  {
+   "id": "live: adding the talisman consumes the ghost positions",
+   "pass": true,
+   "detail": "{\"stones\":19,\"ghosts\":0,\"charms\":2,\"ghostNodes\":0,\"price\":\"฿1,543\",\"undoLabel\":\"Undo\"}"
+  }
+ ],
+ "problems": []
+}
