@@ -2345,8 +2345,21 @@ function mergeCatalogRowAvailability(row) {
 
 function normalizeCatalogAvailabilityPayload(item) {
   const stockQty = getCatalogPayloadStockQty(item);
-  const inStock = item?.availability?.inStock !== false && item?.inStock !== false && (stockQty === null || stockQty > 0);
-  const isActive = item?.availability?.isActive !== false && item?.isActive !== false;
+  // Owner-reported 2026-10-11: the admin form writes status through the nested availability object,
+  // while a record disabled earlier still carries flat inStock:false / isActive:false at the top
+  // level. ANDing both representations let the stale flat copy win forever, so a reactivation could
+  // never be persisted. An explicitly present nested value is authoritative; the flat keys are then
+  // derived from it so the payload and the catalog columns stay consistent.
+  const nestedInStock = item?.availability && item.availability.inStock !== undefined
+    ? item.availability.inStock !== false
+    : null;
+  const nestedIsActive = item?.availability && item.availability.isActive !== undefined
+    ? item.availability.isActive !== false
+    : null;
+  const flatInStock = item?.inStock === undefined ? null : item.inStock !== false;
+  const flatIsActive = item?.isActive === undefined ? null : item.isActive !== false;
+  const inStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const isActive = nestedIsActive ?? flatIsActive ?? true;
   const next = { ...item, stockQty, stock_qty: stockQty, inStock, isActive };
   if (item?.availability && typeof item.availability === "object") {
     next.availability = {
