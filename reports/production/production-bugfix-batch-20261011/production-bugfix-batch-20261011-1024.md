@@ -297,7 +297,29 @@ Screenshots: `evidence/live-landing-social-proof.png`, `evidence/live-page3-ston
 - No Render deployment, no environment-variable change, no Stripe/LINE change, no database change, and no
   security control removed or weakened.
 
+## 16a. Commits created
+
+- `f3b827c2814d01f2ed24e1753638ce60fee340db` on branch `uat` (local only, **not pushed**):
+  "fix(production): Lucky stays on Step 3, replacement confirmation, Step 3 undo, transparent stone assets".
+  81 files, 27,736 insertions — the four changed source files, the 35 rebuilt stone assets, the regenerated
+  release manifest, the new batch tooling/evidence and this report. Root-level application files and the
+  owner's pre-existing working-tree changes were not touched or staged.
+
 ## 17. Production data modified
 
 **None.** No order, catalog record, customer record, analytics row or Supabase object was created, updated or
 deleted. Customer PII was never read, stored or exposed.
+| 13 | Replacement still lands on Step 3 (no automatic Step 4) | PASS |
+
+Post-deploy security boundary and CRM identity (read-only probes, status codes only):
+
+| Probe | Result |
+|---|---|
+| `crm.luckycolorstone.com/` vs artifact `crm.html` | 200, byte-identical |
+| `crm.luckycolorstone.com/crm.js`, `/data.js` vs artifact | 200, byte-identical (hardened CRM bundle unchanged) |
+| anonymous `/api/orders` | 403 |
+| anonymous `/api/crm/orders` | 401 |
+| anonymous `/api/purchases` | 401 |
+| `/api/settings` | 200 |
+| `/server.js` | 404 |
+| `/api/social-proof` | 200 (count-only) |
