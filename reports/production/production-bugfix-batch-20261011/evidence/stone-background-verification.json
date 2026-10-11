@@ -1,0 +1,812 @@
+{
+ "summary": {
+  "checked": 38,
+  "passed": 38,
+  "failed": [],
+  "formats": [
+   "webp",
+   "png"
+  ],
+  "note": "rgbIdenticalInsideStone proves the visible stone pixels are untouched; only the background alpha changed."
+ },
+ "results": [
+  {
+   "rel": "assets/golden_rutile.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4583,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 83608,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Rutilated_Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5189,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 3.314,
+   "rgbMaxAbsDiffInsideStone": 29,
+   "bytes": 101210,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/amethyst.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5599,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 2478866,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/rose_quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4583,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 32260,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/lapis_lazuli.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5548,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.931,
+   "rgbMaxAbsDiffInsideStone": 26,
+   "bytes": 84284,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/tigers_eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4673,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.576,
+   "rgbMaxAbsDiffInsideStone": 24,
+   "bytes": 50690,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Pink Tiger eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4984,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.468,
+   "rgbMaxAbsDiffInsideStone": 21,
+   "bytes": 59434,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/malachite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4583,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 45698,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/citrine.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5548,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.836,
+   "rgbMaxAbsDiffInsideStone": 37,
+   "bytes": 53152,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Ice Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5385,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.603,
+   "rgbMaxAbsDiffInsideStone": 16,
+   "bytes": 79456,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Beryl.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.519,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.7,
+   "rgbMaxAbsDiffInsideStone": 19,
+   "bytes": 28378,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Howlite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5194,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 0.718,
+   "rgbMaxAbsDiffInsideStone": 18,
+   "bytes": 16388,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Sodalite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5326,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.457,
+   "rgbMaxAbsDiffInsideStone": 21,
+   "bytes": 64940,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Clear Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5398,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 0.514,
+   "rgbMaxAbsDiffInsideStone": 16,
+   "bytes": 13366,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/White Jade.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.514,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 0.657,
+   "rgbMaxAbsDiffInsideStone": 19,
+   "bytes": 10566,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/White_cat_eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5277,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 0.594,
+   "rgbMaxAbsDiffInsideStone": 19,
+   "bytes": 11148,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Opal.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4892,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.572,
+   "rgbMaxAbsDiffInsideStone": 22,
+   "bytes": 30862,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Red Tiger Eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4621,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.685,
+   "rgbMaxAbsDiffInsideStone": 22,
+   "bytes": 44934,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Lavender Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5381,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.474,
+   "rgbMaxAbsDiffInsideStone": 20,
+   "bytes": 30150,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Black Tourmaline.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5035,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 0.946,
+   "rgbMaxAbsDiffInsideStone": 21,
+   "bytes": 56368,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Labradorite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4871,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.524,
+   "rgbMaxAbsDiffInsideStone": 21,
+   "bytes": 70258,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Carnelian.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5563,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.087,
+   "rgbMaxAbsDiffInsideStone": 21,
+   "bytes": 18716,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Moss Agate.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5075,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.313,
+   "rgbMaxAbsDiffInsideStone": 18,
+   "bytes": 68220,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Rhodonite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4605,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.84,
+   "rgbMaxAbsDiffInsideStone": 22,
+   "bytes": 25454,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Sunstone.webp",
+   "format": "webp",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5367,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 3.886,
+   "rgbMaxAbsDiffInsideStone": 49,
+   "bytes": 93242,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Pearls.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.534,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 0.77,
+   "rgbMaxAbsDiffInsideStone": 23,
+   "bytes": 10328,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Aquamarine.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5306,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.815,
+   "rgbMaxAbsDiffInsideStone": 22,
+   "bytes": 34942,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Moonstone.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5326,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.317,
+   "rgbMaxAbsDiffInsideStone": 19,
+   "bytes": 15578,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Pyrite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.4642,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.984,
+   "rgbMaxAbsDiffInsideStone": 18,
+   "bytes": 73606,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Honey Jade.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.497,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.238,
+   "rgbMaxAbsDiffInsideStone": 30,
+   "bytes": 25878,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Cherry Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5217,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 1.788,
+   "rgbMaxAbsDiffInsideStone": 22,
+   "bytes": 26824,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Green Jade.webp",
+   "format": "webp",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5396,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 3.544,
+   "rgbMaxAbsDiffInsideStone": 23,
+   "bytes": 102532,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Blue Cat eye.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5511,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 2310346,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Gold sand stone.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5524,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 2907780,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Silver sand stone.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5522,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 2542609,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Amethyst quartz.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.577,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 2662552,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Blue agate.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.5522,
+   "rgbIdenticalInsideStone": true,
+   "rgbMeanAbsDiffInsideStone": 0,
+   "rgbMaxAbsDiffInsideStone": 0,
+   "bytes": 2272990,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  },
+  {
+   "rel": "assets/Kyanite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "hasAlpha": true,
+   "cornerAlpha": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "visibleFraction": 0.546,
+   "rgbIdenticalInsideStone": false,
+   "rgbMeanAbsDiffInsideStone": 2.109,
+   "rgbMaxAbsDiffInsideStone": 21,
+   "bytes": 63384,
+   "backedUp": true,
+   "rgbPreserved": true,
+   "pass": true
+  }
+ ]
+}

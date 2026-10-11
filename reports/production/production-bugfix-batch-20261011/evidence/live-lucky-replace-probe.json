@@ -1,0 +1,94 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "ranAt": "2026-10-11T02:42:36.035Z",
+ "problems": [],
+ "stages": {
+  "manualDesign": {
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 95,
+   "charmNodes": 0,
+   "stones": 4,
+   "charmIds": [],
+   "price": "฿140",
+   "replaceCardVisible": false,
+   "hits": []
+  },
+  "replaceConfirmation": {
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 95,
+   "charmNodes": 0,
+   "stones": 4,
+   "charmIds": [],
+   "price": "฿140",
+   "replaceCardVisible": true,
+   "hits": []
+  },
+  "afterCommit": {
+   "step3Active": false,
+   "step4Active": true,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "replaceCardVisible": false,
+   "hits": []
+  },
+  "backOnStep3": {
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "replaceCardVisible": false,
+   "hits": []
+  },
+  "charm-tab": {
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "replaceCardVisible": false,
+   "hits": []
+  },
+  "spacer-tab": {
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "replaceCardVisible": false,
+   "hits": []
+  },
+  "stone-tab": {
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "replaceCardVisible": false,
+   "hits": []
+  }
+ }
+}

@@ -1,0 +1,558 @@
+{
+ "summary": {
+  "mode": "DRY-RUN",
+  "targets": 38,
+  "applied": 0,
+  "skipped": 3,
+  "missing": [],
+  "suspicious": []
+ },
+ "report": [
+  {
+   "rel": "assets/golden_rutile.webp",
+   "status": "SKIPPED (already has alpha)",
+   "format": "webp",
+   "width": 800,
+   "height": 800
+  },
+  {
+   "rel": "assets/Rutilated_Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 310519,
+   "transparentFraction": 0.4811,
+   "centreWasBackground": false,
+   "bytesBefore": 99366
+  },
+  {
+   "rel": "assets/amethyst.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 696261,
+   "transparentFraction": 0.4401,
+   "centreWasBackground": false,
+   "bytesBefore": 1863292
+  },
+  {
+   "rel": "assets/rose_quartz.webp",
+   "status": "SKIPPED (already has alpha)",
+   "format": "webp",
+   "width": 800,
+   "height": 800
+  },
+  {
+   "rel": "assets/lapis_lazuli.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 287597,
+   "transparentFraction": 0.4452,
+   "centreWasBackground": false,
+   "bytesBefore": 82036
+  },
+  {
+   "rel": "assets/tigers_eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 343392,
+   "transparentFraction": 0.5327,
+   "centreWasBackground": false,
+   "bytesBefore": 48914
+  },
+  {
+   "rel": "assets/Pink Tiger eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 323603,
+   "transparentFraction": 0.5016,
+   "centreWasBackground": false,
+   "bytesBefore": 58976
+  },
+  {
+   "rel": "assets/malachite.webp",
+   "status": "SKIPPED (already has alpha)",
+   "format": "webp",
+   "width": 800,
+   "height": 800
+  },
+  {
+   "rel": "assets/citrine.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 287633,
+   "transparentFraction": 0.4452,
+   "centreWasBackground": false,
+   "bytesBefore": 52428
+  },
+  {
+   "rel": "assets/Ice Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 298007,
+   "transparentFraction": 0.4615,
+   "centreWasBackground": false,
+   "bytesBefore": 76720
+  },
+  {
+   "rel": "assets/Beryl.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 310504,
+   "transparentFraction": 0.481,
+   "centreWasBackground": false,
+   "bytesBefore": 27334
+  },
+  {
+   "rel": "assets/Howlite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 310176,
+   "transparentFraction": 0.4806,
+   "centreWasBackground": false,
+   "bytesBefore": 13286
+  },
+  {
+   "rel": "assets/Sodalite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 301781,
+   "transparentFraction": 0.4674,
+   "centreWasBackground": false,
+   "bytesBefore": 62924
+  },
+  {
+   "rel": "assets/Clear Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 297627,
+   "transparentFraction": 0.4602,
+   "centreWasBackground": false,
+   "bytesBefore": 9442
+  },
+  {
+   "rel": "assets/White Jade.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 313639,
+   "transparentFraction": 0.486,
+   "centreWasBackground": false,
+   "bytesBefore": 7956
+  },
+  {
+   "rel": "assets/White_cat_eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 304916,
+   "transparentFraction": 0.4723,
+   "centreWasBackground": false,
+   "bytesBefore": 7998
+  },
+  {
+   "rel": "assets/Opal.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 329465,
+   "transparentFraction": 0.5108,
+   "centreWasBackground": false,
+   "bytesBefore": 30176
+  },
+  {
+   "rel": "assets/Red Tiger Eye.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 346785,
+   "transparentFraction": 0.5379,
+   "centreWasBackground": false,
+   "bytesBefore": 45244
+  },
+  {
+   "rel": "assets/Lavender Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 298257,
+   "transparentFraction": 0.4619,
+   "centreWasBackground": false,
+   "bytesBefore": 27580
+  },
+  {
+   "rel": "assets/Black Tourmaline.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 320334,
+   "transparentFraction": 0.4965,
+   "centreWasBackground": false,
+   "bytesBefore": 53156
+  },
+  {
+   "rel": "assets/Labradorite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 330763,
+   "transparentFraction": 0.5129,
+   "centreWasBackground": false,
+   "bytesBefore": 69028
+  },
+  {
+   "rel": "assets/Carnelian.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 286798,
+   "transparentFraction": 0.4437,
+   "centreWasBackground": false,
+   "bytesBefore": 14512
+  },
+  {
+   "rel": "assets/Moss Agate.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 317747,
+   "transparentFraction": 0.4924,
+   "centreWasBackground": false,
+   "bytesBefore": 65576
+  },
+  {
+   "rel": "assets/Rhodonite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 347776,
+   "transparentFraction": 0.5395,
+   "centreWasBackground": false,
+   "bytesBefore": 23496
+  },
+  {
+   "rel": "assets/Sunstone.webp",
+   "format": "webp",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 732655,
+   "transparentFraction": 0.4633,
+   "centreWasBackground": false,
+   "bytesBefore": 181426
+  },
+  {
+   "rel": "assets/Pearls.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 300887,
+   "transparentFraction": 0.466,
+   "centreWasBackground": false,
+   "bytesBefore": 6838
+  },
+  {
+   "rel": "assets/Aquamarine.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 303106,
+   "transparentFraction": 0.4694,
+   "centreWasBackground": false,
+   "bytesBefore": 33484
+  },
+  {
+   "rel": "assets/Moonstone.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 301738,
+   "transparentFraction": 0.4674,
+   "centreWasBackground": false,
+   "bytesBefore": 14182
+  },
+  {
+   "rel": "assets/Pyrite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 345412,
+   "transparentFraction": 0.5358,
+   "centreWasBackground": false,
+   "bytesBefore": 70822
+  },
+  {
+   "rel": "assets/Honey Jade.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 324501,
+   "transparentFraction": 0.503,
+   "centreWasBackground": false,
+   "bytesBefore": 25208
+  },
+  {
+   "rel": "assets/Cherry Quartz.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 308759,
+   "transparentFraction": 0.4783,
+   "centreWasBackground": false,
+   "bytesBefore": 25222
+  },
+  {
+   "rel": "assets/Green Jade.webp",
+   "format": "webp",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 728106,
+   "transparentFraction": 0.4604,
+   "centreWasBackground": false,
+   "bytesBefore": 207320
+  },
+  {
+   "rel": "assets/Blue Cat eye.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 710097,
+   "transparentFraction": 0.4489,
+   "centreWasBackground": false,
+   "bytesBefore": 1546073
+  },
+  {
+   "rel": "assets/Gold sand stone.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 708032,
+   "transparentFraction": 0.4476,
+   "centreWasBackground": false,
+   "bytesBefore": 2187154
+  },
+  {
+   "rel": "assets/Silver sand stone.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 708430,
+   "transparentFraction": 0.4478,
+   "centreWasBackground": false,
+   "bytesBefore": 2062881
+  },
+  {
+   "rel": "assets/Amethyst quartz.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 669482,
+   "transparentFraction": 0.423,
+   "centreWasBackground": false,
+   "bytesBefore": 1835829
+  },
+  {
+   "rel": "assets/Blue agate.png",
+   "format": "png",
+   "width": 1254,
+   "height": 1254,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 708386,
+   "transparentFraction": 0.4478,
+   "centreWasBackground": false,
+   "bytesBefore": 1327368
+  },
+  {
+   "rel": "assets/Kyanite.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 293258,
+   "transparentFraction": 0.454,
+   "centreWasBackground": false,
+   "bytesBefore": 60408
+  }
+ ]
+}

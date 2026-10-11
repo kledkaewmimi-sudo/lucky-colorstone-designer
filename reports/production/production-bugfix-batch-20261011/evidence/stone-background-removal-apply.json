@@ -1,0 +1,29 @@
+{
+ "summary": {
+  "mode": "APPLY",
+  "targets": 1,
+  "applied": 1,
+  "skipped": 0,
+  "missing": [],
+  "suspicious": []
+ },
+ "report": [
+  {
+   "rel": "assets/Opal.webp",
+   "format": "webp",
+   "width": 800,
+   "height": 800,
+   "seed": [
+    254,
+    254,
+    254
+   ],
+   "filledPixels": 329465,
+   "transparentFraction": 0.5108,
+   "centreWasBackground": false,
+   "bytesBefore": 30176,
+   "bytesAfter": 30862,
+   "applied": true
+  }
+ ]
+}

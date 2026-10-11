@@ -1,0 +1,67 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "ranAt": "2026-10-11T02:34:57.361Z",
+ "problems": [],
+ "stages": {
+  "round1Confirm": {
+   "shellOpen": false,
+   "page3Visible": false,
+   "replaceCardVisible": false,
+   "step3Active": false,
+   "step4Active": true,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "hits": []
+  },
+  "round1Applied": {
+   "shellOpen": false,
+   "page3Visible": false,
+   "replaceCardVisible": false,
+   "step3Active": false,
+   "step4Active": true,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "hits": []
+  },
+  "beforeRound2": {
+   "shellOpen": false,
+   "page3Visible": false,
+   "replaceCardVisible": false,
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "hits": []
+  },
+  "round2AfterUse": {
+   "shellOpen": true,
+   "page3Visible": true,
+   "replaceCardVisible": false,
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "charmNodes": 1,
+   "stones": 24,
+   "charmIds": [
+    "tg01"
+   ],
+   "price": "฿1,058",
+   "hits": []
+  }
+ }
+}

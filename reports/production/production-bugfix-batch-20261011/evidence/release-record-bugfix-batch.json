@@ -1,0 +1,61 @@
+{
+ "product": "lucky-colorstone-designer",
+ "batch": "production-bugfix-batch-2026-10-11",
+ "executedAt": "2026-10-11 08:05-10:30 +07:00",
+ "sourceTree": "reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
+ "artifact": {
+  "vercel": {
+   "files": 291,
+   "bytes": 106111079,
+   "sha256Fingerprint": "ce84f95b48373412506653e8003aba9880840bfb50f161f49a5dd2abf3012fa3",
+   "previousFingerprint": "13dac16cfabef7ca4eb5fc9bb820ac0dd17eb3f9e63c1a8b61e4583b6069bbac",
+   "changedFiles": 39
+  },
+  "render": {
+   "files": 11,
+   "sha256Fingerprint": "2860033882a51b2fad6aff13b74d62c15410a330a90a26deef60223f660dd3fa",
+   "changed": false
+  }
+ },
+ "vercel": {
+  "project": "lucky-colorstone-designer",
+  "scope": "lucky-colorstone",
+  "deploymentId": "dpl_9dLNZfWVS63UcKjCkJ99htNgKXem",
+  "deploymentUrl": "https://lucky-colorstone-designer-ovx3crc4x-lucky-colorstone.vercel.app",
+  "target": "production",
+  "status": "Ready",
+  "createdAt": "2026-10-11T10:19:33+07:00",
+  "aliases": ["customize.luckycolorstone.com", "crm.luckycolorstone.com", "lucky-colorstone-designer.vercel.app", "lucky-colorstone-designer-lucky-colorstone.vercel.app"],
+  "rollbackTarget": "dpl_2rx9xPftnpxvKVRxjuJ1gTpLzK7e (https://lucky-colorstone-designer-ct4c9tswe-lucky-colorstone.vercel.app)"
+ },
+ "render": {
+  "deployedByThisBatch": false,
+  "reason": "server.js unchanged; the packaged Render set fingerprint is identical to the previous release"
+ },
+ "fixes": [
+  { "issue": 3, "verdict": "PASS", "files": ["lumi/ui/lumi-ui.js"], "note": "one-shot committing latch is now cleared per Lucky session, restoring the replacement confirmation" },
+  { "issue": 4, "verdict": "PASS", "files": ["assets/** (35 stone images)"], "note": "backgrounds removed in place; filenames, paths, formats and 800x800 framing preserved" },
+  { "issue": 5, "verdict": "PASS", "files": ["app.js"], "note": "Lucky acceptance no longer calls goToStep(4)" },
+  { "issue": 6, "verdict": "PASS", "files": ["app.js", "index.html", "index.css"], "note": "new Step 3 Undo control with bounded immutable history and explicit reset/Lucky/initial-load boundaries" },
+  { "issue": 2, "verdict": "NOT REPRODUCED", "files": [], "note": "charm/talisman designs render correctly in every tested configuration; needs the owner's exact reproduction" },
+  { "issue": 1, "verdict": "BLOCKED", "files": [], "note": "the four customer preview images stay unpublished; the publication gate (verified display consent or a curated consented showcase) is unmet" }
+ ],
+ "tests": {
+  "productionRegression": "250/250 PASS",
+  "assetQc": "38/38 PASS",
+  "fullFlowGate": "2/2 PASS",
+  "undoSuite": "3/3 PASS",
+  "luckyAcceptanceRepro": "2/2 PASS",
+  "thaiIntegrity": "PASS",
+  "liveArtifactIdentity": "44/44 files byte-identical (vercel.json 404 is expected platform behaviour)",
+  "liveProductionChecks": "13/13 PASS on https://customize.luckycolorstone.com"
+ },
+ "production": {
+  "deploymentsPerformed": ["vercel production dpl_9dLNZfWVS63UcKjCkJ99htNgKXem"],
+  "backendChanges": false,
+  "environmentChanges": false,
+  "databaseChanges": false,
+  "productionDataModified": false,
+  "securityControlsWeakened": false
+ }
+}

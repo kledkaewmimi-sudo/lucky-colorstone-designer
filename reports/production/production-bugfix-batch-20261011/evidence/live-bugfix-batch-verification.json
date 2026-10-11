@@ -1,0 +1,74 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "ranAt": "2026-10-11T03:23:40.989Z",
+ "passed": 13,
+ "failed": 0,
+ "checks": [
+  {
+   "id": "landing social-proof strip renders",
+   "pass": true,
+   "detail": "{\"strip\":true,\"count\":\"1,329\",\"thumbSlots\":0,\"imagesInStrip\":0,\"heart\":true}"
+  },
+  {
+   "id": "social-proof count is shown (safe default or live aggregate)",
+   "pass": true,
+   "detail": "count=1,329"
+  },
+  {
+   "id": "no customer preview image is published on the landing page",
+   "pass": true,
+   "detail": "{\"strip\":true,\"count\":\"1,329\",\"thumbSlots\":0,\"imagesInStrip\":0,\"heart\":true}"
+  },
+  {
+   "id": "public social-proof response stays privacy-safe",
+   "pass": true,
+   "detail": "200 {\"displayCount\":1329,\"successfulOrderCount\":98}"
+  },
+  {
+   "id": "Step 3 shows the new Undo control, disabled with no history",
+   "pass": true,
+   "detail": "visible=true disabled=true"
+  },
+  {
+   "id": "Undo restores the previous bracelet state on Production",
+   "pass": true,
+   "detail": "add=1 undo=0 enabled=true"
+  },
+  {
+   "id": "accepting a Lucky charm design keeps the customer on Step 3",
+   "pass": true,
+   "detail": "{\"step3\":true,\"step4\":false,\"placed\":25,\"charms\":1,\"charmNodes\":1,\"undefinedText\":false}"
+  },
+  {
+   "id": "talisman design renders in the Step 3 bracelet",
+   "pass": true,
+   "detail": "{\"step3\":true,\"step4\":false,\"placed\":25,\"charms\":1,\"charmNodes\":1,\"undefinedText\":false}"
+  },
+  {
+   "id": "no \"undefined\" text appears anywhere after applying the design",
+   "pass": true,
+   "detail": "undefined=false"
+  },
+  {
+   "id": "Lucky result page shows the talisman and stone images",
+   "pass": true,
+   "detail": "[{\"src\":\"/assets/charms/takrud/tg01.webp\",\"loaded\":true},{\"src\":\"assets/Opal.webp\",\"loaded\":true},{\"src\":\"assets/Lavender Quartz.webp\",\"loaded\":true},{\"src\":\"assets/Cherry Quartz.webp\",\"loaded\":true},{\"src\":\"assets/Moonstone.webp\",\"loaded\":true}]"
+  },
+  {
+   "id": "second Lucky design shows the replacement confirmation",
+   "pass": true,
+   "detail": "{\"replaceCard\":true,\"heading\":\"ต้องการใช้แบบใหม่แทนที่เส้นเดิม\",\"buttons\":[\"recommendation\",\"commit\"]}"
+  },
+  {
+   "id": "cancelling the replacement keeps the current bracelet",
+   "pass": true,
+   "detail": "cancelled=true"
+  },
+  {
+   "id": "replacement still lands on Step 3 (no automatic Step 4)",
+   "pass": true,
+   "detail": "{\"step3\":true,\"step4\":false,\"charms\":1,\"stones\":24}"
+  }
+ ],
+ "problems": []
+}

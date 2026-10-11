@@ -1,0 +1,101 @@
+{
+ "base": "https://customize.luckycolorstone.com",
+ "style": "charm",
+ "goal": "love",
+ "ranAt": "2026-10-11T02:28:13.286Z",
+ "problems": [],
+ "stages": {
+  "step3": {
+   "reached": true
+  },
+  "luckyPage3": {
+   "page3Visible": true,
+   "previewHtml": "<div class=\"lumi-preview\" data-lumi-preview=\"\" aria-label=\"กำไลที่จัดมาเฉพาะคุณ\" data-lumi-renderer-authority=\"renderBraceletCanvas\" data-lumi-empty-slot-count=\"0\" data-lumi-placeholder-node-count=\"0\" data-lumi-add-marker-count=\"0\"><svg viewBox=\"0 0 250 250\" role=\"img\" aria-label=\"Lucky bracelet recommendation preview\" class=\"lumi-preview-svg\"><defs><radialGradient id=\"sphericalShading\" cx=\"32%\" c",
+   "previewSvgPresent": true,
+   "previewNodeCount": 210,
+   "previewGroups": 49,
+   "previewAuthority": null,
+   "materialCards": [
+    {
+     "id": "tg01",
+     "type": "talisman",
+     "text": "ตะกรุดพระแม่ลักษมีสำเร็จ",
+     "img": "/assets/charms/takrud/tg01.webp",
+     "imgLoaded": true
+    },
+    {
+     "id": "opal",
+     "type": "stone",
+     "text": "โอปอลแรงบันดาลใจ",
+     "img": "assets/Opal.webp",
+     "imgLoaded": true
+    },
+    {
+     "id": "lavender_quartz",
+     "type": "stone",
+     "text": "ลาเวนเดอร์ควอตซ์เยียวยา",
+     "img": "assets/Lavender Quartz.webp",
+     "imgLoaded": true
+    },
+    {
+     "id": "cherry_quartz",
+     "type": "stone",
+     "text": "เชอร์รี่ควอตซ์ความรัก",
+     "img": "assets/Cherry Quartz.webp",
+     "imgLoaded": true
+    },
+    {
+     "id": "moonstone",
+     "type": "stone",
+     "text": "มูนสโตนอ่อนโยน",
+     "img": "assets/Moonstone.webp",
+     "imgLoaded": true
+    }
+   ],
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 71,
+   "brokenImages": [],
+   "hits": []
+  },
+  "afterAccept": {
+   "page3Visible": false,
+   "previewHtml": "",
+   "previewSvgPresent": false,
+   "previewNodeCount": 0,
+   "previewGroups": 0,
+   "previewAuthority": null,
+   "materialCards": [],
+   "step3Active": false,
+   "step4Active": true,
+   "braceletSvgNodes": 210,
+   "brokenImages": [],
+   "hits": [
+    {
+     "token": "NaN",
+     "context": "x1vZl1JbLWS39YUJQSzGeiJAwwbQuUOkIBJQpyLqrpyjEJ3WPpeYvFUAvTi67SwpjILdZolfwfQUxvT0larQjMlck0hYF+qXI9zlvYGTHNlR4SNaNIqNhmqyn6sOhxNh5rVmJftXLCZ5deTqf3JR+659a+pbx2Bj"
+    }
+   ]
+  },
+  "afterAcceptUrl": "https://customize.luckycolorstone.com/",
+  "backOnStep3": {
+   "page3Visible": false,
+   "previewHtml": "",
+   "previewSvgPresent": false,
+   "previewNodeCount": 0,
+   "previewGroups": 0,
+   "previewAuthority": null,
+   "materialCards": [],
+   "step3Active": true,
+   "step4Active": false,
+   "braceletSvgNodes": 210,
+   "brokenImages": [],
+   "hits": [
+    {
+     "token": "NaN",
+     "context": "x1vZl1JbLWS39YUJQSzGeiJAwwbQuUOkIBJQpyLqrpyjEJ3WPpeYvFUAvTi67SwpjILdZolfwfQUxvT0larQjMlck0hYF+qXI9zlvYGTHNlR4SNaNIqNhmqyn6sOhxNh5rVmJftXLCZ5deTqf3JR+659a+pbx2Bj"
+    }
+   ]
+  }
+ }
+}

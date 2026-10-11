@@ -1,0 +1,100 @@
+{
+ "product": "lucky-colorstone-designer",
+ "release": "full-uat-feature-migration",
+ "executedAt": "2026-10-10 21:52-22:05 +07:00 (initial) and 22:05-22:15 +07:00 (privacy-fix pass)",
+ "verdict": "PARTIAL",
+ "verdictReason": "the frontend migration, including the privacy-safe social-proof contract, is deployed and verified live; the count-only backend route is committed and pushed but not deployed because no Render credential exists in this workspace and Render is owner-operated",
+ "privacyFix": "the first merged revision of /api/social-proof could have returned up to four real customer bracelet preview images. It was rejected before any backend deployment and replaced by a count-only aggregate endpoint plus a client that cannot render customer images.",
+ "git": {
+  "baseBranch": "main",
+  "baseCommit": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d",
+  "backendReleaseCommit": "dde5b5c99c364446e0f8b141e0113797ac3b2945",
+  "backendReleaseCommitSuperseded": "701f0b788ade89b336c9ea64bc7b0081d0b4d40f - image-returning revision, never deployed and must not be deployed",
+  "backendReleaseBranch": "release/uat-feature-migration-20261010",
+  "backendCommitDelta": "server.js only (+596/-13 vs main = security hotfix + additive route)",
+  "mainUnchanged": true,
+  "uatUnchanged": true,
+  "uatRef": "0d02b60164cab845d601442053efd3bfafeb742e",
+  "hotfixBranchUnchanged": "0979c868dc82ae4b00e3c16575e1c3940c423923",
+  "workingTreeAltered": false
+ },
+ "artifact": {
+  "vercel": {
+   "dir": "reports/production/full-uat-feature-migration-20261009/release/artifact/vercel",
+   "files": 291,
+   "bytes": 101886232,
+   "sha256Fingerprint": "13dac16cfabef7ca4eb5fc9bb820ac0dd17eb3f9e63c1a8b61e4583b6069bbac",
+   "supersededFingerprint": "29d20267583ba01f48032986db9dc8a6b3371b9a83e3f665c76187e16afb1d4a",
+   "supersededReason": "the superseded build still declared customer thumbnail slots; the privacy-fix pass removed the slots and the client-side image rendering"
+  },
+  "render": {
+   "dir": "reports/production/full-uat-feature-migration-20261009/release/artifact/render",
+   "files": 11,
+   "bytes": 286656,
+   "sha256Fingerprint": "2860033882a51b2fad6aff13b74d62c15410a330a90a26deef60223f660dd3fa",
+   "serverJsSha256": "8a1c0d824b50fddb7616af2453a8e3bd5b49074738b7a612725e7de0bc9308db"
+  }
+ },
+ "vercel": {
+  "project": "lucky-colorstone-designer",
+  "projectId": "prj_oIiZd2rNPCxrGpOY0xrCExS6sbSP",
+  "scope": "lucky-colorstone",
+   "liveDeploymentId": "dpl_2rx9xPftnpxvKVRxjuJ1gTpLzK7e",
+   "liveDeploymentUrl": "https://lucky-colorstone-designer-ct4c9tswe-lucky-colorstone.vercel.app",
+  "target": "production",
+  "status": "READY",
+  "aliases": ["customize.luckycolorstone.com", "crm.luckycolorstone.com"],
+   "supersededDeploymentsThisRelease": ["lucky-colorstone-designer-59f71nrds-lucky-colorstone.vercel.app", "lucky-colorstone-designer-gq94pub0k-lucky-colorstone.vercel.app", "dpl_92BXQmUV9FAoyW2AmyYPt58ks8NN"],
+  "correctRollbackTarget": "lucky-colorstone-designer-qj5hguzql-lucky-colorstone.vercel.app (dpl_3E94vYztitoXsBEagS2z2meht551, the hardened security-hotfix frontend)",
+  "doNotRollBackTo": "gq94pub0k / 59f71nrds (these carry the UAT banner), and never the pre-hotfix Render commit 7fac85a"
+ },
+ "render": {
+  "service": "lucky-colorstone-designer",
+  "serviceId": "srv-d8v7cknlk1mc739o88lg",
+  "currentlyLiveCommit": "7428caf4f6a2ff4824b3bc8c8bdfcce1640f61a3",
+  "currentlyLiveDeploymentId": "dep-db546ng473hc739qlpg0",
+   "releaseCommitAwaitingOwnerDeploy": "dde5b5c99c364446e0f8b141e0113797ac3b2945",
+  "deployedByThisWorkspace": false
+ },
+ "tests": {
+  "productionRegression": "250/250 PASS (exit 0)",
+  "securitySuites": {
+   "security-tests": "26/26",
+   "write-security-tests": "43/43",
+   "supabase-mode-tests": "8/8",
+   "payment-tests": "21/21",
+   "predeploy-topology-tests": "28/28",
+   "legacy-order-link-tests": "8/8",
+   "webhook-compat-tests": "8/8",
+   "rollback-safety-tests": "6/6",
+   "static-exposure-tests": "78/78",
+   "total": "226/226"
+  },
+  "uatFeatureE2E": { "step3-onboarding": "15/15", "step3-onboarding-replay": "16/16" },
+  "socialProofPrivacyHarness": "18/18 PASS (aggregate-only payload, no image/base64/PII/order id, correct counts, 60s cache, no write surface, exact-count header path with id-only projection and limit 1)",
+  "artifactGraph": "13/13",
+  "endpointCompatibility": "30 frontend calls / 29 satisfied / 1 pre-existing documented",
+   "liveBrowserSmoke": "13/15 (2 documented 404s: /api/liff-config pre-existing, /api/social-proof pending the backend deploy). Privacy assertions PASS: 0 thumbnail slots, 0 customer image nodes in the strip.",
+   "liveDesignFlow": "9/9 VERIFIED through Step 3 on customize.luckycolorstone.com (Step 1, Step 2, Step 3 catalog/canvas, Lucky entry, onboarding, 27 stones, no JS exception)",
+   "liveSecurityBoundary": "/api/crm/orders 401, /api/orders 403, /api/settings 200, /api/purchases 401, /api/storage/status 401, /server.js 404, /server.ps1 404, source archive 404, /.env 404",
+   "liveIntegrationProbes": "unsigned POST /api/stripe/webhook 400; unsigned POST /api/line/webhook 401; POST /api/stripe/checkout-session without a valid attempt id 409 (rejected at authoritative-order/stock validation, strictly before the Stripe session or order write, so nothing was created)"
+ },
+ "backup": {
+  "runId": "2026-10-10T11-38-01-649Z",
+  "encryptedFullDump": "production-full.dump.enc 33123398 bytes",
+  "encryptedSchema": "production-schema.sql.enc 253969 bytes",
+  "applicationRestoreVerification": "50/50 PASS, failed: []",
+  "fullDisasterRecovery": "NOT VERIFIED"
+ },
+ "databaseMigration": {
+  "schemaChangeRequired": false,
+  "dataChangeRequired": false,
+  "note": "the Lumi feature flag is intentionally resolved as 'not explicitly false'; an absent key keeps the Lucky entry visible, so no Production settings write is needed for this release"
+ },
+ "ownerActionsRemaining": [
+   "Render: deploy specific commit dde5b5c99c364446e0f8b141e0113797ac3b2945 from branch release/uat-feature-migration-20261010 (enables the count-only /api/social-proof). Do not deploy 701f0b78 and never use Deploy latest.",
+   "optional: delete the three superseded deployments created during this release",
+   "optional: verify Stripe webhook delivery health and Render logs after the backend deploy",
+   "optional: run one real authenticated CRM operator walk-through and (if desired) one real live checkout to close the UNVERIFIED items"
+ ]
+}

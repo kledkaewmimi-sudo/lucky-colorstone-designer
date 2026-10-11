@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>LUCKY.COLORSTONE - Custom Bracelet Designer</title>
+  <meta name="description"
+    content="Design your custom stone bracelet and order directly via LINE. Select your wrist size, bead size, and customize with premium natural stones.">
+  <!-- ponytail: absolute path for Vercel static serving -->
+  <link rel="stylesheet" href="/index.css">
+  <script>
+    // Prevent the static landing markup from painting while a valid deferred
+    // LINE callback is returning. app.js confirms this state before release.
+    (function () {
+      try {
+        const intent = JSON.parse(localStorage.getItem('lucky_colorstone_customize_login_intent') || 'null');
+        const friendshipResume = sessionStorage.getItem('lucky_colorstone_line_oa_friendship_resume') === '1';
+        const friendshipFallback = JSON.parse(localStorage.getItem('lucky_colorstone_line_oa_friendship_resume_fallback') || 'null');
+        const validV2Intent = intent?.version === 2
+          && intent?.mode === 'guest_design_handoff'
+          && intent?.targetStep === 4;
+        const validFriendshipFallback = Number.isFinite(friendshipFallback?.expiresAt)
+          && friendshipFallback.expiresAt > Date.now();
+        const params = new URLSearchParams(window.location.search);
+        let callbackCandidate = window.location.search;
+        let initialIdentityCallback = false;
+        for (let depth = 0; depth < 4 && callbackCandidate; depth += 1) {
+          const callbackQuery = callbackCandidate.includes('?') ? callbackCandidate.slice(callbackCandidate.indexOf('?') + 1) : callbackCandidate.replace(/^\?/, '');
+          const callbackParams = new URLSearchParams(callbackQuery);
+          if (callbackParams.get('line_auth') === 'identity') { initialIdentityCallback = true; break; }
+          callbackCandidate = callbackParams.get('liff.state') || '';
+        }
+        if (initialIdentityCallback || validV2Intent || friendshipResume || validFriendshipFallback) {
+          document.documentElement.classList.add('callback-bootstrap-hold');
+        }
+      } catch {
+        // Storage may be unavailable in an in-app browser; normal startup remains safe.
+      }
+    }());
+  </script>
+
+  <!-- Meta Pixel: public browser identifier; no access token is exposed here. -->
+  <script>
+    (function (f, b, e, v, n, t, s) {
+      if (f.fbq) return;
+      n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+      if (!f._fbq) f._fbq = n;
+      n.push = n;
+      n.loaded = true;
+      n.version = '2.0';
+      n.queue = [];
+      t = b.createElement(e);
+      t.async = true;
+      t.src = v;
+      s = b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t, s);
+    })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1573172861217430');
+    fbq('track', 'PageView');
+  </script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+
+<body>
+
+  <div class="callback-bootstrap-overlay" id="callbackBootstrapOverlay" role="status" aria-live="polite" aria-hidden="true">
+    <div class="callback-bootstrap-content">
+      <div class="pastel-spinner" aria-hidden="true"></div>
+      <p>กำลังกลับเข้าสู่แบบกำไลของคุณ</p>
+    </div>
+  </div>
+
+  <!-- LANDING PAGE SECTION -->
+  <section class="landing-page" id="landingView">
+    <div class="landing-hero-panel">
+      <div class="landing-background" aria-hidden="true"></div>
+      <div class="landing-overlay" aria-hidden="true"></div>
+
+      <div class="landing-container">
+        <div class="landing-header">
+          <div class="landing-brand">
+            <h1 class="landing-logo">LUCKY.COLORSTONE</h1>
+            <p class="landing-logo-tagline" aria-hidden="true">EVERYTHING YOUR HEART WISHES FOR</p>
+          </div>
+          <!-- Reference top navigation. Visual parity only: the reference items have no
+               existing destination in this app, so they stay non-interactive (no new routes,
+               no business behaviour) and are hidden from assistive tech. -->
+          <nav class="landing-nav" aria-hidden="true">
+            <span class="landing-nav-link">CUSTOMIZE</span>
+            <span class="landing-nav-link">COLLECTION</span>
+            <span class="landing-nav-link">ABOUT</span>
+            <span class="landing-nav-bag">
+              <svg viewBox="0 0 24 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.7 8.6h14.6l.9 13.1a1.7 1.7 0 0 1-1.7 1.8H5.5a1.7 1.7 0 0 1-1.7-1.8z"></path><path d="M8.9 8.6V6.4a3.1 3.1 0 0 1 6.2 0v2.2"></path></svg>
+            </span>
+            <span class="landing-nav-menu"><i></i><i></i><i></i></span>
+          </nav>
+        </div>
+
+        <div class="landing-hero">
+          <span class="landing-gap landing-gap-a" aria-hidden="true"></span>
+          <span class="landing-moon-glow" aria-hidden="true"></span>
+          <span class="landing-gap landing-gap-b" aria-hidden="true"></span>
+          <span class="landing-moon" aria-hidden="true">☾</span>
+          <span class="landing-gap landing-gap-c" aria-hidden="true"></span>
+          <span class="landing-mark" aria-hidden="true">LUCKY.COLORSTONE</span>
+
+          <h2 class="landing-hero-title">กำไลหินที่ออกแบบได้<br>ด้วยตัวคุณเอง</h2>
+
+          <span class="landing-gap landing-gap-d" aria-hidden="true"></span>
+          <p class="landing-hero-subtitle">
+            เลือกสี เลือกพลัง เลือกความหมาย<br>
+            ในแบบที่เป็นคุณ
+          </p>
+
+          <div class="landing-cta-stack">
+            <div class="landing-decor" aria-hidden="true">
+            <span class="ld-spark ld-spark-4" style="--x:8%;--y:6%;--s:17px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:20%;--y:1%;--s:10px;--tone:white"></span>
+            <span class="ld-spark ld-spark-4" style="--x:90%;--y:4%;--s:20px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:96%;--y:16%;--s:9px;--tone:warm"></span>
+            <span class="ld-spark ld-spark-4" style="--x:3%;--y:44%;--s:15px;--tone:white"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:13%;--y:62%;--s:11px;--tone:blue"></span>
+            <span class="ld-spark ld-spark-4" style="--x:95%;--y:58%;--s:16px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:86%;--y:72%;--s:7px;--tone:white"></span>
+            <span class="ld-spark ld-spark-4" style="--x:17%;--y:88%;--s:14px;--tone:blue"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:72%;--y:92%;--s:6px;--tone:warm"></span>
+            <span class="ld-spark ld-spark-4" style="--x:46%;--y:2%;--s:13px;--tone:white"></span>
+            <span class="ld-heart ld-heart-l" style="--x:2%;--y:52%;--s:34px;--rot:-8deg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.6a4.4 4.4 0 0 1 0-6.3 4.6 4.6 0 0 1 6.4 0l.7.7.7-.7a4.6 4.6 0 0 1 6.4 0 4.4 4.4 0 0 1 0 6.3Z"></path></svg></span>
+            <span class="ld-heart ld-heart-r" style="--x:88%;--y:66%;--s:30px;--rot:10deg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.6a4.4 4.4 0 0 1 0-6.3 4.6 4.6 0 0 1 6.4 0l.7.7.7-.7a4.6 4.6 0 0 1 6.4 0 4.4 4.4 0 0 1 0 6.3Z"></path></svg></span>
+            <span class="ld-heart ld-heart-s" style="--x:24%;--y:80%;--s:22px;--rot:6deg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.6a4.4 4.4 0 0 1 0-6.3 4.6 4.6 0 0 1 6.4 0l.7.7.7-.7a4.6 4.6 0 0 1 6.4 0 4.4 4.4 0 0 1 0 6.3Z"></path></svg></span>
+            <span class="ld-spark ld-spark-4" style="--x:30%;--y:12%;--s:14px;--tone:white"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:64%;--y:18%;--s:9px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-4" style="--x:12%;--y:26%;--s:12px;--tone:white"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:82%;--y:34%;--s:8px;--tone:blue"></span>
+            <span class="ld-strokes" style="--x:88%;--y:30%"><i></i><i></i><i></i></span>
+            <span class="ld-orbit" aria-hidden="true">
+              <svg viewBox="0 0 400 150" preserveAspectRatio="none" fill="none">
+                <ellipse cx="200" cy="78" rx="196" ry="62" stroke="rgba(255,255,255,0.55)" stroke-width="1.4"></ellipse>
+                <ellipse cx="200" cy="78" rx="196" ry="62" stroke="rgba(176,140,225,0.35)" stroke-width="1" stroke-dasharray="5 9"></ellipse>
+              </svg>
+              <span class="ld-orbit-spark"></span>
+            </span>
+            </div>
+            <img class="landing-mascot" src="/assets/lucky/landing/lucky-landing-mascot.webp" width="1254" height="1254" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+            <button class="btn-start-customize" id="btnLandingLogin">
+              <span class="btn-sparkle" aria-hidden="true">✦</span>
+              <span class="btn-text">เริ่มออกแบบ</span>
+              <span class="btn-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"></path><path d="m12.5 6 6 6-6 6"></path></svg>
+              </span>
+            </button>
+            <p class="landing-load-reassurance" id="landingLoadReassurance" aria-live="polite">กำลังเตรียมพื้นที่สำหรับออกแบบ</p>
+          </div>
+
+          <span class="landing-gap landing-gap-e" aria-hidden="true"></span>
+          <section class="landing-social-proof" id="landingSocialProof" aria-label="ผู้ใช้งาน Lucky Colorstone">
+            <span class="sp-spark" aria-hidden="true"></span>
+            <div class="sp-left">
+              <span class="sp-label">มีผู้ Custom กำไลไปแล้ว</span>
+              <span class="sp-count"><strong id="landingSocialProofCount">1,035</strong><span class="sp-unit">เส้น</span></span>
+            </div>
+            <span class="sp-divider" aria-hidden="true"></span>
+            <div class="sp-right" id="landingSocialProofThumbs">
+              <span class="sp-heart" aria-hidden="true"></span>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="app-container">
+
+    <!-- LIFF LOADING OVERLAY -->
+    <div class="liff-loading-overlay" id="liffLoadingOverlay">
+      <div class="spinner-container">
+        <div class="pastel-spinner"></div>
+        <span class="loading-title" id="liffLoadingTitle">กำลังเชื่อมต่อ LINE</span>
+        <span class="loading-text" id="liffLoadingText">กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ</span>
+      </div>
+    </div>
+
+    <!-- Fixed Navigation Header -->
+    <header class="app-header">
+      <div class="header-top">
+        <a href="#" class="brand-logo" id="headerLogo">LUCKY.COLORSTONE</a>
+        <button class="home-btn" id="btnHome" aria-label="Home">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Progress Stepper -->
+      <div class="stepper-container">
+        <div class="stepper-line"></div>
+        <div class="stepper-line-progress" id="stepProgressLine"></div>
+        <div class="step-node active" data-step="1" id="stepNode1">1</div>
+        <div class="step-node" data-step="2" id="stepNode2">2</div>
+        <div class="step-node" data-step="3" id="stepNode3">3</div>
+        <div class="step-node" data-step="4" id="stepNode4">4</div>
+      </div>
+      <div class="step-indicator-text" id="stepIndicatorLabel">Step 1: Select Wrist Size</div>
+    </header>
+
+    <!-- Main Content Container (Step Views) -->
+    <main class="app-content">
+
+      <!-- STEP 1: WRIST MEASUREMENT -->
+      <section class="step-view active" id="stepView1">
+        <div class="step1-measure-card">
+          <div class="step1-heading-block">
+            <h2 class="step-title">วัดขนาดข้อมือ</h2>
+            <p class="step-subtitle">วัดรอบข้อมือแบบพอดี (หน่วยเซนติเมตร)</p>
+          </div>
+
+          <!-- Premium Visual Aid - Hand with Measuring Tape -->
+          <div class="wrist-visual-card">
+            <picture>
+              <source srcset="/assets/wrist-measuring-tape.webp" type="image/webp">
+              <img class="wrist-measuring-tape-image" src="/assets/wrist-measuring-tape.jpg"
+                alt="Measure wrist circumference with measuring tape">
+            </picture>
+
+            <div class="wrist-visual-caption">
+              วัดรอบข้อมือบริเวณข้อมือ — สายวัดแนบพอดี ไม่หลวมไม่แน่น
+            </div>
+          </div>
+
+          <div class="wrist-picker-card" aria-label="เลือกขนาดข้อมือ">
+            <span class="wrist-picker-label">เลื่อนขึ้น-ลงเพื่อปรับขนาด</span>
+            <button class="wrist-wheel-control wrist-wheel-prev" id="wristSizePrev" type="button"
+              aria-label="ลดขนาดข้อมือ">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m18 15-6-6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </button>
+
+            <div class="wrist-wheel-window" id="wristWheelDisplay" role="listbox" aria-label="ขนาดข้อมือ">
+              <button class="wrist-wheel-value is-far" type="button" data-wrist-offset="-2" tabindex="-1"></button>
+              <button class="wrist-wheel-value" type="button" data-wrist-offset="-1"></button>
+              <div class="selected-size-display-card" role="option" aria-selected="true">
+                <span class="display-size-value" id="displaySizeValue">16.0</span>
+                <span class="display-size-unit">cm</span>
+              </div>
+              <button class="wrist-wheel-value" type="button" data-wrist-offset="1"></button>
+              <button class="wrist-wheel-value is-far" type="button" data-wrist-offset="2" tabindex="-1"></button>
+            </div>
+
+            <button class="wrist-wheel-control wrist-wheel-next" id="wristSizeNext" type="button"
+              aria-label="เพิ่มขนาดข้อมือ">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Personalization Field -->
+          <div class="name-input-group">
+            <label class="name-label" for="braceletOwnerName">ชื่อเจ้าของกำไล (ไม่บังคับ)</label>
+            <input type="text" id="braceletOwnerName" class="name-input" placeholder="ใส่ชื่อเจ้าของกำไล เช่น เอ็ม, นัท"
+              maxlength="20">
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2: BRACELET COMPONENTS SELECTION -->
+      <section class="step-view" id="stepView2">
+        <h2 class="step-title">Select Bead Size</h2>
+        <p class="step-subtitle">เลือกขนาดของเม็ดหินที่ต้องการร้อยกำไล</p>
+
+        <div class="bead-size-options" id="beadSizeOptionsList">
+          <!-- Card: 10 mm -->
+          <div class="bead-size-card" data-bead-size="10" aria-label="10mm">
+            <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
+              <div class="bead-size-copy">
+                <div class="bead-size-preview bead-size-preview-10" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-lg"></div>
+                </div>
+                <div class="bead-size-details">
+                  <div class="bead-size-label-row">
+                    <span class="bead-size-featured-crown" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m3 7 4.3 4.2L12 4l4.7 7.2L21 7l-2.1 11H5.1L3 7Z" />
+                        <path d="M5.1 21h13.8" />
+                      </svg>
+                    </span>
+                    <span class="bead-size-label">10mm</span>
+                    <span class="bead-size-recommendation">แนะนำ</span>
+                  </div>
+                  <h4>สมดุล เรียบหรู</h4>
+                  <span class="bead-size-popular-badge">คนเลือกมากที่สุด</span>
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
+                    <span class="bead-size-support-item">
+                      <span>เครื่องราง</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
+                        <img src="/assets/charms/pixiu/px01.webp" alt="">
+                      </span>
+                    </span>
+                    <span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="bead-size-hand-panel">
+                <img class="bead-size-hand-image" src="/assets/hand/hand_10.png" alt="10mm bracelet on hand">
+              </div>
+            </div>
+          </div>
+
+          <div class="bead-size-card" data-bead-size="6">
+            <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
+              <div class="bead-size-copy">
+                <div class="bead-size-preview bead-size-preview-6" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-md"></div>
+                </div>
+                <div class="bead-size-details">
+                  <span class="bead-size-label">6mm</span>
+                  <h4>คลาสสิก ใส่ง่าย</h4>
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
+                    <span class="bead-size-support-item">
+                      <span>เครื่องราง</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
+                        <img src="/assets/charms/pixiu/px02.webp" alt="">
+                      </span>
+                    </span>
+                  
+<span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="bead-size-hand-panel">
+                <img class="bead-size-hand-image" src="/assets/hand/hand_06.png" alt="6mm bracelet on hand">
+              </div>
+            </div>
+          </div>
+
+          <div class="bead-size-card" data-bead-size="4">
+            <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
+              <div class="bead-size-copy">
+                <div class="bead-size-preview bead-size-preview-4" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-sm"></div>
+                </div>
+                <div class="bead-size-details">
+                  <span class="bead-size-label">4mm</span>
+                  <h4>มินิมอล ละมุน</h4>
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
+                    <span class="bead-size-support-item">
+                      <span>เครื่องราง</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
+                        <img src="/assets/charms/pixiu/px01.webp" alt="">
+                      </span>
+                    </span>
+                    <span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="bead-size-hand-panel">
+                <img class="bead-size-hand-image" src="/assets/hand/hand_04.png" alt="4mm bracelet on hand">
+              </div>
+            </div>
+          </div>
+
+          <div class="bead-size-card bead-size-card-mixed" data-bead-size="mixed" role="radio" aria-checked="false" aria-label="คละไซส์">
+            <div class="bead-size-content">
+              <div class="bead-size-radio-col">
+                <div class="radio-check" aria-hidden="true"></div>
+              </div>
+              <div class="bead-size-copy">
+                <div class="bead-size-preview bead-size-preview-mixed" aria-hidden="true">
+                  <div class="bead-preview-circle bead-preview-circle-sm"></div>
+                  <div class="bead-preview-circle bead-preview-circle-md"></div>
+                  <div class="bead-preview-circle bead-preview-circle-lg"></div>
+                </div>
+                <div class="bead-size-details">
+                  <span class="bead-size-label">คละไซส์</span>
+                  <h4>สนุก มีมิติ</h4>
+                </div>
+              </div>
+              <div class="bead-size-hand-panel">
+                <img class="bead-size-hand-image" src="/assets/hand/hand_06.png" alt="Mixed size bracelet on hand">
+                <span class="bead-size-mixed-recommendation" aria-hidden="true">★ แนะนำ</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="bead-size-guide-card">
+          <div class="bead-size-guide-header">
+            <span class="bead-size-guide-kicker">Sizing Guide</span>
+            <h3>Choose the scale that suits your wrist.</h3>
+          </div>
+          <div class="bead-size-guide-grid">
+            <div class="bead-size-guide-item">
+              <span class="bead-size-guide-label">Wrist Size</span>
+              <span class="bead-size-guide-value" id="estimationWristSizeText">16.0 cm</span>
+            </div>
+            <div class="bead-size-guide-item">
+              <span class="bead-size-guide-label">Bracelet Length</span>
+              <span class="bead-size-guide-value" id="estimationLengthText">17.5 cm (175mm)</span>
+            </div>
+          </div>
+          <p class="bead-size-guide-note" id="estimationCapacityText">Fits approximately 29 beads (6mm).</p>
+        </div>
+      </section>
+      <section class="step-view" id="stepView3">
+        <div class="designer-workspace">
+
+          <!-- Interactive Loop Canvas Card -->
+          <div class="canvas-card" id="step3PreviewCard">
+
+            <!-- Real-time Stats Header above Canvas -->
+            <div class="canvas-stats-row">
+              <div class="canvas-stat">
+                <span class="canvas-stat-label">Price / ราคา</span>
+                <span class="canvas-stat-val" id="canvasPriceText">฿0</span>
+              </div>
+              <div class="canvas-stat">
+                <span class="canvas-stat-label">Beads / เม็ด</span>
+                <span class="canvas-stat-val" id="canvasBeadCountText">0 / 29</span>
+              </div>
+              <div class="canvas-stat">
+                <span class="canvas-stat-label">Space / พื้นที่</span>
+                <span class="canvas-stat-val" id="canvasSpaceText">เหลือ 175.0 mm</span>
+              </div>
+            </div>
+
+            <!-- Context & Tooltip Row -->
+            <div class="canvas-info-row">
+              <span class="wrist-context-label" id="canvasWristContext">ข้อมือ 16.0 cm</span>
+              <span class="helper-tooltip">แตะที่หินเพื่อลบ</span>
+              <div class="inspiration-trigger-row">
+                <button class="inspiration-gallery-btn" id="btnInspirationGallery" type="button">
+                  <svg class="inspiration-gallery-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    aria-hidden="true">
+                    <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.7" />
+                    <path d="M8 15l2.4-2.7 2 2L15.2 11 19 15" stroke="currentColor" stroke-width="1.7"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                    <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+                  </svg>
+                  <span>ดูตัวอย่างกำไล</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="canvas-container">
+              <svg width="250" height="250" viewBox="0 0 250 250" id="braceletSvg">
+                <!-- SVG content rendered dynamically -->
+              </svg>
+
+              <!-- Core center stats info display -->
+              <div class="canvas-center-info">
+                <span class="center-title" id="canvasCenterTitle">LUCKY</span>
+                <span class="center-value" id="canvasCenterValue">16.0cm</span>
+                <span class="center-subvalue fit" id="canvasCenterSub" hidden>Perfect Fit</span>
+              </div>
+              <!-- Fail-safe Lucky CTA shell: visible before the state-machine JS runs. -->
+              <button class="lumi-entry lumi-center-entry lumi-entry-pending" type="button" aria-label="Lucky">
+                <img class="lumi-entry-mascot" src="/assets/lucky/mascot/lucky_02.webp" alt="" aria-hidden="true" decoding="async">
+                <span class="lumi-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 12.4V6.3a1.6 1.6 0 0 1 3.2 0v5.2"></path><path d="M12.8 11.3V9.9a1.6 1.6 0 0 1 3.2 0v1.4"></path><path d="M16 11.3v-.5a1.6 1.6 0 0 1 3.2 0V15a6 6 0 0 1-6 6h-1a4.7 4.7 0 0 1-3.4-1.5l-3.3-3.6a1.6 1.6 0 0 1 2.3-2.2l1.2 1.2"></path></svg></span>
+                <span class="lumi-entry-label" hidden></span>
+              </button>
+            </div>
+            <button class="ctrl-btn reset-btn canvas-reset-control" id="btnResetBracelet" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              รีเซ็ตกำไล
+            </button>
+            <button class="ctrl-btn undo-btn canvas-undo-control" id="btnUndoBracelet" type="button" disabled aria-disabled="true" aria-label="เลิกทำ (Undo)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11" />
+              </svg>
+              เลิกทำ
+            </button>
+          </div>
+
+          <div class="catalog-type-filter" id="catalogTypeFilter" role="tablist" aria-label="Catalog type">
+            <button class="catalog-type-tab active" type="button" role="tab" aria-selected="true" data-catalog-section="stones">
+              <svg class="catalog-type-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5.4 13.1c-.8-3.9 2.4-7.5 6.4-7.5 3.6 0 6.8 2.8 6.8 6.2 0 4-3.6 6.8-7.6 6.8-2.9 0-5-2.1-5.6-5.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                <path d="M9 10.4c1.4-1.2 3.3-1.7 5.1-1.2M17.8 3.8v3.1M16.25 5.35h3.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+              <span>หิน</span>
+            </button>
+            <button class="catalog-type-tab" type="button" role="tab" aria-selected="false" data-catalog-section="charms">
+              <svg class="catalog-type-icon charm-amulet-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <g class="charm-amulet-symbol charm-amulet-lotus">
+                  <path d="M12 5.2c1.25 1.45 1.25 3.05 0 4.55-1.25-1.5-1.25-3.1 0-4.55Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+                  <path d="M8.7 8.6c1.85.25 3.05 1.35 3.3 3.15-1.95-.1-3.1-1.25-3.3-3.15ZM15.3 8.6c-1.85.25-3.05 1.35-3.3 3.15 1.95-.1 3.1-1.25 3.3-3.15Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+                  <path d="M6.9 12.2c2.4.1 4.05 1.35 5.1 3.6 1.05-2.25 2.7-3.5 5.1-3.6M8.5 16.1h7" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                </g>
+                <g class="charm-amulet-symbol charm-amulet-ganesha">
+                  <path d="M8.3 10.7c.25-2.25 1.75-3.75 3.7-3.75s3.45 1.5 3.7 3.75" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" />
+                  <path d="M8.35 10.5c-1.25.25-2.05 1.05-2.05 2.15 0 1.15.85 1.9 2.1 1.95M15.65 10.5c1.25.25 2.05 1.05 2.05 2.15 0 1.15-.85 1.9-2.1 1.95" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" />
+                  <path d="M12 9.5v4.15c0 1.55-.95 2.55-2.35 2.55M10.2 12.1h.05M13.75 12.1h.05M9.7 6.8 8.55 5.7M14.3 6.8l1.15-1.1" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                </g>
+                <g class="charm-amulet-symbol charm-amulet-pixiu">
+                  <path d="M7.3 14.2c.8-2.8 2.9-4.55 5.5-4.45l2-1.85-.35 2.35c1.45.65 2.3 1.85 2.35 3.35" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M8.75 14.15h4.35c1.2 0 2.2-.45 2.95-1.35M9.85 16.55l.8-2.15M13.75 16.55l-.65-2.15M10.65 10.35 9.4 8.85M14.45 10.65l1.4-.2" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M12.95 11.6h.05" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                </g>
+              </svg>
+              <span>เครื่องราง</span>
+            </button>
+            <button class="catalog-type-tab" type="button" role="tab" aria-selected="false" data-catalog-section="spacer">
+              <svg class="catalog-type-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6" />
+                <circle cx="12" cy="4.5" r="1.6" fill="currentColor" />
+                <circle cx="18.5" cy="8.25" r="1.6" fill="currentColor" />
+                <circle cx="18.5" cy="15.75" r="1.6" fill="currentColor" />
+                <circle cx="12" cy="19.5" r="1.6" fill="currentColor" />
+                <circle cx="5.5" cy="15.75" r="1.6" fill="currentColor" />
+                <circle cx="5.5" cy="8.25" r="1.6" fill="currentColor" />
+              </svg>
+              <span>ชาร์ม</span>
+            </button>
+          </div>
+
+          <!-- Mixed Size Selector: placement size stays available across every Step 3 tab. -->
+          <div class="mixed-size-selector-bar" id="mixedSizeSelectorBar" hidden>
+            <span class="mixed-label">ขนาดหิน</span>
+            <div class="mixed-toggles" role="group" aria-label="Mixed stone placement size">
+              <button class="mixed-toggle-btn" type="button" data-size="4" aria-pressed="false">4mm</button>
+              <button class="mixed-toggle-btn active" type="button" data-size="6" aria-pressed="true">6mm</button>
+              <button class="mixed-toggle-btn" type="button" data-size="10" aria-pressed="false">10mm</button>
+            </div>
+          </div>
+
+          <!-- Stone Catalog Section -->
+          <div class="catalog-container">
+            <!-- Scrollable Category Tabs -->
+            <div class="catalog-filters" id="catalogFiltersContainer">
+              <!-- Rendered dynamically -->
+            </div>
+
+            <!-- Stone Cards Grid -->
+            <div class="stone-catalog-grid" id="stoneCatalogGrid">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <div id="charmSectionMount"></div>
+
+        </div>
+      </section>
+
+      <!-- STEP 4: FINAL SUMMARY & BILLING -->
+      <section class="step-view" id="stepView4">
+        <h2 class="step-title">Order Summary</h2>
+        <p class="step-subtitle">ตรวจสอบความถูกต้องและสั่งซื้อกำไลของคุณ</p>
+
+        <div class="summary-container">
+          <!-- Summary Header -->
+          <div class="summary-header">
+            <h3 class="summary-customer-title" id="summaryTitleText">LUCKY.COLORSTONE for Khun Guest</h3>
+            <div class="summary-date" id="summaryDateText">Date: 23 June 2026</div>
+          </div>
+
+          <!-- Specs Box (4-column layout) -->
+          <div class="specs-grid">
+            <div class="spec-box">
+              <div class="spec-box-label">Wrist Size</div>
+              <div class="spec-box-value" id="specWristSize">16.0 cm</div>
+            </div>
+            <div class="spec-box">
+              <div class="spec-box-label">Length</div>
+              <div class="spec-box-value" id="specLength">17.5 cm</div>
+            </div>
+            <div class="spec-box">
+              <div class="spec-box-label">Bead Size</div>
+              <div class="spec-box-value" id="specBeadSize">6mm</div>
+            </div>
+            <div class="spec-box">
+              <div class="spec-box-label">Beads</div>
+              <div class="spec-box-value" id="specBeadsCount">29 เม็ด</div>
+            </div>
+          </div>
+
+          <!-- Customer bracelet preview. Legacy receipt/download controls are not part of checkout. -->
+          <div class="bracelet-showcase-card" id="braceletShowcaseCard" aria-live="polite"></div>
+
+          <!-- Itemized Billing Card -->
+          <div class="billing-card">
+            <h4 class="billing-title">Itemized Billing (รายละเอียดหิน)</h4>
+            <div class="billing-list" id="billingItemsList">
+              <!-- Filled dynamically in app.js -->
+            </div>
+
+            <!-- Pricing Section -->
+            <div class="pricing-breakdown">
+              <div class="price-row subtotal">
+                <span class="price-lbl">Subtotal</span>
+                <span class="price-val" id="priceSubtotal">฿1,475</span>
+              </div>
+              <div class="discount-box">
+                <span class="discount-badge" id="priceDiscountBadge">LINE SPECIAL DISCOUNT 20%</span>
+                <span class="discount-value" id="priceDiscount">-฿295</span>
+              </div>
+              <div class="price-row total">
+                <span class="price-lbl">Total Price</span>
+                <span class="price-val" id="priceTotal">฿1,180</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="shipping-card">
+            <div class="shipping-heading-row">
+              <h4 class="shipping-title">ข้อมูลสำหรับจัดส่ง</h4>
+              <span class="shipping-benefit-badge">ฟรีค่าจัดส่ง</span>
+            </div>
+            <div class="shipping-fields">
+              <div class="shipping-field shipping-field-full">
+                <label class="shipping-label" for="shippingRecipientName">ชื่อผู้รับ</label>
+                <input type="text" class="shipping-input" id="shippingRecipientName" autocomplete="shipping name">
+              </div>
+              <div class="shipping-field">
+                <label class="shipping-label" for="shippingPhoneNumber">เบอร์โทรศัพท์</label>
+                <input type="tel" class="shipping-input" id="shippingPhoneNumber" inputmode="tel" autocomplete="tel">
+              </div>
+              <div class="shipping-field shipping-field-full">
+                <label class="shipping-label" for="shippingAddressLine">ที่อยู่จัดส่ง</label>
+                <textarea class="shipping-input shipping-textarea" id="shippingAddressLine" rows="3" autocomplete="street-address"></textarea>
+              </div>
+              <div class="shipping-field">
+                <label class="shipping-label" for="shippingProvince">จังหวัด</label>
+                <input type="text" class="shipping-input" id="shippingProvince" autocomplete="address-level1">
+              </div>
+              <div class="shipping-field">
+                <label class="shipping-label" for="shippingPostalCode">รหัสไปรษณีย์</label>
+                <input type="text" class="shipping-input" id="shippingPostalCode" inputmode="numeric" autocomplete="postal-code">
+              </div>
+            </div>
+            <p class="shipping-validation-message" id="shippingValidationMessage" hidden></p>
+          </div>
+
+          <!-- Aggregated Stone Meanings -->
+          <div class="meanings-card">
+            <h4 class="meanings-title">ความหมายของหินและเครื่องราง</h4>
+            <div class="meanings-list" id="meaningsList">
+              <!-- Filled dynamically -->
+            </div>
+          </div>
+
+          <!-- Trust disclaimer -->
+          <div class="trust-disclaimer-box">
+            <div class="trust-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+            <div class="trust-text">
+              <strong>Natural Unique Stones Disclaimer</strong>
+              หินธรรมชาติแต่ละเม็ดจะมีลวดลายธรรมชาติและสีสันที่แตกต่างกันออกไปเล็กน้อย
+              ทางร้านจะส่งรูปถ่ายของเส้นจริงที่ประกอบเสร็จเรียบร้อยให้คุณตรวจสอบทาง LINE ก่อนทำการแพ็คจัดส่ง
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Sticky Footer Navigation -->
+    <footer class="app-footer">
+      <button class="footer-btn btn-back" id="btnBack">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+        Back
+      </button>
+      <button class="footer-btn btn-next" id="btnNext">
+        Next
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </button>
+    </footer>
+
+    <!-- Stone Information Detail Modal -->
+    <div class="modal-backdrop" id="stoneInfoModal">
+      <div class="modal-content-card">
+        <div class="modal-header">
+          <h3 id="modalStoneName">Stone Information</h3>
+          <button class="modal-close-btn" id="btnModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-bead-img-row">
+            <!-- ponytail: absolute path for Vercel static serving -->
+            <img class="modal-bead-img" id="modalStoneImg" src="/assets/golden_rutile.png" alt="Stone Bead">
+          </div>
+          <div class="modal-stone-details">
+            <h4 class="modal-stone-title-th" id="modalStoneTitleTh">ไหมทอง</h4>
+            <h5 class="modal-stone-title-en" id="modalStoneTitleEn">Golden Rutile Quartz</h5>
+
+            <div class="modal-stone-meaning-box" id="modalStoneMeaning">
+              พลังแห่งโชคลาภและความมั่งคั่ง เสริมดวงการค้าขาย
+            </div>
+
+            <div class="modal-stone-price" id="modalStonePrice">฿150 / เม็ด</div>
+
+            <button class="modal-action-btn" id="btnModalAdd">Replace Selected (+ ใส่แทนที่)</button>
+            <button class="modal-action-btn" id="btnModalFillAll" style="margin-top: 10px;">Fill Entire Bracelet
+              (ใส่ทั้งวง)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inspiration Gallery Modal -->
+    <div class="modal-backdrop inspiration-gallery-modal" id="inspirationGalleryModal" aria-hidden="true">
+      <div class="modal-content-card inspiration-gallery-card" role="dialog" aria-modal="true"
+        aria-labelledby="inspirationGalleryTitle">
+        <div class="modal-header inspiration-gallery-header">
+          <button class="modal-close-btn inspiration-gallery-close-icon" id="btnInspirationGalleryClose" type="button"
+            aria-label="Close">×</button>
+          <h3 id="inspirationGalleryTitle" aria-hidden="true"></h3>
+          <span class="inspiration-gallery-header-spacer" aria-hidden="true"></span>
+        </div>
+        <div class="modal-body inspiration-gallery-body">
+          <div class="inspiration-gallery-hero">
+            <h2>Custom Bracelet</h2>
+            <p><span></span>ออกแบบกำไลในสไตล์ของคุณ<span></span></p>
+            <div class="inspiration-hero-heart">♡</div>
+          </div>
+          <div class="inspiration-gallery-grid" id="inspirationGalleryGrid"></div>
+          <p class="inspiration-gallery-tagline">ดีไซน์ที่ใช่&nbsp; พลังดีที่ชอบ</p>
+        </div>
+        <div class="inspiration-gallery-footer">
+          <button class="modal-action-btn inspiration-gallery-close-btn" id="btnInspirationGalleryBottomClose"
+            type="button">ปิด</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div class="modal-backdrop" id="confirmModal">
+      <div class="modal-content-card">
+        <div class="modal-header">
+          <h3 id="confirmModalTitle">Confirm Action</h3>
+          <button class="modal-close-btn" id="btnConfirmClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-stone-details">
+            <div class="modal-stone-meaning-box" id="confirmModalMessage"
+              style="border-left-color: var(--color-velvet-red); margin-bottom: 20px;">
+              Are you sure you want to proceed?
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <button class="modal-action-btn" id="btnConfirmCancel">Cancel</button>
+              <button class="modal-action-btn" id="btnConfirmOK">Confirm</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast message overlay -->
+    <div class="tooltip-toast" id="toastMessage">Toast message goes here</div>
+
+  </div>
+
+  <!-- ponytail: absolute path for Vercel static serving -->
+  <script type="module" src="/app.js"></script>
+</body>
+
+</html>
