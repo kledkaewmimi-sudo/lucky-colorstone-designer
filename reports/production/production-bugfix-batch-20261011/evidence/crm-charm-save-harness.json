@@ -1,0 +1,74 @@
+{
+ "ranAt": "2026-10-11T06:45:31.506Z",
+ "dataDir": "C:\\Users\\Aou\\AppData\\Local\\Temp\\lcs-crm-charm-wDOFef",
+ "passed": 13,
+ "failed": 0,
+ "results": [
+  {
+   "id": "unauthenticated PUT /api/charms/:id is rejected",
+   "pass": true,
+   "detail": "HTTP 401"
+  },
+  {
+   "id": "synthetic operator login succeeds and returns a CSRF token",
+   "pass": true,
+   "detail": "HTTP 200 cookies=2 csrf=true"
+  },
+  {
+   "id": "cookie-authenticated PUT without x-csrf-token is rejected",
+   "pass": true,
+   "detail": "HTTP 403"
+  },
+  {
+   "id": "authenticated operator can save a talisman change",
+   "pass": true,
+   "detail": "HTTP 200 "
+  },
+  {
+   "id": "stock quantity persists and reaches the customer catalog",
+   "pass": true,
+   "detail": "{\"availability\":{\"inStock\":true,\"isActive\":true,\"stockQty\":42,\"stock_qty\":42},\"stockQty\":42}"
+  },
+  {
+   "id": "pricing is preserved by the save",
+   "pass": true,
+   "detail": "before=590 after=590"
+  },
+  {
+   "id": "render-tuning fields are preserved by the save",
+   "pass": true,
+   "detail": "{\"visualScale\":1,\"visualOffsetX\":0,\"visualOffsetY\":0,\"maxWidthRatio\":0.98,\"maxHeightRatio\":1,\"rotation\":0,\"anchor\":\"top\",\"edgeFitMode\":\"contain\"}"
+  },
+  {
+   "id": "the API still lists an inactive talisman (visibility is not a server-side filter)",
+   "pass": true,
+   "detail": "{\"ids\":[\"qa01\",\"qa02\"],\"isActive\":false}"
+  },
+  {
+   "id": "an inactive talisman can be re-activated by the authorized update path",
+   "pass": true,
+   "detail": "HTTP 200 {\"inStock\":true,\"isActive\":true,\"stockQty\":11,\"stock_qty\":11}"
+  },
+  {
+   "id": "the re-activated save keeps the protected render-tuning fields",
+   "pass": true,
+   "detail": "{\"visualScale\":1,\"visualOffsetX\":0,\"visualOffsetY\":0,\"maxWidthRatio\":0.98,\"maxHeightRatio\":1,\"rotation\":0,\"anchor\":\"top\",\"edgeFitMode\":\"contain\"}"
+  },
+  {
+   "id": "POSTing an existing id is refused with 409 (the failure a POST-instead-of-PUT edit would hit)",
+   "pass": true,
+   "detail": "HTTP 409"
+  },
+  {
+   "id": "updating an id the catalog does not store is refused with 404 (the stale catalog list case)",
+   "pass": true,
+   "detail": "HTTP 404 Charm not found"
+  },
+  {
+   "id": "zero stock keeps the talisman active (fulfillment state and design eligibility stay separate)",
+   "pass": true,
+   "detail": "{\"inStock\":false,\"isActive\":true,\"stockQty\":0,\"stock_qty\":0}"
+  }
+ ],
+ "serverLog": "Server started at http://localhost:57147/\n"
+}

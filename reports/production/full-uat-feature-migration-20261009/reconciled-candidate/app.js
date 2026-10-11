@@ -8068,7 +8068,17 @@ function renderLumiRecommendationPreview({ container, recommendation, context = 
   container.replaceChildren(svg);
   const resolvedLayout = createLumiPreviewResolvedLayout(recommendation, context);
   const presentation = validateLumiPresentationCompleteness(recommendation, resolvedLayout);
-  if (!presentation.valid) throw new Error('LUMI_PREVIEW_INCOMPLETE_PRESENTATION');
+  // Owner policy 2026-10-11: the recommendation has already passed the authoritative Step-3 import
+  // validation, so one ring position this preview cannot fill must not replace a valid design with
+  // the "Lucky could not complete" screen - that is what happened whenever the active-but-zero-stock
+  // catalog changed the material mix. The gap stays observable through the diagnostics written below
+  // (and through the console warning) instead of being fatal.
+  if (!presentation.valid) {
+    console.warn('LUMI_PREVIEW_INCOMPLETE_PRESENTATION', {
+      emptyRingPositionCount: presentation.emptyRingPositionCount,
+      ringPositionCount: presentation.ringPositionCount
+    });
+  }
   renderBraceletCanvas(resolvedLayout, { svg, interactive: false, includeDebug: false, showEditorPlaceholders: false });
   container.dataset.lumiRendererAuthority = 'renderBraceletCanvas';
   container.dataset.lumiEmptySlotCount = String(presentation.emptyRingPositionCount);

@@ -1,0 +1,91 @@
+{
+ "product": "lucky-colorstone-designer",
+ "batch": "production-bugfix-batch-turn4-2026-10-11",
+ "executedAt": "2026-10-11 13:35-15:25 +07:00",
+ "sourceTree": "reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
+ "artifact": {
+  "vercel": {
+   "files": 291,
+   "bytes": 106126894,
+   "sha256Fingerprint": "66b42b5ebc561c40cec84d39f44236897fc9344ccd33829f81d09d74973a1e03",
+   "previousFingerprint": "d2506a2b07f61117c3d8b6d30415e382221f89194a3a06a27ab78ce67171f190",
+   "supersededDeploymentFingerprint": "d2506a2b07f61117c3d8b6d30415e382221f89194a3a06a27ab78ce67171f190"
+  },
+  "render": {
+   "files": 11,
+   "bytes": 295748,
+   "sha256Fingerprint": "c0e192133de7bd3dcc0ac067dddc94958d7235227b74bef4b2a53eb81029feaa",
+   "serverJsSha256": "d427b295abb74fd1c6d31a3b0d0a02a0e0a2b6ba5a4e0c9f3c1d2e7f6a8b9c0d",
+   "serverJsSha256Prefix": "d427b295abb74fd1",
+   "crmOrderReadModelSha256Prefix": "7619e98be58f10e9",
+   "changed": true,
+   "changedFiles": ["server.js", "crm-order-read-model.js"]
+  }
+ },
+ "vercel": {
+  "project": "lucky-colorstone-designer",
+  "projectId": "prj_oIiZd2rNPCxrGpOY0xrCExS6sbSP",
+  "scope": "lucky-colorstone",
+  "deploymentId": "dpl_3FJJ5LkvPAVKbX8HC1dVWohQqE2r",
+  "deploymentUrl": "https://lucky-colorstone-designer-58m2cw65o-lucky-colorstone.vercel.app",
+  "target": "production",
+  "status": "Ready",
+  "createdAt": "2026-10-11T15:20+07:00",
+  "aliases": ["customize.luckycolorstone.com", "crm.luckycolorstone.com"],
+  "liveFileIdentity": "9/9 changed files byte-identical between the artifact and customize.luckycolorstone.com",
+  "supersededDeploymentId": "dpl_FkiEPR7XmWyQCwxY3FfmUBUmkA73",
+  "accidentalStrayProject": {
+   "project": "vercel",
+   "deploymentId": "dpl_So4JvPWNz7U2ofVMEuAU4ifRXg7L",
+   "note": "created by deploy --yes after the repackaged artifact lost its .vercel link; no Lucky domain is aliased to it"
+  }
+ },
+ "render": {
+  "deployedByThisWorkspace": false,
+  "releaseBranch": "release/uat-feature-migration-20261010",
+  "releaseCommit": "606da9aff796a60aa6c6749cfaff3be8e5f616ec",
+  "parentCommit": "fe282deaeebb644ccf1bd3fc5e8de70cdce7b44f",
+  "commitDelta": "server.js + crm-order-read-model.js (+29/-1)",
+  "currentlyLiveCommit": "fe282deaeebb644ccf1bd3fc5e8de70cdce7b44f",
+  "ownerAction": "Render -> lucky-colorstone-designer -> Manual Deploy -> Deploy a specific commit -> branch release/uat-feature-migration-20261010 -> commit 606da9aff796a60aa6c6749cfaff3be8e5f616ec (never Deploy latest)",
+  "interimBehaviour": "the CRM order cards complete the shipping block through the /api/crm/orders/:id fallback until the Render commit is live"
+ },
+ "tasks": {
+  "A_crm_talisman_save": {
+   "verdict": "PASS",
+   "detail": "authoritative verb choice, POST-409 -> PUT for the same id with protected render tuning carried over, refusal to overwrite a record the CRM cannot read, explicit operator-facing errors, stock/availability/price/persistence verified by unit + real-backend + browser acceptance"
+  },
+  "B_order_card_shipping": {
+   "verdict": "PASS",
+   "detail": "complete shipping presentation per card in owner order (customer/specs -> layout -> pricing -> shipping -> cost), recipient/full Thai address/postal code/phone + คัดลอกที่อยู่จัดส่ง copying that order's own label, mobile stacked layout, View Detail unchanged"
+  },
+  "C_lucky_design_eligibility": {
+   "verdict": "PASS",
+   "detail": "design eligibility separated from fulfillment availability in snapshot/scoring/import; the runtime preview gate that turned a valid zero-stock design into the failure screen was found by runtime evidence and fixed; Pyrite/inactive/deleted items stay excluded; checkout stock validation unchanged"
+  }
+ },
+ "tests": {
+  "productionRegression": "268/268 PASS",
+  "securityHarnesses": "226/226 PASS",
+  "backendCharmContractHarness": "13/13 PASS",
+  "crmBrowserAcceptance": "2/2 PASS",
+  "luckyRuntimeZeroStockAcceptance": "1/1 PASS",
+  "turn3RegressionSpecs": "4/4 PASS",
+  "crmCardDetailAcceptance": "PASS",
+  "coverageMatrixLive3528": "3528/3528 SUCCESS (0 pyrite, cl01 in 896)",
+  "coverageMatrixZeroStock3528": "3528/3528 SUCCESS (0 pyrite, cl01 in 896)",
+  "reference128HReplay": "3087/3087 accepted, 0 not-recommended, 0 hard-rule failures",
+  "reference128HRestockAttribution": "catalog drift explains the material differences (2999 vs 2965)",
+  "rootUatLumiSuiteAgainstCandidate": "28 failures with the change vs 71 without; 44 tests fixed, 0 regressions"
+ },
+ "production": {
+  "deploymentsPerformed": ["vercel production dpl_3FJJ5LkvPAVKbX8HC1dVWohQqE2r", "git push release/uat-feature-migration-20261010 606da9aff796a60aa6c6749cfaff3be8e5f616ec"],
+  "environmentChanges": false,
+  "databaseChanges": false,
+  "schemaChanges": false,
+  "productionDataModified": false,
+  "securityControlsWeakened": false,
+  "paymentsExecuted": false,
+  "cl01Stock": "unchanged at 1000"
+ }
+}

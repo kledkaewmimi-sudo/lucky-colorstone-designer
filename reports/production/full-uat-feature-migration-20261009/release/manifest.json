@@ -1,17 +1,17 @@
 {
  "product": "lucky-colorstone-designer",
  "release": "full-uat-feature-migration",
- "createdAt": "2026-10-11T06:19:00.401Z",
+ "createdAt": "2026-10-11T08:13:43.115Z",
  "sourceTree": "lucky-colorstone-uat/reports/production/full-uat-feature-migration-20261009/reconciled-candidate",
  "git": {
-  "head": "9437930f66f845d27503d66b51fb0d3b17f7a115",
+  "head": "a6d1730cfc6c37bb75436970f5342ebd272bfc5b",
   "branch": "uat",
   "originMain": "c777c95b9ec5b6bac521c209a1f74c4ec5c0c07d"
  },
  "vercel": {
   "files": 291,
-  "bytes": 106116229,
-  "fingerprint": "4842bd2226db9ded775389a55571f4d477b2cd77d241238f167a9e25ba5c7890",
+  "bytes": 106126894,
+  "fingerprint": "66b42b5ebc561c40cec84d39f44236897fc9344ccd33829f81d09d74973a1e03",
   "entries": [
    {
     "path": ".gitignore",
@@ -40,8 +40,8 @@
    },
    {
     "path": "app.js",
-    "bytes": 460207,
-    "sha256": "17d0eb83b203dafeeb1cfa4ff0dcf24ac12d004d70d27a5b8c9cc1664e5a05b4"
+    "bytes": 460813,
+    "sha256": "ec418a8f4aaa3a2da0e7764e1e9fe5a9dbe39db941d4b7e6b0aba566e1c0169c"
    },
    {
     "path": "assets/Amethyst quartz.png",
@@ -940,23 +940,23 @@
    },
    {
     "path": "crm.css",
-    "bytes": 79426,
-    "sha256": "aa938d87e8591cd3be267072b0a9b8110791bc46c7742fb4320057cfa1eca811"
+    "bytes": 80155,
+    "sha256": "f39b0a43cc105037eccb476505575d7ad1be7efb41efb78aa8f116d2ea0a3b62"
    },
    {
     "path": "crm.html",
-    "bytes": 74403,
-    "sha256": "6fc4dde2dd99ebe0cda4f7b6f4aea243ba195a43b1ad9d5daa20410a1e5d1a9a"
+    "bytes": 74451,
+    "sha256": "1c62480717c3a210a1722da37663eb209e83de6ee03a32ef745cdd2dd61b0c10"
    },
    {
     "path": "crm.js",
-    "bytes": 257326,
-    "sha256": "092f2f0d105c15c34bae06777212b8d0e5de80f30e8768e461e6fd0ab5dcba7c"
+    "bytes": 262244,
+    "sha256": "f64b7cc1d74a2bf7958ad3d484503b1faffb792c124e0d2b37c446e65425d420"
    },
    {
     "path": "data.js",
-    "bytes": 74828,
-    "sha256": "6ac308346b62dccfd2835fcec41a647c80dbe4a184f7d1c029b00f5f818085f2"
+    "bytes": 77814,
+    "sha256": "86b0b41f5a676350a79e1fd642f0fb4b683a486488423682a4ad5e2dd8e860b7"
    },
    {
     "path": "data/analytics_errors.json",
@@ -1125,8 +1125,8 @@
    },
    {
     "path": "lumi/contracts/catalog-snapshot.js",
-    "bytes": 3110,
-    "sha256": "e82e88544fce20d6405a12b2d1e03fc2ee73bc5736fc01fd7926d07ae6757c00"
+    "bytes": 3633,
+    "sha256": "c52c3ee01c448b5c27871b8ec9ffad65c9ef8c0c28405e09c858ce5227c7aba0"
    },
    {
     "path": "lumi/contracts/design-contract.js",
@@ -1175,8 +1175,8 @@
    },
    {
     "path": "lumi/import/step3-import.js",
-    "bytes": 5135,
-    "sha256": "66affb348acb771f7df21d1d75c7b5757ed4dc9ddaae89857d4f62b2d9c688c5"
+    "bytes": 5411,
+    "sha256": "dad0e5118096e98ffb2a80e80aeb9b6bc9ae40aa029add49026e403c531e0f37"
    },
    {
     "path": "lumi/integration/index.js",
@@ -1375,8 +1375,8 @@
    },
    {
     "path": "lumi/scoring/eligibility.js",
-    "bytes": 4533,
-    "sha256": "ebb68f29c1fd91f1c900439c6d6857449f47e83a49eb1a3dece43c1ea743363a"
+    "bytes": 5112,
+    "sha256": "1ded168de72dd97ce97e3527be131448cac2e4783ebe60dd94c46681ecc1643c"
    },
    {
     "path": "lumi/scoring/index.js",
@@ -1472,13 +1472,13 @@
  },
  "render": {
   "files": 11,
-  "bytes": 293861,
-  "fingerprint": "219f766b372940c8ea06ea6ab35600e58ea9f7b910cf87486acae655e09ef609",
+  "bytes": 295748,
+  "fingerprint": "c0e192133de7bd3dcc0ac067dddc94958d7235227b74bef4b2a53eb81029feaa",
   "entries": [
    {
     "path": "crm-order-read-model.js",
-    "bytes": 5041,
-    "sha256": "1477e4b0a3d804898d6f4d77d2f589a2062bba15ca3cc76741c6c2b840087487"
+    "bytes": 5970,
+    "sha256": "7619e98be58f10e9b9bcaea5a80582643da6fcda27c99bb7b214567956aa0450"
    },
    {
     "path": "deferred-login-qa-session.js",
@@ -1522,8 +1522,8 @@
    },
    {
     "path": "server.js",
-    "bytes": 208897,
-    "sha256": "44e5e6e843d437b517f29df1c7c08acf1356a0a4761dd05df79bffa125e54071"
+    "bytes": 209855,
+    "sha256": "d427b295abb74fd192ff23c001ffbfb37ecad97537b2532531ed694f9b789ac5"
    },
    {
     "path": "tiktok-events-api.js",

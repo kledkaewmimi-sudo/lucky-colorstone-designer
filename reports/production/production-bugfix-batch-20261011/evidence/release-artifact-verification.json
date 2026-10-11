@@ -1,13 +1,22 @@
 {
- "artifactFingerprint": "8efa9edfd1e74c5330c90a2f56dcaa5818e8e14bf3cd1508ba2e772f54030c03",
- "renderFingerprint": "219f766b372940c8ea06ea6ab35600e58ea9f7b910cf87486acae655e09ef609",
+ "artifactFingerprint": "d2506a2b07f61117c3d8b6d30415e382221f89194a3a06a27ab78ce67171f190",
+ "renderFingerprint": "c0e192133de7bd3dcc0ac067dddc94958d7235227b74bef4b2a53eb81029feaa",
  "changedThisTurn": [
   "app.js",
+  "crm.css",
+  "crm.html",
+  "crm.js",
+  "data.js",
   "index.html",
+  "lumi/contracts/catalog-snapshot.js",
+  "lumi/import/step3-import.js",
+  "lumi/scoring/eligibility.js",
   "lumi/ui/lumi-ui.js"
  ],
- "passed": 9,
- "failed": [],
+ "passed": 8,
+ "failed": [
+  "this turn changed only the landing client files"
+ ],
  "checks": [
   {
    "id": "routing still targets the Production Render service",
@@ -41,8 +50,8 @@
   },
   {
    "id": "this turn changed only the landing client files",
-   "pass": true,
-   "detail": "app.js, index.html, lumi/ui/lumi-ui.js"
+   "pass": false,
+   "detail": "app.js, crm.css, crm.html, crm.js, data.js, index.html, lumi/contracts/catalog-snapshot.js, lumi/import/step3-import.js, lumi/scoring/eligibility.js, lumi/ui/lumi-ui.js"
   },
   {
    "id": "the asset set from the previous batch is untouched",
@@ -52,7 +61,7 @@
   {
    "id": "the packaged Render artifact carries the approved backend",
    "pass": true,
-   "detail": "44e5e6e843d437b5"
+   "detail": "d427b295abb74fd1"
   }
  ]
 }

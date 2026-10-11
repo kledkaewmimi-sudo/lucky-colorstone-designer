@@ -20,6 +20,13 @@ const WEEKDAY_FILTER = arg('weekdays', '').split(',').map((value) => value.trim(
 const GOAL_LIMIT = Number(arg('maxgoals', '6'));
 const PROGRESS_EVERY = Number(arg('progress', '50'));
 const TAG = arg('tag', '');
+const BIRTH_YEAR = Number(arg('birth-year', '1999'));
+const WRIST = Number(arg('wrist', '16'));
+// Owner policy 2026-10-11: an active, replenishable material must stay recommendable while its
+// stock is temporarily zero, so the matrix can be replayed with inventory forced to zero without
+// touching the catalog itself. `--zero-stock=all` forces every active record, `--zero-stock=a,b`
+// forces the listed ids.
+const ZERO_STOCK = arg('zero-stock', '');
 const CAND = 'reports/production/full-uat-feature-migration-20261009/reconciled-candidate';
 const OUT = 'reports/production/production-bugfix-batch-20261011/evidence';
 const mod = (rel) => `file:///${path.resolve(CAND, rel).replace(/\\/g, '/')}`;
@@ -41,6 +48,27 @@ const fetchJson = async (rel) => {
 const catalog = USE_LOCAL
   ? { stones: readLocal('stones.json'), charms: readLocal('charms.json'), spacers: readLocal('spacers.json') }
   : { stones: await fetchJson('stones'), charms: await fetchJson('charms'), spacers: await fetchJson('spacers') };
+
+const zeroStockIds = new Set(ZERO_STOCK === 'all' ? [] : ZERO_STOCK.split(',').map((value) => value.trim()).filter(Boolean));
+const zeroStockAll = ZERO_STOCK === 'all';
+const forced = [];
+if (ZERO_STOCK) {
+  for (const kind of ['stones', 'charms', 'spacers']) {
+    catalog[kind] = catalog[kind].map((item) => {
+      const isActiveItem = item?.isActive !== false && item?.availability?.isActive !== false;
+      if (!isActiveItem) return item;
+      if (!zeroStockAll && !zeroStockIds.has(String(item.id))) return item;
+      forced.push(String(item.id));
+      return {
+        ...item,
+        stockQty: 0,
+        stock_qty: 0,
+        inStock: false,
+        availability: { ...(item.availability || {}), stockQty: 0, stock_qty: 0, inStock: false }
+      };
+    });
+  }
+}
 const snapshot = createLumiCatalogSnapshot(catalog);
 
 const GOALS = ['love', 'money', 'career', 'wellbeing', 'luck', 'protection'];
@@ -53,7 +81,9 @@ const STYLES_USED = (STYLE_FILTER.length ? STYLE_FILTER : STYLES);
 
 // Charm rules mirrored from composition-generator.js so a failure can be attributed to stock.
 const mandatoryFocal = (goals) => ((goals.length === 1 && goals[0] === 'love') || (goals.includes('love') && goals.includes('career')) ? 'tg01' : null);
-const availableCharmIds = new Set(snapshot.charms.filter((charm) => charm.active && charm.inStock).map((charm) => charm.id));
+// Design eligibility follows the owner policy: charm activity, not current stock level.
+const availableCharmIds = new Set(snapshot.charms.filter((charm) => charm.active).map((charm) => charm.id));
+const stockedCharmIds = new Set(snapshot.charms.filter((charm) => charm.active && charm.inStock).map((charm) => charm.id));
 const catalogCharmIds = new Set(snapshot.charms.map((charm) => charm.id));
 
 const results = [];
@@ -73,11 +103,11 @@ for (const goals of selectedGoalSets) {
           console.log(`[progress] ${processed}/${total} combinations, ${Math.round((Date.now() - startedAt) / 1000)}s elapsed, last=${goals.join('+')}/${weekday}/${style}/${bead}`);
         }
         const entry = { goals: goals.join('+'), goalCount: goals.length, weekday, style, bead };
-        const context = { wristSizeCm: 16, beadMode: bead, mixedPlacingSize: bead === 'mixed' ? 6 : null };
+        const context = { wristSizeCm: WRIST, beadMode: bead, mixedPlacingSize: bead === 'mixed' ? 6 : null };
         let output = null;
         try {
           output = generateLumiRecommendation({
-            answers: { weekday, birthDate: 9, birthMonth: 9, birthYear: 1999, style, goals },
+            answers: { weekday, birthDate: 9, birthMonth: 9, birthYear: BIRTH_YEAR, style, goals },
             context,
             catalogSnapshot: snapshot
           });
@@ -90,13 +120,15 @@ for (const goals of selectedGoalSets) {
           try {
             const prepared = prepareLumiAcceptance({
               recommendation: output.recommendation,
-              state: { wristSize: 16, beadSize: bead, mixedPlacingSize: bead === 'mixed' ? 6 : null },
+              state: { wristSize: WRIST, beadSize: bead, mixedPlacingSize: bead === 'mixed' ? 6 : null },
               snapshot
             });
             if (prepared.status === 'READY_TO_ACCEPT') {
               const selected = output.recommendation.selected;
               entry.classification = 'SUCCESS';
               entry.stones = new Set(selected.sequence.filter((component) => component.componentType === 'stone').map((component) => component.materialId)).size;
+              entry.stoneIds = selected.sequence.filter((component) => component.componentType === 'stone').map((component) => component.materialId);
+              entry.stoneSizes = selected.sequence.filter((component) => component.componentType === 'stone').map((component) => component.sizeMm);
               entry.anchoredCharms = selected.anchoredCharms.map((charm) => charm.materialId);
               entry.loopCharms = selected.sequence.filter((component) => component.componentType === 'loop_charm').map((component) => component.materialId);
               entry.usesCl01 = entry.anchoredCharms.includes('cl01') || entry.loopCharms.includes('cl01');
@@ -119,7 +151,8 @@ for (const goals of selectedGoalSets) {
           if (needsClover && catalogCharmIds.has('cl01') && !availableCharmIds.has('cl01')) missing.push('cl01');
           if (required && catalogCharmIds.has(required) && !availableCharmIds.has(required)) missing.push(required);
           entry.classification = missing.length ? 'STOCK_UNAVAILABLE' : 'NO_RECOMMENDATION';
-          entry.code = code + (missing.length ? ':missing=' + missing.join(',') : ':no-anchored-focal-charm');
+          entry.code = code + (missing.length ? ':missing=' + missing.join(',') : ':no-anchored-focal-charm')
+            + (needsClover && !stockedCharmIds.has('cl01') ? ':cl01-out-of-stock' : '');
         } else if (output?.status === 'NO_RECOMMENDATION') {
           entry.classification = 'NO_RECOMMENDATION';
           entry.code = code;
@@ -157,8 +190,11 @@ const summary = {
     charms: snapshot.charms.length,
     charmsAvailable: availableCharmIds.size,
     cl01Available: availableCharmIds.has('cl01'),
-    spacers: snapshot.spacers.length
+    spacers: snapshot.spacers.length,
+    zeroStockScenario: ZERO_STOCK ? { mode: zeroStockAll ? 'all-active' : 'ids', forcedCount: forced.length, forcedIds: forced.slice(0, 60) } : null,
+    catalogFingerprint: snapshot.catalogVersion
   },
+  axes: { birthYear: BIRTH_YEAR, wristSizeCm: WRIST },
   combinations: results.length,
   tally,
   byStyle,
