@@ -144,7 +144,7 @@ The exact-sequence differences are catalog drift (reference fingerprint `lumi-c1
 | Vercel deployment | **`dpl_9PEQomhLhh1jxeGrC3vT9b4MwKdE`** (`lucky-colorstone-designer-aretz04a6`), target production, both custom domains |
 | Vercel artifact | 292 files, 106,136,578 bytes, fingerprint `c37924f0a67c58b24a5747fa8db9557ace270c0495387d8535df5b129e2b6d2e` |
 | Render artifact | unchanged — fingerprint `f207998a062fc8ff2c07380204ac2f5114bb0a455fab5891de6390aef5620033`, `server.js` sha256 `b48990263dcb0a18…` (currently live commit `9d35e942eac78dba6355715770d173343bf744fb`) → **no Render deployment required** |
-| Git | batch commit **`43b615a6318f6007e48af92f6432ef87941b8f2d`** (working tree `uat`, 17 files) |
+| Git | batch commit on branch `uat`, subject «fix(production): one undo per action in WebKit, immediate iPhone bead removal, engine policy re-verified» (17 files); the SHA is reported in the hand-off message and confirmed by `git log -1` |
 | Rollback target | previous production deployment `dpl_6FcvxGochjbyqHYaHip1o6oRc9or` |
 
 ## 11. Production verification
