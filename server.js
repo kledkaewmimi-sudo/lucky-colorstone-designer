@@ -3322,7 +3322,61 @@ function sortOrdersForApi(orders) {
 const SOCIAL_PROOF_BASE_COUNT = 1035;
 const SOCIAL_PROOF_ORDER_MULTIPLIER = 3;
 const SOCIAL_PROOF_CACHE_MS = 60000;
+// Landing social proof also publishes the four newest eligible bracelet previews. The publication was
+// authorised by the owner on 2026-10-11 (the count-only revision of 2026-10-10 is superseded); the
+// privacy contract of the response is unchanged in kind - it still carries no order identifiers, no
+// customer details and no payment data, and the imagery is a bracelet render, not a photo of a person.
+const SOCIAL_PROOF_PREVIEW_COUNT = 4;
+const SOCIAL_PROOF_PREVIEW_SCAN_LIMIT = 10;   // bounded: only the newest 10 paid orders are ever read
+const SOCIAL_PROOF_THUMB_PX = 176;            // crisp for the ~26-40px strip thumbs at up to 4x DPR
+const SOCIAL_PROOF_THUMB_QUALITY = 78;
+const SOCIAL_PROOF_PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
+const SOCIAL_PROOF_PREVIEW_SHORT_TTL_MS = 15 * 60 * 1000;
+const SOCIAL_PROOF_MAX_SOURCE_CHARS = 640000; // ~470KB binary: rejects oversized stored payloads
+const SOCIAL_PROOF_PREVIEW_FIELD_SELECT = "created_at,preview:payload->>braceletPreviewImage,checkoutPreview:payload->checkoutSummary->>braceletPreviewImage";
 let socialProofCache = { at: 0, payload: null };
+// Thumbnails are kept until the newest paid order changes, so the (bounded) preview read stays off the
+// public request path: a landing page view cannot amplify Supabase egress.
+let socialProofPreviewCache = { stamp: null, thumbs: [], at: 0 };
+
+let socialProofSharpLoaded = false;
+let socialProofSharp = null;
+function getSocialProofSharp() {
+  if (socialProofSharpLoaded) return socialProofSharp;
+  socialProofSharpLoaded = true;
+  try {
+    socialProofSharp = require("sharp");
+  } catch (error) {
+    socialProofSharp = null;
+    console.warn("[/api/social-proof] sharp unavailable; stored previews are published unoptimized.", error?.message || error);
+  }
+  return socialProofSharp;
+}
+
+const isPaidOrderRecord = (order) => String(order?.stripePaymentStatus || order?.paymentStatus || "").trim().toLowerCase() === "paid";
+
+// A stored preview is only ever accepted as a bounded inline image data URL. Anything else (missing
+// field, remote URL, oversized payload, non-image data) is skipped instead of being published.
+function isPublishablePreviewDataUrl(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length < 33 || trimmed.length > SOCIAL_PROOF_MAX_SOURCE_CHARS) return false;
+  return /^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed);
+}
+
+function readOrderPreviewDataUrl(order) {
+  const candidates = [
+    order?.braceletPreviewImage,
+    order?.checkoutSummary?.braceletPreviewImage,
+    order?.braceletPreviewDataUrl,
+    order?.checkoutSummary?.braceletPreviewDataUrl
+  ];
+  return candidates.find(isPublishablePreviewDataUrl) || null;
+}
+
+function readProjectedPreviewDataUrl(row) {
+  return [row?.preview, row?.checkoutPreview].find(isPublishablePreviewDataUrl) || null;
+}
 
 // Aggregate paid-order count. Returns a number only; it never reads or returns customer records and
 // never touches bracelet previews.
@@ -3360,12 +3414,106 @@ async function readSocialProofForApi() {
   } catch (error) {
     console.warn("[/api/social-proof] count unavailable; returning the safe default.", error?.message || error);
   }
+  let recentBracelets = [];
+  try {
+    recentBracelets = await readRecentBraceletPreviews(now);
+  } catch (error) {
+    console.warn("[/api/social-proof] previews unavailable; publishing the aggregate only.", error?.message || error);
+    recentBracelets = [];
+  }
   const payload = {
     displayCount: SOCIAL_PROOF_BASE_COUNT + successfulOrderCount * SOCIAL_PROOF_ORDER_MULTIPLIER,
-    successfulOrderCount
+    successfulOrderCount,
+    recentBracelets
   };
   socialProofCache = { at: now, payload };
   return payload;
+}
+
+// Newest paid order timestamp. Two tiny columns only, used to decide whether the preview set needs to
+// be rebuilt - the expensive read never runs for an unchanged catalogue of orders.
+async function readNewestPaidOrderStamp() {
+  if (!isSupabaseConfigured()) {
+    const paid = sortOrdersForApi(readJsonArray("orders")).filter(isPaidOrderRecord);
+    const newest = paid[0] || null;
+    return newest ? String(newest.created_at || newest.date || "") : "";
+  }
+  const params = applyCrmPaidOrderFilter({ select: "created_at", order: "created_at.desc", limit: 1 });
+  const rows = await supabaseRequest("orders", { params });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row ? String(row.created_at || "") : "";
+}
+
+// Bounded, newest-first read of the paid orders that can contribute a preview. Only the creation
+// timestamp and the two preview columns are requested, and the scan is capped, so the egress for a
+// refresh is a handful of small image payloads instead of the whole order table.
+async function readRecentBraceletPreviewSources() {
+  if (!isSupabaseConfigured()) {
+    return sortOrdersForApi(readJsonArray("orders"))
+      .filter(isPaidOrderRecord)
+      .map(readOrderPreviewDataUrl)
+      .filter(Boolean)
+      .slice(0, SOCIAL_PROOF_PREVIEW_SCAN_LIMIT);
+  }
+  const params = applyCrmPaidOrderFilter({
+    select: SOCIAL_PROOF_PREVIEW_FIELD_SELECT,
+    order: "created_at.desc",
+    limit: SOCIAL_PROOF_PREVIEW_SCAN_LIMIT
+  });
+  const rows = await supabaseRequest("orders", { params });
+  return (Array.isArray(rows) ? rows : []).map(readProjectedPreviewDataUrl).filter(Boolean);
+}
+
+// Publishes at most four optimized thumbnails. sharp re-encodes each stored render to a small square
+// WebP with metadata dropped (no EXIF/ICC/profile survives), which keeps the public payload tiny and
+// removes any embedded metadata before it can reach a visitor.
+async function buildSocialProofThumbnails(sources) {
+  const thumbs = [];
+  const sharp = getSocialProofSharp();
+  for (const source of sources) {
+    if (thumbs.length >= SOCIAL_PROOF_PREVIEW_COUNT) break;
+    const base64 = source.slice(source.indexOf(",") + 1);
+    let sourceBuffer;
+    try {
+      sourceBuffer = Buffer.from(base64, "base64");
+    } catch (error) {
+      continue;
+    }
+    if (!sourceBuffer.length) continue;
+    if (!sharp) {
+      // Graceful degradation: without the optimizer only modest stored previews are published, so a
+      // page view stays bounded even in that failure mode.
+      if (sourceBuffer.length <= 96000) thumbs.push(source);
+      continue;
+    }
+    try {
+      const thumbBuffer = await sharp(sourceBuffer, { failOn: "none" })
+        .resize(SOCIAL_PROOF_THUMB_PX, SOCIAL_PROOF_THUMB_PX, {
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255, alpha: 0 },
+          withoutEnlargement: false
+        })
+        .webp({ quality: SOCIAL_PROOF_THUMB_QUALITY, alphaQuality: 92, effort: 4 })
+        .toBuffer();
+      if (thumbBuffer && thumbBuffer.length) thumbs.push("data:image/webp;base64," + thumbBuffer.toString("base64"));
+    } catch (error) {
+      console.warn("[/api/social-proof] preview skipped:", error?.message || error);
+    }
+  }
+  return thumbs;
+}
+
+async function readRecentBraceletPreviews(now) {
+  const stamp = await readNewestPaidOrderStamp();
+  const cached = socialProofPreviewCache;
+  const ttl = cached.thumbs.length >= SOCIAL_PROOF_PREVIEW_COUNT ? SOCIAL_PROOF_PREVIEW_TTL_MS : SOCIAL_PROOF_PREVIEW_SHORT_TTL_MS;
+  if (cached.thumbs.length > 0 && cached.stamp === stamp && now - cached.at < ttl) {
+    return cached.thumbs;
+  }
+  const sources = await readRecentBraceletPreviewSources();
+  const thumbs = await buildSocialProofThumbnails(sources);
+  socialProofPreviewCache = { stamp, thumbs, at: now };
+  return thumbs;
 }
 
 async function readOrdersForApi() {
@@ -4680,6 +4828,9 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/social-proof" && method === "GET") {
+    // Public, anonymous, cacheable: the CDN and the browser reuse the payload so a landing-page view
+    // does not reach the origin (and therefore not Supabase) on every load.
+    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=600");
     sendJson(res, 200, await readSocialProofForApi());
     return true;
   }
