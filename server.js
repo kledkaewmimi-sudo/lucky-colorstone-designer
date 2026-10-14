@@ -252,6 +252,30 @@ function sendJson(res, statusCode, data) {
   res.end(payload);
 }
 
+// TURN 10 (data transfer): public catalog/settings and authenticated CRM JSON were previously
+// re-transferred in full on every request because the response carried no validator. A strong ETag plus
+// must-revalidate semantics keeps freshness exactly as it is (a change still revalidates immediately)
+// while a warm reload costs a 304 with no body. The validator is content-derived, so it cannot go stale
+// behind a data change.
+function sendJsonValidated(req, res, statusCode, data, { cacheControl = "public, max-age=0, must-revalidate", vary = null } = {}) {
+  const payload = JSON.stringify(data);
+  const etag = `W/"${crypto.createHash("sha1").update(payload).digest("hex")}"`;
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", cacheControl);
+  res.setHeader("ETag", etag);
+  if (vary) res.setHeader("Vary", vary);
+  setCorsHeaders(res);
+  const inm = String(req?.headers?.["if-none-match"] || "");
+  if (inm && inm.split(",").map((value) => value.trim()).includes(etag)) {
+    res.statusCode = 304;
+    res.removeHeader("Content-Type");
+    res.end();
+    return;
+  }
+  res.end(payload);
+}
+
 function sendJsonString(res, statusCode, jsonString) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -2531,14 +2555,45 @@ async function upsertAnalyticsSession(payload) {
   };
 
   if (isSupabaseConfigured()) {
-    const existingRows = await supabaseRequest("analytics_sessions", {
-      params: {
-        select: "*",
-        session_id: `eq.${payload.sessionId}`,
-        limit: "1"
-      }
-    });
-    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    // TURN 10 (data transfer): every analytics event used to read the whole session row back from
+    // Supabase before upserting it - one extra round trip (and one billed read) per event, measured at
+    // 9-26 reads per page load / interaction burst. The read only exists to stop the upsert from
+    // clobbering first-touch attribution and sticky identity fields with NULL, so it can be replaced by
+    // a bounded cache whose entry is only reused while EVERY sticky field is already known: in that
+    // state a fresh read would return the same values and the merge result is provably identical.
+    // Anything still unknown (a new visitor id, a newly linked LINE user, an unfilled first-touch
+    // column, a session with no cached order id) still performs the real read.
+    const cacheKey = String(payload.sessionId || "");
+    const cachedEntry = cacheKey ? analyticsSessionReadCache.get(cacheKey) : null;
+    const cacheFresh = cachedEntry && Date.now() - cachedEntry.at < ANALYTICS_SESSION_READ_CACHE_MS;
+    let existing = null;
+    if (cacheFresh) {
+      const cachedRow = cachedEntry.row;
+      const stickyComplete = Boolean(
+        (cachedRow.visitor_id || sessionRow.visitor_id) &&
+        (cachedRow.line_user_id || sessionRow.line_user_id) &&
+        cachedRow.first_source && cachedRow.first_medium && cachedRow.first_campaign &&
+        cachedRow.referrer && cachedRow.landing_url && cachedRow.platform_guess && cachedRow.started_at
+      );
+      if (stickyComplete) existing = cachedRow;
+    }
+    // A fresh cache entry is only usable when every sticky field is already known. If it is not usable
+    // (or absent) the real read must still happen - skipping it here was a regression the first-touch
+    // test caught: a session whose LINE identity was still unknown had its attribution overwritten with
+    // 'unknown' instead of being merged.
+    if (!existing) {
+      const existingRows = await supabaseRequest("analytics_sessions", {
+        params: {
+          // Only the merge inputs are read; the previous `select=*` also transferred columns this path
+          // never uses (current_step, last_seen_at, user_agent, created timestamps, ...).
+          select: "session_id,visitor_id,line_user_id,first_source,first_medium,first_campaign,referrer,landing_url,platform_guess,started_at,order_id,converted,revenue",
+          session_id: `eq.${payload.sessionId}`,
+          limit: "1"
+        }
+      });
+      existing = Array.isArray(existingRows) ? existingRows[0] : null;
+      if (cacheKey && existing) analyticsSessionReadCache.set(cacheKey, { at: Date.now(), row: existing });
+    }
     if (existing) {
       sessionRow.line_user_id = sessionRow.line_user_id || existing.line_user_id || null;
       sessionRow.visitor_id = sessionRow.visitor_id || existing.visitor_id || null;
@@ -2560,6 +2615,9 @@ async function upsertAnalyticsSession(payload) {
       prefer: "resolution=merge-duplicates,return=minimal",
       params: { on_conflict: "session_id" }
     });
+    // Remember exactly what was just persisted, so the next event of this session can reuse it without
+    // a read (the cache is only consulted when every sticky field is already present).
+    if (cacheKey) analyticsSessionReadCache.set(cacheKey, { at: Date.now(), row: sessionRow });
     return;
   }
 
@@ -2641,7 +2699,80 @@ async function hasSavedV2FunnelStage(eventRow = {}) {
   return readJsonArray('analyticsEvents').some(isSameStage);
 }
 
+// TURN 10.2 error-reporting controls. All three are process-local on purpose: they are a rate limiter, not
+// a source of truth, so a second Render instance simply has its own budget. Nothing here can lose a
+// failure that has not already been stored by another instance or by an earlier window.
+const ANALYTICS_ERROR_DEDUPE_MS = 60000;
+const ANALYTICS_ERROR_SESSION_WINDOW_MS = 3600000;
+const ANALYTICS_ERROR_SESSION_CAP = 100;
+const ANALYTICS_ERROR_PROPERTIES_LIMIT = 2000;
+let analyticsErrorSignatures = new Map();
+let analyticsErrorSessionBudget = new Map();
+
+function boundAnalyticsErrorProperties(properties = {}) {
+  const source = properties && typeof properties === "object" ? properties : {};
+  let serialized = "";
+  try {
+    serialized = JSON.stringify(source);
+  } catch {
+    return { schema_version: ANALYTICS_SCHEMA_VERSION, funnel_version: ANALYTICS_FUNNEL_VERSION, properties_unserializable: true };
+  }
+  if (serialized.length <= ANALYTICS_ERROR_PROPERTIES_LIMIT) return source;
+  // Keep the identification fields the dashboard and any triage actually read, and record that the rest
+  // was too large to store instead of silently dropping the row.
+  return {
+    schema_version: source.schema_version ?? ANALYTICS_SCHEMA_VERSION,
+    funnel_version: source.funnel_version ?? ANALYTICS_FUNNEL_VERSION,
+    error_type: truncateText(source.error_type, 120),
+    source: truncateText(source.source, 500),
+    step: source.step ?? null,
+    properties_truncated: true,
+    properties_bytes: serialized.length
+  };
+}
+
+function shouldStoreAnalyticsError(errorRow = {}) {
+  const now = Date.now();
+  if (analyticsErrorSignatures.size > 5000) {
+    for (const [key, at] of analyticsErrorSignatures) {
+      if (now - at > ANALYTICS_ERROR_DEDUPE_MS) analyticsErrorSignatures.delete(key);
+    }
+    if (analyticsErrorSignatures.size > 5000) analyticsErrorSignatures = new Map();
+  }
+  const signature = [errorRow.session_id, errorRow.error_type, errorRow.message, errorRow.source].join("\u0000");
+  const lastAt = analyticsErrorSignatures.get(signature);
+  if (lastAt && now - lastAt < ANALYTICS_ERROR_DEDUPE_MS) return false;
+
+  if (analyticsErrorSessionBudget.size > 5000) analyticsErrorSessionBudget = new Map();
+  const sessionKey = String(errorRow.session_id || "unknown");
+  const budget = analyticsErrorSessionBudget.get(sessionKey);
+  const window = budget && now - budget.windowStartedAt < ANALYTICS_ERROR_SESSION_WINDOW_MS
+    ? budget
+    : { count: 0, windowStartedAt: now };
+  if (window.count >= ANALYTICS_ERROR_SESSION_CAP) {
+    if (window.count === ANALYTICS_ERROR_SESSION_CAP) {
+      window.count += 1;
+      console.warn(`[analytics] error rate limit reached for session ${sessionKey}; further distinct errors in this hour are not stored.`);
+    }
+    analyticsErrorSessionBudget.set(sessionKey, window);
+    return false;
+  }
+  window.count += 1;
+  analyticsErrorSessionBudget.set(sessionKey, window);
+  analyticsErrorSignatures.set(signature, now);
+  return true;
+}
+
 async function saveAnalyticsError(payload) {
+  // TURN 10.2 (owner preference: remove unnecessary granular tracking): client error reporting is kept -
+  // actionable production failures are the whole point of the table - but it is no longer allowed to
+  // amplify. Three controls, in order of severity:
+  //   1. an identical failure signature is stored at most once per 60 s window,
+  //   2. a single session may create at most 100 NEW signatures per hour, and a tripped cap is logged,
+  //   3. `properties` is bounded.
+  // A failure that has not been seen before is always stored, so a unique critical failure is never
+  // suppressed by control 1. Only control 2 can drop a first-seen signature, and only for a session that
+  // is already producing >100 distinct errors per hour - the pathological case the control exists for.
   const errorRow = {
     session_id: payload.sessionId,
     error_type: truncateText(payload.properties?.error_type || payload.eventName, 120),
@@ -2650,9 +2781,11 @@ async function saveAnalyticsError(payload) {
     source: truncateText(payload.properties?.source, 500),
     step: payload.step,
     url: payload.url || null,
-    properties: payload.properties || {},
+    properties: boundAnalyticsErrorProperties(payload.properties),
     created_at: payload.timestamp || new Date().toISOString()
   };
+
+  if (!shouldStoreAnalyticsError(errorRow)) return;
 
   if (isSupabaseConfigured()) {
     await supabaseRequest("analytics_errors", {
@@ -2668,11 +2801,51 @@ async function saveAnalyticsError(payload) {
   writeJsonFile(dataFiles.analyticsErrors, errors.slice(-1000));
 }
 
+// Turn 10.3: bounded idempotency window for design-summary bursts.
+const ANALYTICS_DESIGN_SUMMARY_DEDUPE_MS = 10 * 60 * 1000;
+const ANALYTICS_DESIGN_SUMMARY_DEDUPE_MAX = 20000;
+let analyticsDesignSummaryIds = new Map();
+
+function claimDesignSummaryId(payload = {}) {
+  const properties = payload.properties && typeof payload.properties === "object" ? payload.properties : {};
+  const summaryId = truncateText(properties.summary_id || properties.summaryId, 80);
+  if (!summaryId) return true;
+  const now = Date.now();
+  if (analyticsDesignSummaryIds.size > ANALYTICS_DESIGN_SUMMARY_DEDUPE_MAX) {
+    for (const [key, at] of analyticsDesignSummaryIds) {
+      if (now - at > ANALYTICS_DESIGN_SUMMARY_DEDUPE_MS) analyticsDesignSummaryIds.delete(key);
+    }
+    // Still oversized means the traffic is pathological; start clean rather than growing without bound.
+    if (analyticsDesignSummaryIds.size > ANALYTICS_DESIGN_SUMMARY_DEDUPE_MAX) analyticsDesignSummaryIds = new Map();
+  }
+  const key = `${payload.sessionId}\u0000${summaryId}`;
+  const seenAt = analyticsDesignSummaryIds.get(key);
+  if (seenAt && now - seenAt < ANALYTICS_DESIGN_SUMMARY_DEDUPE_MS) return false;
+  analyticsDesignSummaryIds.set(key, now);
+  return true;
+}
+
 async function saveAnalyticsPayload(payload) {
   if (!payload.sessionId || !payload.eventName) {
     throw new Error("Missing sessionId or eventName.");
   }
   await upsertAnalyticsSession(payload);
+  // TURN 10.2 (owner preference: remove unnecessary granular tracking): `session_heartbeat` exists only
+  // to keep the session row's `last_seen_at` fresh, and the upsert above already writes it. The event row
+  // itself was never read by the analytics summary, the funnel, the daily trend or any report, so it is no
+  // longer inserted. The request the browser sends is unchanged, so session inactivity expiration
+  // (ANALYTICS_SESSION_TIMEOUT_MS), the 30-minute `insights.activeWindowMinutes` figure and every
+  // attribution field behave exactly as before.
+  if (payload.eventName === "session_heartbeat") return;
+  // TURN 10.3 idempotency. A `design_summary` is the one event whose loss would silently under-report a
+  // customer's design, so the browser retries a failed delivery and may also deliver it twice through the
+  // lifecycle beacons. The burst carries a `summary_id`, and a repeat inside the window is dropped here
+  // instead of being counted twice in `popularItems` / `popularBeadSizes` / `popularCategories`.
+  // The first delivery of an id is always stored; only a repeat inside the window is dropped. The check is
+  // process-local on purpose - it is a duplicate guard, not a source of truth, so a second Render instance
+  // simply has its own window and nothing is lost when it is not shared.
+  // A summary with no `summary_id` is accepted, so a browser running an older bundle keeps reporting.
+  if (payload.eventName === "design_summary" && !claimDesignSummaryId(payload)) return;
   if (payload.eventName === "javascript_error" || payload.eventName === "unhandled_promise_rejection" || payload.eventName === "api_error" || payload.eventName === "image_load_error" || payload.eventName.includes("error")) {
     await saveAnalyticsError(payload);
   } else {
@@ -2718,6 +2891,23 @@ async function linkAnalyticsOrderConversion(order = {}) {
 }
 
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
+// TURN 10 (data transfer): the exact column sets the CRM analytics summary reads. Measured against the
+// previous `select=*` behaviour in tools/turn10-bench.mjs. `properties` must stay on events (the funnel,
+// bead-size, duration and category breakdowns read it); `stack` is deliberately absent from errors
+// because no part of the dashboard renders it.
+const ANALYTICS_SUMMARY_SESSION_FIELDS = "session_id,visitor_id,line_user_id,first_source,first_medium,first_campaign,platform_guess,started_at,last_seen_at,current_step,order_id,converted,revenue";
+const ANALYTICS_SUMMARY_EVENT_FIELDS = "session_id,event_name,step,properties,created_at";
+const ANALYTICS_SUMMARY_ERROR_FIELDS = "session_id,error_type,message,step,properties,url,created_at";
+const ANALYTICS_SUMMARY_EVENT_LIMIT = 10000;
+// Short-lived in-process cache so switching dashboard range/tab does not re-read the same rows from
+// Supabase. Read-only and range-keyed; it never serves one range's rows for another.
+const ANALYTICS_SUMMARY_CACHE_MS = 30000;
+let analyticsSummaryCache = new Map();
+// TURN 10 (data transfer): bounded cache for the per-event session row read. It is only reused when
+// every sticky field is already known, so the upsert merge result is identical to a fresh read.
+const ANALYTICS_SESSION_READ_CACHE_MS = 60000;
+const ANALYTICS_SESSION_READ_CACHE_MAX = 5000;
+let analyticsSessionReadCache = new Map();
 const ANALYTICS_FUNNEL_STAGES = Object.freeze([
   ["landing_view", "\u0E40\u0E02\u0E49\u0E32\u0E40\u0E27\u0E47\u0E1A\u0E44\u0E0B\u0E15\u0E4C"],
   ["start_design", "\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
@@ -2964,26 +3154,161 @@ function getAnalyticsSessionRevenue(session = {}) {
   return Number.isFinite(value) ? value : 0;
 }
 
-async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangeParams()) {
+// TURN 10.2 (option C - server-side aggregation): the dashboard used to read the newest 10,000
+// `analytics_events` rows and aggregate them inside Render. At the measured production rate (~3,036
+// events/day) that read silently covered only ~3.3 days of a 7-day range, and it transferred ~5.6 MB per
+// dashboard call. Option C replaces that raw read with one `analytics_summary_aggregate` RPC that returns
+// the same information as counts plus one row per (session, stage), so the range is complete and the
+// transfer is bounded by sessions x stages instead of by event volume.
+//
+// The aggregate is re-expanded into the EXISTING event row shape, which keeps every downstream consumer
+// in buildAnalyticsSummary (funnel, daily trend, channel/day, popular items/sizes/categories, step
+// durations, current stage) running its untouched code path. Parity is a property of the substitution
+// rather than of a parallel re-implementation, and it is verified against a complete uncapped fixture by
+// tests/turn10-2-aggregate-equivalence.test.mjs.
+const ANALYTICS_AGGREGATE_STAGE_EVENTS = new Set([...ANALYTICS_V2_FUNNEL_STAGES, 'line_auth_started', 'line_auth_success', 'oa_friend_required', 'oa_friend_cancelled', 'line_callback_resume']);
+
+function createAggregateEvent(sessionId, eventName, properties = {}, createdAt = null) {
+  return {
+    session_id: sessionId,
+    event_name: eventName,
+    step: null,
+    properties: {
+      schema_version: ANALYTICS_SCHEMA_VERSION,
+      funnel_version: ANALYTICS_FUNNEL_VERSION,
+      funnel_stage: eventName,
+      funnel_stage_key: `v${ANALYTICS_FUNNEL_VERSION}:${sessionId}:${eventName}`,
+      current_stage: eventName,
+      ...properties
+    },
+    created_at: createdAt
+  };
+}
+
+function mapAnalyticsSummaryAggregate(aggregate, includeTest = false) {
+  if (!aggregate || typeof aggregate !== 'object') return null;
+  const events = [];
+  // TURN 10.2 correction: a count-based aggregate row carries no session id, so it cannot be dropped by the
+  // summary's test-session filter the way a raw row is. The aggregate therefore tags every count with whether
+  // it came from a `prelaunch_test` session, and the same include_test switch that governs the funnel governs
+  // these blocks too. Without this, `popularItems` / `popularBeadSizes` / `popularCategories` / `stepDurations`
+  // over-reported by the share of prelaunch_test traffic: tools/turn10-2-crosscheck.mjs measured +10
+  // placements and +12 duration samples on a fixture where 1 session in 17 is a test session. The funnel was
+  // already correct because stage rows keep their session id.
+  const keepCount = (row) => includeTest || !row?.test;
+  // One row per (session, stage): the funnel sets, the per-session latest stage used by the
+  // active-session panel and the stage date used by the daily trend and the channel/day matrix.
+  (Array.isArray(aggregate.stages) ? aggregate.stages : []).forEach((row) => {
+    const sessionId = String(row?.session_id || '').trim();
+    const eventName = String(row?.event_name || '').trim();
+    if (!sessionId || !ANALYTICS_AGGREGATE_STAGE_EVENTS.has(eventName)) return;
+    events.push(createAggregateEvent(sessionId, eventName, {}, row?.first_at || row?.last_at || null));
+  });
+  // Step durations are only ever consumed as a SUM plus a SAMPLE COUNT per step
+  // (averageMs = round(total / samples)), so re-expanding the aggregate as equal shares cannot change any
+  // rendered number - the remainder is added to the last share so the sum is exact.
+  (Array.isArray(aggregate.durations) ? aggregate.durations : []).filter(keepCount).forEach((row) => {
+    const samples = Math.max(0, Math.trunc(Number(row?.samples) || 0));
+    const totalMs = Math.max(0, Math.trunc(Number(row?.total_ms) || 0));
+    if (!samples || !totalMs) return;
+    const share = Math.floor(totalMs / samples);
+    for (let index = 0; index < samples; index += 1) {
+      events.push(createAggregateEvent('__aggregate__', 'step_duration', { from_step: row?.step ?? 'unknown', duration_ms: index === samples - 1 ? totalMs - share * (samples - 1) : share }, null));
+    }
+  });
+  // Placements, bead sizes and categories arrive already collapsed: one synthetic `design_summary` row per
+  // distinct label carries the exact count the raw stream would have produced.
+  const placements = (Array.isArray(aggregate.placements) ? aggregate.placements : []).filter(keepCount);
+  if (placements.length) {
+    events.push(createAggregateEvent('__aggregate__', 'design_summary', { items: placements.map((row) => ({ itemId: row?.label ?? null, sizeMm: null, itemType: null, count: Math.max(0, Math.trunc(Number(row?.count) || 0)) })).filter((row) => row.count > 0) }, null));
+  }
+  const beadSizes = (Array.isArray(aggregate.bead_sizes) ? aggregate.bead_sizes : []).filter(keepCount);
+  if (beadSizes.length) {
+    events.push(createAggregateEvent('__aggregate__', 'design_summary', { items: beadSizes.map((row) => ({ itemId: null, sizeMm: row?.label ?? null, itemType: null, count: Math.max(0, Math.trunc(Number(row?.count) || 0)) })).filter((row) => row.count > 0 && row.sizeMm !== null) }, null));
+  }
+  const categories = (Array.isArray(aggregate.categories) ? aggregate.categories : []).filter(keepCount);
+  if (categories.length) {
+    events.push(createAggregateEvent('__aggregate__', 'design_summary', { categories: categories.map((row) => ({ category: row?.label ?? null, count: Math.max(0, Math.trunc(Number(row?.count) || 0)) })).filter((row) => row.count > 0 && row.category) }, null));
+  }
+  return {
+    events,
+    earliestEventAt: aggregate.earliest_event_at || null,
+    totalEvents: Math.max(0, Math.trunc(Number(aggregate.total_events) || 0))
+  };
+}
+
+const ANALYTICS_SUMMARY_SESSION_PARAMS = { select: ANALYTICS_SUMMARY_SESSION_FIELDS, order: "last_seen_at.desc", limit: "5000" };
+const ANALYTICS_SUMMARY_ERROR_PARAMS = { select: ANALYTICS_SUMMARY_ERROR_FIELDS, order: "created_at.desc", limit: "500" };
+
+async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangeParams(), includeTest = false) {
+  const aggregateRpcName = getEnvValue('ANALYTICS_SUMMARY_RPC');
+  if (isSupabaseConfigured() && aggregateRpcName) {
+    try {
+      // Option C: one RPC replaces the raw event read. Sessions and errors stay as the same bounded,
+      // projected reads because their shape is unchanged and their volume is already capped - the event
+      // table is the one that carries both the 10,000-row cap and the large transfer.
+      const [sessions, errors, aggregate] = await Promise.all([
+        supabaseRequest("analytics_sessions", { params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_SESSION_PARAMS }, "last_seen_at", rangeInfo) }),
+        supabaseRequest("analytics_errors", { params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_ERROR_PARAMS }, "created_at", rangeInfo) }),
+        supabaseRpc(aggregateRpcName, { p_start: rangeInfo.startIso, p_end: rangeInfo.endIso })
+      ]);
+      const mapped = mapAnalyticsSummaryAggregate(aggregate, includeTest);
+      if (mapped) {
+        return {
+          sessions: Array.isArray(sessions) ? sessions : [],
+          events: mapped.events,
+          errors: Array.isArray(errors) ? errors : [],
+          // The aggregate is uncapped by construction, so the range is complete and the truncation banner
+          // must not fire. `eventsCoveredSince` still reports the oldest event the aggregate saw.
+          eventsTruncated: false,
+          eventsLimit: null,
+          eventsCoveredSince: mapped.earliestEventAt,
+          aggregateSource: aggregateRpcName,
+          aggregateEventCount: mapped.totalEvents
+        };
+      }
+    } catch (error) {
+      // A missing/unprivileged function must never take the dashboard down: fall through to the raw read.
+      warnSupabaseReadFallback("/api/analytics/summary (aggregate rpc)", error);
+    }
+  }
   if (isSupabaseConfigured()) {
     try {
       const [sessions, events, errors] = await Promise.all([
         supabaseRequest("analytics_sessions", {
           // Keep session attribution available for in-range events that belong to an older session.
           // The summary applies its own selected-period filter to session-start KPIs below.
-          params: { select: "*", order: "last_seen_at.desc", limit: "5000" }
+          // TURN 10 (data transfer): this used to read `select=*` for the newest 5,000 sessions on
+          // every dashboard call, which is ~4 MB per call for columns the summary never touches
+          // (referrer, landing_url, user_agent). It now selects only the columns the summary reads,
+          // and - when the caller asks for a bounded range - only the sessions seen inside that range.
+          // Every session that owns an in-range event has an in-range `last_seen_at`, because the
+          // ingest path stamps `last_seen_at = now` on every event, so attribution is unchanged.
+          params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_SESSION_PARAMS }, "last_seen_at", rangeInfo)
         }),
         supabaseRequest("analytics_events", {
-          params: addDateRangeFilters({ select: "*", order: "created_at.desc", limit: "10000" }, "created_at", rangeInfo)
+          params: addDateRangeFilters({ select: ANALYTICS_SUMMARY_EVENT_FIELDS, order: "created_at.desc", limit: String(ANALYTICS_SUMMARY_EVENT_LIMIT) }, "created_at", rangeInfo)
         }),
         supabaseRequest("analytics_errors", {
-          params: addDateRangeFilters({ select: "*", order: "created_at.desc", limit: "500" }, "created_at", rangeInfo)
+          // `stack` is never rendered by the dashboard (recentErrors shows type/step/message only) and
+          // is the single largest column in this table, so it is not transferred any more.
+          params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_ERROR_PARAMS }, "created_at", rangeInfo)
         })
       ]);
       return {
         sessions: Array.isArray(sessions) ? sessions : [],
         events: Array.isArray(events) ? events : [],
-        errors: Array.isArray(errors) ? errors : []
+        errors: Array.isArray(errors) ? errors : [],
+        // TURN 10.1: surface the read cap instead of silently reporting a partial range. A full 7-day
+        // range needs ~21k events at the measured production rate while the query asks for 10,000, so the
+        // dashboard could show a shorter window than its label claims. The boolean lets the CRM warn,
+        // and the covered boundary is reported so the UI can tell the operator how far back the numbers
+        // actually go.
+        eventsTruncated: Array.isArray(events) && events.length >= ANALYTICS_SUMMARY_EVENT_LIMIT,
+        eventsLimit: ANALYTICS_SUMMARY_EVENT_LIMIT,
+        eventsCoveredSince: Array.isArray(events) && events.length
+          ? events[events.length - 1]?.created_at || null
+          : null
       };
     } catch (error) {
       warnSupabaseReadFallback("/api/analytics/summary", error);
@@ -2993,7 +3318,10 @@ async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangePa
   return {
     sessions: readJsonArray("analyticsSessions"),
     events: readJsonArray("analyticsEvents").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"])),
-    errors: readJsonArray("analyticsErrors").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"]))
+    errors: readJsonArray("analyticsErrors").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"])),
+    eventsTruncated: false,
+    eventsLimit: ANALYTICS_SUMMARY_EVENT_LIMIT,
+    eventsCoveredSince: null
   };
 }
 
@@ -3002,18 +3330,28 @@ function incrementCount(map, key, amount = 1) {
   map[safeKey] = (map[safeKey] || 0) + amount;
 }
 
-function addAnalyticsCount(map, key, labelKey = "label") {
+// TURN 10.2: `amount` lets one `design_summary` row contribute the per-item counts it accumulated, so
+// the dashboard totals stay identical to the previous one-row-per-bead stream.
+function addAnalyticsCount(map, key, labelKey = "label", amount = 1) {
   const safeKey = normalizeAnalyticsDimension(key, "unknown");
   if (!map[safeKey]) {
     map[safeKey] = { [labelKey]: safeKey, count: 0 };
   }
-  map[safeKey].count += 1;
+  map[safeKey].count += amount;
 }
 
 async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const rangeInfo = normalizeAnalyticsRangeParams(searchParams);
-  const analyticsRows = await readAnalyticsRowsForSummary(rangeInfo);
-  const includeTest = searchParams.get("include_test") === "1";
+  const includeTestParam = searchParams.get("include_test") === "1";
+  // The key must not include the computed end boundary: "last 7 days" recomputes `now` on every call,
+  // so keying on it would make every request a cache miss (measured: 4 dashboard calls, 4 full reads).
+  const cacheKey = `${rangeInfo.range}|${searchParams.get("start") || ""}|${searchParams.get("end") || ""}|${includeTestParam ? 1 : 0}`;
+  const cached = analyticsSummaryCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < ANALYTICS_SUMMARY_CACHE_MS) {
+    return { ...cached.payload, generatedAt: new Date().toISOString(), servedFromCache: true, cacheAgeMs: Date.now() - cached.at, cacheTtlMs: ANALYTICS_SUMMARY_CACHE_MS };
+  }
+  const analyticsRows = await readAnalyticsRowsForSummary(rangeInfo, includeTestParam);
+  const includeTest = includeTestParam;
   const testSessionIds = new Set((analyticsRows.sessions || [])
     .filter((session) => String(session.first_campaign || session.firstCampaign || "").trim().toLowerCase() === "prelaunch_test")
     .map(getAnalyticsSessionId));
@@ -3056,6 +3394,33 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       if (properties.category || properties.item_type || properties.itemType) addAnalyticsCount(categoryCounts, properties.category || properties.item_type || properties.itemType, "category");
     }
     if (eventName === "category_changed" && (properties.category || properties.section)) addAnalyticsCount(categoryCounts, properties.category || properties.section, "category");
+    // TURN 10.2: the single `design_summary` row that now replaces the per-bead `item_added` and
+    // per-tab `category_changed` rows. The two legacy branches above are deliberately KEPT so that the
+    // ~396k historical rows already stored in `analytics_events` keep contributing to the same totals -
+    // removing them would silently under-report every past period.
+    // `properties.bead_size` is not read here: it would double count `bead_size_selected`, which already
+    // feeds `popularBeadSizes`. Only the per-bead sizes the customer actually placed are counted, exactly
+    // as the legacy `item_added` branch did.
+    if (eventName === "design_summary") {
+      const designItems = Array.isArray(properties.items) ? properties.items : [];
+      designItems.forEach((entry) => {
+        const amount = Math.max(0, Math.trunc(Number(entry?.count) || 0));
+        if (!amount) return;
+        const sizeMm = entry?.sizeMm ?? entry?.size_mm;
+        if (sizeMm) addAnalyticsCount(beadSizeCounts, `${sizeMm}mm`, "beadSize", amount);
+        const itemId = entry?.itemId ?? entry?.item_id;
+        if (itemId) addAnalyticsCount(itemCounts, itemId, "item", amount);
+        const itemCategory = entry?.category ?? entry?.itemType ?? entry?.item_type;
+        if (itemCategory) addAnalyticsCount(categoryCounts, itemCategory, "category", amount);
+      });
+      const designCategories = Array.isArray(properties.categories) ? properties.categories : [];
+      designCategories.forEach((entry) => {
+        const amount = Math.max(0, Math.trunc(Number(entry?.count) || 0));
+        if (!amount) return;
+        const category = entry?.category;
+        if (category) addAnalyticsCount(categoryCounts, category, "category", amount);
+      });
+    }
   });
 
   const landingSessionIds = stageSets.get("landing_view");
@@ -3185,8 +3550,9 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     time: session.last_seen_at || session.started_at || null, source: normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel, campaign: normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign), orderId: session.order_id || session.orderId || "", revenue: getAnalyticsSessionRevenue(session), currentStep: session.current_step ?? session.currentStep ?? null
   }));
 
-  return {
+  const summaryPayload = {
     success: true, modelVersion: ANALYTICS_FUNNEL_VERSION, legacyExcluded: true, range: rangeInfo.range, start: rangeInfo.startIso, end: rangeInfo.endIso, generatedAt: new Date().toISOString(),
+    eventsTruncated: Boolean(analyticsRows.eventsTruncated), eventsLimit: analyticsRows.eventsLimit ?? ANALYTICS_SUMMARY_EVENT_LIMIT, eventsCoveredSince: analyticsRows.eventsCoveredSince ?? null,
     totals: { sessions: sessions.length, uniqueVisitors: visitorIds.size, visitorTrackedSessions: sessions.filter((session) => getAnalyticsVisitorId(session)).length, legacySessionsWithoutVisitorId: sessions.filter((session) => !getAnalyticsVisitorId(session)).length, orders: totalOrders, conversionRate: landingCount ? (totalOrders / landingCount) * 100 : 0, revenue, aov: totalOrders ? revenue / totalOrders : 0, errors: errors.length },
     ownerChannels: OWNER_ANALYTICS_CHANNELS.map((definition) => serializeOwner(ownerChannels.get(definition.key))),
     sourceDetails: Array.from(sourceDetails.values()).map((row) => ({ ...row, conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0, aov: row.orders ? row.revenue / row.orders : 0 })).sort((a, b) => b.sessions - a.sessions || b.revenue - a.revenue),
@@ -3194,6 +3560,10 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     insights: { completedNoPayment: Math.max(0, checkoutIds.size - totalOrders), activeWindowMinutes: 30 },
     channels: [], sources: [], bySource: [], stepDurations, averageTimePerStep: stepDurations.map((row) => ({ step: row.step, average_ms: row.averageMs, samples: row.samples })), popularBeadSizes: sortCountRows(beadSizeCounts), popularItems: sortCountRows(itemCounts), popularCategories: sortCountRows(categoryCounts), recentErrors, recentOrders: [], recentSessions, testCampaignExcluded: true, paymentSuccessAuthority: "stripe_webhook_authoritative"
   };
+  if (analyticsSummaryCache.size > 8) analyticsSummaryCache = new Map();
+  if (analyticsSessionReadCache.size > ANALYTICS_SESSION_READ_CACHE_MAX) analyticsSessionReadCache = new Map(analyticsSessionReadCache);
+  analyticsSummaryCache.set(cacheKey, { at: Date.now(), payload: summaryPayload });
+  return { ...summaryPayload, servedFromCache: false, cacheAgeMs: 0, cacheTtlMs: ANALYTICS_SUMMARY_CACHE_MS };
 }
 
 async function getSupabaseRecordById(tableName, id) {
@@ -3389,6 +3759,73 @@ function readOrderPreviewDataUrl(order) {
 
 function readProjectedPreviewDataUrl(row) {
   return [row?.preview, row?.checkoutPreview].find(isPublishablePreviewDataUrl) || null;
+}
+
+// TURN 10.1: fetch only the preview columns for one order (the CRM card and the preview endpoint both
+// need just the image), instead of reading the whole order payload to extract one field.
+async function readOrderPreviewRow(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  if (!isSupabaseConfigured()) {
+    const order = readJsonArray('orders').find((entry) => getOrderId(entry) === id) || null;
+    return order ? { preview: order.braceletPreviewImage || null, checkoutPreview: order.checkoutSummary?.braceletPreviewImage || null } : null;
+  }
+  try {
+    const rows = await supabaseRequest('orders', {
+      params: {
+        select: SOCIAL_PROOF_PREVIEW_FIELD_SELECT,
+        'payload->>id': `eq.${id}`,
+        limit: '1'
+      }
+    });
+    return Array.isArray(rows) ? rows[0] || null : null;
+  } catch (error) {
+    console.warn('[crm-order-preview] read failed:', error?.message || error);
+    return null;
+  }
+}
+
+// TURN 10.1: which of these orders actually have a stored preview? Asking for the ids (and filtering on
+// `not.is.null`) costs a few hundred bytes and lets the list advertise a preview URL only where one
+// exists, so legacy orders without a snapshot keep rendering the SVG layout fallback exactly as before.
+async function readOrderIdsWithStoredPreview(ids = []) {
+  const wanted = ids.map((id) => String(id || '').trim()).filter(Boolean);
+  if (!wanted.length) return new Set();
+  if (!isSupabaseConfigured()) {
+    return new Set(readJsonArray('orders')
+      .filter((order) => readProjectedPreviewDataUrl({ preview: order?.braceletPreviewImage, checkoutPreview: order?.checkoutSummary?.braceletPreviewImage }))
+      .map((order) => getOrderId(order)));
+  }
+  try {
+    const rows = await supabaseRequest('orders', {
+      params: {
+        select: 'id:payload->>id',
+        'payload->>id': `in.(${wanted.join(',')})`,
+        or: '(payload->>braceletPreviewImage.not.is.null,payload->checkoutSummary->>braceletPreviewImage.not.is.null)'
+      }
+    });
+    return new Set((Array.isArray(rows) ? rows : []).map((row) => row.id).filter(Boolean));
+  } catch (error) {
+    // A lookup failure must not hide previews: fall back to advertising the URL for every id and let the
+    // client's error handler degrade gracefully.
+    console.warn('[crm-order-preview] existence lookup failed:', error?.message || error);
+    return new Set(wanted);
+  }
+}
+
+// The stored snapshot is a bounded `data:image/...;base64,...` string. Decode it once per request so the
+// browser receives image bytes rather than a 33% larger base64 wrapper inside JSON.
+function decodeStoredPreviewDataUrl(dataUrl) {
+  if (!isPublishablePreviewDataUrl(dataUrl)) return null;
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i.exec(dataUrl.trim());
+  if (!match) return null;
+  try {
+    const buffer = Buffer.from(match[2], 'base64');
+    if (!buffer.length) return null;
+    return { contentType: match[1].toLowerCase(), buffer };
+  } catch {
+    return null;
+  }
 }
 
 // Aggregate paid-order count. Returns a number only; it never reads or returns customer records and
@@ -3627,7 +4064,6 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
       province: row.shippingInfo?.province ?? row.province ?? '',
       postalCode: row.shippingInfo?.postalCode ?? row.postalCode ?? ''
     },
-    checkoutSummary: { braceletPreviewImage: row.checkoutBraceletPreviewImage, braceletPreviewDataUrl: row.checkoutBraceletPreviewDataUrl, braceletPreviewSnapshot: row.checkoutBraceletPreviewSnapshot },
     costSnapshot: {
       status: row.costSnapshotStatus,
       materialCost: row.costSnapshotMaterialCost,
@@ -3637,6 +4073,13 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
       marginPercent: row.costSnapshotMarginPercent
     },
     checkoutSummary: {
+      // TASK B1 (2026-10-12): this literal used to be assigned twice, and the second assignment threw
+      // the preview fields away - so an order whose bracelet preview lives only in checkoutSummary
+      // (which includePreview=1 explicitly pays to fetch) rendered an order card with no preview even
+      // though View Detail could resolve it. The projection now keeps both halves in one object.
+      braceletPreviewImage: row.checkoutBraceletPreviewImage,
+      braceletPreviewDataUrl: row.checkoutBraceletPreviewDataUrl,
+      braceletPreviewSnapshot: row.checkoutBraceletPreviewSnapshot,
       subtotal: row.checkoutSubtotal,
       discountPercent: row.checkoutDiscountPercent,
       discountAmount: row.checkoutDiscountAmount,
@@ -4039,11 +4482,36 @@ async function handleApiRequest(req, res, urlObj) {
 
   if (pathname.startsWith('/api/crm/orders/') && method === 'GET') {
     if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
+    // TURN 10.1: an order's saved bracelet preview is an immutable snapshot, so it is served as raw
+    // image bytes from its own authenticated, immutably cacheable URL instead of being inlined as
+    // base64 in every order row of every list page. The read selects only the two preview columns, so
+    // producing one preview no longer drags the whole ~113 KB order payload through Supabase.
+    if (pathname.endsWith('/preview')) {
+      const previewOrderId = decodeURIComponent(pathname.slice('/api/crm/orders/'.length, -'/preview'.length));
+      const row = await readOrderPreviewRow(previewOrderId);
+      const dataUrl = row ? readProjectedPreviewDataUrl(row) : null;
+      const decoded = decodeStoredPreviewDataUrl(dataUrl);
+      if (!decoded) { sendJson(res, 404, { error: 'No bracelet preview stored for this order.' }); return true; }
+      const etag = `W/"${crypto.createHash('sha1').update(decoded.buffer).digest('hex')}"`;
+      const inm = String(req.headers['if-none-match'] || '');
+      res.setHeader('Content-Type', decoded.contentType);
+      res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
+      res.setHeader('Vary', 'Cookie');
+      setCorsHeaders(res);
+      if (inm.split(',').map((value) => value.trim()).includes(etag)) { res.statusCode = 304; res.end(); return true; }
+      res.statusCode = 200;
+      res.end(decoded.buffer);
+      return true;
+    }
     const orderId = decodeURIComponent(pathname.slice('/api/crm/orders/'.length));
     const order = await readOrderByIdScoped(orderId);
     if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
     order.adminOrderNumber = await getAdminOrderNumberForOrderId(orderId);
-    sendJson(res, 200, order);
+    // TURN 10: an order detail is a large authenticated document (design + preview). A private
+    // validator lets the operator's browser reuse it across card/detail navigation instead of
+    // re-transferring ~117 KB per open, without any shared-cache exposure.
+    sendJsonValidated(req, res, 200, order, { cacheControl: 'private, max-age=60, must-revalidate', vary: 'Cookie' });
     return true;
   }
 
@@ -4051,13 +4519,34 @@ async function handleApiRequest(req, res, urlObj) {
     if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     const page = Math.max(1, Math.trunc(Number(urlObj.searchParams.get('page')) || 1));
     const limit = Math.min(100, Math.max(1, Math.trunc(Number(urlObj.searchParams.get('limit')) || 20)));
+    // TURN 10.1: `previewMode=url` is the new, smaller transport - the list carries a per-order
+    // authenticated preview URL instead of 20 inline base64 images. `includePreview=1` keeps working
+    // exactly as before for any client that has not been updated yet, so the two sides can deploy in
+    // any order.
+    const previewModeUrl = urlObj.searchParams.get('previewMode') === 'url';
     const [rows, total] = await Promise.all([
       readCrmOrderProjection({ page, limit, paidOnly: true, includePreview: urlObj.searchParams.get('includePreview') === '1' }),
       readCrmPaidOrderCount()
     ]);
     const orders = rows.map(toCrmOrderSummary);
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    sendJson(res, 200, { page, limit, total, totalPages, orders, hasMore: page < totalPages });
+    if (previewModeUrl) {
+      const withPreview = await readOrderIdsWithStoredPreview(orders.map((order) => order.id));
+      for (const order of orders) {
+        order.braceletPreviewUrl = order.id && withPreview.has(order.id)
+          ? `/api/crm/orders/${encodeURIComponent(order.id)}/preview`
+          : '';
+      }
+    }
+    // TURN 10: the list page is re-fetched on every pagination click; a private validator makes a
+    // revisit a 304 instead of another preview-heavy body.
+    // `previewTransport` is an explicit capability marker: a CRM client that asked for `previewMode=url`
+    // can tell an upgraded backend from an older one and only then stop expecting inline snapshots, so
+    // the frontend and backend can be deployed in either order without operators losing previews.
+    sendJsonValidated(req, res, 200, {
+      page, limit, total, totalPages, orders, hasMore: page < totalPages,
+      ...(previewModeUrl ? { previewTransport: 'url' } : {})
+    }, { cacheControl: 'private, max-age=60, must-revalidate', vary: 'Cookie' });
     return true;
   }
 
@@ -4585,7 +5074,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/stones" && method === "GET") {
-    sendJson(res, 200, await readStonesForApi());
+    sendJsonValidated(req, res, 200, await readStonesForApi());
     return true;
   }
 
@@ -4685,12 +5174,12 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/charms" && method === "GET") {
-    sendJson(res, 200, await readCharmsForApi());
+    sendJsonValidated(req, res, 200, await readCharmsForApi());
     return true;
   }
 
   if (pathname === "/api/spacers" && method === "GET") {
-    sendJson(res, 200, await readSpacersForApi());
+    sendJsonValidated(req, res, 200, await readSpacersForApi());
     return true;
   }
 
@@ -5074,7 +5563,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/settings" && method === "GET") {
-    sendJson(res, 200, await readSettingsForApi());
+    sendJsonValidated(req, res, 200, await readSettingsForApi());
     return true;
   }
 
