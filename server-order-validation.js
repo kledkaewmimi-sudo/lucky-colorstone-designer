@@ -4,10 +4,33 @@ const MIXED_COMPLETION_WINDOW_MM = 5;
 
 function invalid(message) { const error = new Error(message); error.statusCode = 409; throw error; }
 function positiveNumber(value) { const number = Number(value); return Number.isFinite(number) && number > 0 ? number : null; }
+function hasValue(value) { return value !== undefined && value !== null && value !== ''; }
+function optionalPositiveNumber(value, message) {
+  if (!hasValue(value)) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) invalid(message);
+  return number;
+}
 function catalogMap(catalogs, type) { return catalogs?.[type] instanceof Map ? catalogs[type] : new Map(); }
 function catalogPrice(item) { const price = Number(item?.pricing?.base ?? item?.price); return Number.isFinite(price) && price >= 0 ? price : null; }
-function charmFootprint(item) { return positiveNumber(item?.business?.footprintMm ?? item?.footprintMm); }
-function spacerLength(item) { return positiveNumber(item?.business?.effectiveLengthMm ?? item?.effectiveLengthMm); }
+function charmFootprint(item) {
+  return optionalPositiveNumber(
+    item?.business?.threadingOccupancyMm ?? item?.threadingOccupancyMm,
+    'A selected catalog item has invalid threading geometry.'
+  ) ?? optionalPositiveNumber(
+    item?.business?.footprintMm ?? item?.footprintMm,
+    'A selected catalog item has invalid physical dimensions.'
+  );
+}
+function spacerLength(item) {
+  return optionalPositiveNumber(
+    item?.business?.packingLengthMm ?? item?.packingLengthMm,
+    'A selected catalog item has invalid packing geometry.'
+  ) ?? optionalPositiveNumber(
+    item?.business?.effectiveLengthMm ?? item?.effectiveLengthMm,
+    'A selected catalog item has invalid physical dimensions.'
+  );
+}
 function fixedPayloadSize(order) { const size = Number(order?.beadSize); return PHYSICAL_STONE_SIZES.has(size) ? size : null; }
 function variantKey(stoneId, size) { return `${stoneId}_${size}`; }
 
@@ -19,7 +42,39 @@ function resolveAuthoritativeStoneVariant(component = {}, catalogStone = null, l
   const rawPrice = catalogStone[`p${size}`];
   const unitPrice = Number(rawPrice);
   if (rawPrice === null || rawPrice === undefined || rawPrice === '' || !Number.isFinite(unitPrice) || unitPrice < 0) invalid('A selected catalog item has invalid pricing.');
-  return { size, unitPrice };
+  const selectionGroupMm = optionalPositiveNumber(
+    catalogStone.selectionGroupMm,
+    'A selected catalog item has invalid selection geometry.'
+  ) ?? size;
+  if (selectionGroupMm !== size) invalid('Catalog selection geometry conflicts with the selected size.');
+  const nominalProductSizeMm = optionalPositiveNumber(
+    catalogStone.nominalProductSizeMm,
+    'A selected catalog item has invalid nominal size.'
+  ) ?? size;
+  const packingCandidates = [
+    optionalPositiveNumber(catalogStone.braceletPackingMm, 'A selected catalog item has invalid packing geometry.'),
+    optionalPositiveNumber(catalogStone.packingLengthMm, 'A selected catalog item has invalid packing geometry.'),
+    optionalPositiveNumber(catalogStone.business?.braceletPackingMm, 'A selected catalog item has invalid packing geometry.'),
+    optionalPositiveNumber(catalogStone.business?.packingLengthMm, 'A selected catalog item has invalid packing geometry.')
+  ].filter((value) => value !== null);
+  if (new Set(packingCandidates).size > 1) invalid('Catalog packing geometry metadata conflicts.');
+  const braceletPackingMm = packingCandidates[0] ?? size;
+  return { size, unitPrice, selectionGroupMm, nominalProductSizeMm, braceletPackingMm };
+}
+
+function validateClientGeometryMetadata(component, resolved) {
+  const fields = [
+    ['selectionGroupMm', resolved.selectionGroupMm],
+    ['nominalProductSizeMm', resolved.nominalProductSizeMm],
+    ['braceletPackingMm', resolved.braceletPackingMm]
+  ];
+  for (const [field, expected] of fields) {
+    if (!hasValue(component?.[field])) continue;
+    const supplied = Number(component[field]);
+    if (!Number.isFinite(supplied) || Math.abs(supplied - expected) > 0.000001) {
+      invalid('Client geometry metadata does not match the catalog.');
+    }
+  }
 }
 
 function normalizeSuppliedVariants(stoneVariants, sequenceVariantCounts) {
@@ -35,6 +90,16 @@ function normalizeSuppliedVariants(stoneVariants, sequenceVariantCounts) {
   }
   if (counts.size !== sequenceVariantCounts.size || [...counts].some(([key, quantity]) => sequenceVariantCounts.get(key) !== quantity)) invalid('Stone variants do not match bracelet components.');
   return counts;
+}
+
+function validateSuppliedVariantGeometry(stoneVariants, variantLines) {
+  if (!Array.isArray(stoneVariants)) return;
+  for (const variant of stoneVariants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const key = variantKey(String(variant.stoneId || '').trim(), Number(variant.size));
+    const expected = variantLines.get(key);
+    if (expected) validateClientGeometryMetadata(variant, expected);
+  }
 }
 
 function getServerCompletionEligibility({ beadSize, usedLengthMm, targetLengthMm } = {}) {
@@ -58,6 +123,21 @@ function getServerCompletionEligibility({ beadSize, usedLengthMm, targetLengthMm
   };
 }
 
+function stoneBillingFields(resolved) {
+  if (
+    !Number.isFinite(Number(resolved.selectionGroupMm)) ||
+    !Number.isFinite(Number(resolved.nominalProductSizeMm)) ||
+    !Number.isFinite(Number(resolved.braceletPackingMm))
+  ) return {};
+  const fields = {};
+  if (resolved.selectionGroupMm !== resolved.size || resolved.nominalProductSizeMm !== resolved.size || resolved.braceletPackingMm !== resolved.size) {
+    fields.selectionGroupMm = resolved.selectionGroupMm;
+    fields.nominalProductSizeMm = resolved.nominalProductSizeMm;
+    fields.braceletPackingMm = resolved.braceletPackingMm;
+  }
+  return fields;
+}
+
 function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings = {} } = {}) {
   const sequence = Array.isArray(clientOrder.braceletSequence) ? clientOrder.braceletSequence : [];
   if (!sequence.length) invalid('Bracelet configuration is required.');
@@ -79,14 +159,31 @@ function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings 
 
     if (type === 'stone') {
       const resolved = resolveAuthoritativeStoneVariant(component, item, legacyFixedSize);
+      validateClientGeometryMetadata(component, resolved);
       const key = variantKey(id, resolved.size);
       variantCounts.set(key, (variantCounts.get(key) || 0) + 1);
-      const variant = variantLines.get(key) || { stoneId: id, size: resolved.size, quantity: 0, unitPrice: resolved.unitPrice, subtotal: 0 };
+      const variant = variantLines.get(key) || {
+        stoneId: id,
+        size: resolved.size,
+        quantity: 0,
+        unitPrice: resolved.unitPrice,
+        subtotal: 0,
+        ...stoneBillingFields(resolved)
+      };
       variant.quantity += 1;
       variant.subtotal += resolved.unitPrice;
       variantLines.set(key, variant);
-      usedLengthMm += resolved.size;
-      billing.push({ type, id, stoneId: id, size: resolved.size, quantity: 1, unitPrice: resolved.unitPrice, totalPrice: resolved.unitPrice });
+      usedLengthMm += resolved.braceletPackingMm;
+      billing.push({
+        type,
+        id,
+        stoneId: id,
+        size: resolved.size,
+        quantity: 1,
+        unitPrice: resolved.unitPrice,
+        totalPrice: resolved.unitPrice,
+        ...stoneBillingFields(resolved)
+      });
       continue;
     }
 
@@ -98,6 +195,7 @@ function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings 
     billing.push({ type, id, [type === 'charm' ? 'charmId' : 'spacerId']: id, size: lengthMm, quantity: 1, unitPrice, totalPrice: unitPrice });
   }
 
+  validateSuppliedVariantGeometry(clientOrder.stoneVariants, variantLines);
   normalizeSuppliedVariants(clientOrder.stoneVariants, variantCounts);
   if (!billing.length) invalid('Bracelet configuration is empty.');
   const wristSize = Number(clientOrder.wristSize);
@@ -117,7 +215,12 @@ function validateAuthoritativeOrder({ clientOrder = {}, catalogs = {}, settings 
   const finalPrice = subtotal - discountAmount;
   return {
     itemizedBilling: billing,
-    stoneVariants: Array.from(variantLines.values()).map(({ stoneId, size, quantity }) => ({ stoneId, size, quantity })),
+    stoneVariants: Array.from(variantLines.values()).map((variant) => ({
+      stoneId: variant.stoneId,
+      size: variant.size,
+      quantity: variant.quantity,
+      ...stoneBillingFields(variant)
+    })),
     subtotal,
     discountPercent,
     discountAmount,
