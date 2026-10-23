@@ -123,6 +123,36 @@ Required checks:
 - Check create/edit/delete flows if affected.
 - Check responsive layout if UI was changed.
 
+## QA Tool Reuse Policy
+
+Before implementing any bug fix, feature, migration, or release:
+
+1. Read `qa/registry.json`.
+2. Search it with `npm run qa:find -- --category <category> --tag <tag>` or free text.
+3. Prefer the matching canonical registered test or tool over copying a
+   phase-specific report script.
+4. Extend the canonical tool when its existing checks are related but incomplete.
+5. Create a new tool only when no registered tool covers the behavior.
+6. Run the narrowest relevant registered suite and its related regressions.
+7. For releases, run `npm run qa:predeploy` before deployment and
+   `npm run qa:production` only as a read-only post-deployment check.
+8. Record reused tool IDs and evidence paths in the final report.
+
+New or promoted tools must declare in the registry:
+
+- category and purpose
+- canonical path and stable command
+- dependencies and required environment
+- safety level and write scope
+- applicable product areas
+- evidence location
+- known status and last verification date
+
+Tools with `remote-write-approved` safety are never run by default. Production
+writes require separate explicit owner authorization. Quarantined,
+environment-gated, and historical tools must remain available for evidence and
+must not be presented as passing baseline gates.
+
 ## Communication Rules
 
 - Be honest about uncertainty.

@@ -1,0 +1,56 @@
+name: QA baseline
+
+on:
+  pull_request:
+    branches: [main, uat]
+  push:
+    branches: [main, uat]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  curated-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install Chromium for browser QA
+        run: npx playwright install --with-deps chromium
+
+      - name: QA doctor
+        run: npm run qa:doctor -- --ci
+
+      - name: Catalog tests
+        run: npm run test:catalog
+
+      - name: CRM tests
+        run: npm run test:crm
+
+      - name: Layout tests
+        run: npm run test:layout
+
+      - name: Checkout contract tests
+        run: npm run test:checkout
+
+      - name: Security tests
+        run: npm run test:security
+
+      - name: Browser smoke tests
+        run: npm run test:browser

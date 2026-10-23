@@ -10,6 +10,22 @@ npm run dev   # starts the Express server on PORT 8000
 
 The app serves static files and exposes a REST API under `/api/*`. The frontend fetches stone data from the API.
 
+## QA toolkit
+
+Use the canonical registry and commands documented in [`qa/README.md`](qa/README.md):
+
+```bash
+npm run qa:doctor
+npm run qa:find -- --category layout --tag order
+npm run test:catalog
+npm run test:crm
+npm run test:layout
+npm run test:browser
+npm run test:checkout
+npm run test:security
+npm run qa:production
+```
+
 ## Deployment
 - **Vercel** – commit the repo and add the environment variable `API_URL` (or rely on the `vercel.json` rewrite).
 - **Netlify** – use the `_redirects` file (already included) to proxy `/api/*` to the Render backend.

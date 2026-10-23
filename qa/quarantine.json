@@ -1,0 +1,67 @@
+{
+  "updatedAt": "2026-10-23",
+  "policy": "Quarantined tools remain preserved for evidence but are excluded from default suites and CI gates.",
+  "items": [
+    {
+      "id": "quarantine.beryl-visuals",
+      "path": "tests/beryl-visuals.test.mjs",
+      "classification": "broken-script",
+      "observed": "Duplicate module declarations in its dynamically constructed source.",
+      "tracked": true,
+      "action": "Repair the test harness in a dedicated task; do not alter application behavior for this failure."
+    },
+    {
+      "id": "quarantine.mixed-size-ux",
+      "path": "tests/mixed-size-ux.test.mjs",
+      "classification": "outdated-test",
+      "observed": "3/47 assertions failed on obsolete source-string expectations.",
+      "tracked": true,
+      "action": "Rebase assertions against current canonical markup only after owner review."
+    },
+    {
+      "id": "quarantine.lumi-contracts",
+      "path": "tests/lumi/compatible-mode-fallback.test.mjs",
+      "relatedPaths": [
+        "tests/lumi/composition-diagnostics.test.mjs",
+        "tests/lumi/customer-profile.test.mjs"
+      ],
+      "classification": "untracked-current-worktree",
+      "observed": "7/21 targeted assertions failed. Clean HEAD comparison is unavailable because these files are untracked.",
+      "tracked": false,
+      "action": "Triage against the owner-approved Lumi contract before promoting to canonical coverage."
+    },
+    {
+      "id": "quarantine.lumi-onboarding-full-flow",
+      "path": "tests/lumi/step3-onboarding-full-flow.spec.mjs",
+      "classification": "unreliable-browser-test",
+      "observed": "390x844 run timed out waiting for onboarding completion in the current dirty worktree.",
+      "tracked": false,
+      "action": "Keep as phase evidence; use the curated browser suite for the baseline gate."
+    },
+    {
+      "id": "quarantine.analytics-uat",
+      "path": "tests/analytics-v2-server.test.mjs",
+      "relatedPaths": ["tests/analytics-visitor-summary.test.mjs"],
+      "classification": "environment-dependent",
+      "observed": "Requires APP_ENV=uat, UAT_BACKEND=true, and isolated UAT Supabase variables.",
+      "tracked": true,
+      "action": "Run only in the dedicated isolated UAT environment."
+    },
+    {
+      "id": "quarantine.audit-callers",
+      "path": "reports/production/_audit-callers.cjs",
+      "classification": "broken-script",
+      "observed": "Invalid regular-expression flags.",
+      "tracked": false,
+      "action": "Preserve archive; do not use as a QA utility."
+    },
+    {
+      "id": "quarantine.v2-customer-callsites",
+      "path": "reports/production/_v2-customer-callsites.cjs",
+      "classification": "broken-script",
+      "observed": "ES module import syntax in a .cjs file.",
+      "tracked": false,
+      "action": "Preserve archive; use the .mjs counterpart if needed."
+    }
+  ]
+}

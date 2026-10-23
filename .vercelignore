@@ -1,0 +1,42 @@
+reports/
+tests/
+qa/
+test-results/
+node_modules/
+.git/
+.playwright-cli/
+.serena/
+.worktrees/
+.migration-staging/
+supabase/
+scripts/
+tiktok-pixel-events-*/
+*.md
+*.log
+kyanite-modal-visual-gate-temp.png
+
+# ---------------------------------------------------------------------------
+# 2026-10-08 remediation: publish only what the running UAT application needs.
+# Keep production order snapshots, project archives, design references, CI
+# metadata and the local Node backend sources out of the public artifact.
+# These files stay in the repository; they are only excluded from the Vercel
+# upload. Nothing here is referenced by index.html, app.js, data.js, crm.html,
+# crm.js or lumi/** (verified by reports/uat/uat-wordmark-release-20261008-1654/dep-scan.mjs).
+# ---------------------------------------------------------------------------
+production-backups/
+assets_backup/
+docs/
+.github/
+.env*
+lucky-colorstone-designer.zip
+server.js
+server.ps1
+server-order-persistence.js
+server-order-validation.js
+server-order-cost-snapshot.js
+uat-backend-guard.js
+uat-supabase-auth.js
+meta-capi-purchase.js
+line-auth-handoff.js
+deferred-initial-line-login.js
+deferred-login-qa-session.js
