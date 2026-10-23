@@ -282,6 +282,25 @@
       "evidence": "reports/qa/checkout/latest.json"
     },
     {
+      "id": "checkout.lucky-geometry",
+      "title": "Lucky checkout geometry contract",
+      "category": "checkout",
+      "canonicalPath": "qa/tests/phase2-32-lucky-checkout-geometry-browser.test.mjs",
+      "purpose": "Generate the reported 18 cm / 10 mm Lucky bracelet, capture the final Step 4 checkout payload, and pass it through the Production backend validator without creating a Stripe session.",
+      "command": "node qa/tests/phase2-32-lucky-checkout-geometry-browser.test.mjs",
+      "dependencies": ["node", "playwright", "Production backend source"],
+      "requiredEnv": ["QA_APP_ROOT", "QA_BACKEND_ROOT"],
+      "safety": { "level": "fixture", "writes": "evidence-only", "network": "local-fixture-only" },
+      "status": "active",
+      "ciEligible": false,
+      "lastVerified": "2026-10-23",
+      "productAreas": ["checkout", "lumi", "charms", "step3", "step4"],
+      "tags": ["checkout", "lucky", "geometry", "threading", "cl01", "takrud"],
+      "suites": ["checkout", "browser"],
+      "runner": "node-script",
+      "evidence": "reports/qa/checkout/phase2-32-lucky-geometry.json"
+    },
+    {
       "id": "security.line-callback",
       "title": "LINE callback bootstrap",
       "category": "security",
