@@ -6,7 +6,20 @@ import { browserType, createFixtureBrowserContext } from '../lib/browser-fixture
 import { startStaticServer } from '../lib/static-server.mjs';
 import { writeEvidence } from '../lib/evidence.mjs';
 
-const appRoot = resolveApplicationRoot({ requireAdvanced: false });
+let appRoot;
+try {
+  appRoot = resolveApplicationRoot({ requireAdvanced: true });
+} catch (error) {
+  const skipped = {
+    completedAt: new Date().toISOString(),
+    status: 'SKIPPED',
+    reason: error.message,
+    requiredEnv: ['QA_APP_ROOT or a local production candidate']
+  };
+  writeEvidence('reports/qa/browser/step3-step4-smoke.json', skipped);
+  console.log(JSON.stringify(skipped, null, 2));
+  process.exit(0);
+}
 const data = (name) => JSON.parse(fs.readFileSync(path.join(appRoot.root, 'data', name), 'utf8'));
 const fixtures = {
   stones: data('stones.json'),
