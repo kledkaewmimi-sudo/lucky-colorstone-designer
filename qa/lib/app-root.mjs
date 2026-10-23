@@ -61,6 +61,10 @@ export function resolveApplicationRoot({ requireAdvanced = false } = {}) {
     return { root: advancedCandidate, source: 'latest-local-candidate', advanced: true };
   }
 
+  if (requireAdvanced) {
+    throw new Error('No application root contains the current advanced QA markers and required assets. Set QA_APP_ROOT explicitly.');
+  }
+
   if (isApplicationRoot(REPO_ROOT)) {
     return { root: REPO_ROOT, source: 'repository', advanced: false };
   }
