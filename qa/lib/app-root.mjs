@@ -10,16 +10,23 @@ const ADVANCED_MARKERS = [
   ['crm.js', 'catalogItemBadges'],
   ['product-card-badges.js', 'catalogBadgePresets']
 ];
+const ADVANCED_FILES = [
+  'assets/charms/heart-gold.webp',
+  'assets/charms/star-gold.webp',
+  'assets/spacers/Mallow.webp'
+];
 
 function isApplicationRoot(directory) {
   return REQUIRED_FILES.every((file) => fs.existsSync(path.join(directory, file)));
 }
 
 function supportsCurrentQaCoverage(directory) {
-  return isApplicationRoot(directory) && ADVANCED_MARKERS.every(([file, marker]) => {
-    const filePath = path.join(directory, file);
-    return fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf8').includes(marker);
-  });
+  return isApplicationRoot(directory)
+    && ADVANCED_FILES.every((file) => fs.existsSync(path.join(directory, file)))
+    && ADVANCED_MARKERS.every(([file, marker]) => {
+      const filePath = path.join(directory, file);
+      return fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf8').includes(marker);
+    });
 }
 
 function candidateDirectories() {
