@@ -11,13 +11,25 @@ function optionalPositiveNumber(value, message) {
   if (!Number.isFinite(number) || number <= 0) invalid(message);
   return number;
 }
+function optionalConfiguredLength(value, message) {
+  if (!hasValue(value) || (typeof value === 'string' && !value.trim())) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) invalid(message);
+  return number > 0 ? number : null;
+}
 function catalogMap(catalogs, type) { return catalogs?.[type] instanceof Map ? catalogs[type] : new Map(); }
 function catalogPrice(item) { const price = Number(item?.pricing?.base ?? item?.price); return Number.isFinite(price) && price >= 0 ? price : null; }
 function charmFootprint(item) {
-  return optionalPositiveNumber(
-    item?.business?.threadingOccupancyMm ?? item?.threadingOccupancyMm,
-    'A selected catalog item has invalid threading geometry.'
-  ) ?? optionalPositiveNumber(
+  // Threaded pendants must use verified loop/thread occupancy. Other accepted
+  // charm types use the authoritative footprint when optional threading data
+  // is not configured (the catalog commonly represents that as zero).
+  if (String(item?.type || '').trim().toLowerCase() === 'pendant') {
+    return optionalPositiveNumber(
+      item?.business?.threadingOccupancyMm ?? item?.threadingOccupancyMm,
+      'A selected catalog item has invalid threading geometry.'
+    );
+  }
+  return optionalConfiguredLength(
     item?.business?.footprintMm ?? item?.footprintMm,
     'A selected catalog item has invalid physical dimensions.'
   );
