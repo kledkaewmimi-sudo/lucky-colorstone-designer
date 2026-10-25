@@ -2214,7 +2214,9 @@ export async function getSharedCrmOrders() {
       if (requestSequence < committedOrdersFetchSequence || mutationRevisionAtStart !== ordersMutationRevision) {
         return ORDERS;
       }
-      ORDERS = Array.isArray(loaded) ? loaded : [];
+      ORDERS = Array.isArray(loaded)
+        ? loaded
+        : (Array.isArray(loaded?.orders) ? loaded.orders : []);
       committedOrdersFetchSequence = requestSequence;
       return ORDERS;
     }
@@ -2295,19 +2297,32 @@ export async function updateOrderStatus(orderId, newStatus, updates = {}) {
     if (!res.ok) {
       return { success: false, error: payload.error || `Order update failed with HTTP ${res.status}.` };
     }
-    const refreshed = await getSharedCrmOrders();
-    const savedOrder = (Array.isArray(refreshed) ? refreshed : []).find((order) => order?.id === orderId);
+    const savedOrder = payload?.order;
+    const persistedTracking = String(savedOrder?.trackingNumber || savedOrder?.trackingNo || "").trim();
     const requestedTracking = Object.prototype.hasOwnProperty.call(updates, "trackingNumber")
       ? String(updates.trackingNumber || "").trim()
-      : null;
-    const persistedTracking = savedOrder
-      ? String(savedOrder.trackingNumber || savedOrder.trackingNo || "").trim()
-      : "";
-    if (!savedOrder || savedOrder.status !== newStatus || (requestedTracking !== null && persistedTracking !== requestedTracking)) {
+      : persistedTracking;
+    const persistedCarrier = String(savedOrder?.shippingCarrier || "").trim();
+    const requestedCarrier = Object.prototype.hasOwnProperty.call(updates, "shippingCarrier")
+      ? String(updates.shippingCarrier || "").trim()
+      : persistedCarrier;
+    const persistedCustomCarrier = String(savedOrder?.shippingCarrierCustom || "").trim();
+    const requestedCustomCarrier = Object.prototype.hasOwnProperty.call(updates, "shippingCarrierCustom")
+      ? String(updates.shippingCarrierCustom || "").trim()
+      : persistedCustomCarrier;
+    if (
+      !payload?.success ||
+      !savedOrder ||
+      savedOrder.id !== orderId ||
+      savedOrder.status !== newStatus ||
+      persistedTracking !== requestedTracking ||
+      persistedCarrier !== requestedCarrier ||
+      persistedCustomCarrier !== requestedCustomCarrier
+    ) {
       return { success: false, error: "The server did not confirm the saved order status and tracking number." };
     }
     window.dispatchEvent(new Event("storage_sync"));
-    return { success: true, order: savedOrder };
+    return { success: true, order: savedOrder, notification: payload.notification || null };
   } catch (e) {
     console.error("Failed to update order status to API", e);
   }

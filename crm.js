@@ -4705,18 +4705,44 @@ function getOrderDetailItemCount(order = {}) {
   return beadCount + charmCount + spacerCount;
 }
 
+function getOrderShippedNotification(order = {}) {
+  if (order?.shippedNotification && typeof order.shippedNotification === 'object') return order.shippedNotification;
+  const legacySentAt = order?.notifications?.shippedSentAt;
+  return legacySentAt ? { state: 'sent', sentAt: legacySentAt } : null;
+}
+
+function getShippedNotificationStatusText(notification = null) {
+  if (!notification?.state) return 'Not requested';
+  if (notification.state === 'sent') return `Sent ${formatDetailDateTime(notification.sentAt)}`.trim();
+  if (notification.state === 'pending') return 'Pending delivery';
+  if (notification.state === 'failed') return `Failed (${notification.lastErrorCode || 'delivery error'})`;
+  if (notification.state === 'uncertain') return 'Delivery outcome uncertain; automatic resend blocked';
+  if (notification.state === 'skipped') return `Skipped (${notification.lastErrorCode || 'not eligible'})`;
+  return String(notification.state);
+}
+
+function getOrderNotificationToastSuffix(notification = null) {
+  if (!notification?.state) return '';
+  if (notification.state === 'sent') return ' LINE notification sent.';
+  if (notification.state === 'failed') return ' LINE notification failed; the order remains saved.';
+  if (notification.state === 'uncertain') return ' LINE delivery is uncertain; automatic resend was blocked.';
+  if (notification.state === 'skipped') return ' LINE notification skipped.';
+  return ' LINE notification pending.';
+}
+
 function buildOrderNotificationStateHtml(order = {}) {
   const paymentSentAt = formatNotificationTimestamp(order?.notifications?.paymentReceivedSentAt);
-  const shippedSentAt = formatNotificationTimestamp(order?.notifications?.shippedSentAt);
+  const shippedNotification = getOrderShippedNotification(order);
+  const shippedStatus = getShippedNotificationStatusText(shippedNotification);
 
-  if (!paymentSentAt && !shippedSentAt) {
+  if (!paymentSentAt && !shippedNotification) {
     return '';
   }
 
   return `
     <div class="order-notification-stack">
       ${paymentSentAt ? `<div class="order-notification-item">แจ้งชำระเงิน: ${escapeHtml(paymentSentAt)}</div>` : ''}
-      ${shippedSentAt ? `<div class="order-notification-item">แจ้งจัดส่ง: ${escapeHtml(shippedSentAt)}</div>` : ''}
+      ${shippedNotification ? `<div class="order-notification-item" data-shipped-notification-state="${escapeHtml(shippedNotification.state)}">LINE shipping: ${escapeHtml(shippedStatus)}</div>` : ''}
     </div>
   `;
 }
@@ -4772,6 +4798,7 @@ async function persistOrderWorkflowDetails(orderId, rowElement, currentStatus) {
       await loadDashboardData();
       return false;
     }
+    showToast(`Shipping details saved.${getOrderNotificationToastSuffix(result.notification)}`);
     await loadDashboardData();
     return true;
   } finally {
@@ -5009,7 +5036,7 @@ async function handleOrderStatusChange(orderId, newStatus, rowElement = null) {
       return;
     }
     addLog(`Changed order ${orderId} status to '${newStatus}'.`);
-    showToast(`Order status updated to: ${newStatus}`);
+    showToast(`Order status updated to: ${newStatus}.${getOrderNotificationToastSuffix(result.notification)}`);
     await loadDashboardData();
   } finally {
     setOrderWorkflowBusy(rowElement, false);
@@ -5063,7 +5090,7 @@ async function openOrderDetailModal(orderId) {
   const shippingFields = normalizeOrderShippingFields(order);
   const shippingCarrierDisplay = getOrderShippingCarrierDisplay(order);
   const paymentSentAt = formatDetailDateTime(order?.notifications?.paymentReceivedSentAt);
-  const shippedSentAt = formatDetailDateTime(order?.notifications?.shippedSentAt);
+  const shippedNotification = getOrderShippedNotification(order);
   const rawJson = JSON.stringify(order, null, 2);
   const detailSubtotal = getOrderSubtotal(order);
   const detailDiscountPercent = getOrderDiscountPercent(order);
@@ -5126,7 +5153,8 @@ async function openOrderDetailModal(orderId) {
         <h4>Notification Status</h4>
         ${renderOrderDetailFields([
           { label: 'Paid LINE Notification', value: paymentSentAt || 'Not sent yet' },
-          { label: 'Shipped LINE Notification', value: shippedSentAt || 'Not sent yet' }
+          { label: 'Shipped LINE Notification', value: getShippedNotificationStatusText(shippedNotification) },
+          ...(shippedNotification?.lastErrorCode ? [{ label: 'LINE Error Code', value: shippedNotification.lastErrorCode }] : [])
         ])}
       </section>
 

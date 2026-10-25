@@ -14,6 +14,7 @@ const {
 } = require('./tiktok-events-api.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const { validateAuthoritativeOrder } = require('./server-order-validation.js');
+const { validateOrderWorkflowUpdate, confirmedOrderMatchesUpdate, normalizeOrderStatus } = require('./order-workflow.js');
 const { normalizeLuckyBirthDate, buildLuckyBirthdayInsert } = require('./lucky-birthday-collection.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const {
@@ -44,6 +45,7 @@ const dataFileNames = {
   stones: "stones.json",
   charms: "charms.json",
   orders: "orders.json",
+  orderNotifications: "order_notifications.json",
   settings: "settings.json",
   analyticsSessions: "analytics_sessions.json",
   analyticsEvents: "analytics_events.json",
@@ -60,6 +62,7 @@ const defaultFileText = {
   stones: "[]",
   charms: "[]",
   orders: "[]",
+  orderNotifications: "[]",
   settings: "{\"globalDiscountPercent\":20,\"discountEnabled\":true,\"showDiscountBanner\":true}",
   analyticsSessions: "[]",
   analyticsEvents: "[]",
@@ -119,7 +122,7 @@ const PUBLIC_STATIC_DENY_FILES = new Set([
   "package-lock.json", "npm-shrinkwrap.json", "vercel.json", "procfile",
   "dockerfile", "docker-compose.yml", "orders.json", "analytics_events.json",
   "analytics_sessions.json", "analytics_errors.json", "admin_order_numbers.json",
-  "purchase_entries.json", "stone_purchase_entries.json"
+  "purchase_entries.json", "stone_purchase_entries.json", "order_notifications.json"
 ]);
 
 // Extensions that must never be served, even if a future allowlist entry slips.
@@ -220,6 +223,7 @@ function seedDatabase() {
   ensureDataFile(dataFiles.stones, defaultFileText.stones, bundledDataFiles.stones);
   ensureDataFile(dataFiles.charms, defaultFileText.charms, bundledDataFiles.charms);
   ensureDataFile(dataFiles.orders, defaultFileText.orders, bundledDataFiles.orders);
+  ensureDataFile(dataFiles.orderNotifications, defaultFileText.orderNotifications);
   ensureDataFile(dataFiles.settings, defaultFileText.settings, bundledDataFiles.settings);
   ensureDataFile(dataFiles.analyticsSessions, defaultFileText.analyticsSessions, bundledDataFiles.analyticsSessions);
   ensureDataFile(dataFiles.analyticsEvents, defaultFileText.analyticsEvents, bundledDataFiles.analyticsEvents);
@@ -841,7 +845,10 @@ function verifyLineSignature(rawBodyBuffer, signatureHeader) {
 async function sendLinePushMessages({ userId, messages }) {
   const lineChannelAccessToken = getLineChannelAccessToken();
   if (!lineChannelAccessToken) {
-    throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
+    const error = new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
+    error.deliveryOutcome = "rejected";
+    error.deliveryCode = "not_configured";
+    throw error;
   }
 
   const normalizedUserId = String(userId || "").trim();
@@ -853,17 +860,32 @@ async function sendLinePushMessages({ userId, messages }) {
     throw new Error("LINE push message requires at least one message.");
   }
 
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lineChannelAccessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      to: normalizedUserId,
-      messages
-    })
-  });
+  const endpoint = String(getEnvValue("LINE_PUSH_API_URL") || "https://api.line.me/v2/bot/message/push").trim();
+  const timeoutMs = Math.max(100, Math.min(30000, Number(getEnvValue("LINE_PUSH_TIMEOUT_MS")) || 10000));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lineChannelAccessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        to: normalizedUserId,
+        messages
+      }),
+      signal: controller.signal
+    });
+  } catch (fetchError) {
+    const error = new Error(fetchError?.name === "AbortError" ? "LINE push API timed out." : "LINE push API network failure.");
+    error.deliveryOutcome = "uncertain";
+    error.deliveryCode = fetchError?.name === "AbortError" ? "timeout" : "network_error";
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (response.ok) {
     return {
@@ -871,8 +893,13 @@ async function sendLinePushMessages({ userId, messages }) {
     };
   }
 
-  const responseText = await response.text();
-  throw new Error(`LINE push API returned HTTP ${response.status}: ${responseText}`);
+  const error = new Error(`LINE push API returned HTTP ${response.status}.`);
+  error.deliveryOutcome = response.status >= 500 || response.status === 408 || response.status === 429
+    ? "uncertain"
+    : "rejected";
+  error.deliveryCode = `http_${response.status}`;
+  error.httpStatus = response.status;
+  throw error;
 }
 
 async function sendLinePushMessage(to, messages) {
@@ -1445,7 +1472,11 @@ async function sendLineFlexMessageWithTextFallback({ userId, flexMessage, fallba
       messages: [flexMessage]
     });
   } catch (error) {
-    console.error("LINE Flex message failed; sending plain text fallback.", error);
+    // Only a definitive HTTP 400 proves the Flex request was rejected without a
+    // delivered message. Timeouts and 5xx responses are uncertain and must not
+    // trigger a second customer message.
+    if (error?.deliveryOutcome !== "rejected" || error?.httpStatus !== 400) throw error;
+    console.warn(`LINE Flex message rejected category=${error.deliveryCode || "http_400"}; sending plain text fallback.`);
     return await sendLinePushTextMessage({
       userId,
       text: fallbackText
@@ -1752,9 +1783,8 @@ function shouldSendShippedLineNotification(previousOrder, nextOrder) {
     return false;
   }
 
-  const previousStatus = String(previousOrder?.status || "").trim();
   const nextStatus = String(nextOrder?.status || "").trim();
-  return previousStatus !== "Shipped" && nextStatus === "Shipped";
+  return nextStatus === "Shipped";
 }
 
 function markOrderNotificationSent(order, notificationKey) {
@@ -1765,6 +1795,211 @@ function markOrderNotificationSent(order, notificationKey) {
       [notificationKey]: new Date().toISOString()
     }
   };
+}
+
+const ORDER_NOTIFICATION_OUTBOX_TABLE = 'order_notification_outbox';
+const SHIPPED_NOTIFICATION_TYPE = 'shipped';
+
+function serializeShippedNotification(row = null) {
+  if (!row) return { state: 'pending' };
+  return {
+    state: row.state === 'sending' ? 'pending' : row.state,
+    deliveryState: row.state,
+    lastErrorCode: row.last_error_code || '',
+    claimedAt: row.claimed_at || null,
+    sentAt: row.sent_at || null,
+    failedAt: row.failed_at || null,
+    uncertainAt: row.uncertain_at || null,
+    skippedAt: row.skipped_at || null,
+    updatedAt: row.updated_at || null
+  };
+}
+
+async function readShippedNotificationIntent(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      params: {
+        select: '*',
+        order_id: `eq.${id}`,
+        notification_type: `eq.${SHIPPED_NOTIFICATION_TYPE}`,
+        limit: '1'
+      }
+    });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+  return readJsonArray('orderNotifications').find((row) => (
+    row?.order_id === id && row?.notification_type === SHIPPED_NOTIFICATION_TYPE
+  )) || null;
+}
+
+async function readShippedNotificationIntents(orderIds = []) {
+  const ids = [...new Set(orderIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return new Map();
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      params: {
+        select: '*',
+        order_id: `in.(${ids.join(',')})`,
+        notification_type: `eq.${SHIPPED_NOTIFICATION_TYPE}`
+      }
+    });
+    return new Map((Array.isArray(rows) ? rows : []).map((row) => [row.order_id, row]));
+  }
+  const idSet = new Set(ids);
+  return new Map(readJsonArray('orderNotifications')
+    .filter((row) => row?.notification_type === SHIPPED_NOTIFICATION_TYPE && idSet.has(row.order_id))
+    .map((row) => [row.order_id, row]));
+}
+
+async function insertShippedNotificationIntent(orderId, state, extra = {}) {
+  const now = new Date().toISOString();
+  const row = {
+    order_id: String(orderId || '').trim(),
+    notification_type: SHIPPED_NOTIFICATION_TYPE,
+    state,
+    last_error_code: extra.lastErrorCode || null,
+    sent_at: extra.sentAt || null,
+    skipped_at: extra.skippedAt || null,
+    created_at: now,
+    updated_at: now
+  };
+  if (isSupabaseConfigured()) {
+    await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      method: 'POST',
+      params: { on_conflict: 'order_id,notification_type' },
+      prefer: 'resolution=ignore-duplicates,return=minimal',
+      body: row
+    });
+    return await readShippedNotificationIntent(orderId);
+  }
+  const rows = readJsonArray('orderNotifications');
+  const existing = rows.find((entry) => entry?.order_id === row.order_id && entry?.notification_type === SHIPPED_NOTIFICATION_TYPE);
+  if (existing) return existing;
+  const stored = { id: crypto.randomUUID(), ...row };
+  rows.push(stored);
+  writeJsonFile(dataFiles.orderNotifications, rows);
+  return stored;
+}
+
+async function claimShippedNotificationIntent(orderId, { allowFailedRetry = false } = {}) {
+  const now = new Date().toISOString();
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      method: 'PATCH',
+      params: {
+        order_id: `eq.${String(orderId || '').trim()}`,
+        notification_type: `eq.${SHIPPED_NOTIFICATION_TYPE}`,
+        state: allowFailedRetry ? 'in.(pending,failed)' : 'eq.pending'
+      },
+      prefer: 'return=representation',
+      body: { state: 'sending', claimed_at: now, updated_at: now }
+    });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+  const rows = readJsonArray('orderNotifications');
+  const row = rows.find((entry) => (
+    entry?.order_id === String(orderId || '').trim() &&
+    entry?.notification_type === SHIPPED_NOTIFICATION_TYPE &&
+    (entry.state === 'pending' || (allowFailedRetry && entry.state === 'failed'))
+  ));
+  if (!row) return null;
+  row.state = 'sending';
+  row.claimed_at = now;
+  row.updated_at = now;
+  writeJsonFile(dataFiles.orderNotifications, rows);
+  return row;
+}
+
+async function finishShippedNotificationIntent(row, state, details = {}) {
+  const now = new Date().toISOString();
+  const values = {
+    state,
+    last_error_code: details.errorCode || null,
+    sent_at: state === 'sent' ? now : null,
+    failed_at: state === 'failed' ? now : null,
+    uncertain_at: state === 'uncertain' ? now : null,
+    updated_at: now
+  };
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      method: 'PATCH',
+      params: { id: `eq.${row.id}`, state: 'eq.sending' },
+      prefer: 'return=representation',
+      body: values
+    });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+  const rows = readJsonArray('orderNotifications');
+  const stored = rows.find((entry) => entry?.id === row.id && entry?.state === 'sending');
+  if (!stored) return null;
+  Object.assign(stored, values);
+  writeJsonFile(dataFiles.orderNotifications, rows);
+  return stored;
+}
+
+function classifyShippedLineFailure(error) {
+  return {
+    state: error?.deliveryOutcome === 'uncertain' ? 'uncertain' : 'failed',
+    errorCode: error?.deliveryCode || 'delivery_error'
+  };
+}
+
+async function notifyShippedOrderAfterPersistence(previousOrder, confirmedOrder) {
+  const orderId = getOrderId(confirmedOrder);
+  const lineUserId = getOrderLineUserId(confirmedOrder);
+  const legacySentAt = getOrderNotifications(confirmedOrder).shippedSentAt || null;
+  let row = await readShippedNotificationIntent(orderId);
+
+  if (!row) {
+    const insertState = legacySentAt ? 'sent' : (lineUserId ? 'pending' : 'skipped');
+    const insertDetails = legacySentAt
+      ? { sentAt: legacySentAt }
+      : (lineUserId ? {} : { lastErrorCode: 'no_line_user', skippedAt: new Date().toISOString() });
+    row = await insertShippedNotificationIntent(
+      orderId,
+      insertState,
+      insertDetails
+    );
+  }
+  if (!row) return { state: 'failed', lastErrorCode: 'outbox_unavailable' };
+  if (!lineUserId || legacySentAt || ['sent', 'skipped', 'uncertain'].includes(row.state)) return serializeShippedNotification(row);
+  if (row.state === 'sending') return serializeShippedNotification(row);
+  if (row.state === 'failed' && normalizeOrderStatus(previousOrder?.status) !== 'Shipped') return serializeShippedNotification(row);
+
+  const claimed = await claimShippedNotificationIntent(orderId, { allowFailedRetry: normalizeOrderStatus(previousOrder?.status) === 'Shipped' });
+  if (!claimed) {
+    row = await readShippedNotificationIntent(orderId);
+    return serializeShippedNotification(row);
+  }
+
+  try {
+    await sendLineFlexMessageWithTextFallback({
+      userId: lineUserId,
+      flexMessage: buildShippedFlexMessage(confirmedOrder),
+      fallbackText: buildShippedFallbackLineMessage(confirmedOrder)
+    });
+  } catch (error) {
+    const failure = classifyShippedLineFailure(error);
+    console.warn(`[shipped-line-notify] failure order=${orderId} category=${failure.errorCode} state=${failure.state}`);
+    let failed = null;
+    try {
+      failed = await finishShippedNotificationIntent(claimed, failure.state, { errorCode: failure.errorCode });
+    } catch {
+      // The claim remains "sending", which is surfaced as pending/uncertain and is never auto-resent.
+    }
+    return serializeShippedNotification(failed || { ...claimed, state: failure.state, last_error_code: failure.errorCode });
+  }
+
+  console.info(`[shipped-line-notify] success order=${orderId}`);
+  try {
+    const sent = await finishShippedNotificationIntent(claimed, 'sent');
+    if (sent) return serializeShippedNotification(sent);
+  } catch {
+    // LINE accepted the message; leave the durable state in "sending" rather than inventing success.
+  }
+  return serializeShippedNotification({ ...claimed, state: 'sending', last_error_code: 'outbox_finalize_failed' });
 }
 
 function buildCarrierAwareShippedOrderLineMessage(order) {
@@ -1859,20 +2094,13 @@ async function trySendPaidOrderLineNotification(order) {
   };
 }
 
-async function trySendShippedLineNotification(previousOrder, nextOrder) {
-  if (!shouldSendShippedLineNotification(previousOrder, nextOrder)) {
-    return { sent: false, order: nextOrder };
-  }
-
-  await sendLineFlexMessageWithTextFallback({
-    userId: getOrderLineUserId(nextOrder),
-    flexMessage: buildShippedFlexMessage(nextOrder),
-    fallbackText: buildShippedFallbackLineMessage(nextOrder)
-  });
-
+async function trySendShippedLineNotification(previousOrder, nextOrder, { persistenceConfirmed = false } = {}) {
+  if (!persistenceConfirmed) throw new Error("Shipped LINE notification requires confirmed order persistence.");
+  const notification = await notifyShippedOrderAfterPersistence(previousOrder, nextOrder);
   return {
-    sent: true,
-    order: markOrderNotificationSent(nextOrder, "shippedSentAt")
+    sent: notification.state === 'sent',
+    order: nextOrder,
+    notification
   };
 }
 
@@ -4094,7 +4322,7 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
   const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,' + (includePreview ? 'braceletPreviewImage:payload->>braceletPreviewImage,braceletPreviewDataUrl:payload->>braceletPreviewDataUrl,braceletPreviewSnapshot:payload->>braceletPreviewSnapshot,checkoutBraceletPreviewImage:payload->checkoutSummary->>braceletPreviewImage,checkoutBraceletPreviewDataUrl:payload->checkoutSummary->>braceletPreviewDataUrl,checkoutBraceletPreviewSnapshot:payload->checkoutSummary->>braceletPreviewSnapshot,' : '') + 'costSnapshotStatus:payload->costSnapshot->>status,costSnapshotMaterialCost:payload->costSnapshot->>materialCost,costSnapshotDeliveryCost:payload->costSnapshot->>deliveryCost,costSnapshotTotalCost:payload->costSnapshot->>totalCost,costSnapshotProfit:payload->costSnapshot->>profit,costSnapshotMarginPercent:payload->costSnapshot->>marginPercent,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
   // The authenticated CRM order cards present the same shipping information as View Detail, so the
   // projection carries the recipient/phone/address fields. No public route reads this projection.
-  const selectWithShipping = select + ',recipientName:payload->>recipientName,phoneNumber:payload->>phoneNumber,addressLine:payload->>addressLine,province:payload->>province,postalCode:payload->>postalCode,shippingInfo:payload->shippingInfo';
+  const selectWithShipping = select + ',shippingCarrier:payload->>shippingCarrier,shippingCarrierCustom:payload->>shippingCarrierCustom,trackingNumber:payload->>trackingNumber,trackingUrl:payload->>trackingUrl,recipientName:payload->>recipientName,phoneNumber:payload->>phoneNumber,addressLine:payload->>addressLine,province:payload->>province,postalCode:payload->>postalCode,shippingInfo:payload->shippingInfo';
   const params = { select: selectWithShipping, order: 'date.desc.nullslast,created_at.desc' };
   if (paidOnly) applyCrmPaidOrderFilter(params);
   if (Number.isInteger(page) && Number.isInteger(limit)) { params.limit = limit; params.offset = (page - 1) * limit; }
@@ -4558,6 +4786,12 @@ async function handleApiRequest(req, res, urlObj) {
     const order = await readOrderByIdScoped(orderId);
     if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
     order.adminOrderNumber = await getAdminOrderNumberForOrderId(orderId);
+    const shippedNotificationRow = await readShippedNotificationIntent(orderId);
+    if (shippedNotificationRow) {
+      order.shippedNotification = serializeShippedNotification(shippedNotificationRow);
+    } else if (order?.notifications?.shippedSentAt) {
+      order.shippedNotification = { state: 'sent', sentAt: order.notifications.shippedSentAt };
+    }
     // TURN 10: an order detail is a large authenticated document (design + preview). A private
     // validator lets the operator's browser reuse it across card/detail navigation instead of
     // re-transferring ~117 KB per open, without any shared-cache exposure.
@@ -4579,6 +4813,15 @@ async function handleApiRequest(req, res, urlObj) {
       readCrmPaidOrderCount()
     ]);
     const orders = rows.map(toCrmOrderSummary);
+    try {
+      const notificationRows = await readShippedNotificationIntents(orders.map((order) => order.id));
+      for (const order of orders) {
+        const notificationRow = notificationRows.get(order.id);
+        if (notificationRow) order.shippedNotification = serializeShippedNotification(notificationRow);
+      }
+    } catch (error) {
+      console.warn(`[crm-orders] notification status lookup failed category=${error?.code || 'read_error'}`);
+    }
     const totalPages = Math.max(1, Math.ceil(total / limit));
     if (previewModeUrl) {
       const withPreview = await readOrderIdsWithStoredPreview(orders.map((order) => order.id));
@@ -5577,59 +5820,60 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
 
-    if (isSupabaseConfigured()) {
-      const previousOrder = await getSupabaseRecordById("orders", bodyObj.id);
-      if (previousOrder) {
-        if (isUnpaidStripeCheckoutOrder(previousOrder)) {
-          sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
-          return true;
-        }
-        let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
-
-        try {
-          const notificationResult = await trySendShippedLineNotification(previousOrder, nextOrder);
-          if (notificationResult.sent) {
-            nextOrder = notificationResult.order;
-          }
-        } catch (error) {
-          console.error(`Failed to send shipped LINE notification for ${bodyObj.id}:`, error);
-        }
-
-        await upsertSupabaseRow("orders", buildOrderRow(nextOrder));
-      }
-
-      sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
+    const orderId = String(bodyObj.id || '').trim();
+    if (!orderId || orderId.length > 120 || /[\u0000-\u001F\u007F]/.test(orderId)) {
+      sendJson(res, 400, { error: "Invalid order ID." });
       return true;
     }
 
-    const orders = readJsonArray("orders");
-    const orderIndex = orders.findIndex((entry) => entry && entry.id === bodyObj.id);
-    if (orderIndex >= 0) {
-      const previousOrder = orders[orderIndex];
-      if (isUnpaidStripeCheckoutOrder(previousOrder)) {
-        sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
-        return true;
-      }
-      let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
-      orders[orderIndex] = nextOrder;
-      writeJsonFile(dataFiles.orders, orders);
+    let previousOrder;
+    try {
+      previousOrder = await readOrderByIdScoped(orderId);
+    } catch {
+      sendJson(res, 500, { error: "Unable to read the order." });
+      return true;
+    }
+    if (!previousOrder) {
+      sendJson(res, 404, { error: "Order not found." });
+      return true;
+    }
+    if (isUnpaidStripeCheckoutOrder(previousOrder)) {
+      sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
+      return true;
+    }
 
+    const validation = validateOrderWorkflowUpdate(previousOrder, bodyObj);
+    if (!validation.ok) {
+      sendJson(res, validation.status, { error: validation.error });
+      return true;
+    }
+
+    const nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
+    let confirmedOrder;
+    try {
+      await saveOrderForApi(nextOrder);
+      confirmedOrder = await readOrderByIdScoped(orderId);
+      if (!confirmedOrder || !confirmedOrderMatchesUpdate(confirmedOrder, bodyObj)) {
+        throw new Error("Saved order confirmation mismatch.");
+      }
+    } catch (error) {
+      console.error(`[orders] update persistence failed order=${orderId} category=${error?.code || 'persistence_error'}`);
+      sendJson(res, 500, { error: "Unable to save the order status and shipping details." });
+      return true;
+    }
+
+    let notification = { state: 'skipped' };
+    if (normalizeOrderStatus(confirmedOrder.status) === 'Shipped') {
       try {
-        const notificationResult = await trySendShippedLineNotification(previousOrder, nextOrder);
-        if (notificationResult.sent) {
-          nextOrder = notificationResult.order;
-          orders[orderIndex] = nextOrder;
-          writeJsonFile(dataFiles.orders, orders);
-        }
+        const notificationResult = await trySendShippedLineNotification(previousOrder, confirmedOrder, { persistenceConfirmed: true });
+        notification = notificationResult.notification;
       } catch (error) {
-        console.error(`Failed to send shipped LINE notification for ${bodyObj.id}:`, error);
+        console.warn(`[shipped-line-notify] outbox failure order=${orderId} category=${error?.deliveryCode || 'outbox_error'}`);
+        notification = { state: 'failed', lastErrorCode: 'outbox_error' };
       }
-
-      sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
-      return true;
     }
-
-    sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
+    confirmedOrder.shippedNotification = notification;
+    sendJson(res, 200, { success: true, order: confirmedOrder, notification });
     return true;
   }
 
