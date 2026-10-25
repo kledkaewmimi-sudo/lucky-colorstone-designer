@@ -2915,10 +2915,10 @@ function normalizeLuckyBirthdaySubmission(payload = {}) {
 
 async function saveLuckyBirthday(payload) {
   const normalized = normalizeLuckyBirthdaySubmission(payload);
-  if (!normalized) return { ok: false, status: 400 };
-  if (!isSupabaseConfigured()) return { ok: false, status: 503 };
+  if (!normalized) return { ok: false, status: 400, code: 'invalid_submission' };
+  if (!isSupabaseConfigured()) return { ok: false, status: 503, code: 'configuration' };
   const insert = buildLuckyBirthdayInsert(getSupabaseConfig().serviceRoleKey, normalized);
-  if (!insert) return { ok: false, status: 503 };
+  if (!insert) return { ok: false, status: 503, code: 'collection_key' };
   // The server-derived collection key makes retries idempotent without allowing browser writes to update a row.
   await supabaseRequest('lucky_birthday_submissions', {
     method: 'POST',
@@ -4973,11 +4973,12 @@ async function handleApiRequest(req, res, urlObj) {
     }
     try {
       const result = await saveLuckyBirthday(bodyObj);
-      sendJson(res, result.status, { success: result.ok });
+      sendJson(res, result.status, { success: result.ok, code: result.code });
     } catch (error) {
       // Log only an allowlisted category: birth dates, session IDs, and keys must never reach logs.
-      console.warn(`[lucky-birthday] persistence failed category=${classifyLuckyBirthdayPersistenceError(error)}`);
-      sendJson(res, 503, { success: false });
+      const code = classifyLuckyBirthdayPersistenceError(error);
+      console.warn(`[lucky-birthday] persistence failed category=${code}`);
+      sendJson(res, 503, { success: false, code });
     }
     return true;
   }

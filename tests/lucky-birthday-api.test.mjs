@@ -52,12 +52,13 @@ try {
     const start = source.indexOf('async function saveLuckyBirthday');
     const end = source.indexOf('const ANALYTICS_RANGE_PRESETS', start);
     const handler = source.slice(start, end);
-    assert.match(handler, /if \(!isSupabaseConfigured\(\)\) return \{ ok: false, status: 503 \}/);
+    assert.match(handler, /if \(!isSupabaseConfigured\(\)\) return \{ ok: false, status: 503, code: 'configuration' \}/);
     assert.doesNotMatch(handler, /writeJsonFile|saveAnalytics/);
     assert.match(handler, /supabaseRequest\('lucky_birthday_submissions'/);
     assert.match(handler, /resolution=ignore-duplicates/);
     assert.match(source, /classifyLuckyBirthdayPersistenceError/);
     assert.doesNotMatch(source.slice(source.indexOf('function classifyLuckyBirthdayPersistenceError'), source.indexOf('const ANALYTICS_RANGE_PRESETS')), /birthDate|sessionId|serviceRoleKey/);
+    assert.match(source, /sendJson\(res, result\.status, \{ success: result\.ok, code: result\.code \}\)/);
   });
 
   await test('keeps raw records private and provides restricted aggregate/retention paths', async () => {
