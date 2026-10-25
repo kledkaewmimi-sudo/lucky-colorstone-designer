@@ -4705,6 +4705,34 @@ function getCurrentCheckoutFitEligibility() {
   return getResolvedLayoutFitEligibility(createCurrentBraceletResolvedLayout());
 }
 
+const LUCKY_BIRTHDAY_CONSENT_VERSION = 'lucky-birthday-consent-th-v1';
+
+function bangkokDateKey(now = new Date()) {
+  const values = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(now).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function submitLuckyBirthday(answers = {}) {
+  if (answers?.birthdayConsent !== true || !analyticsSessionId) return Promise.resolve(false);
+  const year = Number(answers.birthYear);
+  const month = Number(answers.birthMonth);
+  const day = Number(answers.birthDate);
+  const birthDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const parsed = new Date(`${birthDate}T00:00:00.000Z`);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || parsed.toISOString().slice(0, 10) !== birthDate || birthDate > bangkokDateKey()) return Promise.resolve(false);
+  return fetch('/api/lucky/birthday', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'lucky', sessionId: analyticsSessionId, birthDate, consentVersion: LUCKY_BIRTHDAY_CONSENT_VERSION })
+  }).then((response) => response.status === 202).catch(() => false);
+}
+
 // Dormant Phase 0.5 integration seam: no UI or automatic invocation exists yet.
 // Validation completes against a catalog snapshot before this function mutates State.
 function applyLumiDesignToStep3(contract) {
@@ -4737,6 +4765,7 @@ function getLumiUiController() {
     getRecommendationPrice: calculateLumiRecommendationPrice,
     hasExistingDesign: () => State.selectedStones.length > 0 || State.selectedCharmIds.length > 0,
     analytics: createLumiAnalytics({ track: (eventName, properties) => { handleLumiUndoBoundaryEvent(eventName); trackAnalyticsEvent(eventName, { ...properties, current_step: 3 }); } }),
+    onBasicInfoCompleted: submitLuckyBirthday,
     onAccepted: async ({ action = 'adjust' } = {}) => {
       const luckyUndoSnapshot = pendingLuckyUndoSnapshot;
       pendingLuckyUndoSnapshot = null;

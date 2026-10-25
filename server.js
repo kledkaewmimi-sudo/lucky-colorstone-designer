@@ -14,6 +14,7 @@ const {
 } = require('./tiktok-events-api.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const { validateAuthoritativeOrder } = require('./server-order-validation.js');
+const { normalizeLuckyBirthDate, buildLuckyBirthdayInsert } = require('./lucky-birthday-collection.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const {
   attachAdminOrderNumbers,
@@ -2890,6 +2891,44 @@ async function linkAnalyticsOrderConversion(order = {}) {
   if (funnelVersion === ANALYTICS_FUNNEL_VERSION) await saveAnalyticsEvent(payload);
 }
 
+const LUCKY_BIRTHDAY_CONSENT_VERSION = 'lucky-birthday-consent-th-v1';
+
+function isSameOriginBrowserRequest(req) {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return true;
+  try {
+    const originHost = new URL(origin).host;
+    const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+    return originHost === String(req.headers.host || '').trim() || originHost === forwardedHost;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeLuckyBirthdaySubmission(payload = {}) {
+  const birth = normalizeLuckyBirthDate(payload.birthDate);
+  const sessionId = truncateText(payload.sessionId, 120);
+  const consentVersion = truncateText(payload.consentVersion, 80);
+  if (!birth || !/^[A-Za-z0-9_-]{12,120}$/.test(sessionId) || consentVersion !== LUCKY_BIRTHDAY_CONSENT_VERSION || payload.source !== 'lucky') return null;
+  return { ...birth, sessionId, consentVersion };
+}
+
+async function saveLuckyBirthday(payload) {
+  const normalized = normalizeLuckyBirthdaySubmission(payload);
+  if (!normalized) return { ok: false, status: 400 };
+  if (!isSupabaseConfigured()) return { ok: false, status: 503 };
+  const insert = buildLuckyBirthdayInsert(getSupabaseConfig().serviceRoleKey, normalized);
+  if (!insert) return { ok: false, status: 503 };
+  // The server-derived collection key makes retries idempotent without allowing browser writes to update a row.
+  await supabaseRequest('lucky_birthday_submissions', {
+    method: 'POST',
+    params: { on_conflict: 'collection_key' },
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    body: { ...insert.row }
+  });
+  return { ok: true, status: 202 };
+}
+
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
 // TURN 10 (data transfer): the exact column sets the CRM analytics summary reads. Measured against the
 // previous `select=*` behaviour in tools/turn10-bench.mjs. `properties` must stay on events (the funnel,
@@ -4908,6 +4947,25 @@ async function handleApiRequest(req, res, urlObj) {
     } catch (error) {
       console.warn("[analytics] event rejected:", error?.message || error);
       sendJson(res, 202, { success: false });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/lucky/birthday' && method === 'POST') {
+    if (!isSameOriginBrowserRequest(req) || !bodyObj) {
+      sendJson(res, 403, { success: false });
+      return true;
+    }
+    if (Buffer.byteLength(JSON.stringify(bodyObj), 'utf8') > 8 * 1024) {
+      sendJson(res, 413, { success: false });
+      return true;
+    }
+    try {
+      const result = await saveLuckyBirthday(bodyObj);
+      sendJson(res, result.status, { success: result.ok });
+    } catch {
+      // Deliberately do not log payloads: birth dates and LINE tokens are sensitive.
+      sendJson(res, 503, { success: false });
     }
     return true;
   }

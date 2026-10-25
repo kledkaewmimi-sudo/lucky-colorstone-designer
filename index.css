@@ -7639,3 +7639,21 @@ body:has(.lumi-shell){height:100%;overflow:hidden;overscroll-behavior:none}
     width: 100%;
   }
 }
+
+.lucky-page1-surface .lumi-birthday-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  color: #826b7e;
+  font: 500 0.78rem/1.45 var(--lucky-v2-font-thai);
+  cursor: pointer;
+}
+
+.lucky-page1-surface .lumi-birthday-consent input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: #7e43a3;
+}
