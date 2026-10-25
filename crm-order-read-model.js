@@ -113,6 +113,10 @@ function toCrmOverviewOrderSummary(order = {}) {
   delete summary.braceletPreviewImage;
   // The overview list shows no shipping presentation, so customer addresses stay out of it.
   delete summary.shippingInfo;
+  delete summary.shippingCarrier;
+  delete summary.shippingCarrierCustom;
+  delete summary.trackingNumber;
+  delete summary.trackingUrl;
   return summary;
 }
 

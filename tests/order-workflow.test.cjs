@@ -5,7 +5,7 @@ const {
   validateOrderWorkflowUpdate,
   confirmedOrderMatchesUpdate
 } = require('../order-workflow.js');
-const { toCrmOrderSummary } = require('../crm-order-read-model.js');
+const { toCrmOrderSummary, toCrmOverviewOrderSummary } = require('../crm-order-read-model.js');
 
 const paidOrder = {
   id: 'ORD-WORKFLOW-1',
@@ -71,4 +71,15 @@ test('CRM list projection retains confirmed carrier and tracking fields', () => 
   assert.equal(summary.shippingCarrierCustom, 'Local Courier');
   assert.equal(summary.trackingNumber, 'CUSTOM123');
   assert.equal(summary.trackingUrl, 'https://tracking.example/CUSTOM123');
+});
+
+test('CRM overview projection omits shipping and tracking fields', () => {
+  const overview = toCrmOverviewOrderSummary({
+    ...paidOrder,
+    status: 'Shipped',
+    shippingCarrier: 'Kerry',
+    trackingNumber: 'TRACK1'
+  });
+  assert.equal('shippingCarrier' in overview, false);
+  assert.equal('trackingNumber' in overview, false);
 });
