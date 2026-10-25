@@ -249,10 +249,11 @@ local `node_modules` and Vercel build metadata exist outside the tracked source;
 the artifact integrity and staged artifact checks prove the deployed bytes match
 the tracked release source.
 
-During deployment, Render's short-SHA picker initially resolved `92235ee` to a
-different colliding commit. That build (`dep-dbequ21srm7s73d2dspg`) was
-cancelled during clone, never became live, and was followed by the unique final
-SHA deployment above.
+An initial build of code commit `92235ee6780cd5c153d65b875120f8e3dc0feccb`
+(`dep-dbequ21srm7s73d2dspg`) was cancelled during clone while the required
+release report commit was being prepared. It never became live or changed
+traffic. The final deployment above contains that same runtime code plus the
+release report and is the only live deployment from this release.
 
 
 Rollback references:
