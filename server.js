@@ -2929,6 +2929,17 @@ async function saveLuckyBirthday(payload) {
   return { ok: true, status: 202 };
 }
 
+function classifyLuckyBirthdayPersistenceError(error) {
+  const message = String(error?.message || '');
+  if (/permission denied/i.test(message)) return 'permission_denied';
+  if (/invalid api key|jwt|unauthorized|401/i.test(message)) return 'authentication';
+  if (/schema cache|could not find the table/i.test(message)) return 'schema_cache';
+  if (/row-level security/i.test(message)) return 'rls_denied';
+  if (/conflict|duplicate/i.test(message)) return 'conflict';
+  if (/fetch failed|network|timed out|timeout/i.test(message)) return 'network';
+  return 'write_failed';
+}
+
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
 // TURN 10 (data transfer): the exact column sets the CRM analytics summary reads. Measured against the
 // previous `select=*` behaviour in tools/turn10-bench.mjs. `properties` must stay on events (the funnel,
@@ -4963,8 +4974,9 @@ async function handleApiRequest(req, res, urlObj) {
     try {
       const result = await saveLuckyBirthday(bodyObj);
       sendJson(res, result.status, { success: result.ok });
-    } catch {
-      // Deliberately do not log payloads: birth dates and LINE tokens are sensitive.
+    } catch (error) {
+      // Log only an allowlisted category: birth dates, session IDs, and keys must never reach logs.
+      console.warn(`[lucky-birthday] persistence failed category=${classifyLuckyBirthdayPersistenceError(error)}`);
       sendJson(res, 503, { success: false });
     }
     return true;

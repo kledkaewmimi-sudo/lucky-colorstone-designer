@@ -56,6 +56,8 @@ try {
     assert.doesNotMatch(handler, /writeJsonFile|saveAnalytics/);
     assert.match(handler, /supabaseRequest\('lucky_birthday_submissions'/);
     assert.match(handler, /resolution=ignore-duplicates/);
+    assert.match(source, /classifyLuckyBirthdayPersistenceError/);
+    assert.doesNotMatch(source.slice(source.indexOf('function classifyLuckyBirthdayPersistenceError'), source.indexOf('const ANALYTICS_RANGE_PRESETS')), /birthDate|sessionId|serviceRoleKey/);
   });
 
   await test('keeps raw records private and provides restricted aggregate/retention paths', async () => {
