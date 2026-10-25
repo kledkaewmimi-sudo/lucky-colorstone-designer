@@ -1,0 +1,66 @@
+# Publish only what the running customer/CRM application needs.
+#
+# Reconciled 2026-10-10 for the full UAT -> Production feature migration. This file is the UNION of
+#   (a) the security hotfix exclusion rules that are verified against the deployed production artifact, and
+#   (b) the full-UAT-migration exclusion rules that were validated against the migrated frontend graph,
+# plus the UAT-only extras (tests-uat/, .vercel/, *.rar, node manifests).
+#
+# Every excluded path was checked against the migrated client-required module graph
+# (index.html + crm.html + transitive imports of app.js / crm.js / data.js): none of the required
+# frontend modules, /data/*.json, /assets/**, /lumi/**, /api/liff-config.js or _redirects is excluded.
+
+# internal implementation / operations
+server.js
+server.ps1
+server-order-persistence.js
+server-order-validation.js
+server-order-cost-snapshot.js
+server-admin-order-numbers.js
+crm-order-read-model.js
+uat-backend-guard.js
+uat-supabase-auth.js
+meta-capi-purchase.js
+tiktok-events-api.js
+scripts/
+supabase/
+.github/
+
+# LINE/deferred-auth modules loaded from the backend or bundled elsewhere, not by the frontend graph.
+line-auth-handoff.js
+line-handoff-client.js
+line-liff-profile-sync.js
+line-login-start-diagnostic.js
+deferred-initial-line-login.js
+deferred-login-qa-session.js
+
+# internal documentation, reports and test material
+*.md
+docs/
+reports/
+tests/
+tests-uat/
+test-results/
+
+# archives and backups
+*.zip
+*.rar
+production-backups/
+assets_backup/
+
+# node manifests are not runtime assets for the static site
+package.json
+package-lock.json
+
+# secrets / local state / tooling metadata
+.env*
+.vercel/
+node_modules/
+.serena/
+.worktrees/
+.migration-staging/
+.playwright-cli/
+
+# local QA scratch
+*.log
+_probe-*.txt
+kyanite-modal-visual-gate-temp.png

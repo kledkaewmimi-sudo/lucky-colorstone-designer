@@ -5,11 +5,14 @@ import {
   getSharedSpacerCatalog,
   getSharedCategoryCatalog,
   saveSharedCharmCatalogEntry,
+  getLastCharmSaveError,
   saveSharedSpacerCatalogEntry,
+  getLastSpacerSaveError,
   deleteSharedCharmCatalogEntry,
   saveSharedCategoryCatalogEntry,
   deleteSharedCategoryCatalogEntry,
   saveSharedCatalog, 
+  getLastStoneSaveError,
   deleteSharedCatalog,
   getSharedSettings, 
   saveSharedSettings, 
@@ -30,19 +33,31 @@ import {
   STONES,
   ORDERS,
   SETTINGS,
+  normalizeLandingBraceletCount,
+  LANDING_BRACELET_COUNT_FALLBACK,
   getStonePriceForSize,
   addSharedOrder,
   withCatalogImageVersion,
   getComponentTypeLabel
-  , getSharedPurchaseEntries, getSharedPurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry
+  , getSharedPurchaseEntries, getSharedPurchaseCostSummaries, savePurchaseEntry, deletePurchaseEntry,
+  crmAdminHeaders, adminLogin, adminLogout, getAdminSession
 } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
-import { buildCopyReadyShippingLabel, getOrderFinalBraceletPreviewImage } from './crm-order-details.js';
+import { buildCopyReadyShippingLabel, getOrderFinalBraceletPreviewImage, getOrderBraceletPreviewSource } from './crm-order-details.js';
 import { createCrmSettingsLoader, getCrmStoneOverviewMetrics, loadCrmOverviewWithFallback } from './crm-runtime-loaders.mjs';
+import {
+  getBadgeAssignmentKey,
+  getBadgePresetCatalog,
+  getProductCardBadge,
+  normalizeBadgeAssignments,
+  normalizeBannerColor,
+  normalizeCustomBannerPresets
+} from './product-card-badges.js';
 
 const CLEAN_EDGE_STONE_IDS = new Set([BERYL_STONE_ID, 'sunstone', 'green_jade']);
 const loadCrmSettings = createCrmSettingsLoader(getSharedSettings);
 let orderBraceletPreviewInstance = 0;
+let crmOrdersPageRequestSequence = 0;
 
 // ==========================================
 // 1. CRM Application State
@@ -82,6 +97,7 @@ const CRMState = {
   charmActiveFilter: 'all',
   charmStockFilter: 'all',
   charmCollectionFilter: 'all',
+  badgeSettings: {},
   categorySort: 'displayOrder-asc',
   categoryScopeFilter: 'all',
   categoryStatusFilter: 'all',
@@ -238,8 +254,28 @@ const DOM = {
   globalSettingsForm: document.getElementById('globalSettingsForm'),
   globalDiscountPercent: document.getElementById('globalDiscountPercent'),
   discountEnabled: document.getElementById('discountEnabled'),
+  landingBraceletCount: document.getElementById('landingBraceletCount'),
+  badgePresetForm: document.getElementById('badgePresetForm'),
+  badgePresetEditId: document.getElementById('badgePresetEditId'),
+  badgePresetLabel: document.getElementById('badgePresetLabel'),
+  badgePresetTextColor: document.getElementById('badgePresetTextColor'),
+  badgePresetBackgroundColor: document.getElementById('badgePresetBackgroundColor'),
+  badgePresetPreview: document.getElementById('badgePresetPreview'),
+  badgePresetList: document.getElementById('badgePresetList'),
+  btnCancelBadgePreset: document.getElementById('btnCancelBadgePreset'),
   btnResetDatabase: document.getElementById('btnResetDatabase'),
   btnSeedDemoOrders: document.getElementById('btnSeedDemoOrders'),
+
+  // Modal: Item Banner Assignment
+  badgeAssignmentModal: document.getElementById('badgeAssignmentModal'),
+  badgeAssignmentForm: document.getElementById('badgeAssignmentForm'),
+  badgeAssignmentItemId: document.getElementById('badgeAssignmentItemId'),
+  badgeAssignmentItemType: document.getElementById('badgeAssignmentItemType'),
+  badgeAssignmentItemName: document.getElementById('badgeAssignmentItemName'),
+  badgeAssignmentSelect: document.getElementById('badgeAssignmentSelect'),
+  badgeAssignmentPreview: document.getElementById('badgeAssignmentPreview'),
+  btnBadgeAssignmentClose: document.getElementById('btnBadgeAssignmentClose'),
+  btnCancelBadgeAssignment: document.getElementById('btnCancelBadgeAssignment'),
   
   // Modal: Add/Edit Stone
   stoneCrudModal: document.getElementById('stoneCrudModal'),
@@ -481,7 +517,7 @@ async function uploadImageToMediaService(kind) {
 
   const response = await fetch("/api/uploads/image", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: crmAdminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       entityType: kind.toLowerCase(),
       fileName: pending.fileName,
@@ -525,7 +561,17 @@ function resetImageUploadState(kind) {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   // Check auth session
-  checkAuthSession();
+  await checkAuthSession();
+  // TURN 10.1: order cards load their bracelet preview from an authenticated URL. If an individual
+  // preview is unavailable (a legacy order with no stored snapshot, or a transient failure), swap the
+  // broken image for a neutral placeholder instead of leaving the browser's broken-image glyph.
+  document.addEventListener('error', (event) => {
+    const target = event.target;
+    if (!target || target.tagName !== 'IMG' || !target.dataset || !target.dataset.orderPreviewUrl) return;
+    const wrapper = target.closest('.order-bracelet-preview');
+    target.remove();
+    if (wrapper) wrapper.classList.add('order-bracelet-preview-unavailable');
+  }, true);
   
   // Setup clock & logger
   initClock();
@@ -594,15 +640,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Auth Session checker
-function checkAuthSession() {
+// SECURITY HOTFIX (Phase 2): operator identity is verified by the server. The browser never
+// stores the master secret; the server issues an HttpOnly session cookie that every CRM
+// request then relies on, and a CSRF token is required for state-changing requests.
+async function checkAuthSession() {
   const session = localStorage.getItem('lucky_crm_session') === 'true';
-  if (session) {
+  let serverSession = { authenticated: false };
+  try { serverSession = await getAdminSession(); } catch (error) { /* treat as signed out */ }
+  if (serverSession && serverSession.authenticated) {
     CRMState.sessionActive = true;
     DOM.loginPortal.style.display = 'none';
     DOM.dashboardContainer.style.display = 'flex';
     addLog("Administrator session restored.");
   } else {
+    if (session) localStorage.removeItem('lucky_crm_session');
     CRMState.sessionActive = false;
     DOM.loginPortal.style.display = 'flex';
     DOM.dashboardContainer.style.display = 'none';
@@ -756,31 +807,39 @@ async function switchTab(tabName) {
 // 5. Auth Events
 // ==========================================
 function setupAuthEvents() {
-  DOM.loginForm.addEventListener('submit', (e) => {
+  DOM.loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = DOM.adminUsername.value.trim();
     const pass = DOM.adminPassword.value.trim();
-    
-    // Auth logic - Senior Admin Default Setup
-    if (user === 'admin' && pass === 'lucky123') {
+    const submitButton = DOM.loginForm.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+
+    // SECURITY HOTFIX: the operator credential is verified by the server, which then issues
+    // an HttpOnly session cookie. No credential or master secret is kept in the browser.
+    try {
+      await adminLogin(pass, user || 'admin');
       localStorage.setItem('lucky_crm_session', 'true');
       CRMState.sessionActive = true;
       DOM.loginErrorMsg.style.display = 'none';
       DOM.loginPortal.style.display = 'none';
       DOM.dashboardContainer.style.display = 'flex';
-      
+
       showToast("Access Granted. Welcome Administrator.");
       addLog("Administrator logged in successfully.");
       loadDashboardData();
-    } else {
+    } catch (error) {
       DOM.loginErrorMsg.style.display = 'block';
       addLog(`Failed login attempt for user '${user}'.`, 'error');
+    } finally {
+      DOM.adminPassword.value = '';
+      if (submitButton) submitButton.disabled = false;
     }
   });
   
   DOM.btnSignOut.addEventListener('click', async () => {
     const proceed = await showCustomConfirm("Are you sure you want to sign out of the CRM system?", "Sign Out");
     if (proceed) {
+      try { await adminLogout(); } catch (error) { /* ignore */ }
       localStorage.removeItem('lucky_crm_session');
       CRMState.sessionActive = false;
       DOM.loginPortal.style.display = 'flex';
@@ -873,18 +932,23 @@ async function loadDashboardData(prefetched = {}) {
 
   if (CRMState.activeTab === 'settings') {
     const settings = await loadCrmSettings();
+    CRMState.badgeSettings = settings;
     DOM.globalDiscountPercent.value = settings.globalDiscountPercent || 0;
+    DOM.landingBraceletCount.value = normalizeLandingBraceletCount(settings.landingBraceletCount) ?? LANDING_BRACELET_COUNT_FALLBACK;
     if (DOM.discountEnabled) {
       DOM.discountEnabled.checked = settings.discountEnabled === undefined
         ? settings.showDiscountBanner !== false
         : settings.discountEnabled !== false;
     }
+    renderBadgePresetManager(settings);
+    resetBadgePresetForm(settings);
     return;
   }
 
   if (CRMState.activeTab === 'inventory' || CRMState.activeTab === 'simulator' || CRMState.activeTab === 'charms') {
     const { stones, categories, charms, spacers } = await loadCrmCatalogBundle(prefetched);
     if (CRMState.activeTab === 'inventory') {
+      CRMState.badgeSettings = await loadCrmSettings();
       CRMState.purchaseCostSummaries = prefetched.purchaseCostSummaries
         || await getSharedPurchaseCostSummaries();
       renderInventoryCatalog(stones, charms, spacers, CRMState.purchaseCostSummaries);
@@ -904,9 +968,10 @@ async function loadDashboardData(prefetched = {}) {
   const spacers = Array.isArray(prefetched.spacers) ? prefetched.spacers : await getSharedSpacerCatalog();
   // This legacy branch is reached only by the observable overview fallback.
   // It intentionally retains the original full-order behavior for availability.
-  const orders = await getSharedOrders();
+  const orders = await getSharedCrmOrders();
   const operationalOrders = orders.filter(isOrderPaidForRevenue);
   const settings = await loadCrmSettings();
+  CRMState.badgeSettings = settings;
   if (CRMState.activeTab === 'inventory') {
     CRMState.purchaseCostSummaries = prefetched.purchaseCostSummaries
       || await getSharedPurchaseCostSummaries();
@@ -955,16 +1020,23 @@ async function loadDashboardData(prefetched = {}) {
     renderOrdersList(operationalOrders);
   } else if (CRMState.activeTab === 'settings') {
     DOM.globalDiscountPercent.value = globalDiscountRateVal;
+    DOM.landingBraceletCount.value = normalizeLandingBraceletCount(settings.landingBraceletCount) ?? LANDING_BRACELET_COUNT_FALLBACK;
     if (DOM.discountEnabled) {
       DOM.discountEnabled.checked = settings.discountEnabled === undefined
         ? settings.showDiscountBanner !== false
         : settings.discountEnabled !== false;
     }
+    renderBadgePresetManager(settings);
+    resetBadgePresetForm(settings);
   }
 }
 
 async function loadCrmOrdersPage(page = CRMState.crmOrdersPage, limit = CRMState.crmOrdersLimit) {
+  const requestSequence = ++crmOrdersPageRequestSequence;
   const result = await getCrmOrderPage(page, limit);
+  // A page read that began before a newer read/save must not repaint the list
+  // with its stale response when it eventually resolves.
+  if (requestSequence !== crmOrdersPageRequestSequence) return;
   CRMState.crmOrdersPage = Number(result?.page) || page;
   CRMState.crmOrdersLimit = Number(result?.limit) || limit;
   CRMState.crmOrdersPagination = result;
@@ -1061,7 +1133,7 @@ async function fetchAnalyticsSummary(range = CRMState.analyticsRange || '7d') {
   }
   try {
     const params = new URLSearchParams({ range });
-    const response = await fetch(`/api/crm/analytics/summary?${params.toString()}`, { cache: 'no-store' });
+    const response = await fetch(`/api/crm/analytics/summary?${params.toString()}`, { cache: 'no-store', headers: crmAdminHeaders() });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload.error || 'Analytics summary failed.');
@@ -1647,6 +1719,21 @@ function getInventoryTypeLabel(type) {
   return CRM_COMPONENT_LABELS.stone;
 }
 
+const CRM_SPACER_PRESENTED_CHARM_IDS = new Set([
+  'phase27-gold-heart-pendant',
+  'phase27-gold-star-pendant'
+]);
+
+function getInventoryPresentationType(itemType, itemId) {
+  return itemType === 'charm' && CRM_SPACER_PRESENTED_CHARM_IDS.has(String(itemId || '').trim())
+    ? 'spacer'
+    : itemType;
+}
+
+function getLayoutPresentationType(item) {
+  return item?.inventoryType === 'spacer' ? 'spacer' : item?.type;
+}
+
 function normalizeStockQtyForCrm(value, fallback = null) {
   if (value === undefined || value === null || value === '') return fallback;
   const numeric = Number(value);
@@ -1775,6 +1862,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
     return {
       id: stone.id,
       type: 'stone',
+      inventoryType: 'stone',
       typeLabel: getInventoryTypeLabel('stone'),
       image: withCatalogImageVersion(stone.image || '', stone),
       nameTh,
@@ -1806,15 +1894,20 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
     const nameTh = charm.name?.th || charm.name?.en || charm.id;
     const nameEn = charm.name?.en || charm.name?.th || charm.id;
     const stockQty = getCrmStockQty(charm);
+    const inventoryType = getInventoryPresentationType('charm', charm.id);
+    const inventoryTypeLabel = getInventoryTypeLabel(inventoryType);
 
     return {
       id: charm.id,
       type: 'charm',
-      typeLabel: getInventoryTypeLabel('charm'),
+      inventoryType,
+      typeLabel: inventoryTypeLabel,
       image: withCatalogImageVersion(charm.image?.primary || '', charm),
       nameTh,
       nameEn,
-      meta: categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm,
+      meta: inventoryType === 'spacer'
+        ? CRM_COMPONENT_LABELS.spacer
+        : (categoryLabel.th || charm.collection || charm.categoryId || charm.type || CRM_COMPONENT_LABELS.charm),
       priceText: `&#3647;${Number(charm.pricing?.base || 0).toLocaleString()}`,
       costText: formatInventoryCatalogCost(charm.id, charmPurchaseCostIndex),
       statusText: formatInventoryCatalogStatus(charm),
@@ -1832,7 +1925,8 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
         charm.categoryId,
         categoryLabel.th,
         categoryLabel.en,
-        'charm'
+        inventoryTypeLabel,
+        inventoryType
       ].filter(Boolean).join(' ').toLowerCase()
     };
   });
@@ -1845,6 +1939,7 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
     return {
       id: spacer.id,
       type: 'spacer',
+      inventoryType: 'spacer',
       typeLabel: getInventoryTypeLabel('spacer'),
       image: withCatalogImageVersion(spacer.image?.primary || '', spacer),
       nameTh,
@@ -1875,6 +1970,111 @@ function buildInventoryItems(stones = [], charms = [], spacers = [], purchaseCos
   return [...stoneItems, ...charmItems, ...spacerItems];
 }
 
+function getItemBanner(item, settings = CRMState.badgeSettings) {
+  return getProductCardBadge(item?.type, item?.id, null, settings);
+}
+
+function renderItemBannerChip(item) {
+  const badge = getItemBanner(item);
+  if (!badge) return '';
+  const textColor = normalizeBannerColor(badge.textColor);
+  const backgroundColor = normalizeBannerColor(badge.backgroundColor);
+  const style = [
+    textColor ? `color:${textColor}` : '',
+    backgroundColor ? `background:${backgroundColor}` : ''
+  ].filter(Boolean).join(';');
+  return `<span class="inventory-item-banner"${style ? ` style="${style}"` : ''}>${escapeHtml(badge.label)}</span>`;
+}
+
+function getBadgePreviewMarkup(preset, emptyLabel = 'No banner') {
+  if (!preset) return `<span class="badge-preview-empty">${escapeHtml(emptyLabel)}</span>`;
+  const textColor = normalizeBannerColor(preset.textColor, '#ffffff');
+  const backgroundColor = normalizeBannerColor(preset.backgroundColor, '#334155');
+  return `<span class="badge-live-preview" style="color:${textColor};background:${backgroundColor}">${escapeHtml(preset.label)}</span>`;
+}
+
+function renderBadgeAssignmentOptions(select, presets, selectedId = '') {
+  if (!select) return;
+  select.innerHTML = '<option value="none">No banner</option>' + presets
+    .map((preset) => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>`)
+    .join('');
+  select.value = presets.some((preset) => preset.id === selectedId) ? selectedId : 'none';
+}
+
+function renderBadgeAssignmentPreview(settings) {
+  const preset = getBadgePresetCatalog(settings)
+    .find((entry) => entry.id === DOM.badgeAssignmentSelect?.value) || null;
+  if (DOM.badgeAssignmentPreview) {
+    DOM.badgeAssignmentPreview.innerHTML = getBadgePreviewMarkup(preset);
+  }
+}
+
+async function openBadgeAssignmentModal(itemType, itemId, itemName) {
+  const settings = await getSharedSettings();
+  const assignmentKey = getBadgeAssignmentKey(itemType, itemId);
+  CRMState.badgeSettings = settings;
+  DOM.badgeAssignmentItemId.value = String(itemId || '');
+  DOM.badgeAssignmentItemType.value = String(itemType || '');
+  DOM.badgeAssignmentItemName.textContent = itemName || itemId || 'Catalog item';
+  renderBadgeAssignmentOptions(
+    DOM.badgeAssignmentSelect,
+    getBadgePresetCatalog(settings),
+    settings?.catalogItemBadges?.[assignmentKey] || 'none'
+  );
+  renderBadgeAssignmentPreview(settings);
+  DOM.badgeAssignmentModal.classList.add('show');
+}
+
+function closeBadgeAssignmentModal() {
+  DOM.badgeAssignmentModal?.classList.remove('show');
+}
+
+function renderBadgePresetManager(settings = {}) {
+  if (!DOM.badgePresetList) return;
+  const customPresets = normalizeCustomBannerPresets(settings.catalogBadgePresets);
+  DOM.badgePresetList.innerHTML = customPresets.length > 0
+    ? customPresets.map((preset) => `
+      <article class="badge-preset-row">
+        ${getBadgePreviewMarkup(preset)}
+        <code>${escapeHtml(preset.id)}</code>
+        <div class="badge-preset-actions">
+          <button type="button" class="btn btn-outline" data-badge-preset-edit="${escapeHtml(preset.id)}">Edit</button>
+          <button type="button" class="btn btn-danger-outline" data-badge-preset-delete="${escapeHtml(preset.id)}">Delete</button>
+        </div>
+      </article>
+    `).join('')
+    : '<p class="form-tip">No custom banners yet. The preset banners are available on every inventory item.</p>';
+}
+
+function resetBadgePresetForm(settings = CRMState.badgeSettings) {
+  if (!DOM.badgePresetForm) return;
+  DOM.badgePresetForm.reset();
+  DOM.badgePresetEditId.value = '';
+  DOM.badgePresetTextColor.value = '#ffffff';
+  DOM.badgePresetBackgroundColor.value = '#334155';
+  if (DOM.badgePresetPreview) {
+    DOM.badgePresetPreview.innerHTML = getBadgePreviewMarkup({
+      label: 'Banner preview',
+      textColor: DOM.badgePresetTextColor.value,
+      backgroundColor: DOM.badgePresetBackgroundColor.value
+    });
+  }
+  const saveButton = DOM.badgePresetForm.querySelector('button[type="submit"]');
+  if (saveButton) saveButton.textContent = 'Create Banner';
+  if (DOM.btnCancelBadgePreset) DOM.btnCancelBadgePreset.hidden = true;
+  renderBadgePresetManager(settings);
+}
+
+function updateBadgePresetPreview() {
+  if (!DOM.badgePresetPreview) return;
+  const label = DOM.badgePresetLabel.value.trim() || 'Banner preview';
+  DOM.badgePresetPreview.innerHTML = getBadgePreviewMarkup({
+    label,
+    textColor: normalizeBannerColor(DOM.badgePresetTextColor.value, '#ffffff'),
+    backgroundColor: normalizeBannerColor(DOM.badgePresetBackgroundColor.value, '#334155')
+  });
+}
+
 function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostSummaries = {}) {
   const query = DOM.inventorySearch.value.trim().toLowerCase();
   const activeType = CRMState.inventoryTypeFilter || 'all';
@@ -1885,7 +2085,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
   });
 
   const filtered = buildInventoryItems(stones, charms, spacers, purchaseCostSummaries).filter((item) => {
-    if (activeType !== 'all' && item.type !== activeType) return false;
+    if (activeType !== 'all' && item.inventoryType !== activeType) return false;
     if (!query) return true;
     return item.searchText.includes(query);
   });
@@ -1917,7 +2117,7 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
           <div class="inventory-item-copy">
             <div class="stone-title-th">${escapeHtml(item.nameTh)}</div>
             <div class="stone-title-en">${escapeHtml(item.nameEn)}</div>
-            <div class="inventory-item-meta">${escapeHtml(item.meta || item.id)} &bull; ${escapeHtml(item.id)}</div>
+            <div class="inventory-item-meta">${escapeHtml(item.meta || item.id)} &bull; ${escapeHtml(item.id)} ${renderItemBannerChip(item)}</div>
           </div>
         </div>
       </td>
@@ -1926,6 +2126,13 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
       <td data-label="Status"><span class="inventory-size">${item.statusText}</span></td>
       <td data-label="Actions" class="text-right">
         <div class="action-btns inventory-action-btns">
+          <button class="action-btn banner" data-id="${escapeHtml(item.id)}" data-type="${item.type}" data-name="${escapeHtml(item.nameTh || item.nameEn || item.id)}" title="Edit card banner" aria-label="Edit card banner">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M4 4h16v7H4z"/>
+              <path d="M7 15h10"/>
+              <path d="M12 11v8"/>
+            </svg>
+          </button>
           <button class="action-btn edit" data-id="${escapeHtml(item.id)}" data-type="${item.type}" title="${actionTitle}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -1954,6 +2161,9 @@ function renderInventoryCatalog(stones, charms = [], spacers = [], purchaseCostS
         return;
       }
       openEditStoneForm(item.id);
+    });
+    tr.querySelector('.action-btn.banner').addEventListener('click', () => {
+      openBadgeAssignmentModal(item.type, item.id, item.nameTh || item.nameEn || item.id);
     });
     tr.querySelector('.action-btn.delete').addEventListener('click', () => {
       if (item.type === 'spacer') return;
@@ -2345,7 +2555,8 @@ async function loadSimulatorPresetFromStorage({ force = false } = {}) {
 
 function getLayoutCatalogItems(stones = [], charms = [], spacers = [], category = getCatalogLayoutCategory()) {
   const itemType = category.slice(0, -1);
-  const allItems = buildInventoryItems(stones, charms, spacers).filter((item) => item.type === itemType);
+  const allItems = buildInventoryItems(stones, charms, spacers)
+    .filter((item) => getLayoutPresentationType(item) === itemType);
   const draftOrder = getCatalogLayoutDraft();
   return applyCatalogLayoutOrder(allItems, category, (item) => item.id)
     .sort((a, b) => {
@@ -2819,6 +3030,16 @@ function formatCharmStatusBadge(label, isActiveState) {
 }
 
 function buildUpdatedCharmRecord(charm, patch = {}) {
+  const availability = {
+    ...(charm.availability || {}),
+    ...(patch.availability || {})
+  };
+  const stockQty = normalizeStockQtyForCrm(
+    availability.stockQty ?? availability.stock_qty ?? charm.stockQty ?? charm.stock_qty,
+    null
+  );
+  const inStock = availability.inStock !== false && (stockQty === null || stockQty > 0);
+  const isActive = availability.isActive !== false;
   return {
     ...charm,
     ...patch,
@@ -2842,9 +3063,16 @@ function buildUpdatedCharmRecord(charm, patch = {}) {
       ...(charm.meaning || {}),
       ...(patch.meaning || {})
     },
+    stockQty,
+    stock_qty: stockQty,
+    inStock,
+    isActive,
     availability: {
-      ...(charm.availability || {}),
-      ...(patch.availability || {})
+      ...availability,
+      stockQty,
+      stock_qty: stockQty,
+      inStock,
+      isActive
     },
     renderTuning: charm.renderTuning || {},
     displayOrder: patch.displayOrder !== undefined ? patch.displayOrder : (charm.displayOrder ?? 0)
@@ -2909,17 +3137,41 @@ function setReadOnlyCharmTuning(tuning = {}) {
   DOM.roCharmContactInsetRight.textContent = tuning.contactInsetRight ?? '-';
 }
 
+// The operator must never be left guessing whether a talisman change was stored, so every failure
+// path reports the server's reason and reloads the authoritative catalog instead of keeping the
+// optimistic value on screen.
+function reportCharmSaveFailure(actionLabel) {
+  const detail = getLastCharmSaveError() || 'The talisman could not be saved.';
+  addLog(`${actionLabel} failed: ${detail}`, 'warn');
+  showToast(detail);
+}
+
+function reportCatalogSaveFailure(type, actionLabel) {
+  const detail = type === 'stone'
+    ? (getLastStoneSaveError() || 'The stone could not be saved.')
+    : type === 'spacer'
+      ? (getLastSpacerSaveError() || 'The charm could not be saved.')
+      : (getLastCharmSaveError() || 'The talisman could not be saved.');
+  addLog(`${actionLabel} failed: ${detail}`, 'warn');
+  showToast(detail);
+}
+
 async function saveCharmQuickField(charmId, patch, logLabel) {
   const charms = await getSharedCharmCatalog();
   const charm = charms.find((entry) => entry.id === charmId);
-  if (!charm) return false;
+  if (!charm) {
+    showToast(`Talisman '${charmId}' is not in the current talisman list. Reload the page and try again.`);
+    return false;
+  }
 
-  const saved = await saveSharedCharmCatalogEntry(buildUpdatedCharmRecord(charm, patch));
+  const saved = await saveSharedCharmCatalogEntry(buildUpdatedCharmRecord(charm, patch), { mode: 'update' });
   if (saved) {
     addLog(`${logLabel} '${saved.id}' (${saved.name?.th || saved.name?.en || saved.id}).`);
     await loadDashboardData();
     return true;
   }
+  reportCharmSaveFailure(logLabel);
+  await loadDashboardData();
   return false;
 }
 
@@ -2958,13 +3210,22 @@ async function saveInventoryStockQty(itemType, itemId, stockQty) {
     const saved = await saveSharedCatalog({
       ...stone,
       stockQty: normalizedQty,
-      inStock
+      stock_qty: normalizedQty,
+      inStock,
+      availability: {
+        ...(stone.availability || {}),
+        stockQty: normalizedQty,
+        stock_qty: normalizedQty,
+        inStock,
+        isActive: stone.isActive !== false
+      }
     });
     if (saved) {
       addLog(`Updated stone stock '${itemId}' to ${normalizedQty}.`);
       await loadDashboardData();
       return true;
     }
+    reportCatalogSaveFailure('stone', `Updating stone stock for '${itemId}'`);
     return false;
   }
 
@@ -2977,12 +3238,14 @@ async function saveInventoryStockQty(itemType, itemId, stockQty) {
         stockQty: normalizedQty,
         inStock
       }
-    }));
+    }), { mode: 'update' });
     if (saved) {
       addLog(`Updated talisman stock '${itemId}' to ${normalizedQty}.`);
       await loadDashboardData();
       return true;
     }
+    reportCharmSaveFailure(`Updating talisman stock for '${itemId}'`);
+    await loadDashboardData();
     return false;
   }
 
@@ -2992,10 +3255,15 @@ async function saveInventoryStockQty(itemType, itemId, stockQty) {
     if (!spacer) return false;
     const saved = await saveSharedSpacerCatalogEntry({
       ...spacer,
+      stockQty: normalizedQty,
+      stock_qty: normalizedQty,
+      inStock,
       availability: {
         ...(spacer.availability || {}),
         stockQty: normalizedQty,
-        inStock
+        stock_qty: normalizedQty,
+        inStock,
+        isActive: spacer.availability?.isActive !== false && spacer.isActive !== false
       }
     });
     if (saved) {
@@ -3003,6 +3271,7 @@ async function saveInventoryStockQty(itemType, itemId, stockQty) {
       await loadDashboardData();
       return true;
     }
+    reportCatalogSaveFailure('spacer', `Updating charm stock for '${itemId}'`);
   }
 
   return false;
@@ -3118,18 +3387,6 @@ function renderCharmCatalog(charms, categories = []) {
         <div class="charm-business-stack">
           <span>Size: <strong>${sizeCm ? `${sizeCm.toFixed(1)} cm` : '-'}</strong></span>
           <span>Price: <strong>฿${price.toLocaleString()}</strong></span>
-          <label class="charm-inline-field">
-            <span>Order</span>
-            <input
-              type="number"
-              class="charm-inline-input charm-order-input"
-              data-charm-id="${charm.id}"
-              value="${charm.displayOrder ?? 0}"
-              min="0"
-              step="10"
-              aria-label="Display order for ${charm.id}"
-            >
-          </label>
         </div>
       </td>
       <td data-label="Visibility">
@@ -3304,9 +3561,11 @@ async function handleSaveCharmType(e) {
 
   const sizeValue = Number(DOM.crudCharmSizeCm.value);
   const stockQty = normalizeStockQtyForCrm(DOM.crudCharmStockQty.value, 0);
+  const inStock = DOM.crudCharmInStock.checked && stockQty > 0;
+  const isActive = DOM.crudCharmIsActive.checked;
   const manualCostValue = DOM.crudSpacerManualCost.value.trim();
   const manualCost = manualCostValue === '' ? null : Number(manualCostValue);
-  if (isSpacer && (!Number.isFinite(manualCost) || manualCost < 0)) {
+  if (isSpacer && manualCost !== null && (!Number.isFinite(manualCost) || manualCost < 0)) {
     showToast('Manual cost must be a non-negative number.');
     return;
   }
@@ -3348,31 +3607,43 @@ async function handleSaveCharmType(e) {
       th: DOM.crudCharmMeaningTh.value.trim(),
       en: DOM.crudCharmMeaningEn.value.trim()
     },
+    stockQty,
+    stock_qty: stockQty,
+    inStock,
+    isActive,
     availability: {
       stockQty,
-      inStock: DOM.crudCharmInStock.checked && stockQty > 0,
-      isActive: DOM.crudCharmIsActive.checked
+      stock_qty: stockQty,
+      inStock,
+      isActive
     },
     renderTuning: existingItem?.renderTuning || {},
     displayOrder: Number(DOM.crudCharmDisplayOrder.value || 0)
   };
 
+  // The open form already knows whether the operator is editing a stored record or adding a new
+  // one, so the write verb no longer depends on the visible catalog knowing the id.
+  const isEditing = Boolean(CRMState.activeEditCharmId || CRMState.activeEditSpacerId);
   const saved = isSpacer
     ? await saveSharedSpacerCatalogEntry(normalizedRecord)
-    : await saveSharedCharmCatalogEntry(normalizedRecord);
+    : await saveSharedCharmCatalogEntry(normalizedRecord, { mode: isEditing ? 'update' : 'create' });
+  const label = isSpacer ? CRM_COMPONENT_LABELS.spacer : CRM_COMPONENT_LABELS.charm;
   if (saved) {
-    const label = isSpacer ? CRM_COMPONENT_LABELS.spacer : CRM_COMPONENT_LABELS.charm;
-    if (CRMState.activeEditCharmId || CRMState.activeEditSpacerId) {
+    if (isEditing) {
       addLog(`Edited ${label} ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
       showToast(`${label} details updated!`);
     } else {
       addLog(`Created new ${label} ID '${saved.id}' (${saved.name?.th || saved.name?.en}).`);
       showToast(`New ${label} added to catalog!`);
     }
+    closeCharmForm();
+    await loadDashboardData();
+    return;
   }
 
-  closeCharmForm();
-  await loadDashboardData();
+  // Keep the form (and the operator's input) open so the reported problem can be fixed in place.
+  if (!isSpacer) reportCharmSaveFailure(`Saving ${label} ID '${normalizedRecord.id}'`);
+  else reportCatalogSaveFailure('spacer', `Saving ${label} ID '${normalizedRecord.id}'`);
 }
 
 async function deleteCharmType(charmId) {
@@ -3516,6 +3787,7 @@ async function handleSaveStoneType(e) {
   const color = CRMState.activeEditStoneColor || '#E2C974';
   const stockQty = normalizeStockQtyForCrm(DOM.crudStoneStockQty.value, 0);
   const inStock = DOM.crudStoneInStock.checked && stockQty > 0;
+  const isActive = CRMState.activeEditStoneId ? CRMState.activeEditStoneIsActive : true;
   const meaningTh = DOM.crudStoneMeaningTh.value.trim();
   const meaningEn = DOM.crudStoneMeaningEn.value.trim();
   
@@ -3546,8 +3818,15 @@ async function handleSaveStoneType(e) {
     color: color,
     sizes: sizes,
     stockQty: stockQty,
+    stock_qty: stockQty,
     inStock: inStock,
-    isActive: CRMState.activeEditStoneId ? CRMState.activeEditStoneIsActive : true,
+    isActive,
+    availability: {
+      stockQty,
+      stock_qty: stockQty,
+      inStock,
+      isActive
+    },
     meaning: meaningEn,
     meaningTh: meaningTh
   };
@@ -3561,10 +3840,11 @@ async function handleSaveStoneType(e) {
       addLog(`Created new stone ID '${idVal}' (${nameTh}).`);
       showToast("New stone added to inventory!");
     }
+    closeStoneForm();
+    await loadDashboardData();
+    return;
   }
-  
-  closeStoneForm();
-  await loadDashboardData();
+  reportCatalogSaveFailure('stone', `Saving stone ID '${idVal}'`);
 }
 
 async function deleteStoneType(stoneId) {
@@ -4051,6 +4331,7 @@ function getOrderCharmOutwardOffsetPx(component = {}, scaleMmToPx = 0) {
 
 function renderOrderBraceletPreview(order = {}, options = {}) {
   const savedPreviewImage = getOrderFinalBraceletPreviewImage(order);
+  const previewSource = getOrderBraceletPreviewSource(order);
   const size = Number(options.size || 150);
   const className = options.className || '';
   const title = options.title || 'Bracelet layout preview';
@@ -4059,7 +4340,17 @@ function renderOrderBraceletPreview(order = {}, options = {}) {
   // New orders persist the exact final Step 4 preview. It is authoritative for
   // CRM display, including deterministic Beryl occurrences. The SVG below is
   // retained only for legacy orders with no saved preview.
-  if (savedPreviewImage) {
+  // TURN 10.1: the list transport carries an authenticated preview URL (lazy + immutable caching);
+  // the inline snapshot is still accepted for detail responses and for older backends.
+  if (previewSource.kind !== 'none') {
+    if (previewSource.kind === 'url') {
+      return `
+      <div class="order-bracelet-preview order-bracelet-preview-snapshot ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
+        <img class="order-bracelet-preview-img" src="${escapeHtml(previewSource.value)}" alt="${escapeHtml(title)}"
+          loading="lazy" decoding="async" data-order-preview-url="${escapeHtml(previewSource.value)}">
+      </div>
+    `;
+    }
     return `
       <div class="order-bracelet-preview order-bracelet-preview-snapshot ${escapeHtml(className)}" aria-label="${escapeHtml(title)}">
         <img class="order-bracelet-preview-img" src="${escapeHtml(savedPreviewImage)}" alt="${escapeHtml(title)}">
@@ -4229,6 +4520,56 @@ function renderCopyReadyShippingLabel(shippingInfo = {}) {
       <button type="button" class="btn btn-outline order-copy-shipping-label">\u0E04\u0E31\u0E14\u0E25\u0E2D\u0E01\u0E17\u0E35\u0E48\u0E2D\u0E22\u0E39\u0E48\u0E08\u0E31\u0E14\u0E2A\u0E48\u0E07</button>
     </div>
   `;
+}
+
+const isOrderCardShippingMissing = (shippingInfo = {}) => !(
+  shippingInfo.recipientName || shippingInfo.phoneNumber || shippingInfo.addressLine
+  || shippingInfo.province || shippingInfo.postalCode
+);
+
+function renderOrderCardShipping(shippingInfo = {}) {
+  // Owner requirement 2026-10-11: the Order Card shows the compact shipping block only - one
+  // presentation, one copy button. The field-by-field rows duplicated the same recipient, phone and
+  // address above the block (the address line already carries province and postal code), so they are
+  // not rendered in the card any more. View Detail keeps its full field list.
+  return `<div class="order-card-shipping">${renderCopyReadyShippingLabel(shippingInfo)}</div>`;
+}
+
+function bindOrderCardShippingCell(cell, shippingInfo) {
+  const shippingLabel = buildCopyReadyShippingLabel(shippingInfo);
+  cell?.querySelector('.order-copy-shipping-label')?.addEventListener('click', (event) => {
+    // The card row is a clickable surface in some layouts; copying must never open View Detail.
+    event.stopPropagation();
+    copyOrderShippingLabel(shippingLabel);
+  });
+}
+
+// The shipping presentation is projected into the CRM order list. If a deployment has not published
+// those fields yet, each already-rendered card falls back to the same detail endpoint View Detail
+// uses, so a card never shows an empty address block. The work is bounded to the rendered page and
+// runs with a small concurrency cap.
+async function hydrateOrderCardShipping(orderIds = []) {
+  const queue = orderIds.slice();
+  const worker = async () => {
+    while (queue.length > 0) {
+      const orderId = queue.shift();
+      const selectorId = String(orderId || '').replace(/[^A-Za-z0-9_-]/g, '');
+      const cell = selectorId
+        ? DOM.ordersTableBody.querySelector(`td[data-label="Shipping Information"][data-order-id="${selectorId}"]`)
+        : null;
+      if (!cell) continue;
+      try {
+        const order = await getCrmOrderDetail(orderId);
+        const shippingInfo = getOrderShippingInfo(order || {});
+        if (isOrderCardShippingMissing(shippingInfo)) continue;
+        cell.innerHTML = renderOrderCardShipping(shippingInfo);
+        bindOrderCardShippingCell(cell, shippingInfo);
+      } catch (error) {
+        console.warn('Order card shipping fallback failed for', orderId, error);
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
 }
 
 async function copyOrderShippingLabel(shippingLabel) {
@@ -4410,12 +4751,32 @@ function toggleCarrierCustomField(rowElement) {
   }
 }
 
+function setOrderWorkflowBusy(rowElement, busy) {
+  if (!rowElement) return;
+  rowElement.dataset.workflowBusy = busy ? '1' : '0';
+  rowElement.querySelectorAll('.status-dropdown, .order-carrier-select, .order-carrier-custom-input, .order-tracking-input')
+    .forEach((control) => {
+      control.disabled = Boolean(busy);
+      if (busy) control.setAttribute('aria-busy', 'true');
+      else control.removeAttribute('aria-busy');
+    });
+}
+
 async function persistOrderWorkflowDetails(orderId, rowElement, currentStatus) {
-  const success = await updateOrderStatus(orderId, currentStatus, readOrderWorkflowInputs(rowElement));
-  if (!success) {
-    showToast('Unable to save shipping details.');
+  if (rowElement?.dataset.workflowBusy === '1') return false;
+  setOrderWorkflowBusy(rowElement, true);
+  try {
+    const result = await updateOrderStatus(orderId, currentStatus, readOrderWorkflowInputs(rowElement));
+    if (!result?.success) {
+      showToast(result?.error || 'Unable to save shipping details.');
+      await loadDashboardData();
+      return false;
+    }
+    await loadDashboardData();
+    return true;
+  } finally {
+    setOrderWorkflowBusy(rowElement, false);
   }
-  return success;
 }
 
 function renderOrdersList(orders) {
@@ -4448,7 +4809,8 @@ function renderOrdersList(orders) {
     DOM.ordersTableBody.innerHTML = '<tr><td colspan="7" class="empty-state">No customer orders match the filters.</td></tr>';
     return;
   }
-  
+
+  const missingShippingOrderIds = [];
   filtered.forEach(order => {
     const tr = document.createElement('tr');
     
@@ -4500,6 +4862,13 @@ function renderOrdersList(orders) {
     `;
     // The paginated read model supplies the stored cost snapshot scalars.
     const costText = renderOrderCostSummary(order);
+
+    // The complete shipping information that used to be reachable only through View Detail is part
+    // of the order card itself, so the card reads in the owner's required order:
+    // customer/specs -> bracelet layout -> pricing -> shipping information -> cost/profit/margin.
+    const cardShippingInfo = getOrderShippingInfo(order);
+    const shippingInfoText = renderOrderCardShipping(cardShippingInfo);
+    const shippingInfoNeedsFallback = isOrderCardShippingMissing(cardShippingInfo);
     
     // Workflow status dropdown selector
     const currentStatus = order.status || 'New Order';
@@ -4567,6 +4936,7 @@ function renderOrdersList(orders) {
       </td>
       <td data-label="Bracelet Layout">${braceletPreviewHtml}</td>
       <td data-label="Pricing">${priceText}</td>
+      <td data-label="Shipping Information" data-order-id="${escapeHtml(order.id)}">${shippingInfoText}</td>
       <td data-label="Cost">${costText}</td>
       <td data-label="Status">${workflowMetaHtml}</td>
       <td data-label="Invoice" class="text-right">
@@ -4605,6 +4975,10 @@ function renderOrdersList(orders) {
     trackingInput?.addEventListener('change', async () => {
       await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
     });
+
+    // Each card copies its own order's shipping label.
+    bindOrderCardShippingCell(tr.querySelector('td[data-label="Shipping Information"]'), cardShippingInfo);
+    if (shippingInfoNeedsFallback) missingShippingOrderIds.push(order.id);
     
     const detailBtn = tr.querySelector('.btn-order-detail');
     detailBtn.addEventListener('click', () => openOrderDetailModal(order.id));
@@ -4614,15 +4988,31 @@ function renderOrdersList(orders) {
     
     DOM.ordersTableBody.appendChild(tr);
   });
+
+  // Cards whose list row did not carry the shipping fields are completed from the order detail
+  // endpoint after the list is on screen, so the render is never blocked by the fallback.
+  if (missingShippingOrderIds.length > 0) void hydrateOrderCardShipping(missingShippingOrderIds);
 }
 
 async function handleOrderStatusChange(orderId, newStatus, rowElement = null) {
+  if (rowElement?.dataset.workflowBusy === '1') {
+    await loadDashboardData();
+    return;
+  }
   const workflowUpdates = rowElement ? readOrderWorkflowInputs(rowElement) : {};
-  const success = await updateOrderStatus(orderId, newStatus, workflowUpdates);
-  if (success) {
+  setOrderWorkflowBusy(rowElement, true);
+  try {
+    const result = await updateOrderStatus(orderId, newStatus, workflowUpdates);
+    if (!result?.success) {
+      showToast(result?.error || 'Unable to save the order status.');
+      await loadDashboardData();
+      return;
+    }
     addLog(`Changed order ${orderId} status to '${newStatus}'.`);
     showToast(`Order status updated to: ${newStatus}`);
     await loadDashboardData();
+  } finally {
+    setOrderWorkflowBusy(rowElement, false);
   }
 }
 
@@ -5413,16 +5803,159 @@ function setupFunctionalEvents() {
       alert("Please enter a valid percentage between 0 and 100.");
       return;
     }
+    const landingBraceletCount = normalizeLandingBraceletCount(DOM.landingBraceletCount?.value);
+    if (landingBraceletCount === null) {
+      alert("Landing Page Bracelet Count must be a nonnegative integer.");
+      return;
+    }
     
     const settings = await loadCrmSettings();
     settings.globalDiscountPercent = discountVal;
     settings.discountEnabled = DOM.discountEnabled ? DOM.discountEnabled.checked : true;
     settings.showDiscountBanner = settings.discountEnabled;
+    settings.landingBraceletCount = landingBraceletCount;
     
-    await saveSharedSettings(settings);
+    const saved = await saveSharedSettings(settings);
+    if (!saved || normalizeLandingBraceletCount(saved.landingBraceletCount) !== landingBraceletCount) {
+      addLog("Unable to save Landing Page Bracelet Count.", "error");
+      showToast("Unable to save settings. The server did not confirm the Landing Page count.");
+      return;
+    }
     loadCrmSettings.clear();
-    addLog(`Changed global discount rate to ${discountVal}% and discount ${settings.discountEnabled ? 'enabled' : 'disabled'}.`);
+    addLog(`Changed global discount rate to ${discountVal}%, discount ${settings.discountEnabled ? 'enabled' : 'disabled'}, and Landing Page count to ${landingBraceletCount}.`);
     showToast(`Global settings saved.`);
+    await loadDashboardData();
+  });
+
+  DOM.badgePresetForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const label = DOM.badgePresetLabel.value.trim();
+    const textColor = normalizeBannerColor(DOM.badgePresetTextColor.value);
+    const backgroundColor = normalizeBannerColor(DOM.badgePresetBackgroundColor.value);
+    if (!label) {
+      alert('Banner text is required.');
+      return;
+    }
+    if (!textColor || !backgroundColor) {
+      alert('Choose valid text and background colors.');
+      return;
+    }
+
+    const settings = await getSharedSettings();
+    const customPresets = normalizeCustomBannerPresets(settings.catalogBadgePresets);
+    const editId = DOM.badgePresetEditId.value.trim();
+    const nextPreset = {
+      id: editId || `custom_${Date.now().toString(36)}`,
+      label: label.slice(0, 24),
+      textColor,
+      backgroundColor
+    };
+    const existingIndex = customPresets.findIndex((preset) => preset.id === nextPreset.id);
+    if (existingIndex >= 0) customPresets.splice(existingIndex, 1, nextPreset);
+    else customPresets.push(nextPreset);
+
+    const saved = await saveSharedSettings({
+      ...settings,
+      catalogBadgePresets: customPresets
+    });
+    const savedPreset = normalizeCustomBannerPresets(saved?.catalogBadgePresets)
+      .find((preset) => preset.id === nextPreset.id);
+    if (!savedPreset || savedPreset.label !== nextPreset.label) {
+      showToast('Unable to save banner. The server did not confirm the preset.');
+      return;
+    }
+    loadCrmSettings.clear();
+    showToast(existingIndex >= 0 ? 'Banner updated.' : 'Banner created.');
+    await loadDashboardData();
+  });
+
+  [DOM.badgePresetLabel, DOM.badgePresetTextColor, DOM.badgePresetBackgroundColor]
+    .forEach((input) => input?.addEventListener('input', updateBadgePresetPreview));
+
+  DOM.btnCancelBadgePreset?.addEventListener('click', async () => {
+    resetBadgePresetForm(await getSharedSettings());
+  });
+
+  DOM.badgePresetList?.addEventListener('click', async (event) => {
+    const editButton = event.target.closest('[data-badge-preset-edit]');
+    if (editButton) {
+      const settings = await getSharedSettings();
+      const preset = normalizeCustomBannerPresets(settings.catalogBadgePresets)
+        .find((entry) => entry.id === editButton.dataset.badgePresetEdit);
+      if (!preset) return;
+      DOM.badgePresetEditId.value = preset.id;
+      DOM.badgePresetLabel.value = preset.label;
+      DOM.badgePresetTextColor.value = preset.textColor;
+      DOM.badgePresetBackgroundColor.value = preset.backgroundColor;
+      DOM.btnCancelBadgePreset.hidden = false;
+      DOM.badgePresetForm.querySelector('button[type="submit"]').textContent = 'Update Banner';
+      updateBadgePresetPreview();
+      return;
+    }
+
+    const deleteButton = event.target.closest('[data-badge-preset-delete]');
+    if (!deleteButton) return;
+    const presetId = String(deleteButton.dataset.badgePresetDelete || '');
+    const preset = normalizeCustomBannerPresets((await getSharedSettings()).catalogBadgePresets)
+      .find((entry) => entry.id === presetId);
+    if (!preset) return;
+    const confirmed = await showCustomConfirm(
+      `Delete banner "${preset.label}"? Any items using it will return to their previous default badge behavior.`,
+      'Delete Banner'
+    );
+    if (!confirmed) return;
+    const settings = await getSharedSettings();
+    const nextPresets = normalizeCustomBannerPresets(settings.catalogBadgePresets)
+      .filter((entry) => entry.id !== presetId);
+    const nextAssignments = normalizeBadgeAssignments(settings.catalogItemBadges);
+    Object.keys(nextAssignments).forEach((key) => {
+      if (nextAssignments[key] === presetId) nextAssignments[key] = 'none';
+    });
+    const saved = await saveSharedSettings({
+      ...settings,
+      catalogBadgePresets: nextPresets,
+      catalogItemBadges: nextAssignments
+    });
+    const deleted = !normalizeCustomBannerPresets(saved?.catalogBadgePresets)
+      .some((entry) => entry.id === presetId);
+    if (!deleted) {
+      showToast('Unable to delete banner. The server did not confirm the change.');
+      return;
+    }
+    loadCrmSettings.clear();
+    showToast('Banner deleted.');
+    await loadDashboardData();
+  });
+
+  DOM.badgeAssignmentSelect?.addEventListener('change', () => {
+    renderBadgeAssignmentPreview(CRMState.badgeSettings);
+  });
+  DOM.btnBadgeAssignmentClose?.addEventListener('click', closeBadgeAssignmentModal);
+  DOM.btnCancelBadgeAssignment?.addEventListener('click', closeBadgeAssignmentModal);
+  DOM.badgeAssignmentModal?.addEventListener('click', (event) => {
+    if (event.target === DOM.badgeAssignmentModal) closeBadgeAssignmentModal();
+  });
+  DOM.badgeAssignmentForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const itemType = DOM.badgeAssignmentItemType.value.trim();
+    const itemId = DOM.badgeAssignmentItemId.value.trim();
+    const assignmentKey = getBadgeAssignmentKey(itemType, itemId);
+    const presetId = DOM.badgeAssignmentSelect.value.trim();
+    const settings = await getSharedSettings();
+    const assignments = normalizeBadgeAssignments(settings.catalogItemBadges);
+    assignments[assignmentKey] = presetId || 'none';
+    const saved = await saveSharedSettings({
+      ...settings,
+      catalogItemBadges: assignments
+    });
+    const savedAssignments = normalizeBadgeAssignments(saved?.catalogItemBadges);
+    if ((savedAssignments[assignmentKey] || '') !== (presetId || 'none')) {
+      showToast('Unable to save the card banner. The server did not confirm the change.');
+      return;
+    }
+    loadCrmSettings.clear();
+    closeBadgeAssignmentModal();
+    showToast(presetId && presetId !== 'none' ? 'Card banner saved.' : 'Card banner removed.');
     await loadDashboardData();
   });
   
@@ -5434,7 +5967,7 @@ function setupFunctionalEvents() {
     );
     if (proceed) {
       try {
-        const res = await fetch("/api/reset", { method: "POST" });
+        const res = await fetch("/api/reset", { method: "POST", headers: crmAdminHeaders() });
         if (res.ok) {
           addLog("Database reset to defaults.", "warn");
           showToast("Database reset successful!");
@@ -5579,7 +6112,7 @@ async function seedDemoOrders() {
     }
   ];
   
-  const currentOrders = await getSharedOrders();
+  const currentOrders = await getSharedCrmOrders();
   for (const o of demoOrders) {
     // Avoid double seeding if items already exist
     if (!currentOrders.some(co => co.customerName === o.customerName)) {

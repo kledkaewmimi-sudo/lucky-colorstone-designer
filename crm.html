@@ -914,6 +914,7 @@
                   <th>Bracelet Specs</th>
                   <th width="320">Visual Bead Sequence Map (Artisan Layout)</th>
                   <th>Price Summary</th>
+                  <th>Shipping Information</th>
                   <th>COST</th>
                   <th>Status Workflow</th>
                   <th width="160" class="text-right">Invoice</th>
@@ -944,6 +945,11 @@
                       <p class="form-tip">This discount will be applied dynamically in real-time on the Step 4 client
                         checkout page.</p>
                     </div>
+                    <div class="form-group">
+                      <label for="landingBraceletCount">จำนวนกำไลที่แสดงบนหน้า Landing Page</label>
+                      <input type="number" id="landingBraceletCount" min="0" step="1" required placeholder="e.g. 1350">
+                      <p class="form-tip">Landing Page Bracelet Count</p>
+                    </div>
                   </div>
                   <div class="form-group">
                     <label class="checkbox-lbl font-semibold" for="discountEnabled">
@@ -954,6 +960,45 @@
                   </div>
                   <button type="submit" class="btn btn-primary">Save Global Configuration</button>
                 </form>
+              </div>
+            </div>
+
+            <div class="panel card-panel">
+              <div class="panel-header">
+                <div>
+                  <h4>Card Banner Presets</h4>
+                  <p>Create reusable banners, then assign one from any Inventory row.</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <form id="badgePresetForm" class="badge-preset-form">
+                  <input type="hidden" id="badgePresetEditId">
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label for="badgePresetLabel">Banner text</label>
+                      <input type="text" id="badgePresetLabel" maxlength="24" required placeholder="e.g. Limited">
+                    </div>
+                    <div class="form-group">
+                      <label for="badgePresetTextColor">Text color</label>
+                      <input type="color" id="badgePresetTextColor" value="#ffffff" required>
+                    </div>
+                    <div class="form-group">
+                      <label for="badgePresetBackgroundColor">Background color</label>
+                      <input type="color" id="badgePresetBackgroundColor" value="#334155" required>
+                    </div>
+                  </div>
+                  <div class="badge-builder-preview-row">
+                    <div>
+                      <span class="form-tip">Card preview</span>
+                      <div id="badgePresetPreview" class="badge-builder-preview" aria-live="polite"></div>
+                    </div>
+                    <div class="btn-group-row">
+                      <button type="button" class="btn btn-outline" id="btnCancelBadgePreset" hidden>Cancel edit</button>
+                      <button type="submit" class="btn btn-primary">Create Banner</button>
+                    </div>
+                  </div>
+                </form>
+                <div id="badgePresetList" class="badge-preset-list" aria-live="polite"></div>
               </div>
             </div>
 
@@ -1140,13 +1185,13 @@
 
         <div class="form-group">
           <label for="crudStoneMeaningTh">Metaphysical Meaning (Thai Description)</label>
-          <textarea id="crudStoneMeaningTh" rows="2" required
+          <textarea id="crudStoneMeaningTh" rows="2"
             placeholder="เช่น ดึงดูดความมั่งคั่ง โชคลาภ และความสำเร็จ..."></textarea>
         </div>
 
         <div class="form-group">
           <label for="crudStoneMeaningEn">Metaphysical Meaning (English Description)</label>
-          <textarea id="crudStoneMeaningEn" rows="2" required
+          <textarea id="crudStoneMeaningEn" rows="2"
             placeholder="e.g. Attracts wealth, prosperity, and success in business..."></textarea>
         </div>
 
@@ -1216,9 +1261,9 @@
             <label for="crudSpacerManualCost">Manual Cost (฿/ชิ้น)</label>
             <input type="number" id="crudSpacerManualCost" min="0" step="0.01" placeholder="—">
           </div>
-          <div class="form-group">
+          <div class="form-group" hidden>
             <label for="crudCharmDisplayOrder">Display Order</label>
-            <input type="number" id="crudCharmDisplayOrder" min="0" step="10" placeholder="e.g. 130">
+            <input type="number" id="crudCharmDisplayOrder" min="0" step="1" placeholder="e.g. 130">
           </div>
         </div>
 
@@ -1291,6 +1336,43 @@
         <div class="modal-actions-footer">
           <button type="button" class="btn btn-outline" id="btnCancelCharmForm">Cancel</button>
           <button type="submit" class="btn btn-primary" id="btnSaveCharmForm">Save Talisman</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL: ASSIGN PRODUCT CARD BANNER
+       ========================================== -->
+  <div class="modal-backdrop" id="badgeAssignmentModal">
+    <div class="modal-card badge-assignment-card">
+      <div class="modal-header">
+        <h3>Card Banner</h3>
+        <button class="modal-close-btn" type="button" id="btnBadgeAssignmentClose">&times;</button>
+      </div>
+      <form id="badgeAssignmentForm" class="modal-form">
+        <input type="hidden" id="badgeAssignmentItemId">
+        <input type="hidden" id="badgeAssignmentItemType">
+        <div class="form-group">
+          <label>Inventory item</label>
+          <p id="badgeAssignmentItemName" class="badge-assignment-item-name"></p>
+        </div>
+        <div class="form-group">
+          <label for="badgeAssignmentSelect">Banner</label>
+          <select id="badgeAssignmentSelect">
+            <option value="none">No banner</option>
+          </select>
+          <p class="form-tip">The selected style is used on the customer catalog card.</p>
+        </div>
+        <div class="badge-builder-preview-row">
+          <div>
+            <span class="form-tip">Preview</span>
+            <div id="badgeAssignmentPreview" class="badge-builder-preview" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="modal-actions-footer">
+          <button type="button" class="btn btn-outline" id="btnCancelBadgeAssignment">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Banner</button>
         </div>
       </form>
     </div>

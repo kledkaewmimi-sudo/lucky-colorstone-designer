@@ -1,0 +1,10 @@
+export * from './knowledge-version.js'; export * from './goals.js'; export * from './weekdays.js'; export * from './year-archetypes.js'; export * from './colors.js'; export * from './claim-safety.js'; export * from './profiles.js'; export * from './compatibility.js';
+import { ALL_MATERIAL_KNOWLEDGE, STONE_KNOWLEDGE, CHARM_KNOWLEDGE, SPACER_KNOWLEDGE } from './profiles.js';
+import { getYearArchetype } from './year-archetypes.js';
+const by = (list,id) => list.find((x)=>x.materialId===id) || null;
+export const getStoneKnowledge=(id)=>by(STONE_KNOWLEDGE,id); export const getCharmKnowledge=(id)=>by(CHARM_KNOWLEDGE,id); export const getSpacerKnowledge=(id)=>by(SPACER_KNOWLEDGE,id); export const getMaterialKnowledge=(id)=>by(ALL_MATERIAL_KNOWLEDGE,id);
+export const getGoalAffinity=(m,goal)=>(typeof m==='string'?getMaterialKnowledge(m):m)?.goalAffinity?.[goal] ?? 0;
+export const getWeekdayAffinity=(m,day)=>(typeof m==='string'?getMaterialKnowledge(m):m)?.weekdayAffinity?.[day] ?? 0;
+export const getYearAffinity=(m,yearOrArchetype)=>{const a=String(Number.isInteger(Number(yearOrArchetype))&&Number(yearOrArchetype)>9?getYearArchetype(yearOrArchetype).id:yearOrArchetype); return (typeof m==='string'?getMaterialKnowledge(m):m)?.yearArchetypeAffinity?.[a] ?? 0;};
+export const getAllowedRoles=(m)=>Object.entries((typeof m==='string'?getMaterialKnowledge(m):m)?.roleEligibility||{}).filter(([,yes])=>yes).map(([role])=>role);
+export const getCustomerMeaning=(m)=>{const item=typeof m==='string'?getMaterialKnowledge(m):m; return item?{shortTh:item.customerMeaningShortTh,th:item.customerMeaningTh,claimSafety:item.claimSafety||null}:null;};

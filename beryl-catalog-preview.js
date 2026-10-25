@@ -108,3 +108,86 @@ export function createBerylCatalogPreviewController(preview, timerApi = window) 
     hasPendingTimer: () => pendingTimer !== null
   };
 }
+
+export function createMultiImageCatalogPreview(card, imageUrls, {
+  rootDataAttribute = 'catalogRotationCard',
+  layerClassName = 'catalog-variant-image'
+} = {}) {
+  const container = card?.querySelector('.stone-img-container');
+  const firstImage = container?.querySelector('img.stone-img');
+  if (!container || !firstImage || !Array.isArray(imageUrls) || imageUrls.length < 2) return null;
+
+  card.dataset[rootDataAttribute] = 'true';
+  const layers = imageUrls.map((imageUrl, index) => {
+    const image = index === 0 ? firstImage : card.ownerDocument.createElement('img');
+    image.className = `stone-img ${layerClassName}`;
+    image.dataset.variantLayer = String(index);
+    image.src = imageUrl;
+    image.style.opacity = index === 0 ? '1' : '0';
+    if (index > 0) {
+      image.alt = '';
+      image.setAttribute('aria-hidden', 'true');
+      container.appendChild(image);
+    }
+    return image;
+  });
+  return { root: card, layers };
+}
+
+export function waitForMultiImageCatalogPreviewReady(preview) {
+  if (!preview || !Array.isArray(preview.layers) || preview.layers.length < 2) return Promise.resolve(false);
+  return Promise.all(preview.layers.map((image) => waitForImageReady(image)))
+    .then((readyStates) => readyStates.every(Boolean));
+}
+
+export function createMultiImageCatalogPreviewController(preview, timerApi = window, {
+  holdMs = BERYL_CATALOG_HOLD_MS,
+  fadeMs = BERYL_CATALOG_FADE_MS,
+  rootDataAttribute = 'catalogRotationActiveIndex'
+} = {}) {
+  const root = preview?.root;
+  const layers = preview?.layers;
+  if (!root || !Array.isArray(layers) || layers.length < 2) return null;
+
+  let currentIndex = 0;
+  let pendingTimer = null;
+  let stopped = false;
+  const setVisibleLayer = (visibleIndex) => {
+    layers.forEach((layer, index) => {
+      layer.style.opacity = index === visibleIndex ? '1' : '0';
+    });
+    root.dataset[rootDataAttribute] = String(visibleIndex);
+  };
+  const stop = () => {
+    stopped = true;
+    if (pendingTimer !== null) timerApi.clearTimeout(pendingTimer);
+    pendingTimer = null;
+  };
+  const scheduleNextTransition = () => {
+    pendingTimer = timerApi.setTimeout(() => {
+      pendingTimer = null;
+      if (stopped || !root.isConnected) {
+        stop();
+        return;
+      }
+      const nextIndex = (currentIndex + 1) % layers.length;
+      setVisibleLayer(nextIndex);
+      pendingTimer = timerApi.setTimeout(() => {
+        pendingTimer = null;
+        if (stopped || !root.isConnected) {
+          stop();
+          return;
+        }
+        currentIndex = nextIndex;
+        scheduleNextTransition();
+      }, fadeMs);
+    }, holdMs);
+  };
+  setVisibleLayer(0);
+  scheduleNextTransition();
+  return {
+    stop,
+    getCurrentIndex: () => currentIndex,
+    hasPendingTimer: () => pendingTimer !== null
+  };
+}

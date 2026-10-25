@@ -2197,6 +2197,24 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 3px;
 }
 
+.inventory-item-banner {
+  display: inline-flex;
+  align-items: center;
+  max-width: 112px;
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-navy-light);
+  color: var(--color-white);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .inventory-type-badge {
   display: inline-flex;
   align-items: center;
@@ -2598,6 +2616,10 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-gold);
 }
 
+.action-btn.banner:hover {
+  color: var(--color-gold);
+}
+
 .action-btn.delete:hover {
   color: var(--color-red);
 }
@@ -2668,6 +2690,99 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   gap: 30px;
   max-width: 600px;
+}
+
+.badge-preset-form .form-grid {
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(96px, 1fr));
+}
+
+.badge-preset-form input[type="color"] {
+  width: 100%;
+  min-height: 42px;
+  padding: 4px;
+}
+
+.badge-builder-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.badge-builder-preview {
+  min-width: 132px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-navy-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.badge-live-preview {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-preview-empty {
+  color: var(--color-navy-muted);
+  font-size: 11px;
+}
+
+.badge-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.badge-preset-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-navy-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.badge-preset-row code {
+  min-width: 0;
+  color: var(--color-navy-muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-preset-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.badge-preset-actions .btn {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 11px;
+}
+
+.badge-assignment-card {
+  width: min(440px, calc(100vw - 28px));
+}
+
+.badge-assignment-item-name {
+  color: var(--color-navy-dark);
+  font-weight: 700;
 }
 
 .border-danger {
@@ -2991,6 +3106,17 @@ h1, h2, h3, h4, h5, h6 {
 
 .order-copy-shipping-label {
   justify-self: start;
+}
+
+/* The order card shows the compact formatted shipping block only (owner requirement 2026-10-11):
+   one address presentation plus its copy button, no duplicated field rows. */
+.order-card-shipping {
+  display: grid;
+  min-width: 0;
+}
+
+.order-card-shipping .order-shipping-label-block {
+  margin: 0;
 }
 
 .order-detail-field {
@@ -3620,6 +3746,7 @@ h1, h2, h3, h4, h5, h6 {
   /* Aligning cell contents in card layout */
   .crm-table td[data-label="Bracelet Layout"], 
   .crm-table td[data-label="Cost"],
+  .crm-table td[data-label="Shipping Information"],
   .crm-table td[data-label="Item"],
   .crm-table td[data-label="Meanings"],
   .crm-table td[data-label="Visibility"],
@@ -3639,6 +3766,7 @@ h1, h2, h3, h4, h5, h6 {
   
   .crm-table td[data-label="Bracelet Layout"]::before, 
   .crm-table td[data-label="Cost"]::before,
+  .crm-table td[data-label="Shipping Information"]::before,
   .crm-table td[data-label="Item"]::before,
   .crm-table td[data-label="Meanings"]::before,
   .crm-table td[data-label="Visibility"]::before,
@@ -3911,6 +4039,30 @@ h1, h2, h3, h4, h5, h6 {
    ANIMATIONS KEYFRAMES
    ========================================== */
 .purchase-row{grid-template-columns:44px minmax(0,1fr) auto;gap:10px}.purchase-thumb,.purchase-summary-thumb{width:44px;height:44px;display:grid;place-items:center;flex:0 0 44px;overflow:hidden;border-radius:12px;background:#f3f0fa}.purchase-thumb img,.purchase-summary-thumb img{width:100%;height:100%;object-fit:contain;display:block}.purchase-row-copy{min-width:0;display:grid;gap:2px}.purchase-row-copy b,.purchase-row-copy span,.purchase-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.purchase-row-actions{display:grid;gap:6px}.purchase-summary-item{display:flex;align-items:center;gap:8px;min-width:0}.purchase-summary-item>span{min-width:0}.purchase-summary-thumb{width:34px;height:34px;flex-basis:34px;border-radius:9px}@media(max-width:600px){.purchase-row{grid-template-columns:44px minmax(0,1fr) auto;gap:8px;padding:10px}.purchase-row button{padding:6px 8px}}
+
+@media (max-width: 600px) {
+  .badge-preset-form .form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .badge-preset-form .form-grid .form-group:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .badge-builder-preview-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .badge-preset-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .badge-preset-row code {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
 
 @keyframes pulseGlow {
   0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }

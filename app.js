@@ -1,9 +1,10 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
+import { getStep3OnboardingController } from './lumi/onboarding/step3-onboarding-smooth.js';
+import { STONES, CATEGORIES, CHARM_CATALOG, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, seedCatalogFromBundledFiles, CHARM_RECORDS, adaptNormalizedCharmCatalogToLegacy, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel, normalizeLandingBraceletCount, LANDING_BRACELET_COUNT_FALLBACK } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
-import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
+import { createBerylCatalogPreview, createBerylCatalogPreviewController, createMultiImageCatalogPreview, createMultiImageCatalogPreviewController, waitForBerylCatalogPreviewReady, waitForMultiImageCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
 import { MIXED_BEAD_SIZE_MODE, getMixedPlacementSizeForStone, normalizeBraceletSizeMode, normalizeMixedPlacingSize, normalizeMixedSizeFilter, setMixedPlacingSize as withMixedPlacingSize, stoneMatchesMixedSizeFilter, stoneSupportsSize, transitionBraceletSizeMode } from './mixed-size-state.js';
-import { createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility } from './bracelet-geometry.js';
+import { createBraceletGeometry, getBraceletCompletionEligibility, getComponentPhysicalLengthMm, getNextComponentPlacementEligibility, getPendantAttachmentAnchorInsetPx } from './bracelet-geometry.js';
 import { aggregateStoneVariants, createStoneVariantPayload } from './mixed-order-model.js';
 import { getProductCardBadge } from './product-card-badges.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
@@ -29,6 +30,13 @@ import {
   trackTikTokEvent
 } from './tiktok-browser-tracking.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
+import { createLumiCatalogSnapshot } from './lumi/contracts/catalog-snapshot.js';
+import { commitLumiStep3Import, prepareLumiStep3Import } from './lumi/import/step3-import.js';
+import { isLumiEnabled } from './lumi/foundation/feature-flag.js';
+import { createLumiUi } from './lumi/ui/lumi-ui.js';
+import { createLumiAnalytics } from './lumi/analytics/lumi-analytics.js';
+import { STEP3_ALL_CATEGORY, STEP3_GOAL_CATEGORIES, stoneMatchesGoalCategory } from './lumi/knowledge/stone-goal-taxonomy.js';
+import { isDiscontinuedMaterial } from './lumi/knowledge/discontinued-materials.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -69,15 +77,80 @@ const FORCE_STEP3_INFO_HINT = urlParams.has('showStep3InfoHint') || urlParams.ge
 // integration identities and live transaction/analytics behavior.
 const APP_ENV = 'production';
 const IS_UAT_MODE = APP_ENV === 'uat';
+// Every UAT-only diagnostic below evaluates to false in production, so the UAT debug
+// panels can never activate on the live site. They are kept so the shared customer
+// runtime stays a single code path between the two deployments.
+const LINE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('line_debug') === '1';
+const DELETE_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('delete_debug') === '1';
+const SLOT_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('slot_debug') === '1';
+const SLOT_FORENSICS_ENABLED = IS_UAT_MODE && urlParams.get('slot_forensics') === '1';
+const FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE = SLOT_FORENSICS_ENABLED && urlParams.get('force_clipboard_fail') === '1';
+const STEP2_DEBUG_ENABLED = IS_UAT_MODE && urlParams.get('step2_debug') === '1';
+const slotForensics = {
+  actionSequence: 0,
+  renderSequence: 0,
+  pendingState: null,
+  captures: {},
+  history: [],
+  exportStatus: {
+    method: 'NONE',
+    snapshotCount: 0,
+    historyCount: 0,
+    success: 'NO'
+  },
+  exportTrace: []
+};
+const step2Debug = {
+  sequence: 0,
+  renderSequence: 0,
+  nextHandlerCalls: 0,
+  clickedCard: null,
+  lastTransitionResult: 'NONE',
+  timings: null,
+  events: []
+};
+const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
+const LINE_LOGIN_NAVIGATION_GUARD_MS = 10000;
+const LINE_MANUAL_RECOVERY_TEXT = 'LINE did not open in this browser. Use the page menu to open this page in Safari or Chrome, then try again.';
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
 const STICKY_DEBUG_ENABLED = false;
-const LINE_DEBUG_ENABLED = false;
-const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 let LIFF_ID = '2010525799-qImIuhla';
 let liffConfigurationReason = 'LIFF_CONFIG_MISSING';
 let lineIdentityFailureCode = '';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
-const ANALYTICS_HEARTBEAT_MS = 60000;
+// OPTIMIZATION 2026-10-09: 60s heartbeats on every open tab drove Supabase log ingestion and
+// egress on the Free Plan. The keep-alive cadence is now 5 minutes and skipped while the tab is
+// hidden. Funnel/stage events (which carry the real analytics meaning) are unchanged.
+const ANALYTICS_HEARTBEAT_MS = 300000;
+// TURN 10.2 (owner preference: remove unnecessary granular tracking): a single `item_added` /
+// `category_changed` row per interaction is replaced by one `design_summary` event per editing burst.
+// The dashboard's popular-item, popular-size and popular-category metrics are preserved because the
+// summary carries per-item counts; the audit in reports/production/turn10/turn10-2-event-dependency-audit.md
+// is the basis for the change. Legacy `item_added` / `category_changed` rows are still counted by the
+// backend so historical dashboards are unaffected.
+const ANALYTICS_DESIGN_FLUSH_MS = 20000;
+// TURN 10.3 hardening. The quiet period alone is not enough: a customer who taps a bead every 15 s for five
+// minutes would keep resetting the timer and delay the report indefinitely. The maximum wait guarantees a
+// flush within one minute of the FIRST pending edit, which is also what keeps `last_seen_at` fresh for the
+// dashboard's 30-minute active-session window while the customer is editing.
+const ANALYTICS_DESIGN_MAX_WAIT_MS = 60000;
+// One bounded retry if the transport fails, so a transient network error does not silently lose a burst.
+const ANALYTICS_DESIGN_RETRY_MS = 4000;
+const analyticsDesignAccumulator = {
+  items: new Map(),      // key: `${itemType}:${itemId}` -> { itemType, itemId, sizeMm, count }
+  categories: new Map(), // key: category label -> count
+  startedAt: null,
+  timer: null,
+  // Idempotency key for the burst currently being accumulated. It travels with the summary so a retry, a
+  // duplicate beacon delivery or a double flush cannot be counted twice by the backend.
+  summaryId: null
+};
+function createAnalyticsSummaryId() {
+  try {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  } catch { /* fall through to the manual form */ }
+  return `ds-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
 const STARTUP_PERFORMANCE_DEBUG = urlParams.has('startupDebug');
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze([
@@ -91,10 +164,28 @@ const CUSTOMER_COMPONENT_LABELS = {
   charm: getComponentTypeLabel('charm', 'th'),
   spacer: getComponentTypeLabel('spacer', 'th')
 };
+const APPROVED_THREADED_PENDANT_IDS = new Set([
+  'phase27-gold-star-pendant',
+  'phase27-gold-heart-pendant'
+]);
+// The Heart pendant's catalog width is a physical footprint. Its square source
+// artwork needs the same visual frame width as the Star so it does not collapse
+// into a tiny icon in the bracelet renderer.
+const APPROVED_PENDANT_VISUAL_FRAME_WIDTH_MM = Object.freeze({
+  'phase27-gold-heart-pendant': 7
+});
+const APPROVED_IRREGULAR_STONE_IDS = new Set([
+  'phase27-freshwater-pearl'
+]);
+const PEARL_VISUAL_VARIANTS = 3;
+const SPACER_TAB_CHARM_IDS = new Set([
+  'phase27-gold-star-pendant',
+  'phase27-gold-heart-pendant'
+]);
 const STOCK_UNAVAILABLE_TOAST = '\u0E2A\u0E34\u0E19\u0E04\u0E49\u0E32\u0E2B\u0E21\u0E14\u0E41\u0E25\u0E49\u0E27';
 const DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE = Object.freeze({
-  '4': Object.freeze(['stones']),
-  '6': Object.freeze(['stones', 'charms']),
+  '4': Object.freeze(['stones', 'charms', 'spacer']),
+  '6': Object.freeze(['stones', 'charms', 'spacer']),
   '10': Object.freeze(['stones', 'charms', 'spacer'])
 });
 
@@ -116,11 +207,13 @@ const State = {
     province: '',
     postalCode: ''
   },
-  selectedCharmIds: [],     // Up to two selected charm IDs, kept in selection order
+  selectedCharmIds: [],     // Ordered charm IDs; legacy anchored charms retain their two-item limit
+  approvedPendantAnchors: {}, // Approved pendant ID -> ordered per-instance anchor IDs
   selectedCharmId: null,    // Legacy primary charm alias for compatibility
   liffInitialized: false,   // Ready flag for LINE LIFF Login API
   landingDismissed: false,  // Keep landing visible until CTA is clicked
   selectedStones: [],       // Array of placed beads: { stoneId: string, size: number, uniqueId: number }
+  pearlVariantCursor: 0,    // Next insertion index for the 01 -> 02 -> 03 pearl appearance cycle
   activeCategory: 'all',    // Current category filter in Step 3
   activeCatalogSection: 'stones', // Step 3 catalog type filter: stones, charms, spacer
   activeSlotIndex: null,    // Index of selected slot in Step 3 (-1 or null for append)
@@ -135,6 +228,8 @@ const State = {
   discountEnabled: true,
   globalDiscountPercent: 20,
   showDiscountBanner: true,
+  catalogBadgePresets: [],
+  catalogItemBadges: {},
   braceletPreviewKey: ''
 };
 
@@ -146,6 +241,9 @@ let startupOrderReturnInProgress = false;
 // authenticated design restore has produced one final allowed render.
 let callbackBootstrapHoldActive = false;
 let deferredLoginQaActivationAttempted = false;
+let deleteMutationSequence = 0;
+const handledDeleteEvents = new WeakSet();
+const deleteDebugEvents = [];
 
 // ==========================================
 // 2. DOM Elements Selection
@@ -199,6 +297,7 @@ const DOM = {
   canvasCenterSub: document.getElementById('canvasCenterSub'),
   btnBackToSteps: document.getElementById('btnBackToSteps'),
   btnResetBracelet: document.getElementById('btnResetBracelet'),
+  btnUndoBracelet: document.getElementById('btnUndoBracelet'),
   btnInspirationGallery: document.getElementById('btnInspirationGallery'),
   mixedSizeSelectorBar: document.getElementById('mixedSizeSelectorBar'),
   step3PreviewCard: document.getElementById('step3PreviewCard'),
@@ -255,6 +354,9 @@ const DOM = {
   landingView: document.getElementById('landingView'),
   btnLandingLogin: document.getElementById('btnLandingLogin'),
   landingLoadReassurance: document.getElementById('landingLoadReassurance'),
+  step1AuthStatus: document.getElementById('step1AuthStatus'),
+  step1AuthStatusText: document.getElementById('step1AuthStatusText'),
+  btnStep1LineConnect: document.getElementById('btnStep1LineConnect'),
   liffLoadingOverlay: document.getElementById('liffLoadingOverlay'),
   callbackBootstrapOverlay: document.getElementById('callbackBootstrapOverlay')
 };
@@ -275,16 +377,30 @@ const SHIPPING_FIELD_CONFIG = Object.freeze([
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
 let berylCatalogPreviewController = null;
+const catalogVariantPreviewControllers = [];
+const braceletVariantPreviewControllers = [];
+const CHARM_BOUNDS_ANALYSIS_MAX_PX = 224;
+const CHARM_BOUNDS_ALPHA_THRESHOLD = 8;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
+// null = not resolved yet. The CTA fails VISIBLE so Step 3 never shows a blank centre while
+// the shared-settings request is in flight or unavailable; only an explicit false hides it.
+let lumiFeatureEnabled = null;
+let lumiUiController = null;
 let step2ToStep3TransitionInProgress = false;
 let step3ToStep4TransitionInProgress = false;
 let step4AuthorizationInProgress = false;
 let stripeCheckoutInProgress = false;
+let braceletLayoutCache = null;
 let liffLoginInProgress = false;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
+let lineBootstrapFailureReason = '';
+let step1AuthActionStarted = false;
+let lineLoginNavigationGuardTimer = null;
+let lineManualEntryAttempted = false;
+let lineSessionRecoveryAttempted = false;
 let landingPressTimer = null;
 let landingRippleTimer = null;
 let landingReassuranceDelayTimer = null;
@@ -304,6 +420,11 @@ const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
   resolveCustomerStartupBootstrap = resolve;
   rejectCustomerStartupBootstrap = reject;
 });
+let progressiveStartupEligible = false;
+let lineBootstrapPromise = null;
+let progressiveLineVerificationPromise = null;
+let step1ToStep2AuthInProgress = false;
+let step1AuthState = 'idle';
 let customerCatalogStartupPromise = null;
 let customerCatalogRefreshPromise = null;
 let customerCatalogRefreshEventsBound = false;
@@ -443,6 +564,48 @@ const SPACER_CATALOG = Object.freeze([
     thicknessMm: 1,
     renderSizeMm: 6,
     price: 0
+  },
+  {
+    id: 'mallow',
+    sku: 'SP-MALLOW',
+    nameTh: '\u0E2D\u0E31\u0E0D\u0E21\u0E13\u0E35\u0E41\u0E2B\u0E48\u0E07\u0E40\u0E2A\u0E19\u0E48\u0E2B\u0E4C',
+    nameEn: 'Mallow',
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'gold',
+    image: '/assets/spacers/Mallow.webp',
+    displaySizeMm: 33.5,
+    effectiveLengthMm: 4.2,
+    renderSizeMm: 33.5,
+    renderWidthMm: 17,
+    renderHeightMm: 33.5,
+    attachmentLoopMm: 4.2,
+    price: 150,
+    stockQty: 50,
+    inStock: true,
+    isActive: true,
+    displayOrder: 80
+  },
+  {
+    id: 'pony',
+    sku: 'SP-PONY',
+    nameTh: '\u0E21\u0E49\u0E32\u0E41\u0E2B\u0E48\u0E07\u0E1D\u0E31\u0E19',
+    nameEn: 'Pony',
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'pink',
+    image: '/assets/spacers/Pony.webp',
+    displaySizeMm: 30,
+    effectiveLengthMm: 4.2,
+    renderSizeMm: 30,
+    renderWidthMm: 21,
+    renderHeightMm: 30,
+    attachmentLoopMm: 4.2,
+    price: 150,
+    stockQty: 50,
+    inStock: true,
+    isActive: true,
+    displayOrder: 90
   }
 ]);
 let spacerCatalogCache = SPACER_CATALOG.slice();
@@ -455,6 +618,10 @@ function normalizeStockQtyForCustomer(value) {
 }
 
 function isCustomerCatalogItemAvailable(item) {
+  // Owner rule 2026-10-08: a discontinued material is never selectable or displayed in Step 3,
+  // regardless of bead size or goal category. The catalog record itself is kept (orders, CRM and
+  // price history still reference it); only customer availability is withdrawn.
+  if (isDiscontinuedMaterial(item?.id)) return false;
   if (!item || item.isActive === false || item.inStock === false) return false;
   if (item.availability?.isActive === false || item.availability?.inStock === false) return false;
   const stockQty = normalizeStockQtyForCustomer(item.stockQty ?? item.stock_qty ?? item.availability?.stockQty ?? item.availability?.stock_qty);
@@ -483,11 +650,15 @@ function adaptSpacerRecordForCustomer(record) {
     image: record.image?.primary || record.image || '',
     displaySizeMm: Number(record.business?.displaySizeMm || record.displaySizeMm || record.sizeMm || 0),
     effectiveLengthMm: Number(record.business?.effectiveLengthMm || record.effectiveLengthMm || record.footprintMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
+    packingLengthMm: Number(record.business?.packingLengthMm || record.packingLengthMm || record.business?.effectiveLengthMm || record.effectiveLengthMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
     renderSizeMm: Number(record.business?.renderSizeMm || record.renderSizeMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
     renderWidthMm: Number(record.business?.renderWidthMm || record.renderWidthMm || 0),
     renderHeightMm: Number(record.business?.renderHeightMm || record.renderHeightMm || 0),
     attachmentLoopMm: Number(record.business?.attachmentLoopMm || record.attachmentLoopMm || 0),
     thicknessMm: Number(record.business?.thicknessMm || record.thicknessMm || 0),
+    visualBounds: Array.isArray(record.business?.visualBounds || record.visualBounds)
+      ? [...(record.business?.visualBounds || record.visualBounds)].map((bounds) => ({ ...bounds }))
+      : [],
     price: Number(record.pricing?.base || record.price || 0),
     displayOrder: Number(record.displayOrder || 0),
     inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
@@ -545,13 +716,7 @@ function canUseCategoryForBeadSize(categoryId, beadSize = State.beadSize) {
 function getUnavailableCategoryMessage(categoryId, beadSize = State.beadSize) {
   const normalizedSize = normalizeBeadSizeOption(beadSize);
   const normalizedCategory = normalizeDesignerCategoryId(categoryId);
-  if (normalizedSize === '4') {
-    return '\u0E02\u0E19\u0E32\u0E14 4mm \u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E40\u0E09\u0E1E\u0E32\u0E30\u0E2B\u0E34\u0E19';
-  }
-  if (normalizedSize === '6' && normalizedCategory === 'spacer') {
-    return '\u0E02\u0E19\u0E32\u0E14\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E0A\u0E32\u0E23\u0E4C\u0E21';
-  }
-  return '\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E02\u0E19\u0E32\u0E14\u0E17\u0E35\u0E48\u0E40\u0E25\u0E37\u0E2D\u0E01';
+      return '\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E02\u0E19\u0E32\u0E14\u0E17\u0E35\u0E48\u0E40\u0E25\u0E37\u0E2D\u0E01';
 }
 
 function removeInvalidDesignerItemsForBeadSize({ showToastNotification = false } = {}) {
@@ -640,8 +805,20 @@ function getSpacerCatalogEntry(spacerId) {
   return SPACER_CATALOG_MAP.get(String(spacerId || '').trim()) || null;
 }
 
+function getCharmCatalogAuthority() {
+  return legacyCharmCatalogCache.length > 0 ? legacyCharmCatalogCache : CHARM_CATALOG;
+}
+
 function getCharmCatalogEntry(charmId) {
-  return legacyCharmCatalogCache.find((charm) => charm?.id === String(charmId || '').trim()) || null;
+  return getCharmCatalogAuthority().find((charm) => charm?.id === String(charmId || '').trim()) || null;
+}
+
+function isApprovedThreadedPendantId(charmId) {
+  return APPROVED_THREADED_PENDANT_IDS.has(String(charmId || '').trim());
+}
+
+function isApprovedThreadedPendant(component) {
+  return component?.type === 'charm' && isApprovedThreadedPendantId(component?.charmId);
 }
 
 function isSlotPlaceableCharmType(charmType) {
@@ -684,6 +861,52 @@ function createEmptyLoopSlot(size, uniqueId = null) {
   };
 }
 
+function normalizeVisualVariantIndex(value) {
+  const index = Number(value);
+  return Number.isInteger(index) && index >= 0 && index < PEARL_VISUAL_VARIANTS ? index : null;
+}
+
+function isIrregularStoneCatalogItem(stone) {
+  return Boolean(
+    stone
+    && (
+      APPROVED_IRREGULAR_STONE_IDS.has(stone.id)
+      || stone.renderShape === 'irregular'
+    )
+    && Array.isArray(stone.visualVariants)
+    && stone.visualVariants.length === PEARL_VISUAL_VARIANTS
+  );
+}
+
+function reservePearlVisualVariantIndex() {
+  const currentIndex = normalizeVisualVariantIndex(State.pearlVariantCursor) ?? 0;
+  State.pearlVariantCursor = (currentIndex + 1) % PEARL_VISUAL_VARIANTS;
+  return currentIndex;
+}
+
+function nextPearlVisualVariantCursor(items = [], fallback = 0) {
+  let cursor = normalizeVisualVariantIndex(fallback) ?? 0;
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (String(item?.stoneId || '').trim() !== 'phase27-freshwater-pearl') return;
+    const variantIndex = normalizeVisualVariantIndex(item?.visualVariantIndex);
+    if (variantIndex !== null) cursor = (variantIndex + 1) % PEARL_VISUAL_VARIANTS;
+  });
+  return cursor;
+}
+
+function migratePearlVisualVariants(items = [], existingCursor = null) {
+  let cursor = normalizeVisualVariantIndex(existingCursor) ?? 0;
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (String(item?.stoneId || '').trim() !== 'phase27-freshwater-pearl') return;
+    const variantIndex = normalizeVisualVariantIndex(item?.visualVariantIndex);
+    if (variantIndex === null) {
+      item.visualVariantIndex = cursor;
+      cursor = (cursor + 1) % PEARL_VISUAL_VARIANTS;
+    }
+  });
+  return cursor;
+}
+
 function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSizeMm()) {
   if (item === null) return createEmptyLoopSlot(normalizedBeadSize);
   if (!item || typeof item !== 'object') return null;
@@ -703,7 +926,7 @@ function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSize
     return {
       componentType: 'spacer',
       spacerId: spacer.id,
-      size: spacer.effectiveLengthMm,
+      size: spacer.packingLengthMm || spacer.effectiveLengthMm,
       uniqueId
     };
   }
@@ -725,12 +948,16 @@ function normalizeSelectedLoopItem(item, normalizedBeadSize = getCurrentBeadSize
   const stoneId = String(item.stoneId || '').trim();
   if (!stoneId) return null;
   const size = Number.isFinite(Number(item.size)) ? Number(item.size) : normalizedBeadSize;
+  const visualVariantIndex = stoneId === 'phase27-freshwater-pearl'
+    ? normalizeVisualVariantIndex(item.visualVariantIndex ?? item.variantIndex ?? item.variant ?? item.v)
+    : null;
 
   return {
     componentType: 'stone',
     stoneId,
     size,
-    uniqueId
+    uniqueId,
+    ...(visualVariantIndex === null ? {} : { visualVariantIndex })
   };
 }
 
@@ -911,13 +1138,14 @@ function getLoopItemLengthMm(item) {
   }
   if (isSelectedSpacerItem(item)) {
     const spacer = getSpacerCatalogEntry(item.spacerId);
-    return spacer ? spacer.effectiveLengthMm : 0;
+    return spacer ? (spacer.packingLengthMm || spacer.effectiveLengthMm) : 0;
   }
   if (isSelectedCharmItem(item)) {
     const charm = getCharmCatalogEntry(item.charmId);
     return charm ? getCharmFootprintMm(charm) : Number(item?.size || 2);
   }
-  return Number(item?.size || 0);
+  const stoneData = STONES.find((stone) => stone.id === item?.stoneId);
+  return getStonePackingLengthMm(stoneData, item?.size);
 }
 
 function getLoopItemRenderSizeMm(item) {
@@ -937,7 +1165,15 @@ function serializeSelectedLoopItem(item) {
   if (isSelectedCharmItem(item)) {
     return { t: 'charm', i: item.charmId, l: getLoopItemLengthMm(item) };
   }
-  return { t: 'stone', i: item.stoneId, z: item.size };
+  const visualVariantIndex = item.stoneId === 'phase27-freshwater-pearl'
+    ? normalizeVisualVariantIndex(item.visualVariantIndex)
+    : null;
+  return {
+    t: 'stone',
+    i: item.stoneId,
+    z: item.size,
+    ...(visualVariantIndex === null ? {} : { v: visualVariantIndex })
+  };
 }
 
 function getSelectedLoopItemRenderKey(item) {
@@ -950,16 +1186,25 @@ function getSelectedLoopItemRenderKey(item) {
   if (isSelectedCharmItem(item)) {
     return `charm:${item.charmId}:${getLoopItemLengthMm(item)}:${item.uniqueId}`;
   }
-  return `stone:${item.stoneId}:${item.size}`;
+  return `stone:${item.stoneId}:${item.size}:${normalizeVisualVariantIndex(item.visualVariantIndex) ?? ''}`;
 }
 
-function createStoneSelectionItem(stoneId, size, uniqueId) {
+function createStoneSelectionItem(stoneId, size, uniqueId, visualVariantIndex = null) {
+  const normalizedVariantIndex = normalizeVisualVariantIndex(visualVariantIndex);
   return {
     componentType: 'stone',
     stoneId,
     size,
-    uniqueId
+    uniqueId,
+    ...(normalizedVariantIndex === null ? {} : { visualVariantIndex: normalizedVariantIndex })
   };
+}
+
+function createNewStoneSelectionItem(stoneId, size, uniqueId, stoneData = null) {
+  const item = createStoneSelectionItem(stoneId, size, uniqueId);
+  return isIrregularStoneCatalogItem(stoneData)
+    ? { ...item, visualVariantIndex: reservePearlVisualVariantIndex() }
+    : item;
 }
 
 function createSpacerSelectionItem(spacerId, uniqueId) {
@@ -969,7 +1214,7 @@ function createSpacerSelectionItem(spacerId, uniqueId) {
   return {
     componentType: 'spacer',
     spacerId: spacer.id,
-    size: spacer.effectiveLengthMm,
+    size: spacer.packingLengthMm || spacer.effectiveLengthMm,
     uniqueId
   };
 }
@@ -1008,10 +1253,61 @@ function normalizeShippingInfo(source = {}) {
 
 function normalizeSelectedCharmIds(source = []) {
   const rawIds = Array.isArray(source) ? source : [source];
+  let legacyAnchoredCount = 0;
   return rawIds
     .map((id) => String(id || '').trim())
-    .filter(Boolean)
-    .slice(0, 2);
+    .filter((id) => {
+      if (!id) return false;
+      if (APPROVED_THREADED_PENDANT_IDS.has(id)) return true;
+      if (legacyAnchoredCount >= 2) return false;
+      legacyAnchoredCount += 1;
+      return true;
+    });
+}
+
+function normalizeApprovedPendantAnchorList(value) {
+  const values = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  return values.map((anchorId) => (
+    anchorId === null || anchorId === undefined || anchorId === '' ? null : anchorId
+  ));
+}
+
+function normalizeApprovedPendantAnchors(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .filter(([charmId]) => APPROVED_THREADED_PENDANT_IDS.has(charmId))
+      .map(([charmId, anchors]) => [charmId, normalizeApprovedPendantAnchorList(anchors)])
+  );
+}
+
+function getLatestLoopAnchorUniqueId(source = State.selectedStones) {
+  const items = Array.isArray(source) ? source : [];
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item && !isEmptyLoopSlot(item)) return item.uniqueId ?? null;
+  }
+  return null;
+}
+
+function syncApprovedPendantAnchors() {
+  const existingAnchors = normalizeApprovedPendantAnchors(State.approvedPendantAnchors);
+  const selectedPendantIds = normalizeSelectedCharmIds(State.selectedCharmIds)
+    .filter(isApprovedThreadedPendantId);
+  const selectedCounts = selectedPendantIds.reduce((counts, charmId) => {
+    counts[charmId] = (counts[charmId] || 0) + 1;
+    return counts;
+  }, {});
+  const anchors = {};
+  const latestAnchorUniqueId = getLatestLoopAnchorUniqueId();
+  Object.entries(selectedCounts).forEach(([charmId, count]) => {
+    const nextAnchors = (existingAnchors[charmId] || []).slice(0, count);
+    while (nextAnchors.length < count) {
+      nextAnchors.push(latestAnchorUniqueId);
+    }
+    anchors[charmId] = nextAnchors;
+  });
+  State.approvedPendantAnchors = anchors;
 }
 
 function syncSelectedCharmState() {
@@ -1021,6 +1317,7 @@ function syncSelectedCharmState() {
       return !charm || isAnchoredCharmType(charm.type);
     });
   State.selectedCharmId = State.selectedCharmIds[0] || null;
+  syncApprovedPendantAnchors();
 }
 
 function migrateSlotPlaceableCharmSelectionsIntoLoop() {
@@ -1240,6 +1537,8 @@ lineDebugTrace('BOOT', { captureState: true });
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+  setupSlotForensicsPanel();
+  setupStep2DebugPanel();
   setupLineDebugPanel();
   setupLineDebugRuntimeListeners();
   lineDebugTrace('DOM_READY', { captureState: true });
@@ -1278,6 +1577,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
     && (shouldResumeInitialIdentityCallback || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
+  progressiveStartupEligible = shouldStartFreshCustomization
+    && !shouldHoldForCallbackBootstrap
+    && !shouldOpenStep4FromUrl;
   // A cross-context V2 callback must apply validated handoff continuity before
   // the first analytics event can create a replacement browser session.
   const deferAnalyticsUntilCallbackRestore = shouldHoldForDeferredCallback;
@@ -1322,6 +1624,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // The landing CTA must be interactive before LIFF and catalog bootstrapping finish.
   // Its handler waits for this bootstrap promise and continues the original first tap.
   setupLandingEvents();
+  setupProgressiveStep1AuthEvents();
   if (!deferAnalyticsUntilCallbackRestore) {
     initAnalytics();
     if (!State.landingDismissed) {
@@ -1361,12 +1664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Start the shared-data work immediately, but keep it off the mobile authentication/Step 1 path.
   startCustomerCatalogWarmup();
 
-  // Load only the UAT LIFF configuration before initializing the SDK.
-  await loadProductionLiffConfiguration();
-  lineDebugTrace('LIFF_CONFIG_READY', { captureState: true, details: { configurationReason: sanitizeLineDebugText(liffConfigurationReason, 80) } });
-  // Setup LIFF (LINE Front-end Framework). This remains the required mobile gate.
-  await initLIFF();
-  markStartupPerformance('T1_liff_ready');
+  await startLineBootstrap();
   clearOAuthQueryParams();
   let restored = null;
   if (shouldResumeInitialIdentityCallback) {
@@ -1377,7 +1675,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearInitialLineIdentityCallbackMarker();
     } else {
       console.warn('[uat-line-identity]', { reason: lineIdentityFailureCode || 'INITIAL_IDENTITY_UNAVAILABLE' });
-      showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${lineIdentityFailureCode || 'F05E3'})`);
+      setStep1AuthStatus('required');
     }
   } else if (shouldHoldForDeferredCallback) {
     restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
@@ -1427,8 +1725,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     await completeCustomizationStartResume();
   }
   resolveCustomerStartupBootstrap();
+  seedCatalogFromBundledFiles();
   startCustomerCatalogWarmup();
   bindCustomerCatalogRefreshEvents();
+  initLandingSocialProof();
   } catch (error) {
     console.error('Customer startup bootstrap failed.', error);
     rejectCustomerStartupBootstrap(error);
@@ -1462,6 +1762,13 @@ function markStartupPerformance(stage) {
 }
 
 function applySharedCustomerSettings(sharedSettings) {
+  // Only an EXPLICIT Lumi flag may hide the CTA. When /api/settings is unavailable the shared
+  // default payload (no lumi key) is returned, and that must leave the CTA visible rather than
+  // blanking the centre of the bracelet.
+  lumiFeatureEnabled = (sharedSettings && ('lumiEnabled' in sharedSettings || 'lumi_enabled' in sharedSettings))
+    ? isLumiEnabled(sharedSettings)
+    : null;
+  if (State.currentStep === 3) renderLumiStep3Entry();
   State.discountEnabled = sharedSettings?.discountEnabled === undefined
     ? sharedSettings?.showDiscountBanner !== false
     : sharedSettings.discountEnabled !== false;
@@ -1469,8 +1776,103 @@ function applySharedCustomerSettings(sharedSettings) {
     ? Math.max(0, Math.min(100, Number(sharedSettings.globalDiscountPercent)))
     : 20;
   State.showDiscountBanner = State.discountEnabled && sharedSettings?.showDiscountBanner !== false;
+  State.catalogBadgePresets = Array.isArray(sharedSettings?.catalogBadgePresets)
+    ? sharedSettings.catalogBadgePresets
+    : [];
+  State.catalogItemBadges = sharedSettings?.catalogItemBadges && typeof sharedSettings.catalogItemBadges === 'object'
+    ? sharedSettings.catalogItemBadges
+    : {};
 }
 
+// ------------------------------------------------- Step 3 catalog caches (Step 2 -> 3 performance)
+// First-paint catalog availability. The Step 2 -> Step 3 transition must never block on /api/*: use
+// whatever the startup warmup already fetched, then the bundled deployment catalog, and only then
+// wait for the fast same-origin static seed. The authoritative /api refresh always runs afterwards.
+// ---------------------------------------------------------------- Landing social proof
+// The displayed number is an owner-managed editorial value stored in app_settings.
+// It is not derived from live sales or used as an independently verified business metric.
+function initLandingSocialProof() {
+  const section = document.getElementById('landingSocialProof');
+  if (!section) return;
+  const countEl = document.getElementById('landingSocialProofCount');
+  const thumbsEl = document.getElementById('landingSocialProofThumbs');
+  const renderCount = (value) => {
+    if (!countEl || !Number.isFinite(value) || value < 0) return;
+    countEl.textContent = Math.round(value).toLocaleString('en-US');
+  };
+  // Owner-authorised publication (2026-10-11): the strip shows the four newest eligible bracelet
+  // previews supplied by /api/social-proof. The payload is treated as untrusted input: only bounded
+  // inline image data URLs are accepted, so the endpoint can never inject a remote URL, a tracking
+  // pixel, an oversized document or any markup into the landing page. Anything else leaves the slot
+  // empty (the CSS pastel-circle fallback), and a failed image removes itself instead of showing a
+  // broken thumbnail. No customer detail is ever rendered - the images are bracelet renders only.
+  const renderThumbs = (images) => {
+    if (!thumbsEl) return;
+    const slots = [...thumbsEl.querySelectorAll('.sp-thumb')];
+    slots.forEach((slot, index) => {
+      const raw = Array.isArray(images) ? images[index] : '';
+      const src = typeof raw === 'string' && raw.startsWith('data:image/') && raw.length <= 640000 ? raw : '';
+      const existing = slot.querySelector('img');
+      if (!src) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (existing) {
+        if (existing.getAttribute('src') !== src) existing.setAttribute('src', src);
+        return;
+      }
+      const img = document.createElement('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.addEventListener('error', () => img.remove(), { once: true });
+      img.src = src;
+      slot.appendChild(img);
+    });
+  };
+  renderCount(LANDING_BRACELET_COUNT_FALLBACK);
+  fetch('/api/settings', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error('HTTP ' + response.status))))
+    .then((settings) => {
+      const count = normalizeLandingBraceletCount(settings?.landingBraceletCount);
+      if (count !== null) renderCount(count);
+    })
+    .catch((error) => {
+      console.warn('[landing] bracelet count unavailable; keeping the owned fallback.', error);
+    });
+  // Social proof images remain independent of the manually managed count.
+  fetch('/api/social-proof', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error('HTTP ' + response.status))))
+    .then((payload) => {
+      const images = Array.isArray(payload?.recentBracelets)
+        ? payload.recentBracelets.map((entry) => (typeof entry === 'string' ? entry : entry?.image)).filter((src) => typeof src === 'string' && src.startsWith('data:image/'))
+        : [];
+      if (images.length) renderThumbs(images);
+    })
+    .catch((error) => {
+      console.warn('[landing] social proof unavailable; keeping safe defaults.', error);
+    });
+}
+function ensureStep3CatalogCaches() {
+  if (!legacyCharmCatalogCache.length) legacyCharmCatalogCache = CHARM_CATALOG.slice();
+  startCustomerCatalogWarmup();
+  bindCustomerCatalogRefreshEvents();
+  if (STONES.length > 0) return Promise.resolve(true);
+  return seedCatalogFromBundledFiles();
+}
+function step3CatalogSignatures() {
+  return {
+    stones: JSON.stringify(STONES),
+    charms: JSON.stringify(legacyCharmCatalogCache),
+    spacers: JSON.stringify(spacerCatalogCache)
+  };
+}
+// Performance: only the ACTIVE designer category is built; inactive categories are hydrated when
+// their tab is first opened (see setActiveCatalogSection).
+function renderActiveCharmSpacerSection() {
+  if (State.activeCatalogSection === 'charms') renderCharmOptions();
+  else if (State.activeCatalogSection === 'spacer') renderSpacerOptions();
+}
 function refreshCustomerCatalog({ includeLayoutOrder = false, renderStep3AfterRefresh = false } = {}) {
   if (customerCatalogRefreshPromise) return customerCatalogRefreshPromise;
 
@@ -1717,13 +2119,23 @@ function initAnalytics() {
     analyticsFunnelStageKeys = resolvedSession.continued ? readAnalyticsFunnelStageKeys() : new Set();
     persistAnalyticsSessionState();
 
-    window.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        trackAnalyticsEvent('page_hidden', { current_step: State.currentStep }, { beacon: true });
-      }
+    // TURN 10.2: the `page_hidden` beacon was removed. Nothing consumed it - it was searched across
+    // app.js, server.js, crm.js, the Supabase SQL/RPC files and the tests, and the only reader was a
+    // benchmark oracle. The session row already carries `last_seen_at` from the heartbeat and from
+    // every funnel event, which is what the dashboard's active-session window uses, so hiding the tab
+    // no longer needs its own write (see reports/production/turn10/turn10-2-event-dependency-audit.md).
+    // The hide cycle is still used for something useful: a last-chance flush of the pending design
+    // summary, so a customer who abandons Step 3 mid-burst is not lost. That is one row for the whole
+    // burst, where the retired per-bead stream wrote one row per tap.
+    // TURN 10.3: `visibilitychange` is handled as well as `pagehide`, because iOS Safari fires the former
+    // reliably when the customer switches apps or locks the phone but does not always fire the latter. Both
+    // use the beacon transport, and the second one finds an empty accumulator, so the pair costs at most one
+    // extra request in the worst case and never a duplicate summary.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushAnalyticsDesignSummary('hidden', { beacon: true });
     });
     window.addEventListener('pagehide', () => {
-      trackAnalyticsEvent('page_hidden', { current_step: State.currentStep }, { beacon: true });
+      flushAnalyticsDesignSummary('page_hide', { beacon: true });
     });
     window.addEventListener('error', (event) => {
       const target = event.target;
@@ -1749,6 +2161,7 @@ function initAnalytics() {
 
     window.clearInterval(analyticsHeartbeatTimer);
     analyticsHeartbeatTimer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       trackAnalyticsEvent('session_heartbeat', { current_step: State.currentStep });
     }, ANALYTICS_HEARTBEAT_MS);
   } catch (error) {
@@ -1788,6 +2201,129 @@ function sendAnalyticsPayload(payload, { beacon = false } = {}) {
   }
 }
 
+// TURN 10.2: accumulate the design edits of one burst and emit a single `design_summary` event, instead
+// of one analytics row per bead, charm or category change. Flushed when the customer leaves Step 3, when
+// checkout starts, when Lucky's design is accepted, and after a quiet period so a session that never
+// reaches Step 4 still reports (never relying on unload alone).
+function recordAnalyticsDesignItem(itemType, itemId, sizeMm = null) {
+  const safeType = String(itemType || 'stone');
+  const safeId = String(itemId || '').trim();
+  if (!safeId) return;
+  const key = `${safeType}:${safeId}:${sizeMm ?? ''}`;
+  const current = analyticsDesignAccumulator.items.get(key);
+  if (current) current.count += 1;
+  else analyticsDesignAccumulator.items.set(key, { itemType: safeType, itemId: safeId, sizeMm: sizeMm ?? null, count: 1 });
+  scheduleAnalyticsDesignFlush();
+}
+
+function recordAnalyticsDesignCategory(category, section = 'stones') {
+  const label = String(category || section || '').trim();
+  if (!label) return;
+  analyticsDesignAccumulator.categories.set(label, (analyticsDesignAccumulator.categories.get(label) || 0) + 1);
+  scheduleAnalyticsDesignFlush();
+}
+
+function scheduleAnalyticsDesignFlush() {
+  if (!analyticsDesignAccumulator.startedAt) analyticsDesignAccumulator.startedAt = Date.now();
+  if (!analyticsDesignAccumulator.summaryId) analyticsDesignAccumulator.summaryId = createAnalyticsSummaryId();
+  window.clearTimeout(analyticsDesignAccumulator.timer);
+  // Debounce, but never beyond the maximum wait measured from the first pending edit.
+  const elapsedMs = Date.now() - analyticsDesignAccumulator.startedAt;
+  const delayMs = Math.max(0, Math.min(ANALYTICS_DESIGN_FLUSH_MS, ANALYTICS_DESIGN_MAX_WAIT_MS - elapsedMs));
+  analyticsDesignAccumulator.timer = window.setTimeout(() => {
+    analyticsDesignAccumulator.timer = null;
+    flushAnalyticsDesignSummary();
+  }, delayMs);
+}
+
+// TURN 10.3: the payload is built once here rather than through trackAnalyticsEvent, so a failed delivery can
+// be retried with the SAME summary_id. A retry that arrives after the original has been stored is dropped by
+// the backend's idempotency check instead of being counted twice.
+function deliverDesignSummary(payload, attempt = 0) {
+  if (IS_UAT_MODE) return;
+  try {
+    fetch('/api/analytics/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).then((response) => {
+      if (response.ok || attempt >= 1) return;
+      window.setTimeout(() => deliverDesignSummary(payload, attempt + 1), ANALYTICS_DESIGN_RETRY_MS);
+    }).catch(() => {
+      if (attempt >= 1) return;
+      window.setTimeout(() => deliverDesignSummary(payload, attempt + 1), ANALYTICS_DESIGN_RETRY_MS);
+    });
+  } catch {
+    // Analytics must never block the customer flow.
+  }
+}
+
+function flushAnalyticsDesignSummary(reason = null, options = {}) {
+  if (!analyticsDesignAccumulator.items.size && !analyticsDesignAccumulator.categories.size) return;
+  const elapsedMs = analyticsDesignAccumulator.startedAt ? Date.now() - analyticsDesignAccumulator.startedAt : 0;
+  const items = [...analyticsDesignAccumulator.items.values()];
+  const categories = [...analyticsDesignAccumulator.categories.entries()].map(([category, count]) => ({ category, count }));
+  const summaryId = analyticsDesignAccumulator.summaryId || createAnalyticsSummaryId();
+  analyticsDesignAccumulator.items.clear();
+  analyticsDesignAccumulator.categories.clear();
+  window.clearTimeout(analyticsDesignAccumulator.timer);
+  analyticsDesignAccumulator.timer = null;
+  analyticsDesignAccumulator.startedAt = null;
+  analyticsDesignAccumulator.summaryId = null;
+  const resolvedReason = reason || (elapsedMs >= ANALYTICS_DESIGN_MAX_WAIT_MS ? 'idle_max_wait' : 'idle');
+  // Flushing on `pagehide` uses the beacon transport, so the summary survives a tab that is closed
+  // mid-Step-3. The design burst is never dependent on unload alone: the idle timer and the Step 4 /
+  // checkout / Lucky boundaries all report it independently.
+  const properties = {
+    reason: resolvedReason,
+    summary_id: summaryId,
+    added_total: items.reduce((sum, entry) => sum + entry.count, 0),
+    items,
+    categories,
+    bead_size: String(State.beadSize || '')
+  };
+  const payload = buildAnalyticsPayload('design_summary', properties);
+  if (!payload) return;
+  if (options.beacon) {
+    // The page is going away, so the payload is handed to the beacon transport; a retry would never run.
+    sendAnalyticsPayload(payload, { beacon: true });
+    return;
+  }
+  deliverDesignSummary(payload);
+}
+
+// TURN 10.3: the wire payload is built by its own function so the design-summary path can retry the EXACT
+// payload - same session identity, same attribution, same `summary_id` - without re-entering the funnel
+// bookkeeping. `trackAnalyticsEvent` keeps the bookkeeping and calls this.
+function buildAnalyticsPayload(eventName, properties = {}) {
+  if (IS_UAT_MODE) return null;
+  if (!analyticsSessionId) return null;
+  const canonicalEventName = eventName === 'start_customize_click' ? 'start_design' : eventName;
+  analyticsLastSeenAt = new Date().toISOString();
+  persistAnalyticsSessionState();
+  const safeProperties = createAnalyticsEventProperties({
+    sessionId: analyticsSessionId,
+    eventName: canonicalEventName,
+    startedAt: analyticsStartedAt,
+    currentStage: analyticsCurrentStage,
+    properties
+  });
+  return {
+    sessionId: analyticsSessionId,
+    visitorId: analyticsVisitorId,
+    eventName: canonicalEventName,
+    step: Number(State.currentStep) || null,
+    source: analyticsFirstSource || getCurrentAnalyticsSource(),
+    properties: safeProperties,
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    orderId: properties.orderId || State.orderDetailSnapshot?.id || '',
+    lineUserId: State.lineUserId || '',
+    userAgent: navigator.userAgent || ''
+  };
+}
+
 function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
   if (IS_UAT_MODE) return;
   if (!analyticsSessionId) return;
@@ -1805,33 +2341,17 @@ function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
       analyticsCurrentStage = canonicalEventName;
     }
   }
-  analyticsLastSeenAt = new Date().toISOString();
-  persistAnalyticsSessionState();
-  const safeProperties = createAnalyticsEventProperties({
-    sessionId: analyticsSessionId,
-    eventName: canonicalEventName,
-    startedAt: analyticsStartedAt,
-    currentStage: analyticsCurrentStage,
-    properties
-  });
-  sendAnalyticsPayload({
-    sessionId: analyticsSessionId,
-    visitorId: analyticsVisitorId,
-    eventName: canonicalEventName,
-    step: Number(State.currentStep) || null,
-    source: analyticsFirstSource || getCurrentAnalyticsSource(),
-    properties: safeProperties,
-    timestamp: new Date().toISOString(),
-    url: window.location.href,
-    orderId: properties.orderId || State.orderDetailSnapshot?.id || '',
-    lineUserId: State.lineUserId || '',
-    userAgent: navigator.userAgent || ''
-  }, options);
+  const payload = buildAnalyticsPayload(eventName, properties);
+  if (!payload) return;
+  sendAnalyticsPayload(payload, options);
 }
 
 function trackStepView(step) {
   const normalizedStep = Number(step);
   if (!normalizedStep || analyticsLastStep === normalizedStep) return;
+  // TURN 10.2: leaving Step 3 for Step 4 is one of the burst boundaries, so the accumulated design
+  // summary is reported before the step transition is recorded.
+  if (normalizedStep === 4) flushAnalyticsDesignSummary('step_4_entry');
   const now = Date.now();
   if (analyticsLastStep && analyticsStepEnteredAt) {
     trackAnalyticsEvent('step_duration', {
@@ -1847,6 +2367,8 @@ function trackStepView(step) {
 
 function trackCheckoutStarted(checkoutSessionId) {
   if (!checkoutSessionId) return;
+  // TURN 10.2: checkout is the last boundary that matters for the design burst.
+  flushAnalyticsDesignSummary('checkout_started');
   const key = `lucky_analytics_checkout_started_${checkoutSessionId}`;
   try {
     if (sessionStorage.getItem(key) === '1') return;
@@ -2170,6 +2692,10 @@ function isLikelyMobileBrowser() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || '');
 }
 
+function isSocialInAppBrowser() {
+  return /Instagram|FBAN|FBAV|FB_IAB|Facebook/i.test(window.navigator.userAgent || '');
+}
+
 function requiresLineLoginForCustomization() {
   return isLiffInClient() || isLikelyMobileBrowser();
 }
@@ -2179,6 +2705,48 @@ function canUseLiffLoginFromCurrentBrowser() {
     && State.liffInitialized
     && typeof liff.login === 'function'
     && (isLiffInClient() || isLikelyMobileBrowser());
+}
+
+function clearLineLoginNavigationGuard() {
+  window.clearTimeout(lineLoginNavigationGuardTimer);
+  lineLoginNavigationGuardTimer = null;
+}
+
+function enterLineLoginManualRecovery(reason = 'LINE_LOGIN_NAVIGATION_BLOCKED') {
+  clearLineLoginNavigationGuard();
+  liffLoginInProgress = false;
+  lineIdentityFailureCode = reason;
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+  setStep1AuthStatus('manual');
+}
+
+function armLineLoginNavigationGuard() {
+  clearLineLoginNavigationGuard();
+  const startedUrl = window.location.href;
+  lineLoginNavigationGuardTimer = window.setTimeout(() => {
+    lineLoginNavigationGuardTimer = null;
+    if (!liffLoginInProgress || window.location.href !== startedUrl) return;
+    enterLineLoginManualRecovery('LINE_LOGIN_NAVIGATION_BLOCKED');
+  }, LINE_LOGIN_NAVIGATION_GUARD_MS);
+}
+
+window.addEventListener('pagehide', clearLineLoginNavigationGuard);
+
+function openManualLineEntryFromUserAction() {
+  if (step1AuthState !== 'manual' || State.currentStep !== 1) return false;
+  if (lineManualEntryAttempted) {
+    saveState();
+    window.location.reload();
+    return true;
+  }
+  lineManualEntryAttempted = true;
+  const started = openLineConnectEntryForCustomization({
+    returnStartStatus: true,
+    resumeStep: 2,
+    keepStep1Visible: true
+  });
+  if (!started) enterLineLoginManualRecovery('LINE_MANUAL_ENTRY_FAILED');
+  return started;
 }
 
 function isLiffInClient() {
@@ -2249,6 +2817,54 @@ async function syncLineProfileFromLiff() {
     });
     return false;
   }
+}
+
+async function syncLineProfileWithBoundedRetry() {
+  const startedAt = performance.now();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await syncLineProfileFromLiff()) return true;
+    // Retry only a quick transient profile failure. A full timeout is left for an
+    // explicit customer action instead of adding another silent five-second wait.
+    if (performance.now() - startedAt > 1000 || attempt > 0) break;
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+  return false;
+}
+
+function isInvalidLineSessionError(error) {
+  const code = String(error?.code || '').trim().toLowerCase();
+  const message = String(error?.message || error || '');
+  return code === 'invalid_request'
+    || code === 'unauthorized'
+    || code === '400'
+    || /invalid[_ ]request|access token.*(?:expired|revoked)|invalid.*(?:token|session)/i.test(message);
+}
+
+function isRecoverableLineBootstrapFailure(reason) {
+  return new Set([
+    'LIFF_INIT_FAILED',
+    'LIFF_INIT_TIMEOUT',
+    'LIFF_SDK_UNAVAILABLE'
+  ]).has(String(reason || ''));
+}
+
+async function recoverInvalidLineSession() {
+  if (lineSessionRecoveryAttempted) return false;
+  lineSessionRecoveryAttempted = true;
+  try {
+    if (typeof liff !== 'undefined' && typeof liff.logout === 'function') {
+      liff.logout();
+    }
+  } catch (error) {
+    lineDebugTrace('LINE_LOGOUT_ON_RECOVERY_FAILED', {
+      details: { error: sanitizeLineDebugText(error?.message || error, 120) }
+    });
+  }
+  State.lineUserId = '';
+  saveState();
+  lineBootstrapPromise = null;
+  const retry = await startLineBootstrap();
+  return retry?.ok === true;
 }
 
 async function getLineOaFriendshipStatus() {
@@ -2523,10 +3139,11 @@ function persistCustomizationLoginIntent(intent) {
   }
 }
 
-function rememberCustomizationLoginIntent() {
+function rememberCustomizationLoginIntent({ targetStep = 1 } = {}) {
   return persistCustomizationLoginIntent({
     ts: Date.now(),
-    step: 1
+    step: 1,
+    targetStep: targetStep === 2 ? 2 : 1
   });
 }
 
@@ -2560,12 +3177,28 @@ function restoreCustomizationIntentAfterLogin() {
 
 async function completeCustomizationStartResume() {
   const loader = DOM.liffLoadingOverlay;
+  const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  const resumeIntent = parseCustomizationLoginIntent(rawIntent);
+  const resumeStep = resumeIntent?.version === 1 && resumeIntent.targetStep === 2 ? 2 : 1;
 
   if (hasCustomizationLoginIntent() && isLineIdentityAvailable() && State.currentStep === 1 && State.landingDismissed) {
     clearCustomizationLoginIntent();
     saveState();
     if (loader) loader.style.display = 'none';
     customizationResumeInProgress = false;
+    if (resumeStep === 2) {
+      setStep1AuthStatus('verified');
+      await goToStep(2);
+    }
+    return;
+  }
+
+  if (resumeStep === 2 && State.currentStep === 1 && State.landingDismissed) {
+    clearCustomizationLoginIntent();
+    saveState();
+    if (loader) loader.style.display = 'none';
+    customizationResumeInProgress = false;
+    setStep1AuthStatus('required');
     return;
   }
 
@@ -2578,7 +3211,12 @@ async function completeCustomizationStartResume() {
   if (loader) loader.style.display = 'none';
 }
 
-function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+function startLiffLoginForCustomization({
+  preserveExistingIntent = false,
+  returnStartStatus = false,
+  resumeStep = 1,
+  keepStep1Visible = false
+} = {}) {
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
@@ -2589,7 +3227,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   trackAnalyticsEvent('line_auth_started');
   const persistInitialIntent = () => {
     try {
-      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent({ targetStep: resumeStep });
       lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
       return persisted;
     } catch (error) {
@@ -2610,7 +3248,7 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
     isInClient: isLiffInClient(),
     liffInitialized: State.liffInitialized,
     liff: typeof liff === 'undefined' ? null : liff,
-    redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }),
+    redirectUri: getLiffRedirectUri({ initialIdentity: resumeStep === 1 && !preserveExistingIntent }),
     persistIntent: persistInitialIntent,
     onBeforeLogin: () => lineDebugTrace('BEFORE_LIFF_LOGIN', { captureState: true }),
     onLoginInvoked: () => lineDebugTrace('LIFF_LOGIN_INVOKED', { captureState: true }),
@@ -2630,13 +3268,20 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
     trackAnalyticsEvent('line_auth_error', {
       message: loginResult.error?.message || loginResult.reason
     });
-    resetLandingStartAfterFailure();
+    if (keepStep1Visible) setStep1AuthStatus('failed');
+    else resetLandingStartAfterFailure();
     return false;
   }
+  armLineLoginNavigationGuard();
   return returnStartStatus ? true : false;
 }
 
-function openLineConnectEntryForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+function openLineConnectEntryForCustomization({
+  preserveExistingIntent = false,
+  returnStartStatus = false,
+  resumeStep = 1,
+  keepStep1Visible = false
+} = {}) {
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) return false;
 
@@ -2644,7 +3289,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
   const persistInitialIntent = () => {
     try {
-      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent({ targetStep: resumeStep });
       lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
       return persisted;
     } catch (error) {
@@ -2678,14 +3323,16 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
       message: entryResult.error?.message || entryResult.reason,
       method: 'entry_url'
     });
-    resetLandingStartAfterFailure();
+    if (keepStep1Visible) setStep1AuthStatus('failed');
+    else resetLandingStartAfterFailure();
     return false;
   }
+  armLineLoginNavigationGuard();
   return returnStartStatus ? true : false;
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { showLandingPrompt = false } = options;
+  const { showLandingPrompt = false, loginResumeStep = 1 } = options;
   lineDebugTrace('REQUIRE_LINE_LOGIN_ENTER', { captureState: true });
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
@@ -2695,16 +3342,28 @@ async function requireLineLoginForCustomization(options = {}) {
     hasCanonicalIdentity: isLineIdentityAvailable,
     isLiffLoggedIn,
     synchronizeProfile: async () => ({
-      ok: await syncLineProfileFromLiff(),
+      ok: await syncLineProfileWithBoundedRetry(),
       reason: lineIdentityFailureCode || 'F05E3'
     }),
     startLogin: async () => {
       if (canUseLiffLoginFromCurrentBrowser()) {
         showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
-        return { started: startLiffLoginForCustomization({ returnStartStatus: true }) === true };
+        return {
+          started: startLiffLoginForCustomization({
+            returnStartStatus: true,
+            resumeStep: loginResumeStep,
+            keepStep1Visible: loginResumeStep === 2
+          }) === true
+        };
       }
       if (showLandingPrompt) {
-        return { started: openLineConnectEntryForCustomization({ returnStartStatus: true }) === true };
+        return {
+          started: openLineConnectEntryForCustomization({
+            returnStartStatus: true,
+            resumeStep: loginResumeStep,
+            keepStep1Visible: loginResumeStep === 2
+          }) === true
+        };
       }
       return { started: false, reason: 'LIFF_NOT_READY' };
     }
@@ -2793,6 +3452,37 @@ async function beginDeferredStep3AuthBoundary() {
   return boundary();
 }
 
+function startLineBootstrap() {
+  if (lineBootstrapPromise) return lineBootstrapPromise;
+  lineBootstrapPromise = (async () => {
+    lineBootstrapFailureReason = '';
+    await loadProductionLiffConfiguration();
+    lineDebugTrace('LIFF_CONFIG_READY', {
+      captureState: true,
+      details: { configurationReason: sanitizeLineDebugText(liffConfigurationReason, 80) }
+    });
+    await initLIFF();
+    markStartupPerformance('T1_liff_ready');
+    return {
+      ok: State.liffInitialized === true,
+      loggedIn: isLiffLoggedIn(),
+      reason: lineIdentityFailureCode || lineBootstrapFailureReason || liffConfigurationReason || ''
+    };
+  })();
+  return lineBootstrapPromise;
+}
+
+async function startLineBootstrapWithQuietRecovery() {
+  let result = await startLineBootstrap();
+  for (const delayMs of [160, 420]) {
+    if (result?.ok || !isRecoverableLineBootstrapFailure(result?.reason)) break;
+    lineBootstrapPromise = null;
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    result = await startLineBootstrap();
+  }
+  return result;
+}
+
 async function loadProductionLiffConfiguration() {
   const fallback = resolveLiffEnvironmentConfig({ environment: 'production', liffId: LIFF_ID });
   try {
@@ -2812,7 +3502,8 @@ async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (!LIFF_ID) {
     State.liffInitialized = false;
-    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(liffConfigurationReason || 'LIFF_ID_MISSING', 80) } });
+    lineBootstrapFailureReason = liffConfigurationReason || 'LIFF_ID_MISSING';
+    lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(lineBootstrapFailureReason, 80) } });
     console.warn('[uat-liff]', { reason: liffConfigurationReason || 'UAT_LIFF_CONFIG_MISSING' });
     setLiffLoadingMessage('UAT LINE configuration is missing.');
     if (loader) loader.style.display = 'none';
@@ -2820,6 +3511,7 @@ async function initLIFF() {
   }
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
+    lineBootstrapFailureReason = 'LIFF_SDK_UNAVAILABLE';
     lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: 'LIFF_SDK_UNAVAILABLE' } });
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
@@ -2832,16 +3524,29 @@ async function initLIFF() {
     await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
+    lineBootstrapFailureReason = '';
     lineDebugTrace('LIFF_INIT_OK', { captureState: true });
 
     const isLoggedIn = liff.isLoggedIn();
     console.log("LIFF isLoggedIn:", isLoggedIn);
     if (isLoggedIn) {
-      await syncLineProfileFromLiff();
+      await syncLineProfileWithBoundedRetry();
     }
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
+    if (isInvalidLineSessionError(err)) {
+      lineBootstrapFailureReason = 'LINE_SESSION_INVALID';
+      State.lineUserId = '';
+      try {
+        if (typeof liff?.logout === 'function') liff.logout();
+      } catch {}
+      saveState();
+    } else {
+      lineBootstrapFailureReason = /timed out/i.test(String(err?.message || ''))
+        ? 'LIFF_INIT_TIMEOUT'
+        : 'LIFF_INIT_FAILED';
+    }
     lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(err?.message || err, 180) } });
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
@@ -2849,6 +3554,195 @@ async function initLIFF() {
   } finally {
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
   }
+}
+
+function renderStep1AuthStatus() {
+  const container = DOM.step1AuthStatus;
+  const text = DOM.step1AuthStatusText;
+  const action = DOM.btnStep1LineConnect;
+  if (!container || !text || !action) return;
+
+  const quietBackgroundState = !step1AuthActionStarted
+    && (step1AuthState === 'verifying' || step1AuthState === 'required');
+  if (
+    !requiresLineLoginForCustomization()
+    || step1AuthState === 'idle'
+    || step1AuthState === 'verified'
+    || quietBackgroundState
+  ) {
+    container.hidden = true;
+    action.hidden = true;
+    container.removeAttribute('data-state');
+    text.textContent = '';
+    return;
+  }
+
+  container.hidden = false;
+  container.dataset.state = step1AuthState;
+  if (step1AuthState === 'manual') {
+    text.textContent = LINE_MANUAL_RECOVERY_TEXT;
+    action.textContent = lineManualEntryAttempted ? 'Reload and try again' : 'Open LINE';
+    action.hidden = false;
+    return;
+  }
+  if (step1AuthState === 'verifying') {
+    text.textContent = 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ';
+    action.hidden = true;
+    return;
+  }
+
+  text.textContent = step1AuthState === 'failed'
+    ? LINE_CONNECT_RETRY_MESSAGE
+    : 'เข้าสู่ระบบด้วย LINE';
+  action.textContent = 'เข้าสู่ระบบด้วย LINE';
+  action.hidden = false;
+}
+
+function setStep1AuthStatus(state) {
+  step1AuthState = state;
+  renderStep1AuthStatus();
+}
+
+async function startProgressiveLineVerification() {
+  if (!requiresLineLoginForCustomization()) {
+    setStep1AuthStatus('verified');
+    return true;
+  }
+  if (isLineIdentityAvailable()) {
+    setStep1AuthStatus('verified');
+    return true;
+  }
+  if (progressiveLineVerificationPromise) return progressiveLineVerificationPromise;
+
+  setStep1AuthStatus('verifying');
+  progressiveLineVerificationPromise = (async () => {
+    const bootstrap = await startLineBootstrapWithQuietRecovery();
+    if (isLineIdentityAvailable()) {
+      setStep1AuthStatus('verified');
+      return true;
+    }
+    // Background LIFF/profile failures are recoverable until the customer asks to
+    // continue. Keep Step 1 quiet and leave the verified-identity gate on Next.
+    setStep1AuthStatus('required');
+    return false;
+  })().catch(() => {
+    setStep1AuthStatus('required');
+    return false;
+  }).finally(() => {
+    if (step1AuthState !== 'verified') progressiveLineVerificationPromise = null;
+  });
+  return progressiveLineVerificationPromise;
+}
+
+async function ensureStep1LineAuthorization() {
+  if (!requiresLineLoginForCustomization()) return { ok: true, state: 'desktop_exempt' };
+  if (isLineIdentityAvailable()) {
+    setStep1AuthStatus('verified');
+    return { ok: true, state: 'identity_ready' };
+  }
+
+  let bootstrap = await startLineBootstrap();
+  if (!bootstrap?.ok && bootstrap?.reason === 'LINE_SESSION_INVALID') {
+    if (await recoverInvalidLineSession()) {
+      bootstrap = { ok: true, loggedIn: isLiffLoggedIn(), reason: '' };
+    }
+  } else if (!bootstrap?.ok && isRecoverableLineBootstrapFailure(bootstrap?.reason)) {
+    // One explicit user-action retry handles a transient outage that occurred
+    // while the customer was on Step 1. Startup retries remain separately capped.
+    lineBootstrapPromise = null;
+    bootstrap = await startLineBootstrap();
+  }
+
+  if (!bootstrap?.ok) {
+    lineIdentityFailureCode = bootstrap?.reason || 'LIFF_INIT_FAILED';
+    enterLineLoginManualRecovery(lineIdentityFailureCode);
+    return { ok: false, state: 'manual_recovery', reason: lineIdentityFailureCode };
+  }
+
+  if (isLineIdentityAvailable()) {
+    setStep1AuthStatus('verified');
+    return { ok: true, state: 'identity_ready' };
+  }
+
+  if (isLiffLoggedIn()) {
+    const profileSynchronized = await syncLineProfileWithBoundedRetry();
+    if (profileSynchronized && isLineIdentityAvailable()) {
+      setStep1AuthStatus('verified');
+      return { ok: true, state: 'profile_synchronized' };
+    }
+    lineIdentityFailureCode = lineIdentityFailureCode || 'PROFILE_SYNC_FAILED';
+    setStep1AuthStatus('failed');
+    return { ok: false, state: 'profile_sync_failed', reason: lineIdentityFailureCode };
+  }
+
+  if (canUseLiffLoginFromCurrentBrowser() && !isLiffInClient()) {
+    // The LIFF SDK only became ready after the original tap. Ask for another
+    // explicit tap so iOS can preserve user activation for liff.login().
+    setStep1AuthStatus('required');
+    return { ok: false, state: 'login_ready_retry' };
+  }
+
+  enterLineLoginManualRecovery('LINE_LOGIN_NOT_AVAILABLE');
+  return { ok: false, state: 'manual_recovery', reason: lineIdentityFailureCode };
+}
+
+async function attemptStep1AuthorizationAndContinue() {
+  if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
+  step1ToStep2AuthInProgress = true;
+  step1AuthActionStarted = true;
+  DOM.btnNext.disabled = true;
+  setStep1AuthStatus('verifying');
+  try {
+    if (
+      !isLineIdentityAvailable()
+      && !isLiffLoggedIn()
+      && !liffLoginInProgress
+      && !isLiffInClient()
+      && canUseLiffLoginFromCurrentBrowser()
+    ) {
+      const loginStarted = startLiffLoginForCustomization({
+        returnStartStatus: true,
+        resumeStep: 2,
+        keepStep1Visible: true
+      });
+      if (!loginStarted) {
+        enterLineLoginManualRecovery(lineIdentityFailureCode || 'LINE_LOGIN_START_FAILED');
+      }
+      return false;
+    }
+
+    const authorized = await ensureStep1LineAuthorization();
+    if (!authorized?.ok) {
+      if (liffLoginInProgress) setStep1AuthStatus('verifying');
+      return false;
+    }
+    setStep1AuthStatus('verified');
+    await goToStep(2);
+    return true;
+  } catch (error) {
+    lineDebugTrace('STEP1_LINE_AUTH_FAILED', {
+      details: { error: sanitizeLineDebugText(error?.message || error, 180) }
+    });
+    setStep1AuthStatus('failed');
+    return false;
+  } finally {
+    step1ToStep2AuthInProgress = false;
+    step1AuthActionStarted = false;
+    if (State.currentStep === 1) {
+      DOM.btnNext.disabled = false;
+      configureFooterNavigation();
+      renderStep1AuthStatus();
+    }
+  }
+}
+
+function setupProgressiveStep1AuthEvents() {
+  if (!DOM.btnStep1LineConnect || DOM.btnStep1LineConnect.dataset.authHandlerReady === 'true') return;
+  DOM.btnStep1LineConnect.dataset.authHandlerReady = 'true';
+  DOM.btnStep1LineConnect.addEventListener('click', () => {
+    if (openManualLineEntryFromUserAction()) return;
+    void attemptStep1AuthorizationAndContinue();
+  });
 }
 
 function setupLandingEvents() {
@@ -2867,6 +3761,26 @@ function setupLandingEvents() {
     triggerLandingStartFeedback();
     setLandingButtonState('starting', 'กำลังเปิด...');
     startLandingLoadReassurance();
+
+    if (progressiveStartupEligible) {
+      resetStep3DesignState('landing-start');
+      clearLineConnectPrompt();
+      stopLandingLoadReassurance();
+      State.currentStep = 1;
+      State.landingDismissed = true;
+      persistLandingDismissed();
+      if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+      markStartupPerformance('T1_progressive_step1_ready');
+      await renderApp();
+      void startProgressiveLineVerification();
+      trackStepView(1);
+      markStartupPerformance('T2_progressive_step1_rendered');
+      window.requestAnimationFrame(() => markStartupPerformance('T3_progressive_step1_interactive'));
+      trackMetaViewContent();
+      clearCustomizationLoginIntent();
+      resetLandingStartState();
+      return;
+    }
 
     try {
       lineDebugTrace('STARTUP_PROMISE_BEGIN', { captureState: true });
@@ -2951,8 +3865,11 @@ function loadPersistedState() {
           ? [parsed.selectedCharmId]
           : [];
       State.selectedCharmIds = normalizeSelectedCharmIds(persistedCharmIds);
+      State.approvedPendantAnchors = normalizeApprovedPendantAnchors(parsed.approvedPendantAnchors);
       syncSelectedCharmState();
       State.selectedStones = normalizeSelectedLoopItems(parsed.selectedStones || []);
+      State.pearlVariantCursor = normalizeVisualVariantIndex(parsed.pearlVariantCursor)
+        ?? migratePearlVisualVariants(State.selectedStones);
       
       // Normalize unique IDs to prevent clashes and empty values
       const seenIds = new Set();
@@ -3020,7 +3937,9 @@ function resetStep3DesignState(reason = '', options = {}) {
   if (getRequestedOrderId() || State.orderDetailMode || params.has('stripe')) return false;
 
   State.selectedStones = [];
+  State.pearlVariantCursor = 0;
   State.selectedCharmIds = [];
+  State.approvedPendantAnchors = {};
   syncSelectedCharmState();
   State.activeSlotIndex = null;
   State.newlyAddedIds = [];
@@ -3049,6 +3968,7 @@ function resetStep3DesignState(reason = '', options = {}) {
 
 // Persist State to LocalStorage
 function saveState() {
+  braceletLayoutCache = null;
   const stateCopy = {
     wristSize: State.wristSize,
     beadSize: State.beadSize,
@@ -3058,7 +3978,9 @@ function saveState() {
     shippingInfo: normalizeShippingInfo(State.shippingInfo),
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
     selectedCharmId: State.selectedCharmIds[0] || null,
+    approvedPendantAnchors: normalizeApprovedPendantAnchors(State.approvedPendantAnchors),
     selectedStones: normalizeSelectedLoopItems(State.selectedStones),
+    pearlVariantCursor: normalizeVisualVariantIndex(State.pearlVariantCursor) ?? 0,
     currentStep: State.currentStep
   };
   localStorage.setItem(CUSTOMIZATION_STATE_STORAGE_KEY, JSON.stringify(stateCopy));
@@ -3083,7 +4005,9 @@ function getCanonicalGuestDesignState() {
     mixedPlacingSize: State.mixedPlacingSize,
     mixedSizeFilter: State.mixedSizeFilter,
     selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
-    selectedStones: getSelectedLoopItems()
+    approvedPendantAnchors: normalizeApprovedPendantAnchors(State.approvedPendantAnchors),
+    selectedStones: getSelectedLoopItems(),
+    pearlVariantCursor: normalizeVisualVariantIndex(State.pearlVariantCursor) ?? 0
   };
 }
 
@@ -3100,15 +4024,25 @@ function restoreGuestDesignSnapshot() {
   State.beadSize = design.beadSize;
   State.mixedPlacingSize = normalizeMixedPlacingSize(design.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
   State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
+  State.approvedPendantAnchors = normalizeApprovedPendantAnchors(design.approvedPendantAnchors);
   syncSelectedCharmState();
   State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
     if (component.type === 'empty') return null;
-    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: Number(component.size || getCurrentBeadSizeMm()) };
+    if (component.type === 'stone') {
+      return {
+        componentType: 'stone',
+        stoneId: component.id,
+        size: Number(component.size || getCurrentBeadSizeMm()),
+        visualVariantIndex: component.variant
+      };
+    }
     if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
     return { componentType: 'spacer', spacerId: component.id };
   }));
   State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
   State.uniqueCounter = State.selectedStones.length;
+  State.pearlVariantCursor = normalizeVisualVariantIndex(design.pearlVariantCursor)
+    ?? migratePearlVisualVariants(State.selectedStones);
   normalizeSelectedStoneSizes();
   State.currentStep = step;
   return result;
@@ -3127,15 +4061,25 @@ function applyCanonicalGuestDesignSnapshot(snapshot, { targetStep = 4 } = {}) {
   State.beadSize = design.beadSize;
   State.mixedPlacingSize = normalizeMixedPlacingSize(design.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize);
   State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds);
+  State.approvedPendantAnchors = normalizeApprovedPendantAnchors(design.approvedPendantAnchors);
   syncSelectedCharmState();
   State.selectedStones = normalizeSelectedLoopItems(design.components.map((component) => {
     if (component.type === 'empty') return null;
-    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: Number(component.size || getCurrentBeadSizeMm()) };
+    if (component.type === 'stone') {
+      return {
+        componentType: 'stone',
+        stoneId: component.id,
+        size: Number(component.size || getCurrentBeadSizeMm()),
+        visualVariantIndex: component.variant
+      };
+    }
     if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
     return { componentType: 'spacer', spacerId: component.id };
   }));
   State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
   State.uniqueCounter = State.selectedStones.length;
+  State.pearlVariantCursor = normalizeVisualVariantIndex(design.pearlVariantCursor)
+    ?? migratePearlVisualVariants(State.selectedStones);
   normalizeSelectedStoneSizes();
   State.currentStep = targetStep === 4 ? 4 : 3;
   State.landingDismissed = true;
@@ -3244,7 +4188,19 @@ function syncShellVisibility() {
 }
 
 function clearOAuthQueryParams() {
-  const oauthKeys = ['code', 'state', 'liff.state', 'access_token', 'id_token', 'scope', 'expires_in', 'token_type'];
+  const oauthKeys = [
+    'code',
+    'state',
+    'liff.state',
+    'access_token',
+    'id_token',
+    'scope',
+    'expires_in',
+    'token_type',
+    'error',
+    'error_description',
+    'error_uri'
+  ];
   const hasOauthParams = oauthKeys.some((key) => urlParams.has(key));
   if (!hasOauthParams) return;
 
@@ -3413,6 +4369,7 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
         componentType: 'stone',
         stoneId: String(item?.stoneId || item?.id || '').trim(),
         size: Number(item?.size || item?.sizeMm || order?.beadSize || State.beadSize),
+        visualVariantIndex: item?.visualVariantIndex ?? item?.variantIndex ?? item?.variant ?? item?.v,
         uniqueId: index + 1
       };
     }).filter(Boolean)).map((item, index) => ({
@@ -3445,6 +4402,7 @@ function buildLoopItemsFromOrder(order, decodedConfig) {
         componentType: 'stone',
         stoneId: String(item?.i || '').trim(),
         size: Number(item?.z || item?.l || order?.beadSize || State.beadSize),
+        visualVariantIndex: item?.v,
         uniqueId: index + 1
       };
     })
@@ -3577,8 +4535,11 @@ function hydrateStateFromOrder(order) {
     postalCode: order?.postalCode || ''
   });
   State.selectedCharmIds = normalizeSelectedCharmIds(getOrderCharmIds(order, decodedConfig));
+  State.approvedPendantAnchors = {};
   syncSelectedCharmState();
   State.selectedStones = buildLoopItemsFromOrder(order, decodedConfig);
+  State.pearlVariantCursor = normalizeVisualVariantIndex(decodedConfig?.v)
+    ?? nextPearlVisualVariantCursor(State.selectedStones);
   State.uniqueCounter = State.selectedStones.reduce(
     (maxId, item) => Math.max(maxId, Number(item.uniqueId) || 0),
     0
@@ -3640,6 +4601,7 @@ async function renderApp() {
 async function renderStep2ToStep3Atomically() {
   syncShellVisibility();
   syncActiveStepView();
+  markStep2ToStep3Timing('T3_step3_visible');
   DOM.stepViews[2]?.setAttribute('aria-busy', 'true');
   renderStepper();
   saveState();
@@ -3743,6 +4705,93 @@ function getCurrentCheckoutFitEligibility() {
   return getResolvedLayoutFitEligibility(createCurrentBraceletResolvedLayout());
 }
 
+// Dormant Phase 0.5 integration seam: no UI or automatic invocation exists yet.
+// Validation completes against a catalog snapshot before this function mutates State.
+function applyLumiDesignToStep3(contract) {
+  // TURN 10.2: the accepted Lucky design replaces the manual composition, so anything the customer
+  // built by hand is reported as one summary before the replacement is committed.
+  flushAnalyticsDesignSummary('lucky_accepted');
+  const snapshot = createLumiCatalogSnapshot({
+    stones: STONES,
+    charms: legacyCharmCatalogCache,
+    spacers: spacerCatalogCache
+  });
+  const prepared = prepareLumiStep3Import({ contract, state: State, snapshot });
+  commitLumiStep3Import(State, prepared);
+  syncSelectedCharmState();
+  normalizeSelectedStoneSizes();
+  ensureCurrentDesignMatchesBeadSize();
+  saveState();
+  if (State.currentStep === 3) renderStep3();
+  return prepared;
+}
+
+function getLumiUiController() {
+  if (lumiUiController) return lumiUiController;
+  lumiUiController = createLumiUi({
+    getContext: () => ({ wristSizeCm: State.wristSize, beadMode: String(State.beadSize), mixedPlacingSize: State.beadSize === MIXED_BEAD_SIZE_MODE ? State.mixedPlacingSize : null }),
+    getSnapshot: () => createLumiCatalogSnapshot({ stones: STONES, charms: legacyCharmCatalogCache, spacers: spacerCatalogCache }),
+    getState: () => State,
+    getComponentName: (id) => STONES.find((item) => item.id === id)?.nameTh || STONES.find((item) => item.id === id)?.name || getCharmCatalogEntry(id)?.nameTh || getCharmCatalogEntry(id)?.name || getSpacerCatalogEntry(id)?.nameTh || String(id),
+    getComponentDetails: (id) => { const stone = STONES.find((item) => item.id === id); const charm = getCharmCatalogEntry(id); const spacer = getSpacerCatalogEntry(id); const item = stone || charm || spacer; return item ? { name: item.nameTh || item.name || item.nameEn || String(id), image: item.image?.primary || item.image || '', meaning: stone?.meaningTh || stone?.meaning || charm?.meaningTh || charm?.meaning || '' } : null; },
+    getRecommendationPrice: calculateLumiRecommendationPrice,
+    hasExistingDesign: () => State.selectedStones.length > 0 || State.selectedCharmIds.length > 0,
+    analytics: createLumiAnalytics({ track: (eventName, properties) => { handleLumiUndoBoundaryEvent(eventName); trackAnalyticsEvent(eventName, { ...properties, current_step: 3 }); } }),
+    onAccepted: async ({ action = 'adjust' } = {}) => {
+      const luckyUndoSnapshot = pendingLuckyUndoSnapshot;
+      pendingLuckyUndoSnapshot = null;
+      syncSelectedCharmState();
+      normalizeSelectedStoneSizes();
+      ensureCurrentDesignMatchesBeadSize();
+      saveState();
+      if (State.currentStep === 3) renderStep3();
+      if (luckyUndoSnapshot) {
+        // Issue 6: the replaced bracelet stays recoverable as one explicit undo boundary.
+        pushUndoSnapshot(luckyUndoSnapshot);
+        syncUndoBaseline();
+      }
+      showToast('ใสแบบใหแลว');
+      // Bugfix 2026-10-11 (issue 5): accepting a Lucky recommendation must never advance the funnel.
+      // The accepted design is applied to the active editor and the customer stays on Step 3, free to
+      // keep editing; Step 3 -> Step 4 stays an explicit "Next" action. No Lucky callback, render or
+      // state-synchronisation path may call goToStep(4).
+      if (action === 'use') trackAnalyticsEvent('bracelet_completed', { item_count: getSelectedStoneItems().length });
+      return true;
+    }
+  });
+  return lumiUiController;
+}
+
+// First-time Step 3 onboarding (presentation/tutorial layer only). Owns the
+// component / size / Next / Lucky guided tour and pauses the centre-CTA timeline
+// while it is on screen. It never writes design, catalog, pricing or order state.
+let step3OnboardingController = null;
+function getStep3OnboardingControllerInstance() {
+  if (!step3OnboardingController) {
+    step3OnboardingController = getStep3OnboardingController({
+      suspendLegacyHints: suspendStep3HintsForOnboarding,
+      isMixed: () => State.beadSize === MIXED_BEAD_SIZE_MODE,
+      pauseCtaTimeline: () => { try { getLumiUiController().pauseEntryTimeline(); } catch (error) { /* presentation only */ } },
+      resumeCtaTimeline: () => { try { getLumiUiController().resumeEntryTimeline(); } catch (error) { /* presentation only */ } }
+    });
+  }
+  return step3OnboardingController;
+}
+function renderLumiStep3Entry() {
+  const existing = document.querySelector('#stepView3 .lumi-entry');
+  if (lumiFeatureEnabled === false) {
+    existing?.remove();
+    return;
+  }
+  const target = document.querySelector('#stepView3 .canvas-container');
+  getLumiUiController().mountEntry(target);
+  const entry = target?.querySelector('.lumi-entry');
+  if (!entry) return;
+  entry.classList.add('lumi-center-entry');
+  entry.setAttribute('aria-label', 'ให้น้อง Lucky ช่วยเลือกกำไล');
+  const image = entry.querySelector('img');
+  if (image) image.src = '/assets/lucky/mascot/lucky_03.webp';
+}
 function ensureStep3WarningElement() {
   let warningEl = document.getElementById('step3NextWarning');
   if (warningEl) return warningEl;
@@ -3845,6 +4894,8 @@ async function renderStepViews({ activeViewCommitted = false } = {}) {
   } else if (State.currentStep === 2) {
     renderStep2();
   } else if (State.currentStep === 3) {
+    // Automatic catalog/state reconciliation must never look like a user edit.
+    syncUndoBaseline();
     renderStep3();
     DOM.stepViews[2]?.removeAttribute('aria-busy');
   } else if (State.currentStep === 4) {
@@ -3870,12 +4921,14 @@ async function renderStepViews({ activeViewCommitted = false } = {}) {
 
   configureFooterNavigation();
   syncStep3StickyLayer();
+  if (State.currentStep === 3) getStep3OnboardingControllerInstance().maybeStart();
 }
 
 // Navigate to step
 async function goToStep(step) {
   if (step < 1 || step > 4) return;
   const previousStep = State.currentStep;
+  if (previousStep === 2 && step === 3) recordStep2Debug('BEFORE_GOTO_STEP3');
   if (step === 4) {
     const fitEligibility = getCurrentCheckoutFitEligibility();
     if (!fitEligibility.eligible) {
@@ -3895,6 +4948,9 @@ async function goToStep(step) {
     resetStep3DesignState(`step3-back-to-${step}`);
   }
   State.currentStep = step;
+  // Explicit undo boundary: entering the designer starts a fresh history for that editing session.
+  if (step === 3 && previousStep !== 3) resetUndoHistory();
+  if (previousStep === 2 && step === 3) markStep2ToStep3Timing('T2_current_step_changed');
   try {
     if (previousStep === 2 && step === 3) {
       await renderStep2ToStep3Atomically();
@@ -3906,6 +4962,7 @@ async function goToStep(step) {
   }
   if (step === 3 && previousStep !== 3) refreshCustomerCatalogForStep3Entry();
   trackStepView(step);
+  if (previousStep === 2 && step === 3) recordStep2Debug('AFTER_GOTO_STEP3', { goToStepResult: true });
   return true;
 }
 
@@ -3991,12 +5048,19 @@ function setupNavigationEvents() {
   });
   
   DOM.btnNext.addEventListener('click', async () => {
-    if (step2ToStep3TransitionInProgress) return;
+    if (step2ToStep3TransitionInProgress) {
+      recordStep2Debug('NEXT_CLICK_IGNORED_TRANSITION_IN_PROGRESS');
+      return;
+    }
     if (State.currentStep === 3 && step3ToStep4TransitionInProgress) return;
     if (State.currentStep === 4) {
       if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
+      if (State.currentStep === 1) {
+        await attemptStep1AuthorizationAndContinue();
+        return;
+      }
       if (State.currentStep === 2) {
         if (!hasExplicitBeadSizeSelection()) {
           showToast('กรุณาเลือกขนาดหินก่อน', 3000);
@@ -4358,6 +5422,7 @@ function renderStep1() {
   syncWristSizeDisplay();
   DOM.braceletOwnerName.value = State.ownerName;
   showWristPickerHint();
+  renderStep1AuthStatus();
 }
 
 function showWristPickerHint() {
@@ -4492,9 +5557,14 @@ function startStep2SupportRotation() {
 
 function initBeadSizeOptions() {
   DOM.beadSizeCards.forEach(card => {
+    card.addEventListener('pointerdown', () => {
+      recordStep2Debug('CARD_POINTERDOWN', { clickedValue: card.getAttribute('data-bead-size') });
+    });
     card.addEventListener('click', async () => {
       const targetBeadSize = normalizeBeadSizeOption(card.getAttribute('data-bead-size'));
-
+      step2Debug.clickedCard = card.getAttribute('data-bead-size');
+      recordStep2Debug('CARD_CLICK', { clickedValue: step2Debug.clickedCard });
+      
       if (State.beadSize === targetBeadSize) return;
       const convertingFromMixed = State.beadSize === MIXED_BEAD_SIZE_MODE && targetBeadSize !== MIXED_BEAD_SIZE_MODE;
 
@@ -4514,8 +5584,11 @@ function initBeadSizeOptions() {
         if (!confirmed) return;
       }
 
+      recordStep2Debug('BEFORE_SIZE_TRANSITION', { clickedValue: targetBeadSize });
       const transition = applyBraceletSizeModeTransition(targetBeadSize);
+      step2Debug.lastTransitionResult = transition.ok ? 'OK' : (transition.reason || 'FAILED');
       if (!transition.ok) {
+        recordStep2Debug('AFTER_SIZE_TRANSITION', { transitionResult: step2Debug.lastTransitionResult });
         showToast('Some selected stones do not support this bead size.');
         return;
       }
@@ -4546,6 +5619,7 @@ function initBeadSizeOptions() {
         c.classList.toggle('active', active);
         c.setAttribute('aria-checked', active ? 'true' : 'false');
       });
+      recordStep2Debug('AFTER_SIZE_TRANSITION', { transitionResult: step2Debug.lastTransitionResult });
       
       updateEstimationText();
       
@@ -4559,6 +5633,7 @@ function initBeadSizeOptions() {
       }
       
       saveState();
+      recordStep2Debug('AFTER_STEP2_RENDER');
     });
   });
 }
@@ -4598,14 +5673,38 @@ function adjustBeadsToNewCapacity() {
     keptCount += 1;
   }
 
-  if (keptCount < State.selectedStones.length) {
+  const trimmed = keptCount < State.selectedStones.length;
+  if (trimmed) {
     State.selectedStones = State.selectedStones.slice(0, keptCount);
     State.activeSlotIndex = null;
+  }
+
+  // Bugfix 2026-10-11 (task 5): a retained empty slot is an editor position for a deleted bead, not a
+  // physical component. It may only survive while bead space is still free (it is the "refill here"
+  // affordance). Once a new stone or talisman consumes that free space, keeping the retained slot
+  // leaves a ghost ring position behind: the canvas then draws the deleted bead's footprint as well as
+  // the new talisman, so the rendered loop no longer matches the physical bracelet (beads shrink and
+  // the ring is over-filled) and the customer sees empty positions that cannot be filled. Consume them
+  // here so the rendered circumference always equals the physical one.
+  const retainedSlotLengthMm = State.selectedStones.reduce((sum, item) => (
+    isEmptyLoopSlot(item) ? sum + Number(item?.size || 0) : sum
+  ), 0);
+  if ((usedLengthMm + retainedSlotLengthMm) > usableBeadLengthMm + 1.0) {
+    const hadRetainedSlot = State.selectedStones.some((item) => isEmptyLoopSlot(item));
+    if (hadRetainedSlot) {
+      State.selectedStones = State.selectedStones.filter((item) => !isEmptyLoopSlot(item));
+      State.activeSlotIndex = null;
+    }
+  }
+
+  if (trimmed) {
     showToast(`Removed trailing components to fit new size capacity.`);
   }
 }
 
 function renderStep2() {
+  step2Debug.renderSequence += STEP2_DEBUG_ENABLED ? 1 : 0;
+  recordStep2Debug('STEP2_RENDER');
   DOM.beadSizeCards.forEach(c => {
     const active = hasExplicitBeadSizeSelection()
       && c.getAttribute('data-bead-size') === State.beadSize;
@@ -4663,6 +5762,8 @@ function buildStoneCard({
     const badgeElement = document.createElement('span');
     badgeElement.className = `product-badge product-badge--${badge.variant}`;
     badgeElement.textContent = badge.label;
+    if (badge.textColor) badgeElement.style.color = badge.textColor;
+    if (badge.backgroundColor) badgeElement.style.backgroundColor = badge.backgroundColor;
     card.appendChild(badgeElement);
   }
 
@@ -4687,6 +5788,10 @@ function buildStoneCard({
     img.src = withCatalogImageVersion(image);
     img.alt = imageAlt;
     img.className = imageClassName;
+    // Performance: catalog/card thumbnails are never required for the bracelet itself, so they are
+    // decoded off the critical path. The bracelet SVG images keep their existing eager loading.
+    img.loading = 'lazy';
+    img.decoding = 'async';
     if (imageStyle && typeof imageStyle === 'object') {
       Object.entries(imageStyle).forEach(([property, value]) => {
         img.style.setProperty(property, value);
@@ -4748,7 +5853,7 @@ function buildStoneCard({
 }
 
 function getVisibleCharmCatalog() {
-  return legacyCharmCatalogCache.filter((charm) => (
+  return getCharmCatalogAuthority().filter((charm) => (
     charm &&
     isCustomerCatalogItemAvailable(charm) &&
     charm.image &&
@@ -4759,6 +5864,7 @@ function getVisibleCharmCatalog() {
 function stopBerylCatalogRotation() {
   berylCatalogPreviewController?.stop();
   berylCatalogPreviewController = null;
+  catalogVariantPreviewControllers.splice(0).forEach((controller) => controller.stop());
 }
 
 function startBerylCatalogRotation(preview) {
@@ -4800,6 +5906,12 @@ function getCharmCardThumbnailStyle(charm, targetVisibleRatio = 0.8) {
   };
 }
 
+function getPendantCardThumbnailStyle(charm, targetVisibleRatio = 0.8) {
+  return {
+    '--charm-thumb-scale': '0.75'
+  };
+}
+
 function getCharmDisplayMeta(charm) {
   const overrides = {
     tg02: {
@@ -4822,20 +5934,26 @@ function getSelectedCharmCatalogEntry() {
   return getSelectedCharmCatalogEntries()[0] || null;
 }
 
-function getSelectedAnchoredCharmCatalogEntries() {
-  const selectedIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+function getSelectedAnchoredCharmCatalogEntries(selectedCharmIds = State.selectedCharmIds) {
+  const selectedIds = normalizeSelectedCharmIds(selectedCharmIds);
   if (selectedIds.length === 0) return [];
 
   const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
   const charmMap = new Map(visibleCharms.map((charm) => [charm.id, charm]));
+  const occurrences = new Map();
   return selectedIds
     .map((charmId, selectionIndex) => {
       const charm = charmMap.get(charmId);
       if (!charm) return null;
+      const occurrenceIndex = occurrences.get(charmId) || 0;
+      occurrences.set(charmId, occurrenceIndex + 1);
       return {
         ...charm,
         selectionIndex,
-        charmInstanceKey: `${charmId}_${selectionIndex}`
+        charmInstanceKey: `${charmId}_${selectionIndex}`,
+        anchorUniqueId: isApprovedThreadedPendantId(charm.id)
+          ? (normalizeApprovedPendantAnchorList(State.approvedPendantAnchors?.[charm.id])[occurrenceIndex] ?? null)
+          : null
       };
     })
     .filter((charm) => charm && isAnchoredCharmType(charm.type));
@@ -4855,7 +5973,11 @@ function getSelectedCharmCatalogEntries() {
 }
 
 function getSelectedCharmFootprintMm() {
-  return getSelectedAnchoredCharmCatalogEntries().reduce((sum, charm) => sum + getCharmFootprintMm(charm), 0);
+  return getSelectedAnchoredCharmCatalogEntries().reduce((sum, charm) => (
+    isApprovedThreadedPendantId(charm.id)
+      ? sum + getCharmThreadingOccupancyMm(charm)
+      : sum + getCharmFootprintMm(charm)
+  ), 0);
 }
 
 function getBraceletLengthMm() {
@@ -4870,6 +5992,42 @@ function getCharmFootprintMm(charm) {
   }
   if (typeof charm.sizeCm !== 'number') return 0;
   return charm.sizeCm * 10;
+}
+
+function getCharmThreadingOccupancyMm(charm) {
+  const explicit = Number(charm?.threadingOccupancyMm ?? charm?.business?.threadingOccupancyMm);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return getCharmFootprintMm(charm);
+}
+
+function getStonePackingLengthMm(stoneData, fallbackLengthMm) {
+  const explicitPackingMm = Number(stoneData?.packingLengthMm);
+  if (Number.isFinite(explicitPackingMm) && explicitPackingMm > 0) return explicitPackingMm;
+  const fallback = Number(fallbackLengthMm);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
+function getStoneRenderSizeMm(stoneData, fallbackLengthMm) {
+  const explicitRenderMm = Number(stoneData?.renderSizeMm);
+  if (Number.isFinite(explicitRenderMm) && explicitRenderMm > 0) return explicitRenderMm;
+  return getStonePackingLengthMm(stoneData, fallbackLengthMm);
+}
+
+function getStoneSizeMetadata(stoneData, fallbackSelectionMm) {
+  const fallback = Number(fallbackSelectionMm);
+  const selectionGroupMm = Number(stoneData?.selectionGroupMm ?? stoneData?.selectionSizeMm ?? fallback);
+  const nominalProductSizeMm = Number(
+    stoneData?.nominalProductSizeMm ??
+    stoneData?.productSizeMm ??
+    stoneData?.renderSizeMm ??
+    fallback
+  );
+  const braceletPackingMm = getStonePackingLengthMm(stoneData, fallback);
+  return {
+    selectionGroupMm: Number.isFinite(selectionGroupMm) && selectionGroupMm > 0 ? selectionGroupMm : fallback,
+    nominalProductSizeMm: Number.isFinite(nominalProductSizeMm) && nominalProductSizeMm > 0 ? nominalProductSizeMm : fallback,
+    braceletPackingMm
+  };
 }
 
 const DEFAULT_CHARM_RENDER_TUNING = Object.freeze({
@@ -5033,6 +6191,10 @@ function applySelectedCharm(charmId) {
 
   if (!nextCharmId) {
     if (currentCharmIds.length === 0 && currentLoopCharms.length === 0) return;
+    const clearedCharmIds = new Set([
+      ...currentCharmIds,
+      ...currentLoopCharms.map((charm) => charm.id)
+    ]);
     State.selectedCharmIds = [];
     State.selectedStones = State.selectedStones.map((item) => (
       isSelectedCharmItem(item)
@@ -5043,12 +6205,11 @@ function applySelectedCharm(charmId) {
     State.activeSlotIndex = null;
     adjustBeadsToNewCapacity();
     saveState();
-    updateEstimationText();
-    renderCharmOptions();
+    if (State.currentStep !== 3) updateEstimationText();
+    clearedCharmIds.forEach((charmId) => syncCharmCatalogCard(charmId));
 
     if (State.currentStep === 3) {
-      renderStep3();
-      syncStep3NextValidationUI();
+      requestCompositionRender();
     }
     return;
   }
@@ -5081,46 +6242,32 @@ function applySelectedCharm(charmId) {
     const itemLabel = getCharmDisplayMeta(selectedCharm).nameEn || selectedCharm.nameEn || 'Bee Heart';
     const added = addLoopItemToBracelet(loopCharm, itemLabel, getCharmFootprintMm(selectedCharm));
     if (added) {
-      trackAnalyticsEvent('item_added', {
-        item_type: 'charm',
-        item_id: selectedCharm.id,
-        charm_type: selectedCharm.type || '',
-        item_count: getSelectedStoneItems().length
-      });
-      updateEstimationText();
-      renderCharmOptions();
+      recordAnalyticsDesignItem('charm', selectedCharm.id);
+      if (State.currentStep !== 3) updateEstimationText();
     }
     return;
   }
 
-  if (currentCharmIds.length >= 2) {
+  const isUnlimitedAnchoredPendant = isApprovedThreadedPendantId(nextCharmId);
+  const currentLegacyAnchoredCount = currentCharmIds.filter((charmId) => (
+    !isApprovedThreadedPendantId(charmId)
+  )).length;
+  if (!isUnlimitedAnchoredPendant && currentLegacyAnchoredCount >= 2) {
     showToast('You can select up to 2 anchored charms.');
     return;
   }
 
-  if (currentCharmIds.length === 0) {
-    State.selectedCharmIds = [nextCharmId];
-  } else if (currentCharmIds.length === 1) {
-    State.selectedCharmIds = [currentCharmIds[0], nextCharmId];
-  } else {
-    State.selectedCharmIds = [currentCharmIds[0], nextCharmId];
-  }
+  State.selectedCharmIds = [...currentCharmIds, nextCharmId];
   syncSelectedCharmState();
   adjustBeadsToNewCapacity();
   saveState();
-  updateEstimationText();
-  renderCharmOptions();
+  if (State.currentStep !== 3) updateEstimationText();
+  syncCharmCatalogCard(nextCharmId);
 
   if (State.currentStep === 3) {
-    renderStep3();
-    syncStep3NextValidationUI();
+    requestCompositionRender();
   }
-  trackAnalyticsEvent('item_added', {
-    item_type: 'charm',
-    item_id: selectedCharm.id,
-    charm_type: selectedCharm.type || '',
-    item_count: getSelectedStoneItems().length
-  });
+  recordAnalyticsDesignItem('charm', selectedCharm.id);
 }
 
 function buildSelectedCharmOrderData() {
@@ -5153,6 +6300,15 @@ function buildSelectedCharmOrderData() {
       nameEn: charmMeta.nameEn,
       type: charm.type || null,
       sizeCm: charm.sizeCm || null,
+      footprintMm: getCharmFootprintMm(charm),
+      threadingOccupancyMm: isApprovedThreadedPendantId(charm.id)
+        ? getCharmThreadingOccupancyMm(charm)
+        : null,
+      loopWidthMm: Number(charm.loopWidthMm || charm.business?.loopWidthMm || 0) || null,
+      loopHeightMm: Number(charm.loopHeightMm || charm.business?.loopHeightMm || 0) || null,
+      pendantBodyWidthMm: Number(charm.pendantBodyWidthMm || charm.business?.pendantBodyWidthMm || 0) || null,
+      pendantBodyHeightMm: Number(charm.pendantBodyHeightMm || charm.business?.pendantBodyHeightMm || 0) || null,
+      attachmentAnchorFromTopRatio: Number(charm.attachmentAnchorFromTopRatio || charm.business?.attachmentAnchorFromTopRatio || 0) || null,
       price: Number(charm.price || 0),
       image: charm.image || null,
       meaningTh: charm.meaningTh || '',
@@ -5201,6 +6357,7 @@ function buildSelectedSpacerOrderData() {
       price: Number(spacer.price || 0),
       displaySizeMm: spacer.displaySizeMm,
       effectiveLengthMm: spacer.effectiveLengthMm,
+      packingLengthMm: spacer.packingLengthMm || spacer.effectiveLengthMm,
       thicknessMm: spacer.thicknessMm || null
     }))
   };
@@ -5476,6 +6633,7 @@ function buildAggregatedStonesFromBilling(itemizedBilling = []) {
       if (!stoneId) return aggregated;
       const stoneData = STONES.find((stone) => stone.id === stoneId);
       const size = Number(item?.size || item?.sizeMm || State.beadSize || 6);
+      const sizeMetadata = getStoneSizeMetadata(stoneData, size);
       const key = `${stoneId}_${size}`;
       const quantity = Math.max(1, Number.parseInt(item?.quantity ?? item?.count ?? 1, 10) || 1);
       const totalPrice = Number(item?.totalPrice ?? 0);
@@ -5490,6 +6648,9 @@ function buildAggregatedStonesFromBilling(itemizedBilling = []) {
           color: item?.color || stoneData?.color || '#E2E8F0',
           image: item?.image || stoneData?.image || '',
           size,
+          selectionGroupMm: Number(item?.selectionGroupMm ?? sizeMetadata.selectionGroupMm),
+          nominalProductSizeMm: Number(item?.nominalProductSizeMm ?? sizeMetadata.nominalProductSizeMm),
+          braceletPackingMm: Number(item?.braceletPackingMm ?? sizeMetadata.braceletPackingMm),
           quantity: 0,
           count: 0,
           unitPrice,
@@ -5684,6 +6845,19 @@ function calculateLiveBraceletPricing() {
   return buildOrderPricingFromSummary(summary);
 }
 
+function calculateLumiRecommendationPrice(recommendation) {
+  const selected = recommendation?.selected;
+  if (!selected || !Array.isArray(selected.sequence) || !Array.isArray(selected.anchoredCharms)) return null;
+  const stoneComponents = selected.sequence.filter((component) => component.componentType === 'stone');
+  const charmComponents = [...selected.sequence, ...selected.anchoredCharms].filter((component) => component.componentType === 'loop_charm' || component.componentType === 'anchored_charm');
+  const spacerComponents = selected.sequence.filter((component) => component.componentType === 'spacer');
+  const stonesSubtotal = stoneComponents.reduce((total, component) => total + getStonePriceForSize(STONES.find((stone) => stone.id === component.materialId), component.sizeMm), 0);
+  const charmSubtotal = charmComponents.reduce((total, component) => total + Number(getCharmCatalogEntry(component.materialId)?.price || 0), 0);
+  const spacerSubtotal = spacerComponents.reduce((total, component) => total + Number(getSpacerCatalogEntry(component.materialId)?.price || 0), 0);
+  const summary = applyEffectiveDiscountToCheckoutSummary({ stonesSubtotal, charmSubtotal, spacerSubtotal, subtotal: stonesSubtotal + charmSubtotal + spacerSubtotal });
+  return Number.isFinite(summary.finalPrice) ? summary.finalPrice : null;
+}
+
 function buildOrderPricingFromSummary(summary) {
   return {
     stonesSubtotal: summary.stonesSubtotal,
@@ -5863,6 +7037,10 @@ function buildCheckoutSummary() {
     }
 
     const stoneData = STONES.find((stone) => stone.id === component.stoneId);
+    const sizeMetadata = getStoneSizeMetadata(stoneData, component.sizeMm);
+    const selectionGroupMm = Number(component.selectionGroupMm ?? sizeMetadata.selectionGroupMm);
+    const nominalProductSizeMm = Number(component.nominalProductSizeMm ?? sizeMetadata.nominalProductSizeMm);
+    const braceletPackingMm = Number(component.braceletPackingMm ?? sizeMetadata.braceletPackingMm);
     return {
       type: 'stone',
       componentType: 'stone',
@@ -5873,8 +7051,13 @@ function buildCheckoutSummary() {
       nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
       color: stoneData ? stoneData.color : '#E2E8F0',
       image: stoneData ? stoneData.image : '',
-      size: component.sizeMm,
-      price: getStonePriceForSize(stoneData, component.sizeMm),
+      size: selectionGroupMm,
+      physicalSizeMm: component.sizeMm,
+      selectionGroupMm,
+      nominalProductSizeMm,
+      braceletPackingMm,
+      visualVariantIndex: component.visualVariantIndex ?? null,
+      price: getStonePriceForSize(stoneData, selectionGroupMm),
       uniqueId: component.uniqueId || component.id
     };
   });
@@ -5917,7 +7100,17 @@ function getHangingSpacerPreviewComponent(component) {
   return previewTuning ? { ...component, ...previewTuning } : component;
 }
 
+function getHangingSpacerOutwardOffsetPx(component, scaleMmToPx) {
+  const renderHeightMm = Number(component?.renderHeightMm ?? component?.renderSizeMm ?? component?.sizeMm);
+  const attachmentLoopMm = Number(component?.attachmentLoopMm);
+  if (!Number.isFinite(renderHeightMm) || !Number.isFinite(attachmentLoopMm)) return 0;
+  return Math.max(0, (renderHeightMm / 2) - attachmentLoopMm) * scaleMmToPx;
+}
+
 function getResolvedNodeRotationRad(node) {
+  if (isApprovedThreadedPendant(node?.component)) {
+    return node.centerAngle - Math.PI / 2;
+  }
   if (node?.component?.type === 'charm' || isHangingSpacerComponent(node?.component)) {
     const isOutwardFacingBeeHeart = node.component.charmType === 'bee_heart' || isHangingSpacerComponent(node.component);
     // Most charm assets are authored upright and need a quarter-turn to lie
@@ -5932,6 +7125,19 @@ function getResolvedNodeRotationRad(node) {
 }
 
 function getCharmRenderFrameDimensions(component, scaleMmToPx) {
+  if (isApprovedThreadedPendant(component)) {
+    const catalogWidthMm = Number(component.pendantBodyWidthMm ?? component.footprintMm);
+    const visualFrameWidthMm = Number(
+      APPROVED_PENDANT_VISUAL_FRAME_WIDTH_MM[component.charmId || component.sourceId]
+    );
+    const widthMm = Number.isFinite(visualFrameWidthMm) && visualFrameWidthMm > 0
+      ? visualFrameWidthMm
+      : catalogWidthMm;
+    const heightMm = Number(component.pendantBodyHeightMm ?? (Number(component.sizeCm) * 10));
+    if (Number.isFinite(widthMm) && widthMm > 0 && Number.isFinite(heightMm) && heightMm > 0) {
+      return { widthPx: widthMm * scaleMmToPx, heightPx: heightMm * scaleMmToPx };
+    }
+  }
   const renderWidthMm = Number(component?.renderWidthMm);
   const renderHeightMm = Number(component?.renderHeightMm);
   if (Number.isFinite(renderWidthMm) && renderWidthMm > 0 && Number.isFinite(renderHeightMm) && renderHeightMm > 0) {
@@ -5998,16 +7204,34 @@ async function removeSelectedCharm(selectionIndex = null, showToastNotification 
     ));
     if (anchoredIndex < 0) return;
 
+    if (isApprovedThreadedPendantId(selectedCharm.id)) {
+      const occurrenceIndex = currentCharmIds
+        .slice(0, anchoredIndex)
+        .filter((charmId) => charmId === selectedCharm.id)
+        .length;
+      const anchorList = normalizeApprovedPendantAnchorList(
+        State.approvedPendantAnchors?.[selectedCharm.id]
+      );
+      anchorList.splice(occurrenceIndex, 1);
+      if (anchorList.length > 0) {
+        State.approvedPendantAnchors = {
+          ...State.approvedPendantAnchors,
+          [selectedCharm.id]: anchorList
+        };
+      } else {
+        delete State.approvedPendantAnchors?.[selectedCharm.id];
+      }
+    }
+
     State.selectedCharmIds = currentCharmIds.filter((_, index) => index !== anchoredIndex);
     syncSelectedCharmState();
     State.activeSlotIndex = null;
-    updateEstimationText();
+    if (State.currentStep !== 3) updateEstimationText();
     saveState();
+    syncCharmCatalogCard(selectedCharm.id);
 
     if (State.currentStep === 3) {
-      renderCharmOptions();
-      renderStep3();
-      syncStep3NextValidationUI();
+      requestCompositionRender();
     } else if (State.currentStep === 4) {
       await renderStep4();
     }
@@ -6121,15 +7345,18 @@ function appendCatalogEmptyState(container, message = 'Coming soon') {
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
   if (!canUseCategoryForBeadSize('charms')) {
-    DOM.charmSectionMount.innerHTML = '';
+    DOM.charmSectionMount.querySelectorAll('.charm-component-section').forEach((node) => node.remove());
     return;
   }
 
-  const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
+  const visibleCharms = applyCatalogLayoutOrder(
+    getVisibleCharmCatalog().filter((charm) => !SPACER_TAB_CHARM_IDS.has(charm.id)),
+    'charms'
+  );
   const selectedCharms = getSelectedCharmCatalogEntries();
   const selectedCharmIdSet = new Set(selectedCharms.map((charm) => charm.id));
   const thumbnailTargetRatio = getCharmCatalogThumbnailTargetRatio(visibleCharms);
-  DOM.charmSectionMount.innerHTML = '';
+  DOM.charmSectionMount.querySelectorAll('.charm-component-section').forEach((node) => node.remove());
 
   const section = document.createElement('section');
   section.className = 'component-section charm-component-section';
@@ -6163,7 +7390,7 @@ function renderCharmOptions() {
       nameTh: charmMeta.nameTh,
       nameEn: charmMeta.nameEn,
       priceText: formatDisplayPrice(charm.price),
-      badge: getProductCardBadge('charms', charm.id),
+      badge: getProductCardBadge('charms', charm.id, null, State),
       isSelected,
       onCardClick: () => selectCharm(charm.id),
       onInfoClick: () => openCharmInfoModal(charm),
@@ -6174,8 +7401,9 @@ function renderCharmOptions() {
   });
 
   section.appendChild(grid);
-  DOM.charmSectionMount.appendChild(section);
-  renderSpacerOptions();
+  const spacerSection = DOM.charmSectionMount.querySelector('.spacer-component-section');
+  if (spacerSection) DOM.charmSectionMount.insertBefore(section, spacerSection);
+  else DOM.charmSectionMount.appendChild(section);
 }
 
 function renderSpacerOptions() {
@@ -6194,12 +7422,18 @@ function renderSpacerOptions() {
   const grid = document.createElement('div');
   grid.className = 'stone-catalog-grid';
 
-  const visibleSpacers = applyCatalogLayoutOrder(spacerCatalogCache.filter(isCustomerCatalogItemAvailable), 'spacers');
-  if (visibleSpacers.length === 0) {
+  const visibleSpacers = spacerCatalogCache.filter(isCustomerCatalogItemAvailable);
+  const visiblePendants = getVisibleCharmCatalog().filter((charm) => SPACER_TAB_CHARM_IDS.has(charm.id));
+  const visibleSpacerPresentationItems = applyCatalogLayoutOrder([
+    ...visibleSpacers.map((item) => ({ kind: 'spacer', item })),
+    ...visiblePendants.map((item) => ({ kind: 'charm', item }))
+  ], 'spacers', (entry) => entry.item.id);
+  const selectedPendantIdSet = new Set(getSelectedCharmCatalogEntries().map((charm) => charm.id));
+  if (visibleSpacerPresentationItems.length === 0) {
     appendCatalogEmptyState(grid, `${CUSTOMER_COMPONENT_LABELS.spacer} coming soon`);
   }
 
-  visibleSpacers.forEach((spacer) => {
+  const appendSpacerCard = (spacer) => {
     const quantity = spacerCounts[spacer.id] || 0;
     const spacerImage = withCatalogImageVersion(spacer.image, spacer);
     grid.appendChild(buildStoneCard({
@@ -6215,25 +7449,275 @@ function renderSpacerOptions() {
       nameTh: spacer.nameTh,
       nameEn: spacer.nameEn,
       priceText: `${formatDisplayPrice(spacer.price)} • ${spacer.effectiveLengthMm}mm`,
-      badge: getProductCardBadge('spacers', spacer.id),
+      badge: getProductCardBadge('spacers', spacer.id, null, State),
       isSelected: quantity > 0,
       onCardClick: () => addSpacerToBracelet(spacer.id),
       onActionClick: () => addSpacerToBracelet(spacer.id),
       actionText: quantity > 0 ? String(quantity) : '+',
       actionTitle: quantity > 0 ? `Add Another ${CUSTOMER_COMPONENT_LABELS.spacer}` : `Add ${CUSTOMER_COMPONENT_LABELS.spacer}`
     }));
+  };
+
+  const appendPendantCard = (charm) => {
+    const isSelected = selectedPendantIdSet.has(charm.id);
+    const charmMeta = getCharmDisplayMeta(charm);
+    const charmImage = withCatalogImageVersion(charm.image, charm);
+    if (charmImage) scheduleCharmVisibleBoundsDetection(charmImage);
+    const card = buildStoneCard({
+      rootTag: 'div',
+      dataAttributeName: 'charm-id',
+      dataAttributeValue: charm.id,
+      image: charmImage,
+      imageAlt: charmMeta.nameEn,
+      imageClassName: 'stone-img charm-card-img charm-pendant-card-img',
+      imageStyle: getPendantCardThumbnailStyle(),
+      nameTh: charmMeta.nameTh,
+      nameEn: charmMeta.nameEn,
+      priceText: formatDisplayPrice(charm.price),
+      badge: getProductCardBadge('charms', charm.id, null, State),
+      isSelected,
+      onCardClick: () => applySelectedCharm(charm.id),
+      onInfoClick: () => openCharmInfoModal(charm),
+      onActionClick: () => applySelectedCharm(charm.id),
+      actionText: '+',
+      actionTitle: isSelected ? `Selected ${CUSTOMER_COMPONENT_LABELS.charm}` : `Select ${CUSTOMER_COMPONENT_LABELS.charm}`
+    });
+    card.classList.add('charm-presentation-card');
+    grid.appendChild(card);
+  };
+
+  visibleSpacerPresentationItems.forEach(({ kind, item }) => {
+    if (kind === 'spacer') appendSpacerCard(item);
+    else appendPendantCard(item);
   });
 
   section.appendChild(grid);
+  DOM.charmSectionMount.querySelectorAll('.spacer-component-section').forEach((node) => node.remove());
   DOM.charmSectionMount.appendChild(section);
 }
 
 // ==========================================
 // 8. Step 3: Interactive Canvas & Catalog
 // ==========================================
+// ---------------------------------------------------------------- Undo history (Step 3)
+// Bugfix 2026-10-11 (issue 6). One fully working Undo for the bracelet editor.
+// State stays the single source of truth: history only stores immutable snapshots of the composition
+// fields (stones, charms, counter), and a restore replays the existing Step 3 normalisation + render
+// pipeline, so preview, item list, price and capacity checks are always re-derived from the restored
+// composition. History is client-side only, contains catalog ids and sizes (no personal, order or
+// payment data), and is bounded at 30 snapshots - comfortably above the required 20.
+const UNDO_HISTORY_LIMIT = 40;
+// 'เลิกทำแล้ว' (undo applied) - encoded to keep the literal byte-exact.
+const UNDO_TOAST_TEXT = String.fromCodePoint(0x0e40, 0x0e25, 0x0e34, 0x0e01, 0x0e17, 0x0e33, 0x0e41, 0x0e25, 0x0e49, 0x0e27);
+let undoHistory = [];
+let undoBaseline = null;
+let undoRestoring = false;
+let undoCaptureBound = false;
+let undoCaptureTimer = null;
+let undoCaptureSnapshot = null;
+let undoSuppressUntil = 0;
+let pendingLuckyUndoSnapshot = null;
+// Burst window for duplicate DOM events belonging to the SAME user action (see pushUndoSnapshot).
+const UNDO_DUPLICATE_BURST_MS = 400;
+let lastUndoPushSignature = '';
+let lastUndoPushAt = 0;
+
+function captureUndoSnapshot() {
+  return Object.freeze({
+    selectedStones: JSON.parse(JSON.stringify(State.selectedStones || [])),
+    selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
+    selectedCharmId: State.selectedCharmId ?? null,
+    approvedPendantAnchors: normalizeApprovedPendantAnchors(State.approvedPendantAnchors),
+    uniqueCounter: Number(State.uniqueCounter) || 0,
+    pearlVariantCursor: normalizeVisualVariantIndex(State.pearlVariantCursor) ?? 0
+  });
+}
+
+function undoSnapshotSignature(snapshot) {
+  if (!snapshot) return '';
+  return JSON.stringify({
+    stones: snapshot.selectedStones || [],
+    charmIds: snapshot.selectedCharmIds || [],
+    charmId: snapshot.selectedCharmId ?? null,
+    approvedPendantAnchors: normalizeApprovedPendantAnchors(snapshot.approvedPendantAnchors),
+    counter: Number(snapshot.uniqueCounter) || 0,
+    pearlVariantCursor: normalizeVisualVariantIndex(snapshot.pearlVariantCursor) ?? 0
+  });
+}
+
+function syncUndoButtonState() {
+  // Resolve the live node: a re-render must never leave the visible control out of sync with the
+  // history, and the control itself stays usable because its handler is delegated (see below).
+  const button = document.getElementById('btnUndoBracelet') || DOM.btnUndoBracelet;
+  if (!button) return;
+  const enabled = !undoRestoring && undoHistory.length > 0;
+  button.disabled = !enabled;
+  button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+  button.classList.toggle('has-history', enabled);
+}
+
+// Explicit boundary: initial bracelet loading starts a fresh history.
+function resetUndoHistory() {
+  undoHistory = [];
+  undoBaseline = { signature: undoSnapshotSignature(captureUndoSnapshot()) };
+  pendingLuckyUndoSnapshot = null;
+  lastUndoPushSignature = '';
+  lastUndoPushAt = 0;
+  syncUndoButtonState();
+}
+
+// Re-point the baseline without recording an entry (used after automatic reconciliation).
+function syncUndoBaseline() {
+  undoBaseline = { signature: undoSnapshotSignature(captureUndoSnapshot()) };
+}
+
+function pushUndoSnapshot(snapshot) {
+  if (undoRestoring || !snapshot) return false;
+  const signature = undoSnapshotSignature(snapshot);
+  const now = Date.now();
+  // Owner-reported 2026-10-11 (manual editing): one user action can surface through several DOM
+  // events (pointerdown + click + change) plus the settle re-check, and those arrive within a few
+  // milliseconds of each other, so only that burst counts as a duplicate. Comparing a new snapshot
+  // against the previous HISTORY entries instead silently dropped genuine edits whenever a removal
+  // returned the bracelet to a composition the history already recorded (removing the stones that
+  // were just added), which is exactly the kind of lost step that makes Undo stop walking back.
+  if (signature === lastUndoPushSignature && now - lastUndoPushAt < UNDO_DUPLICATE_BURST_MS) return false;
+  undoHistory.push(snapshot);
+  lastUndoPushSignature = signature;
+  lastUndoPushAt = now;
+  if (undoHistory.length > UNDO_HISTORY_LIMIT) undoHistory.shift();
+  syncUndoButtonState();
+  return true;
+}
+
+function recordUndoFrom(previousSnapshot) {
+  if (undoRestoring || !previousSnapshot) return;
+  // A settle timer scheduled by an edit must never record history after the customer has already
+  // undone: that would push a stale "pre-undo" snapshot back onto the stack and make the next Undo
+  // restore the state the customer just left.
+  if (Date.now() < undoSuppressUntil) return;
+  if (undoSnapshotSignature(previousSnapshot) === undoSnapshotSignature(captureUndoSnapshot())) return;
+  pushUndoSnapshot(previousSnapshot);
+  syncUndoBaseline();
+}
+
+function restoreUndoSnapshot(snapshot) {
+  State.selectedStones = (snapshot.selectedStones || []).map((item) => ({ ...item }));
+  State.selectedCharmIds = normalizeSelectedCharmIds(snapshot.selectedCharmIds);
+  State.selectedCharmId = snapshot.selectedCharmId ?? State.selectedCharmIds[0] ?? null;
+  State.approvedPendantAnchors = normalizeApprovedPendantAnchors(snapshot.approvedPendantAnchors);
+  State.uniqueCounter = Number(snapshot.uniqueCounter) || 0;
+  State.pearlVariantCursor = normalizeVisualVariantIndex(snapshot.pearlVariantCursor) ?? 0;
+  State.activeSlotIndex = null;
+  State.newlyAddedIds = [];
+  syncSelectedCharmState();
+  normalizeSelectedStoneSizes();
+  ensureCurrentDesignMatchesBeadSize();
+  saveState();
+  if (State.currentStep === 3) renderStep3();
+}
+
+function undoLastBraceletAction() {
+  if (undoRestoring || undoHistory.length === 0) {
+    syncUndoButtonState();
+    return false;
+  }
+  const snapshot = undoHistory[undoHistory.length - 1];
+  // Cancel any pending post-edit settle push and ignore settles for the next moment, so undoing twice
+  // in quick succession keeps walking backwards through the history.
+  window.clearTimeout(undoCaptureTimer);
+  undoCaptureTimer = null;
+  undoSuppressUntil = Date.now() + 700;
+  undoRestoring = true;
+  try {
+    restoreUndoSnapshot(snapshot);
+    undoHistory.pop();
+    showToast(UNDO_TOAST_TEXT);
+  } catch (error) {
+    console.error('Undo could not restore the previous bracelet state.', error);
+    return false;
+  } finally {
+    undoRestoring = false;
+    syncUndoBaseline();
+    syncUndoButtonState();
+  }
+  return true;
+}
+
+// A Lucky acceptance is its own explicit boundary: the bracelet that existed when the customer
+// pressed the accept button is kept as one recoverable undo step. A cancelled, stale or failed
+// acceptance clears the pending snapshot and leaves the history untouched.
+function handleLumiUndoBoundaryEvent(eventName) {
+  if (eventName === 'lumi_accept_clicked') {
+    pendingLuckyUndoSnapshot = captureUndoSnapshot();
+    return;
+  }
+  if (['lumi_replace_confirmation_cancelled', 'lumi_accept_failed', 'lumi_stale_context', 'lumi_stale_catalog', 'lumi_manual_fallback'].includes(eventName)) {
+    pendingLuckyUndoSnapshot = null;
+  }
+}
+
+// Records one history entry per user-driven composition change. It watches the editor while Step 3 is
+// active and compares composition snapshots, so render cycles, catalog reconciliation and duplicate
+// events cannot create duplicate records.
+function bindUndoHistoryCapture() {
+  if (undoCaptureBound) return;
+  undoCaptureBound = true;
+  const schedule = (before) => {
+    // One gesture delivers several events (pointerdown, then pointerup which mutates, then the
+    // trailing click). The earliest observation holds the pre-action state, so a later event of the
+    // same gesture must never cancel it: doing exactly that lost every bead removal once the removal
+    // moved to pointerup (Turn 6), which made one Undo jump back several actions.
+    const pendingHoldsPreActionState = undoCaptureTimer !== null
+      && undoSnapshotSignature(undoCaptureSnapshot) !== undoSnapshotSignature(captureUndoSnapshot());
+    if (pendingHoldsPreActionState) return;
+    window.clearTimeout(undoCaptureTimer);
+    undoCaptureSnapshot = before;
+    recordUndoFrom(before);
+    undoCaptureTimer = window.setTimeout(() => {
+      undoCaptureTimer = null;
+      const pending = undoCaptureSnapshot;
+      undoCaptureSnapshot = null;
+      recordUndoFrom(pending);
+      // A second action can start inside the settle window (rapid taps). Its own pre-action state is
+      // the current one, so arm one more capture for it - otherwise that action would never become
+      // undoable and a single Undo would jump back two actions.
+      if (undoSnapshotSignature(pending) !== undoSnapshotSignature(captureUndoSnapshot())) {
+        schedule(captureUndoSnapshot());
+      }
+    }, 260);
+  };
+  const capture = (event) => {
+    if (undoRestoring || State.currentStep !== 3) return;
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') return;
+    if (target.closest('#btnUndoBracelet')) return;
+    if (target.closest('#btnResetBracelet')) return;
+    schedule(captureUndoSnapshot());
+  };
+  document.addEventListener('pointerdown', capture, true);
+  document.addEventListener('click', capture, true);
+  document.addEventListener('change', capture, true);
+}
+
 function setupDesignerEvents() {
   setupStep3StickyLayer();
   setupStep3StickyDebugOverlay();
+
+  // Undo Button (issue 6). Its handler only restores editor state: it never resets, navigates,
+  // generates a Lucky design or reaches checkout.
+  bindUndoHistoryCapture();
+  // Delegated so the control keeps working even if the Step 3 toolbar is re-rendered: a listener
+  // bound to the cached node would die with the node and Undo would appear to stop after one press.
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') return;
+    if (!target.closest('#btnUndoBracelet')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    undoLastBraceletAction();
+  }, true);
+  syncUndoButtonState();
 
   // Reset Button
   DOM.btnResetBracelet.addEventListener('click', async () => {
@@ -6243,8 +7727,12 @@ function setupDesignerEvents() {
         "Reset Bracelet"
       );
       if (proceed) {
+        // Explicit undo boundary: a single Undo restores the bracelet that existed before the reset.
+        pushUndoSnapshot(captureUndoSnapshot());
         State.selectedStones = [];
+        State.pearlVariantCursor = 0;
         State.selectedCharmIds = [];
+        State.approvedPendantAnchors = {};
         syncSelectedCharmState();
         State.activeSlotIndex = null;
         State.newlyAddedIds = [];
@@ -6276,6 +7764,35 @@ function setupDesignerEvents() {
   });
 
   setupStep3CategoryHintDismissEvents();
+  setupDeleteDebugTrace();
+}
+
+function recordDeleteDebug(event, details = {}) {
+  if (!DELETE_DEBUG_ENABLED) return;
+  const entry = {
+    actionId: `delete-${deleteMutationSequence}`,
+    eventType: event?.type || 'programmatic',
+    timestamp: Math.round(event?.timeStamp || performance.now()),
+    pointerId: event?.pointerId ?? null,
+    ...details
+  };
+  deleteDebugEvents.push(entry);
+  const output = document.getElementById('deleteDebugOutput');
+  if (output) output.textContent = deleteDebugEvents.slice(-20).map((item) => JSON.stringify(item)).join('\n');
+}
+
+function setupDeleteDebugTrace() {
+  if (!DELETE_DEBUG_ENABLED || DOM.braceletSvg?.dataset.deleteDebugReady === 'true') return;
+  DOM.braceletSvg.dataset.deleteDebugReady = 'true';
+  ['pointerdown', 'touchstart', 'touchend', 'click'].forEach((eventType) => {
+    DOM.braceletSvg.addEventListener(eventType, (event) => {
+      recordDeleteDebug(event, { phase: 'svg-event', target: event.target?.tagName || '' });
+    }, true);
+  });
+  const output = document.createElement('pre');
+  output.id = 'deleteDebugOutput';
+  output.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999;max-width:48vw;max-height:32vh;overflow:auto;margin:0;padding:8px;background:#fff;color:#222;border:1px solid #999;font:10px/1.35 monospace;white-space:pre-wrap;pointer-events:none;';
+  document.body.appendChild(output);
 }
 
 // This class changes hit testing only. The visual layering is native sticky
@@ -6641,31 +8158,33 @@ function setActiveCatalogSection(section) {
     return;
   }
   if (State.activeCatalogSection !== section) {
-    trackAnalyticsEvent('category_changed', {
-      section
-    });
+    recordAnalyticsDesignCategory(section, section);
   }
   State.activeCatalogSection = section;
+  // Performance: build the opened category on first use instead of eagerly rendering all of them.
+  if (section === 'charms') renderCharmOptions();
+  else if (section === 'spacer') renderSpacerOptions();
   syncCatalogSectionFilter();
-  renderCatalogGrid();
+  if (section === 'stones') renderCatalogGrid();
 }
 
 function initCatalogFilters() {
   DOM.catalogFiltersContainer.innerHTML = '';
-  Object.entries(CATEGORIES).forEach(([key, nameObj]) => {
+  // Owner review 2026-10-08: the Step 3 stone tabs are the canonical Lucky six goals plus All,
+  // never the legacy wealth/love/calm/protection groups, so manual browsing uses the same taxonomy
+  // as the Lucky recommendation engine. Tab membership comes from lumi/knowledge/stone-goal-taxonomy.js.
+  const stoneGoalCategories = [STEP3_ALL_CATEGORY, ...STEP3_GOAL_CATEGORIES];
+  stoneGoalCategories.forEach(({ id: key, th: label }) => {
     const tab = document.createElement('button');
     tab.className = `filter-tab ${State.activeCategory === key ? 'active' : ''}`;
-    tab.textContent = nameObj.th; // Using Thai text primarily for brand feel
+    tab.textContent = label; // Using Thai text primarily for brand feel
     tab.setAttribute('data-category', key);
     
       tab.addEventListener('click', () => {
         document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         State.activeCategory = key;
-        trackAnalyticsEvent('category_changed', {
-          section: 'stones',
-          category: key
-        });
+        recordAnalyticsDesignCategory(key, 'stones');
         renderCatalogGrid();
       });
     
@@ -6690,9 +8209,10 @@ function renderCatalogGrid() {
   
   const filtered = State.activeCategory === 'all' 
     ? availableStones 
-    : availableStones.filter(s => (s.categoryId || s.category) === State.activeCategory);
+    : availableStones.filter((s) => stoneMatchesGoalCategory(s, State.activeCategory));
     
   let berylCatalogPreview = null;
+  const variantCatalogPreviews = [];
   filtered.forEach(stone => {
     const catalogCurrentSize = getCurrentBeadSizeMm();
     const hasExplicitPlacementSize = State.beadSize !== MIXED_BEAD_SIZE_MODE || stoneSupportsSize(stone, catalogCurrentSize);
@@ -6708,7 +8228,7 @@ function renderCatalogGrid() {
       nameTh: stone.nameTh,
       nameEn: stone.name,
       priceText: catalogPrice === null ? 'Select a size' : formatDisplayPrice(catalogPrice),
-      badge: getProductCardBadge('stones', stone.id, catalogCurrentSize),
+      badge: getProductCardBadge('stones', stone.id, catalogCurrentSize, State),
       isSelected: selectedCount > 0,
       selectedClassName: 'stone-card-selected',
       onCardClick: () => addStoneToBracelet(stone.id),
@@ -6721,6 +8241,9 @@ function renderCatalogGrid() {
     DOM.stoneCatalogGrid.appendChild(card);
     if (stone.id === BERYL_STONE_ID) {
       berylCatalogPreview = createBerylCatalogPreview(card);
+    } else if (Array.isArray(stone.visualVariants) && stone.visualVariants.length === 3) {
+      const preview = createMultiImageCatalogPreview(card, stone.visualVariants);
+      if (preview) variantCatalogPreviews.push(preview);
     }
   });
   if (berylCatalogPreview) {
@@ -6732,14 +8255,21 @@ function renderCatalogGrid() {
       }
     });
   }
+  variantCatalogPreviews.forEach((preview) => {
+    waitForMultiImageCatalogPreviewReady(preview).then((isReady) => {
+      if (!isReady || !preview.root.isConnected || State.currentStep !== 3) return;
+      const controller = createMultiImageCatalogPreviewController(preview);
+      if (controller) catalogVariantPreviewControllers.push(controller);
+    });
+  });
 }
 
 function getFirstEmptyLoopSlotIndex() {
   return State.selectedStones.findIndex((item) => isEmptyLoopSlot(item));
 }
 
-function getAvailableLengthForNewLoopItem() {
-  const { usableBeadLengthMm } = getCurrentBraceletCapacityMetrics();
+function getAvailableLengthForNewLoopItem(capacityMetrics = getCurrentBraceletCapacityMetrics()) {
+  const { usableBeadLengthMm } = capacityMetrics;
   const currentTotalDiameter = State.selectedStones.reduce((sum, item) => sum + getLoopItemLengthMm(item), 0);
   const emptySlotIndex = getFirstEmptyLoopSlotIndex();
   const reservedSlotLengthMm = emptySlotIndex >= 0
@@ -6752,8 +8282,7 @@ function getAvailableLengthForNewLoopItem() {
   };
 }
 
-function getCurrentPlacementEligibility(lengthMm) {
-  const capacityMetrics = getCurrentBraceletCapacityMetrics();
+function getCurrentPlacementEligibility(lengthMm, capacityMetrics = getCurrentBraceletCapacityMetrics()) {
   return getNextComponentPlacementEligibility({
     mode: State.beadSize === 'mixed' ? 'mixed' : 'fixed',
     usedLengthMm: capacityMetrics.totalUsedLengthMm,
@@ -6791,6 +8320,7 @@ function fillEntireBracelet(stoneId) {
   }
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
+  const physicalPlacedSize = getStonePackingLengthMm(stoneData, placedSize);
   let { availableLengthMm } = getAvailableLengthForNewLoopItem();
   const stockQty = normalizeStockQtyForCustomer(stoneData.stockQty ?? stoneData.stock_qty);
   let remainingStockQty = stockQty === null
@@ -6798,9 +8328,14 @@ function fillEntireBracelet(stoneId) {
     : Math.max(0, stockQty - (getSelectedStoneCountsById()[stoneId] || 0));
   State.newlyAddedIds = [];
   
-  while (getCurrentPlacementEligibility(placedSize).eligible && remainingStockQty > 0) {
+  while (getCurrentPlacementEligibility(physicalPlacedSize).eligible && remainingStockQty > 0) {
     State.uniqueCounter++;
-    placeLoopItemInFirstAvailableSlot(createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter));
+    placeLoopItemInFirstAvailableSlot(createNewStoneSelectionItem(
+      stoneId,
+      placedSize,
+      State.uniqueCounter,
+      stoneData
+    ));
     State.newlyAddedIds.push(State.uniqueCounter);
     remainingStockQty -= 1;
     availableLengthMm = getAvailableLengthForNewLoopItem().availableLengthMm;
@@ -6813,14 +8348,16 @@ function fillEntireBracelet(stoneId) {
 }
 
 function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
-  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
-  const placementEligibility = getCurrentPlacementEligibility(lengthMm);
+  const capacityMetrics = getCurrentBraceletCapacityMetrics();
+  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem(capacityMetrics);
+  const placementEligibility = getCurrentPlacementEligibility(lengthMm, capacityMetrics);
 
   if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${lengthMm}mm)`);
     return false;
   }
 
+  captureCurrentSlotForensics('STATE_D_BEFORE_READD_MUTATION');
   State.newlyAddedIds = [loopItem.uniqueId];
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
 
@@ -6833,9 +8370,14 @@ function addLoopItemToBracelet(loopItem, itemLabel, lengthMm) {
     State.selectedStones.push(loopItem);
   }
 
-  renderStep3();
+  if (isSelectedCharmItem(loopItem)) syncCharmCatalogCard(loopItem.charmId);
+  else if (isSelectedSpacerItem(loopItem)) syncSpacerCatalogCard(loopItem.spacerId);
+  else syncStoneCatalogCard(loopItem.stoneId);
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureCurrentSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION');
+  markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
+  requestCompositionRender();
   saveState();
-  syncStep3NextValidationUI();
   return true;
 }
 
@@ -6861,8 +8403,10 @@ function addStoneToBracelet(stoneId) {
   }
   
   const placedSize = State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize);
-  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
-  const placementEligibility = getCurrentPlacementEligibility(placedSize);
+  const physicalPlacedSize = getStonePackingLengthMm(stoneData, placedSize);
+  const capacityMetrics = getCurrentBraceletCapacityMetrics();
+  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem(capacityMetrics);
+  const placementEligibility = getCurrentPlacementEligibility(physicalPlacedSize, capacityMetrics);
 
   // Placement and Step 3 completion both use the shared target-plus-five physical-capacity boundary.
   if (!placementEligibility.eligible) {
@@ -6870,8 +8414,9 @@ function addStoneToBracelet(stoneId) {
     return;
   }
   
+  captureCurrentSlotForensics('STATE_D_BEFORE_READD_MUTATION');
   State.uniqueCounter++;
-  const newBead = createStoneSelectionItem(stoneId, placedSize, State.uniqueCounter);
+  const newBead = createNewStoneSelectionItem(stoneId, placedSize, State.uniqueCounter, stoneData);
   State.newlyAddedIds = [newBead.uniqueId];
   State.activeSlotIndex = getFirstEmptyLoopSlotIndex();
   
@@ -6885,17 +8430,15 @@ function addStoneToBracelet(stoneId) {
     // Append to end
     State.selectedStones.push(newBead);
   }
-  
-  renderStep3();
+
+  syncStoneCatalogCard(stoneId);
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureCurrentSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION');
+  markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
+  requestCompositionRender();
   saveState();
   
-  syncStep3NextValidationUI();
-  trackAnalyticsEvent('item_added', {
-    item_type: 'stone',
-    item_id: stoneId,
-    size_mm: placedSize,
-    item_count: getSelectedStoneItems().length
-  });
+  recordAnalyticsDesignItem('stone', stoneId, placedSize);
 }
 
 function addSpacerToBracelet(spacerId) {
@@ -6918,14 +8461,17 @@ function addSpacerToBracelet(spacerId) {
     return;
   }
 
-  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem();
-  const placementEligibility = getCurrentPlacementEligibility(spacer.effectiveLengthMm);
+  const capacityMetrics = getCurrentBraceletCapacityMetrics();
+  const { availableLengthMm: remainingMm } = getAvailableLengthForNewLoopItem(capacityMetrics);
+  const packingLengthMm = spacer.packingLengthMm || spacer.effectiveLengthMm;
+  const placementEligibility = getCurrentPlacementEligibility(packingLengthMm, capacityMetrics);
 
   if (!placementEligibility.eligible) {
     showToast(`กำไลเต็มแล้ว! เหลือพื้นที่ ${remainingMm.toFixed(1)}mm (ขนาดชิ้นที่จะใส่: ${spacer.effectiveLengthMm}mm)`);
     return;
   }
 
+  captureCurrentSlotForensics('STATE_D_BEFORE_READD_MUTATION');
   State.uniqueCounter++;
   const newSpacer = createSpacerSelectionItem(spacer.id, State.uniqueCounter);
   if (!newSpacer) return;
@@ -6941,27 +8487,51 @@ function addSpacerToBracelet(spacerId) {
     State.selectedStones.push(newSpacer);
   }
 
-  renderStep3();
+  syncSpacerCatalogCard(spacer.id);
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureCurrentSlotForensics('STATE_E_IMMEDIATE_AFTER_READD_MUTATION');
+  markSlotForensicsAction('STATE_F_FIRST_RENDER_AFTER_READD');
+  requestCompositionRender();
   saveState();
-  syncStep3NextValidationUI();
-  trackAnalyticsEvent('item_added', {
-    item_type: 'spacer',
-    item_id: spacer.id,
-    size_mm: spacer.effectiveLengthMm,
-    item_count: getSelectedStoneItems().length
-  });
+  recordAnalyticsDesignItem('spacer', spacer.id, packingLengthMm);
 }
 
-function removeLoopItemFromBracelet(index, showToastNotification = true) {
-  if (index < 0 || index >= State.selectedStones.length) return;
-  const removed = State.selectedStones[index];
+function removeLoopItemFromBracelet(index, showToastNotification = true, event = null, expectedUniqueId = null) {
+  if (event && handledDeleteEvents.has(event)) {
+    recordDeleteDebug(event, { phase: 'blocked-duplicate-event', handler: 'removeLoopItemFromBracelet' });
+    return;
+  }
+  if (event) handledDeleteEvents.add(event);
+  const resolvedIndex = expectedUniqueId === null
+    ? index
+    : State.selectedStones.findIndex((item) => Number(item?.uniqueId) === Number(expectedUniqueId));
+  if (resolvedIndex < 0 || resolvedIndex >= State.selectedStones.length) return;
+  const removed = State.selectedStones[resolvedIndex];
   if (isEmptyLoopSlot(removed)) return;
+  captureCurrentSlotForensics('STATE_A_BEFORE_DELETE');
+  const occupiedBefore = getSelectedLoopItems().filter((item) => !isEmptyLoopSlot(item)).length;
+  const emptyBefore = getSelectedLoopItems().filter((item) => isEmptyLoopSlot(item)).length;
+  deleteMutationSequence += 1;
+  recordDeleteDebug(event, { phase: 'mutation-before', handler: 'removeLoopItemFromBracelet', sourceIndex: index, currentArrayIndex: resolvedIndex, expectedUniqueId, occupiedBefore, emptyBefore, mutationSequence: deleteMutationSequence });
   if (isBeeHeartLoopItem(removed)) {
-    State.selectedStones.splice(index, 1);
+    State.selectedStones.splice(resolvedIndex, 1);
   } else {
-    State.selectedStones[index] = createEmptyLoopSlot(getLoopItemLengthMm(removed), removed?.uniqueId || null);
+    State.selectedStones[resolvedIndex] = createEmptyLoopSlot(removed?.size, removed?.uniqueId || null);
+  }
+  slotForensics.actionSequence += SLOT_FORENSICS_ENABLED ? 1 : 0;
+  captureCurrentSlotForensics('STATE_B_IMMEDIATE_AFTER_DELETE_MUTATION');
+  const occupiedAfter = getSelectedLoopItems().filter((item) => !isEmptyLoopSlot(item)).length;
+  const emptyAfter = getSelectedLoopItems().filter((item) => isEmptyLoopSlot(item)).length;
+  recordDeleteDebug(event, { phase: 'mutation-after', handler: 'removeLoopItemFromBracelet', sourceIndex: index, currentArrayIndex: resolvedIndex, expectedUniqueId, occupiedAfter, emptyAfter, mutationSequence: deleteMutationSequence });
+  if (!isBeeHeartLoopItem(removed) && (occupiedAfter !== occupiedBefore - 1 || emptyAfter !== emptyBefore + 1)) {
+    recordDeleteDebug(event, { phase: 'blocked-invariant', handler: 'removeLoopItemFromBracelet', sourceIndex: index, expectedUniqueId, occupiedBefore, occupiedAfter, emptyBefore, emptyAfter, mutationSequence: deleteMutationSequence });
+    return;
   }
   State.activeSlotIndex = null;
+  if (isSelectedSpacerItem(removed)) syncSpacerCatalogCard(removed.spacerId);
+  else if (isSelectedCharmItem(removed)) syncCharmCatalogCard(removed.charmId);
+  else syncStoneCatalogCard(removed.stoneId);
+  markSlotForensicsAction('STATE_C_FIRST_RENDER_AFTER_DELETE');
   if (showToastNotification) {
     if (isSelectedSpacerItem(removed)) {
       showToast(`${CUSTOMER_COMPONENT_LABELS.spacer} removed.`);
@@ -6972,16 +8542,12 @@ function removeLoopItemFromBracelet(index, showToastNotification = true) {
     }
   }
 
-  updateEstimationText();
-  renderCharmOptions();
-  renderStep3();
+  if (State.currentStep !== 3) updateEstimationText();
+  requestCompositionRender();
   saveState();
-  syncStep3NextValidationUI();
-  trackAnalyticsEvent('item_removed', {
-    item_type: isSelectedSpacerItem(removed) ? 'spacer' : isSelectedCharmItem(removed) ? 'charm' : 'stone',
-    item_id: removed?.stoneId || removed?.spacerId || removed?.charmId || removed?.id || '',
-    item_count: getSelectedStoneItems().length
-  });
+  // TURN 10.2: removal is deliberately NOT tracked any more. `item_removed` had no consumer - the
+  // analytics summary never read it - and the per-bead `design_summary` that the add path emits already
+  // reports the final composition of the burst, so the removed bead is reflected in the next summary.
 }
 
 // Remove Stone Logic
@@ -6989,15 +8555,100 @@ function removeStoneFromBracelet(index) {
   removeLoopItemFromBracelet(index);
 }
 
-function createBraceletConfig() {
+// TASK A (owner report 2026-10-11): on iOS Safari the removal used to run from the synthetic `click`
+// of an SVG group. Safari decides tap-vs-double-tap first and keeps a sticky :hover on the tapped
+// node, so the bead animated its 300 ms `all` transition (the "stretched bead") and only disappeared
+// after the click and the following full ring rebuild - Android Chrome dispatches the click at once,
+// which is why only iOS showed it. The interaction now:
+//   * runs on the physical release (pointerup, with a click fallback only for engines without Pointer
+//     Events) so there is exactly one activation per gesture and no synthetic-click delay,
+//   * hides the tapped node in the same frame for immediate visual feedback while the authoritative
+//     state mutation, geometry, price and Undo history stay exactly as they were,
+//   * ignores a gesture that moved (scroll / pinch) so scrolling and other gestures keep working.
+function hideLoopItemForImmediateFeedback(group) {
+  if (!group) return;
+  group.classList.add('is-removing');
+  group.setAttribute('pointer-events', 'none');
+}
+
+// Timestamp of the last pointer-release driven removal: a synthetic click that follows a release
+// within this window belongs to the gesture that was already handled (see bindLoopItemActivation).
+const LOOP_ITEM_CLICK_SUPPRESS_MS = 500;
+let lastPointerActivationAt = 0;
+
+function bindLoopItemActivation(group, { sourceIndex, uniqueId } = {}) {
+  let gestureStart = null;
+  let lastActivationAt = 0;
+  const activate = (event) => {
+    if (!group.isConnected || group.classList.contains('is-removing')) return;
+    // Some engines emit more than one release event for a single tap (pointerup plus a synthesised
+    // second release, or pointerup plus the trailing click). One tap must record exactly one removal
+    // and exactly one Undo step, so a repeat activation of this same node inside the burst window is
+    // ignored.
+    const now = Date.now();
+    if (now - lastActivationAt < 600) return;
+    lastActivationAt = now;
+    // Record the pre-removal state explicitly. The generic settle capture depends on event order; now
+    // that the mutation happens on pointerup (before the trailing click) it would miss the action, so
+    // the undo entry is created here. pushUndoSnapshot's burst guard absorbs the settle push of the
+    // same state, so one tap still yields exactly one Undo step.
+    // Cancel any settle capture this gesture armed: the explicit entry below is the authoritative one
+    // for the removal, and letting the timer push the same state again after the burst window would
+    // add a no-op Undo step.
+    window.clearTimeout(undoCaptureTimer);
+    undoCaptureTimer = null;
+    undoCaptureSnapshot = null;
+    pushUndoSnapshot(captureUndoSnapshot());
+    hideLoopItemForImmediateFeedback(group);
+    // The hide and the authoritative reconcile share one task on purpose: the node is already hidden
+    // when the ring is rebuilt, so the browser paints the bead gone in the same frame as the rerender
+    // (deferring the mutation to a later frame was measured to double-apply the removal in WebKit).
+    removeLoopItemFromBracelet(sourceIndex, true, event, uniqueId ?? null);
+  };
+  // A touch tap produces ONE pointer release followed by a synthetic click a few milliseconds later.
+  // While the ring rebuild is deferred to the next frame the tapped node is still in the DOM, so that
+  // trailing click can be re-targeted to a NEIGHBOURING bead node and remove a second bead. Only the
+  // trailing click is suppressed (deliberate taps arrive as pointer releases, and keyboard/legacy
+  // clicks carry no preceding release), so fast intentional taps still remove one bead each.
+  const activateByClick = (event) => {
+    if (Date.now() - lastPointerActivationAt < LOOP_ITEM_CLICK_SUPPRESS_MS) return;
+    activate(event);
+  };
+  const movedTooFar = (event) => {
+    if (!gestureStart) return false;
+    const point = event.changedTouches?.[0] || event;
+    const dx = Number(point.clientX) - gestureStart.x;
+    const dy = Number(point.clientY) - gestureStart.y;
+    return Number.isFinite(dx) && Number.isFinite(dy) && Math.hypot(dx, dy) > 12;
+  };
+  group.addEventListener('pointerdown', (event) => {
+    gestureStart = { x: event.clientX, y: event.clientY };
+  });
+  group.addEventListener('pointercancel', () => { gestureStart = null; });
+  group.addEventListener('pointerup', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) { gestureStart = null; return; }
+    const moved = movedTooFar(event);
+    gestureStart = null;
+    if (moved) return;
+    lastPointerActivationAt = Date.now();
+    activate(event);
+  });
+  // Mouse/keyboard path, and the only activation source on engines that dispatch a click without a
+  // matching pointerup.
+  group.addEventListener('click', (event) => activateByClick(event));
+}
+
+function createBraceletConfig(source = State) {
+  const wristSize = Number(source.wristSize);
+  const beadSize = String(source.beadSize);
   return {
-    wristSizeCm: State.wristSize,
+    wristSizeCm: wristSize,
     toleranceCm: TOLERANCE_CM,
-    braceletLengthMm: getBraceletLengthMm(),
-    beadSizeMode: State.beadSize,
-    placingSizeMm: State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize),
-    activeSlotIndex: State.activeSlotIndex,
-    newlyAddedIds: State.newlyAddedIds || [],
+    braceletLengthMm: (wristSize + TOLERANCE_CM) * 10,
+    beadSizeMode: beadSize,
+    placingSizeMm: beadSize === 'mixed' ? Number(source.mixedPlacingSize) : parseInt(beadSize),
+    activeSlotIndex: source.activeSlotIndex ?? null,
+    newlyAddedIds: source.newlyAddedIds || [],
     svg: {
       centerX: 125,
       centerY: 125,
@@ -7006,9 +8657,9 @@ function createBraceletConfig() {
   };
 }
 
-function createBraceletComponentList() {
+function createBraceletComponentList(source = State) {
   let berylOccurrenceIndex = 0;
-  const loopComponents = State.selectedStones
+  const loopComponents = source.selectedStones
     .map((item, index) => {
       if (isEmptyLoopSlot(item)) {
         return {
@@ -7038,14 +8689,16 @@ function createBraceletComponentList() {
           color: spacer.color,
           displaySizeMm: spacer.displaySizeMm,
           effectiveLengthMm: spacer.effectiveLengthMm,
+          packingLengthMm: spacer.packingLengthMm,
           renderSizeMm: spacer.renderSizeMm || spacer.displaySizeMm,
           renderWidthMm: spacer.renderWidthMm || null,
           renderHeightMm: spacer.renderHeightMm || null,
           attachmentLoopMm: spacer.attachmentLoopMm || null,
           presentation: spacer.presentation || 'inline',
           thicknessMm: spacer.thicknessMm || null,
+          visualBounds: Array.isArray(spacer.visualBounds) ? spacer.visualBounds.map((bounds) => ({ ...bounds })) : [],
           price: Number(spacer.price || 0),
-          sizeMm: spacer.effectiveLengthMm,
+          sizeMm: spacer.packingLengthMm || spacer.effectiveLengthMm,
           uniqueId: item.uniqueId
         };
       }
@@ -7055,6 +8708,10 @@ function createBraceletComponentList() {
         if (!charm || !isSlotPlaceableCharmType(charm.type)) return null;
 
         const renderTuning = resolveCharmRenderTuning(charm);
+        const isThreadedPendant = isApprovedThreadedPendantId(charm.id);
+        const threadingOccupancyMm = isThreadedPendant
+          ? getCharmThreadingOccupancyMm(charm)
+          : getCharmFootprintMm(charm);
         return {
           id: item.uniqueId,
           type: 'charm',
@@ -7070,10 +8727,18 @@ function createBraceletComponentList() {
           image: charm.image,
           sizeCm: charm.sizeCm,
           footprintMm: getCharmFootprintMm(charm),
-          sizeMm: getCharmFootprintMm(charm),
-          renderSizeMm: 18,
-          renderWidthMm: 12.5,
-          renderHeightMm: 18,
+          threadingOccupancyMm,
+          loopWidthMm: Number(charm.loopWidthMm || charm.business?.loopWidthMm || 0),
+          loopHeightMm: Number(charm.loopHeightMm || charm.business?.loopHeightMm || 0),
+          pendantBodyWidthMm: Number(charm.pendantBodyWidthMm || charm.business?.pendantBodyWidthMm || getCharmFootprintMm(charm)),
+          pendantBodyHeightMm: Number(charm.pendantBodyHeightMm || charm.business?.pendantBodyHeightMm || (Number(charm.sizeCm) * 10)),
+          attachmentAnchor: charm.attachmentAnchor || 'top-center',
+          attachmentAnchorFromTopRatio: Number(charm.attachmentAnchorFromTopRatio || charm.business?.attachmentAnchorFromTopRatio || 0),
+          threadingAxis: charm.threadingAxis || 'tangent',
+          sizeMm: threadingOccupancyMm,
+          renderSizeMm: isThreadedPendant ? threadingOccupancyMm : 18,
+          renderWidthMm: isThreadedPendant ? null : 12.5,
+          renderHeightMm: isThreadedPendant ? null : 18,
           ...renderTuning,
           visualScale: 1.3225,
           outwardOffsetMm: 7.2,
@@ -7081,23 +8746,41 @@ function createBraceletComponentList() {
         };
       }
 
+      const stoneData = STONES.find((stone) => stone.id === item.stoneId);
+      const visualVariantIndex = isIrregularStoneCatalogItem(stoneData)
+        ? normalizeVisualVariantIndex(item.visualVariantIndex) ?? 0
+        : null;
       const visualImage = item.stoneId === BERYL_STONE_ID
         ? getBerylVisualImage(berylOccurrenceIndex++)
-        : '';
+        : visualVariantIndex !== null
+          ? (Array.isArray(stoneData?.visualVariants) ? stoneData.visualVariants[visualVariantIndex] || '' : '')
+          : '';
+      const packingSizeMm = getStonePackingLengthMm(stoneData, item.size);
+      const renderSizeMm = getStoneRenderSizeMm(stoneData, item.size);
+      const sizeMetadata = getStoneSizeMetadata(stoneData, item.size);
       return {
         id: item.uniqueId,
         type: 'stone',
         layoutRole: 'loop',
         sourceIndex: index,
         stoneId: item.stoneId,
-        sizeMm: item.size,
+        sizeMm: packingSizeMm,
+        packingLengthMm: packingSizeMm,
+        selectionGroupMm: sizeMetadata.selectionGroupMm,
+        nominalProductSizeMm: sizeMetadata.nominalProductSizeMm,
+        braceletPackingMm: sizeMetadata.braceletPackingMm,
+        renderSizeMm,
+        renderShape: stoneData?.renderShape || 'round',
+        visualVariantIndex,
+        visualVariants: Array.isArray(stoneData?.visualVariants) ? [...stoneData.visualVariants] : [],
+        visualBounds: Array.isArray(stoneData?.visualBounds) ? stoneData.visualBounds.map((bounds) => ({ ...bounds })) : [],
         visualImage,
         uniqueId: item.uniqueId
       };
     })
     .filter(Boolean);
 
-  const selectedCharms = getSelectedAnchoredCharmCatalogEntries();
+  const selectedCharms = getSelectedAnchoredCharmCatalogEntries(source.selectedCharmIds);
   if (selectedCharms.length === 0) {
     return loopComponents;
   }
@@ -7105,6 +8788,10 @@ function createBraceletComponentList() {
   const charmComponents = selectedCharms.map((charm) => {
     const renderTuning = resolveCharmRenderTuning(charm);
     const footprintMm = getCharmFootprintMm(charm);
+    const isThreadedPendant = isApprovedThreadedPendantId(charm.id);
+    const threadingOccupancyMm = isThreadedPendant
+      ? getCharmThreadingOccupancyMm(charm)
+      : footprintMm;
     return {
       id: `charm-${charm.id}-${charm.selectionIndex}`,
       type: 'charm',
@@ -7119,26 +8806,51 @@ function createBraceletComponentList() {
       image: charm.image,
       sizeCm: charm.sizeCm,
       footprintMm,
-      sizeMm: footprintMm,
+      threadingOccupancyMm,
+      loopWidthMm: Number(charm.loopWidthMm || charm.business?.loopWidthMm || 0),
+      loopHeightMm: Number(charm.loopHeightMm || charm.business?.loopHeightMm || 0),
+      pendantBodyWidthMm: Number(charm.pendantBodyWidthMm || charm.business?.pendantBodyWidthMm || footprintMm),
+      pendantBodyHeightMm: Number(charm.pendantBodyHeightMm || charm.business?.pendantBodyHeightMm || (Number(charm.sizeCm) * 10)),
+      attachmentAnchor: charm.attachmentAnchor || 'top-center',
+      attachmentAnchorFromTopRatio: Number(charm.attachmentAnchorFromTopRatio || charm.business?.attachmentAnchorFromTopRatio || 0),
+      threadingAxis: charm.threadingAxis || 'tangent',
+      sizeMm: threadingOccupancyMm,
+      occupiesBraceletPath: true,
+      anchorUniqueId: charm.anchorUniqueId,
       ...renderTuning,
       uniqueId: `charm-${charm.id}-${charm.selectionIndex}`
     };
   });
 
-  if (charmComponents.length === 1) {
-    return [
-      charmComponents[0],
-      ...loopComponents
-    ];
+  const legacyCharmComponents = charmComponents.filter((component) => !isApprovedThreadedPendant(component));
+  const threadedPendantComponents = charmComponents.filter(isApprovedThreadedPendant);
+  const sequencedComponents = [...loopComponents];
+  threadedPendantComponents.forEach((component) => {
+    const anchorIndex = sequencedComponents.findIndex((candidate) => (
+      component.anchorUniqueId != null
+      && String(candidate.uniqueId) === String(component.anchorUniqueId)
+    ));
+    let insertionIndex = anchorIndex >= 0
+      ? anchorIndex + 1
+      : sequencedComponents.findIndex((candidate) => candidate.type === 'empty');
+    if (insertionIndex < 0) insertionIndex = sequencedComponents.length;
+    while (insertionIndex < sequencedComponents.length && isApprovedThreadedPendant(sequencedComponents[insertionIndex])) {
+      insertionIndex += 1;
+    }
+    sequencedComponents.splice(insertionIndex, 0, component);
+  });
+
+  if (legacyCharmComponents.length === 1) {
+    return [legacyCharmComponents[0], ...sequencedComponents];
   }
 
   return [
-    ...charmComponents,
-    ...loopComponents
+    ...legacyCharmComponents,
+    ...sequencedComponents
   ];
 }
 
-function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
+function createResolvedBraceletLayout(braceletConfig, braceletComponentList, { includeEditorPlaceholders = true } = {}) {
   const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
   const loopComponents = capacityMetrics.loopComponents;
   const completionEligibility = getBraceletCompletionEligibility({
@@ -7210,6 +8922,11 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
       index,
       kind: item.kind,
       sizeMm: item.sizeMm,
+      placeholderSubtype: item.isRetainedSlot
+        ? 'RETAINED_EMPTY'
+        : item.isTrailingCapacityPlaceholder
+          ? 'TRAILING_PLACEHOLDER'
+          : null,
       itemAngleWidth,
       centerAngle,
       centerX,
@@ -7236,7 +8953,11 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
     return resolvedNode;
   };
 
-  const charmComponents = loopComponents.filter((component) => component.type === 'charm' && isAnchoredCharmType(component.charmType));
+  const charmComponents = loopComponents.filter((component) => (
+    component.type === 'charm'
+    && isAnchoredCharmType(component.charmType)
+    && !isApprovedThreadedPendant(component)
+  ));
   if (charmComponents.length === 2) {
     const [topCharm, bottomCharm] = charmComponents;
     const fillerItems = [
@@ -7396,12 +9117,100 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   };
 }
 
-function createCurrentBraceletResolvedLayout() {
-  const braceletConfig = createBraceletConfig();
-  const braceletComponentList = createBraceletComponentList();
-  return createResolvedBraceletLayout(braceletConfig, braceletComponentList);
+function invalidateBraceletLayoutCache() {
+  braceletLayoutCache = null;
 }
 
+function createCurrentBraceletResolvedLayout() {
+  if (braceletLayoutCache) return braceletLayoutCache;
+  const braceletConfig = createBraceletConfig();
+  const braceletComponentList = createBraceletComponentList();
+  braceletLayoutCache = createResolvedBraceletLayout(braceletConfig, braceletComponentList);
+  return braceletLayoutCache;
+}
+
+function createLumiPreviewSelection(recommendation, context = {}) {
+  const selected = recommendation?.selected;
+  if (!selected || !Array.isArray(selected.sequence)) throw new Error('LUMI_PREVIEW_INVALID_RECOMMENDATION');
+  const selectedStones = selected.sequence.map((component, index) => {
+    const uniqueId = `lumi-preview-${index + 1}`;
+    if (component.componentType === 'spacer') return createSpacerSelectionItem(component.materialId, uniqueId);
+    if (component.componentType === 'loop_charm' || component.componentType === 'charm') return createCharmSelectionItem(component.materialId, uniqueId);
+    return createStoneSelectionItem(component.materialId, component.sizeMm, uniqueId);
+  }).filter(Boolean);
+  // Keep slot-placeable talismans in the loop so the normal Step 3 component
+  // builder creates a resolved render node; preserve true anchors separately.
+  const selectedCharmIds = [];
+  (selected.anchoredCharms || []).forEach((component) => {
+    const charm = getCharmCatalogEntry(component.materialId);
+    if (charm && isSlotPlaceableCharmType(charm.type)) {
+      const alreadyInLoop = selectedStones.some((item) => item.charmId === charm.id);
+      if (!alreadyInLoop) selectedStones.push(createCharmSelectionItem(charm.id, `lumi-preview-loop-${charm.id}`));
+      return;
+    }
+    if (component.materialId) selectedCharmIds.push(component.materialId);
+  });
+  return {
+    wristSize: Number(selected.wristSizeCm || context.wristSizeCm),
+    beadSize: String(selected.beadMode || context.beadMode),
+    mixedPlacingSize: Number(context.mixedPlacingSize || selected.selectedSizes?.primary?.selectedSizeMm || 6),
+    activeSlotIndex: null,
+    newlyAddedIds: [],
+    selectedStones,
+    selectedCharmIds
+  };
+}
+
+function createLumiPreviewResolvedLayout(recommendation, context = {}) {
+  const previewState = createLumiPreviewSelection(recommendation, context);
+  return createResolvedBraceletLayout(createBraceletConfig(previewState), createBraceletComponentList(previewState), { includeEditorPlaceholders: false });
+}
+
+function validateLumiPresentationCompleteness(recommendation, resolvedLayout) {
+  const nodes = Array.isArray(resolvedLayout?.nodes) ? resolvedLayout.nodes : [];
+  const emptySlots = nodes.filter((node) => !node.isPlaced).length;
+  const expectedRingComponents = Array.isArray(recommendation?.selected?.sequence) ? recommendation.selected.sequence.length : 0;
+  const populatedRingComponents = nodes.filter((node) => node.isPlaced && !(node.component?.type === 'charm' && isAnchoredCharmType(node.component?.charmType))).length;
+  return {
+    ringPositionCount: nodes.length,
+    populatedRingComponentCount: populatedRingComponents,
+    emptyRingPositionCount: emptySlots,
+    placeholderNodeCount: emptySlots,
+    addMarkerCount: 0,
+    valid: emptySlots === 0
+  };
+}
+
+function renderLumiRecommendationPreview({ container, recommendation, context = {} }) {
+  if (!container) throw new Error('LUMI_PREVIEW_CONTAINER_REQUIRED');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 250 250');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Lucky bracelet recommendation preview');
+  svg.classList.add('lumi-preview-svg');
+  container.replaceChildren(svg);
+  const resolvedLayout = createLumiPreviewResolvedLayout(recommendation, context);
+  const presentation = validateLumiPresentationCompleteness(recommendation, resolvedLayout);
+  // Owner policy 2026-10-11: the recommendation has already passed the authoritative Step-3 import
+  // validation, so one ring position this preview cannot fill must not replace a valid design with
+  // the "Lucky could not complete" screen - that is what happened whenever the active-but-zero-stock
+  // catalog changed the material mix. The gap stays observable through the diagnostics written below
+  // (and through the console warning) instead of being fatal.
+  if (!presentation.valid) {
+    console.warn('LUMI_PREVIEW_INCOMPLETE_PRESENTATION', {
+      emptyRingPositionCount: presentation.emptyRingPositionCount,
+      ringPositionCount: presentation.ringPositionCount
+    });
+  }
+  renderBraceletCanvas(resolvedLayout, { svg, interactive: false, includeDebug: false, showEditorPlaceholders: false });
+  container.dataset.lumiRendererAuthority = 'renderBraceletCanvas';
+  container.dataset.lumiEmptySlotCount = String(presentation.emptyRingPositionCount);
+  container.dataset.lumiPlaceholderNodeCount = String(presentation.placeholderNodeCount);
+  container.dataset.lumiAddMarkerCount = String(presentation.addMarkerCount);
+  return resolvedLayout;
+}
+
+window.renderLumiRecommendationPreview = renderLumiRecommendationPreview;
 function getPlacedResolvedLayoutNodes(resolvedLayout, allowedComponentTypes = null) {
   return resolvedLayout.nodes.filter((node) => {
     if (!node.isPlaced) return false;
@@ -7448,8 +9257,10 @@ function projectResolvedLayoutToLinearMap(resolvedLayout, surfaceConfig) {
 }
 
 // Core Loop Rendering (Dynamic SVG circular path)
-function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout()) {
-  const svg = DOM.braceletSvg;
+function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout(), { svg = DOM.braceletSvg, interactive = true, includeDebug = true, showEditorPlaceholders = interactive } = {}) {
+  if (!svg) return null;
+  braceletVariantPreviewControllers.splice(0).forEach((controller) => controller.stop());
+  if (SLOT_FORENSICS_ENABLED && includeDebug) slotForensics.renderSequence += 1;
   // Clear SVG first, keeping defs
   let defs = svg.querySelector('defs');
   if (defs) {
@@ -7460,6 +9271,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
   }
   svg.innerHTML = '';
   svg.appendChild(defs);
+  const renderFragment = document.createDocumentFragment();
 
   const previewInteractionClipId = 'bracelet-preview-interaction-clip';
   const previewInteractionClip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
@@ -7489,7 +9301,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
   bgRing.setAttribute("stroke", "url(#creamWhiteGradient)");
   bgRing.setAttribute("stroke-width", "10");
   bgRing.setAttribute("opacity", "0.6");
-  svg.appendChild(bgRing);
+  bgRing.dataset.forensicsRole = 'DECORATIVE_PLACEHOLDER_RAIL';
+  renderFragment.appendChild(bgRing);
 
   nodes.forEach((node) => {
     const bx = node.centerX;
@@ -7498,6 +9311,11 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 
     // Group element for bead visual nodes
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    group.dataset.slotSourceIndex = Number.isInteger(node.sourceIndex) ? String(node.sourceIndex) : '';
+    group.dataset.slotResolvedIndex = String(node.index);
+    group.dataset.slotKind = node.kind === 'component' ? (node.component?.type || 'component') : 'empty';
+    group.dataset.placeholderSubtype = node.placeholderSubtype || '';
+    group.dataset.slotId = String(node.component?.uniqueId || node.sourceIndex || node.index);
 
     if (node.isPlaced) {
       const component = node.component;
@@ -7505,16 +9323,53 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
 
       if (component.type === 'charm' || isHangingSpacerComponent(component)) {
         const isHangingSpacer = isHangingSpacerComponent(component);
+        const isThreadedPendant = isApprovedThreadedPendant(component);
         const renderComponent = getHangingSpacerPreviewComponent(component);
         const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(renderComponent, summary.scaleMmToPx);
-        const charmOutwardOffsetPx = getCharmOutwardOffsetPx(renderComponent, summary.scaleMmToPx);
-        const charmCenterX = bx + (Math.cos(node.centerAngle) * charmOutwardOffsetPx);
-        const charmCenterY = by + (Math.sin(node.centerAngle) * charmOutwardOffsetPx);
         const halfCharmWidth = charmFrameWidthPx / 2;
         const halfCharmHeight = charmFrameHeightPx / 2;
         const charmImageUrl = withCatalogImageVersion(component.image || '', component);
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
-        const useCharmClip = !isHangingSpacer && component.edgeFitMode !== 'horizontal_fill';
+        const rotationRad = getResolvedNodeRotationRad(node);
+        const charmPlacement = getCharmRenderPlacement(
+          renderComponent,
+          charmFrameWidthPx,
+          charmFrameHeightPx,
+          charmBounds ? { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight } : null,
+          charmBounds,
+          rotationRad,
+          node.centerAngle
+        );
+        const pendantAnchorInsetPx = isThreadedPendant && charmBounds
+          ? getPendantAttachmentAnchorInsetPx({
+            placementHeightPx: charmPlacement.height,
+            sourceHeightPx: charmBounds.sourceHeight,
+            visibleHeightPx: charmBounds.height,
+            anchorFromTopRatio: component.attachmentAnchorFromTopRatio
+          })
+          : 0;
+        const charmOutwardOffsetPx = isThreadedPendant
+          ? Math.max(0, (
+            charmBounds
+              ? charmPlacement.height * (charmBounds.height / charmBounds.sourceHeight) / 2
+              : charmPlacement.height / 2
+          ) - pendantAnchorInsetPx)
+          : getCharmOutwardOffsetPx(renderComponent, summary.scaleMmToPx);
+        const charmCenterX = bx + (Math.cos(node.centerAngle) * charmOutwardOffsetPx);
+        const charmCenterY = by + (Math.sin(node.centerAngle) * charmOutwardOffsetPx);
+        if (isThreadedPendant) {
+          group.dataset.slotOccupancyMm = String(node.sizeMm);
+          group.dataset.slotCenterAngle = String(node.centerAngle);
+          group.dataset.slotCenterX = String(node.centerX);
+          group.dataset.slotCenterY = String(node.centerY);
+          group.dataset.attachmentAnchor = component.attachmentAnchor || 'top-center';
+          group.dataset.threadingAxis = component.threadingAxis || 'tangent';
+          group.dataset.slotAttachmentAnchorFromTopRatio = String(component.attachmentAnchorFromTopRatio || 0);
+          group.dataset.slotAttachmentAnchorOffsetPx = String(pendantAnchorInsetPx);
+          group.dataset.slotLoopAnchorX = String(bx);
+          group.dataset.slotLoopAnchorY = String(by);
+        }
+        const useCharmClip = !isHangingSpacer && !isThreadedPendant && component.edgeFitMode !== 'horizontal_fill';
         let clipId = '';
         if (useCharmClip) {
           clipId = `clip-${component.uniqueId}`;
@@ -7536,36 +9391,12 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           charmImage.setAttribute("clip-path", `url(#${clipId})`);
         }
         charmImage.setAttribute("preserveAspectRatio", "none");
-        const rotationRad = getResolvedNodeRotationRad(node);
         const angleDeg = rotationRad * 180 / Math.PI;
-        if (charmBounds) {
-          const placement = getCharmRenderPlacement(
-            renderComponent,
-            charmFrameWidthPx,
-            charmFrameHeightPx,
-            { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
-            charmBounds,
-            rotationRad,
-            node.centerAngle,
-          );
-          charmImage.setAttribute("x", charmCenterX - halfCharmWidth + placement.x);
-          charmImage.setAttribute("y", charmCenterY - halfCharmHeight + placement.y);
-          charmImage.setAttribute("width", placement.width);
-          charmImage.setAttribute("height", placement.height);
-        } else {
-          const fallbackPlacement = getCharmRenderPlacement(
-            renderComponent,
-            charmFrameWidthPx,
-            charmFrameHeightPx,
-            null,
-            null,
-            rotationRad,
-            node.centerAngle
-          );
-          charmImage.setAttribute("x", charmCenterX - halfCharmWidth + fallbackPlacement.x);
-          charmImage.setAttribute("y", charmCenterY - halfCharmHeight + fallbackPlacement.y);
-          charmImage.setAttribute("width", fallbackPlacement.width);
-          charmImage.setAttribute("height", fallbackPlacement.height);
+        charmImage.setAttribute("x", charmCenterX - halfCharmWidth + charmPlacement.x);
+        charmImage.setAttribute("y", charmCenterY - halfCharmHeight + charmPlacement.y);
+        charmImage.setAttribute("width", charmPlacement.width);
+        charmImage.setAttribute("height", charmPlacement.height);
+        if (!charmBounds) {
           charmImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
           if (charmImageUrl) {
             scheduleCharmVisibleBoundsDetection(charmImageUrl);
@@ -7643,64 +9474,116 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         } else {
           const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
           img.setAttributeNS("http://www.w3.org/1999/xlink", "href", spacerImageUrl);
-          img.setAttribute("x", bx - halfSpacer);
-          img.setAttribute("y", by - halfSpacer);
-          img.setAttribute("width", spacerSizePx);
-          img.setAttribute("height", spacerSizePx);
-          img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          const spacerBounds = Array.isArray(component.visualBounds) && component.visualBounds.length > 0
+            ? component.visualBounds[0]
+            : (spacerImageUrl ? charmVisibleBoundsCache.get(spacerImageUrl) : null);
+          if (spacerBounds) {
+            const placement = getVisibleBoundsPlacement(spacerSizePx, spacerSizePx, null, spacerBounds);
+            img.setAttribute("x", bx - halfSpacer + placement.x);
+            img.setAttribute("y", by - halfSpacer + placement.y);
+            img.setAttribute("width", placement.width);
+            img.setAttribute("height", placement.height);
+            img.setAttribute("preserveAspectRatio", "none");
+          } else {
+            img.setAttribute("x", bx - halfSpacer);
+            img.setAttribute("y", by - halfSpacer);
+            img.setAttribute("width", spacerSizePx);
+            img.setAttribute("height", spacerSizePx);
+            img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            if (spacerImageUrl) scheduleCharmVisibleBoundsDetection(spacerImageUrl);
+          }
           img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
           group.appendChild(img);
         }
 
-        group.addEventListener('click', () => removeLoopItemFromBracelet(node.sourceIndex));
+        if (interactive) bindLoopItemActivation(group, { sourceIndex: node.sourceIndex, uniqueId: component.uniqueId });
       } else {
         const stoneId = component.stoneId;
         const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
+        const isIrregularStone = APPROVED_IRREGULAR_STONE_IDS.has(stoneId)
+          || component.renderShape === 'irregular'
+          || stoneData?.renderShape === 'irregular';
+        const irregularVariants = Array.isArray(component.visualVariants) && component.visualVariants.length === 3
+          ? component.visualVariants
+          : Array.isArray(stoneData?.visualVariants) && stoneData.visualVariants.length === 3
+            ? stoneData.visualVariants
+            : [];
+        const irregularVisualBounds = Array.isArray(component.visualBounds) && component.visualBounds.length === 3
+          ? component.visualBounds
+          : Array.isArray(stoneData?.visualBounds) && stoneData.visualBounds.length === 3
+            ? stoneData.visualBounds
+            : [];
+        const selectedVariantIndex = normalizeVisualVariantIndex(component.visualVariantIndex)
+          ?? (isIrregularStone && irregularVariants.length === 3 ? 0 : null);
+        const imageUrls = selectedVariantIndex !== null && irregularVariants.length === 3
+          ? [irregularVariants[selectedVariantIndex]]
+          : [getComponentRenderImageUrl(component)];
         const uniqueClipId = node.uniqueClipId;
-        
-        const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-        clip.setAttribute("id", uniqueClipId);
-        const clipCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        clipCircle.setAttribute("cx", bx);
-        clipCircle.setAttribute("cy", by);
-        clipCircle.setAttribute("r", bRadiusPx);
-        clip.appendChild(clipCircle);
-        defs.appendChild(clip);
-        
-        const baseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        baseCircle.setAttribute("cx", bx);
-        baseCircle.setAttribute("cy", by);
-        baseCircle.setAttribute("r", bRadiusPx);
-        baseCircle.setAttribute("fill", stoneData.color || '#E2E8F0');
-        group.appendChild(baseCircle);
-        
         const imgGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
-        
-        const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
-        img.setAttributeNS("http://www.w3.org/1999/xlink", "href", getComponentRenderImageUrl(component));
-        const scaleFactor = 1.3;
-        const imgSize = bRadiusPx * 2 * scaleFactor;
-        img.setAttribute("x", bx - imgSize / 2);
-        img.setAttribute("y", by - imgSize / 2);
-        img.setAttribute("width", imgSize);
-        img.setAttribute("height", imgSize);
-        img.setAttribute("class", "bead-image");
+        if (!isIrregularStone) {
+          const clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+          clip.setAttribute("id", uniqueClipId);
+          const clipCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          clipCircle.setAttribute("cx", bx);
+          clipCircle.setAttribute("cy", by);
+          clipCircle.setAttribute("r", bRadiusPx);
+          clip.appendChild(clipCircle);
+          defs.appendChild(clip);
+          const baseCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          baseCircle.setAttribute("cx", bx);
+          baseCircle.setAttribute("cy", by);
+          baseCircle.setAttribute("r", bRadiusPx);
+          baseCircle.setAttribute("fill", stoneData.color || '#E2E8F0');
+          group.appendChild(baseCircle);
+          imgGroup.setAttribute("clip-path", `url(#${uniqueClipId})`);
+        }
         const angleDeg = (node.centerAngle * 180 / Math.PI) + 90;
-        img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
-        imgGroup.appendChild(img);
+        const frameSize = bRadiusPx * 2;
+        const layers = imageUrls.map((imageUrl, index) => {
+          const img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+          const resolvedImageUrl = isIrregularStone
+            ? withCatalogImageVersion(imageUrl || '', stoneData)
+            : imageUrl;
+          img.setAttributeNS("http://www.w3.org/1999/xlink", "href", resolvedImageUrl);
+          const variantBounds = irregularVisualBounds[selectedVariantIndex ?? index] || null;
+          if (isIrregularStone && variantBounds) {
+            const placement = getVisibleBoundsPlacement(frameSize, frameSize, null, variantBounds);
+            img.setAttribute("x", bx - frameSize / 2 + placement.x);
+            img.setAttribute("y", by - frameSize / 2 + placement.y);
+            img.setAttribute("width", placement.width);
+            img.setAttribute("height", placement.height);
+            img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          } else {
+            const imgSize = isIrregularStone ? frameSize : frameSize * 1.3;
+            img.setAttribute("x", bx - imgSize / 2);
+            img.setAttribute("y", by - imgSize / 2);
+            img.setAttribute("width", imgSize);
+            img.setAttribute("height", imgSize);
+            img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+          }
+          img.setAttribute("class", isIrregularStone ? "bead-image irregular-stone-image" : "bead-image");
+          img.setAttribute("pointer-events", "none");
+          img.setAttribute("transform", `rotate(${angleDeg}, ${bx}, ${by})`);
+          if (isIrregularStone && irregularVariants.length === 3) {
+            img.style.opacity = '1';
+            img.dataset.irregularVariantIndex = String(selectedVariantIndex ?? 0);
+            group.dataset.visualVariantIndex = String(selectedVariantIndex ?? 0);
+          }
+          imgGroup.appendChild(img);
+          return img;
+        });
         group.appendChild(imgGroup);
-        
-        const sheenCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        sheenCircle.setAttribute("cx", bx);
-        sheenCircle.setAttribute("cy", by);
-        sheenCircle.setAttribute("r", bRadiusPx);
-        sheenCircle.setAttribute("fill", "url(#sphericalShading)");
-        sheenCircle.setAttribute("opacity", "0.38");
-        sheenCircle.setAttribute("pointer-events", "none");
-        group.appendChild(sheenCircle);
-        
-        if (!CLEAN_EDGE_STONE_IDS.has(stoneId)) {
+        if (!isIrregularStone) {
+          const sheenCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          sheenCircle.setAttribute("cx", bx);
+          sheenCircle.setAttribute("cy", by);
+          sheenCircle.setAttribute("r", bRadiusPx);
+          sheenCircle.setAttribute("fill", "url(#sphericalShading)");
+          sheenCircle.setAttribute("opacity", "0.38");
+          sheenCircle.setAttribute("pointer-events", "none");
+          group.appendChild(sheenCircle);
+        }
+        if (!isIrregularStone && !CLEAN_EDGE_STONE_IDS.has(stoneId)) {
           const border = document.createElementNS("http://www.w3.org/2000/svg", "circle");
           border.setAttribute("cx", bx);
           border.setAttribute("cy", by);
@@ -7727,7 +9610,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         
         const currentIdx = node.sourceIndex;
-        group.addEventListener('click', () => removeLoopItemFromBracelet(currentIdx));
+        if (interactive) bindLoopItemActivation(group, { sourceIndex: currentIdx, uniqueId: component.uniqueId });
       }
       
     } else {
@@ -7777,15 +9660,622 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       }
       
       // Add active index slot choice
-      group.addEventListener('click', () => {
+      if (interactive) group.addEventListener('click', () => {
         State.activeSlotIndex = Number.isInteger(node.sourceIndex) ? node.sourceIndex : null;
         showToast("Select a stone or spacer from the catalog below to add!");
       });
     }
     
-    svg.appendChild(group);
+    renderFragment.appendChild(group);
   });
+  svg.appendChild(renderFragment);
+  if (includeDebug) renderSlotDebugTrace(resolvedLayout);
+  return resolvedLayout;
+}
 
+function renderSlotDebugTrace(resolvedLayout) {
+  capturePendingSlotForensics(resolvedLayout);
+  if (!SLOT_DEBUG_ENABLED) return;
+  let output = document.getElementById('slotDebugOutput');
+  if (!output) {
+    output = document.createElement('pre');
+    output.id = 'slotDebugOutput';
+    output.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999;max-width:52vw;max-height:36vh;overflow:auto;margin:0;padding:8px;background:#fff;color:#222;border:1px solid #999;font:10px/1.35 monospace;white-space:pre-wrap;pointer-events:none;';
+    document.body.appendChild(output);
+  }
+  const components = createBraceletComponentList();
+  const canonical = State.selectedStones.map((item, sourceIndex) => ({ sourceIndex, slotId: item?.uniqueId ?? null, kind: isEmptyLoopSlot(item) ? 'empty' : item?.componentType || 'stone' }));
+  const rows = canonical.map((slot) => {
+    const list = components.find((item) => item.sourceIndex === slot.sourceIndex);
+    const node = resolvedLayout.nodes.find((item) => item.sourceIndex === slot.sourceIndex);
+    const dom = DOM.braceletSvg.querySelector(`[data-slot-source-index="${slot.sourceIndex}"]`);
+    return { SLOT: slot.slotId, SOURCE_INDEX: slot.sourceIndex, CANONICAL_KIND: slot.kind, LIST_KIND: list?.type || 'missing', RESOLVED_KIND: node ? (node.kind === 'component' ? node.component?.type : 'empty') : 'missing', DOM_KIND: dom?.dataset.slotKind || 'missing' };
+  });
+  output.textContent = rows.map((row) => JSON.stringify(row)).join('\n');
+}
+
+function markSlotForensicsAction(stateName) {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  slotForensics.actionSequence += 1;
+  slotForensics.pendingState = stateName;
+}
+
+function getForensicNodeDom(node) {
+  return DOM.braceletSvg?.querySelector(`[data-slot-resolved-index="${node.index}"]`) || null;
+}
+
+function getForensicImageHref(domNode) {
+  const image = domNode?.querySelector('image');
+  return image?.getAttribute('href') || image?.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || null;
+}
+
+function getForensicRenderSizeMm(node) {
+  return Number(node?.component?.renderSizeMm ?? node?.sizeMm ?? 0);
+}
+
+function getForensicNeighborDistances(nodes, circumferenceMm) {
+  const placed = nodes.filter((node) => node.isPlaced && Number.isFinite(node.centerAngle));
+  if (placed.length < 2 || !Number.isFinite(circumferenceMm) || circumferenceMm <= 0) return [];
+  return placed.map((node, index) => {
+    const next = placed[(index + 1) % placed.length];
+    const angleDelta = (next.centerAngle - node.centerAngle + (2 * Math.PI)) % (2 * Math.PI);
+    const arcMm = angleDelta / (2 * Math.PI) * circumferenceMm;
+    const expectedVisualSpacingMm = (getForensicRenderSizeMm(node) + getForensicRenderSizeMm(next)) / 2;
+    return {
+      fromSourceIndex: node.sourceIndex ?? null,
+      toSourceIndex: next.sourceIndex ?? null,
+      angleDeltaDeg: Number((angleDelta * 180 / Math.PI).toFixed(4)),
+      arcDistanceMm: Number(arcMm.toFixed(4)),
+      expectedVisualSpacingMm: Number(expectedVisualSpacingMm.toFixed(4)),
+      actualVisualSpacingMm: Number(arcMm.toFixed(4)),
+      visualGapMm: Number((arcMm - expectedVisualSpacingMm).toFixed(4)),
+      residualGapMm: Number((arcMm - expectedVisualSpacingMm).toFixed(4)),
+      RESIDUAL_GAP_GT_1MM: arcMm - expectedVisualSpacingMm > 1 ? 'YES' : 'NO',
+      componentSizesMm: [getForensicRenderSizeMm(node), getForensicRenderSizeMm(next)]
+    };
+  });
+}
+
+function classifySlotForensics(nodeRows, neighborDistances) {
+  const placeholder = nodeRows.find((row) => row.dom?.class?.includes('placeholder'));
+  if (placeholder) {
+    return {
+      type: placeholder.placeholderSubtype || 'OTHER',
+      sourceIndex: placeholder.sourceIndex,
+      gapArcMm: placeholder.sizeMm
+    };
+  }
+  const abnormal = neighborDistances.find((row) => row.visualGapMm > 1);
+  return abnormal
+    ? { type: 'ANGLE_GAP_WITH_NO_NODE', sourceIndex: abnormal.fromSourceIndex, gapArcMm: abnormal.visualGapMm }
+    : { type: 'NONE', sourceIndex: null, gapArcMm: 0 };
+}
+
+function captureCurrentSlotForensics(stateName) {
+  if (!SLOT_FORENSICS_ENABLED) return null;
+  return captureSlotForensics(stateName, createCurrentBraceletResolvedLayout());
+}
+
+function captureSlotForensics(stateName, resolvedLayout = createCurrentBraceletResolvedLayout()) {
+  if (!SLOT_FORENSICS_ENABLED || !DOM.braceletSvg) return null;
+  const canonical = State.selectedStones.map((item, sourceIndex) => ({
+    sourceIndex,
+    uniqueId: item?.uniqueId ?? null,
+    kind: isEmptyLoopSlot(item) ? 'empty' : item?.componentType || 'stone',
+    isEmpty: isEmptyLoopSlot(item),
+    sizeMm: Number(item?.size || 0),
+    renderSizeMm: getLoopItemRenderSizeMm(item),
+    physicalLengthMm: getLoopItemLengthMm(item)
+  }));
+  const listBySourceIndex = new Map(resolvedLayout.braceletComponentList.map((item) => [item.sourceIndex, item]));
+  const nodeRows = resolvedLayout.nodes.map((node) => {
+    const domNode = getForensicNodeDom(node);
+    const component = node.component || null;
+    return {
+      sourceIndex: node.sourceIndex ?? null,
+      slotIndex: node.index,
+      uniqueId: component?.uniqueId ?? canonical.find((item) => item.sourceIndex === node.sourceIndex)?.uniqueId ?? null,
+      kind: component?.type || 'empty',
+      isEmpty: !node.isPlaced,
+      sizeMm: node.sizeMm,
+      renderSizeMm: getForensicRenderSizeMm(node),
+      physicalLengthMm: component ? getLoopItemLengthMm(State.selectedStones[node.sourceIndex]) : 0,
+      resolvedNodeType: node.kind,
+      placeholderSubtype: node.placeholderSubtype || null,
+      angleDeg: Number((node.centerAngle * 180 / Math.PI).toFixed(4)),
+      angleWidthDeg: Number((node.itemAngleWidth * 180 / Math.PI).toFixed(4)),
+      center: { x: Number(node.centerX.toFixed(4)), y: Number(node.centerY.toFixed(4)) },
+      dom: {
+        nodeType: domNode?.tagName || 'MISSING_COMPONENT_NODE',
+        class: domNode?.getAttribute('class') || null,
+        transform: domNode?.getAttribute('transform') || null,
+        imageHref: getForensicImageHref(domNode)
+      },
+      componentList: listBySourceIndex.get(node.sourceIndex) || null
+    };
+  });
+  const neighborDistances = getForensicNeighborDistances(resolvedLayout.nodes, resolvedLayout.summary.loopCircumferenceMm);
+  const visibleGap = classifySlotForensics(nodeRows, neighborDistances);
+  const domPlaceholders = nodeRows.filter((row) => row.dom.class?.includes('placeholder'));
+  const oldSizeMetadataActive = nodeRows.some((row) => {
+    if (row.isEmpty || row.sourceIndex === null) return false;
+    const canonicalItem = canonical.find((item) => item.sourceIndex === row.sourceIndex);
+    return canonicalItem && (row.sizeMm !== canonicalItem.physicalLengthMm || row.renderSizeMm !== canonicalItem.renderSizeMm);
+  });
+  const componentListTotals = {
+    total: resolvedLayout.braceletComponentList.length,
+    occupied: resolvedLayout.braceletComponentList.filter((item) => item.type !== 'empty').length,
+    empty: resolvedLayout.braceletComponentList.filter((item) => item.type === 'empty').length
+  };
+  const resolvedTotals = {
+    total: nodeRows.length,
+    occupied: nodeRows.filter((item) => !item.isEmpty).length,
+    empty: nodeRows.filter((item) => item.isEmpty).length,
+    placeholder: nodeRows.filter((item) => item.isEmpty).length
+  };
+  const domNodes = Array.from(DOM.braceletSvg.querySelectorAll('.bead-node'));
+  const domTotals = {
+    total: domNodes.length,
+    stone: domNodes.filter((node) => node.dataset.slotKind === 'stone').length,
+    empty: domNodes.filter((node) => node.dataset.slotKind === 'empty').length,
+    placeholder: domNodes.filter((node) => node.classList.contains('placeholder')).length
+  };
+  const snapshot = {
+    state: stateName,
+    ACTION_SEQUENCE: slotForensics.actionSequence,
+    RENDER_SEQUENCE: slotForensics.renderSequence,
+    TOTAL_CANONICAL_ITEMS: canonical.length,
+    TOTAL_COMPONENT_LIST_ITEMS: componentListTotals.total,
+    TOTAL_RESOLVED_NODES: resolvedTotals.total,
+    TOTAL_DOM_COMPONENT_NODES: domTotals.total,
+    TOTAL_OCCUPIED_ITEMS: canonical.filter((item) => !item.isEmpty).length,
+    TOTAL_EMPTY_ITEMS: canonical.filter((item) => item.isEmpty).length,
+    TOTAL_PLACEHOLDER_NODES: nodeRows.filter((item) => item.dom.class?.includes('placeholder')).length,
+    CANONICAL: { total: canonical.length, occupied: canonical.filter((item) => !item.isEmpty).length, empty: canonical.filter((item) => item.isEmpty).length },
+    COMPONENT_LIST: componentListTotals,
+    RESOLVED: resolvedTotals,
+    DOM: domTotals,
+    complete: Boolean(resolvedLayout.summary.completionEligibility?.complete),
+    canonical,
+    nodes: nodeRows,
+    decorativeSvgNodes: Array.from(DOM.braceletSvg.querySelectorAll('[data-forensics-role]')).map((node) => ({
+      type: node.tagName,
+      role: node.dataset.forensicsRole,
+      class: node.getAttribute('class'),
+      transform: node.getAttribute('transform')
+    })),
+    neighborDistances,
+    anomaly: {
+      VISIBLE_GAP_NODE: visibleGap.type,
+      VISIBLE_GAP_SOURCE_INDEX: visibleGap.sourceIndex,
+      VISIBLE_GAP_ARC_MM: visibleGap.gapArcMm,
+      OLD_SIZE_METADATA_ACTIVE_AFTER_READD: oldSizeMetadataActive ? 'YES' : 'NO',
+      CANONICAL_EMPTY: canonical.filter((item) => item.isEmpty).length,
+      RESOLVED_EMPTY: nodeRows.filter((item) => item.isEmpty).length,
+      DOM_PLACEHOLDER: domPlaceholders.length,
+      COMPLETE: resolvedLayout.summary.completionEligibility?.complete ? 'YES' : 'NO',
+      GAP_WITHOUT_EMPTY_NODE: visibleGap.type === 'ANGLE_GAP_WITH_NO_NODE' ? 'YES' : 'NO',
+      ABNORMAL_ANGULAR_GAP_FOUND: neighborDistances.some((row) => row.visualGapMm > 1) ? 'YES' : 'NO'
+    }
+  };
+  slotForensics.captures[stateName] = snapshot;
+  slotForensics.history.push(snapshot);
+  window.__slotForensics = slotForensics;
+  renderSlotForensicsOverlay(snapshot);
+  return snapshot;
+}
+
+function compareSlotForensicsSnapshots(firstPostReadd, finalSettled) {
+  if (!firstPostReadd || !finalSettled) return { available: false, changedSlots: [] };
+  const finalByIdentity = new Map(finalSettled.nodes.map((node) => [`${node.sourceIndex}:${node.uniqueId}`, node]));
+  const changedSlots = firstPostReadd.nodes.map((firstNode) => {
+    const finalNode = finalByIdentity.get(`${firstNode.sourceIndex}:${firstNode.uniqueId}`);
+    if (!finalNode) return { sourceIndex: firstNode.sourceIndex, uniqueId: firstNode.uniqueId, change: 'NODE_DISAPPEARED' };
+    const fields = ['kind', 'sizeMm', 'renderSizeMm', 'angleDeg', 'angleWidthDeg'];
+    const changedFields = fields.filter((field) => firstNode[field] !== finalNode[field]);
+    if (firstNode.center.x !== finalNode.center.x || firstNode.center.y !== finalNode.center.y) changedFields.push('center');
+    if (firstNode.dom.imageHref !== finalNode.dom.imageHref) changedFields.push('dom.imageHref');
+    return changedFields.length > 0
+      ? { sourceIndex: firstNode.sourceIndex, uniqueId: firstNode.uniqueId, changedFields, firstPostReadd: firstNode, finalRender: finalNode }
+      : null;
+  }).filter(Boolean);
+  finalSettled.nodes.forEach((finalNode) => {
+    const exists = firstPostReadd.nodes.some((firstNode) => firstNode.sourceIndex === finalNode.sourceIndex && firstNode.uniqueId === finalNode.uniqueId);
+    if (!exists) changedSlots.push({ sourceIndex: finalNode.sourceIndex, uniqueId: finalNode.uniqueId, change: 'NODE_APPEARED' });
+  });
+  const summaryFields = ['TOTAL_CANONICAL_ITEMS', 'TOTAL_COMPONENT_LIST_ITEMS', 'TOTAL_RESOLVED_NODES', 'TOTAL_DOM_COMPONENT_NODES', 'TOTAL_EMPTY_ITEMS', 'TOTAL_PLACEHOLDER_NODES'];
+  const summaryDifferences = summaryFields
+    .filter((field) => firstPostReadd[field] !== finalSettled[field])
+    .map((field) => ({ field, firstPostReadd: firstPostReadd[field], finalRender: finalSettled[field] }));
+  const firstDivergence = changedSlots[0] || summaryDifferences[0] || null;
+  return {
+    available: true,
+    changedSlots,
+    summaryDifferences,
+    firstDivergence,
+    transientRenderDivergence: changedSlots.length > 0 || summaryDifferences.length > 0 ? 'YES' : 'NO'
+  };
+}
+
+function capturePostReaddRenderFrames() {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  window.requestAnimationFrame(() => {
+    captureSlotForensics('STATE_G_SECOND_RENDER_AFTER_READD');
+    window.requestAnimationFrame(() => {
+      const settled = captureSlotForensics('STATE_H_FINAL_SETTLED_RENDER');
+      const immediate = slotForensics.history.slice().reverse().find((snapshot) => snapshot.state === 'STATE_F_FIRST_RENDER_AFTER_READD');
+      if (!settled) return;
+      settled.firstPostReaddComparison = compareSlotForensicsSnapshots(immediate, settled);
+      window.__slotForensics = slotForensics;
+      renderSlotForensicsOverlay(settled);
+    });
+  });
+}
+
+function capturePendingSlotForensics(resolvedLayout) {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  const stateName = slotForensics.pendingState || 'RENDER';
+  captureSlotForensics(stateName, resolvedLayout);
+  if (stateName === 'STATE_F_FIRST_RENDER_AFTER_READD') capturePostReaddRenderFrames();
+  slotForensics.pendingState = null;
+}
+
+function getStep2DebugActiveCard() {
+  const activeCards = Array.from(DOM.beadSizeCards || [])
+    .filter((card) => card.classList.contains('active'))
+    .map((card) => card.getAttribute('data-bead-size'));
+  return activeCards.length === 1 ? activeCards[0] : activeCards.length === 0 ? 'NONE' : `MULTIPLE:${activeCards.join(',')}`;
+}
+
+function getStep2DebugState(extra = {}) {
+  const validationPassed = hasExplicitBeadSizeSelection();
+  return {
+    EVENT_SEQUENCE: step2Debug.sequence,
+    event: extra.event || 'SNAPSHOT',
+    clickedValue: extra.clickedValue ?? step2Debug.clickedCard,
+    CLICKED_CARD: step2Debug.clickedCard || 'NONE',
+    ACTIVE_CARD: getStep2DebugActiveCard(),
+    STATE_BEAD_SIZE: State.beadSize ?? null,
+    STATE_MIXED_PLACING_SIZE: State.mixedPlacingSize ?? null,
+    EXPLICIT_SELECTION: validationPassed ? 'YES' : 'NO',
+    VALIDATION_RESULT: extra.validationResult || (validationPassed ? 'PASS' : 'FAIL'),
+    CURRENT_STEP: State.currentStep,
+    NEXT_HANDLER_CALLS: step2Debug.nextHandlerCalls,
+    LAST_TRANSITION_RESULT: extra.transitionResult || step2Debug.lastTransitionResult,
+    LAST_RENDER_SEQUENCE: step2Debug.renderSequence,
+    goToStepResult: extra.goToStepResult ?? null
+  };
+}
+
+function recordStep2Debug(event, details = {}) {
+  if (!STEP2_DEBUG_ENABLED) return;
+  step2Debug.sequence += 1;
+  const entry = getStep2DebugState({ ...details, event });
+  step2Debug.events.push(entry);
+  window.__step2Debug = step2Debug;
+  renderStep2DebugPanel(entry);
+}
+
+function markStep2ToStep3Timing(stage) {
+  if (!STEP2_DEBUG_ENABLED || typeof performance === 'undefined') return;
+  const now = performance.now();
+  if (stage === 'T0_next_click' || !step2Debug.timings) {
+    step2Debug.timings = { startedAt: now, marks: {} };
+  }
+  step2Debug.timings.marks[stage] = Math.round((now - step2Debug.timings.startedAt) * 10) / 10;
+  window.__step2ToStep3Timing = step2Debug.timings.marks;
+  if (stage === 'T6_images_settled') console.table(step2Debug.timings.marks);
+}
+
+function settleStep3ImagesForTiming() {
+  if (!STEP2_DEBUG_ENABLED) return;
+  const images = Array.from(document.querySelectorAll('#stepView3 img'));
+  Promise.all(images.map((image) => {
+    if (image.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', resolve, { once: true });
+    });
+  })).then(() => markStep2ToStep3Timing('T6_images_settled'));
+}
+
+function setupStep2DebugPanel() {
+  if (!STEP2_DEBUG_ENABLED || document.getElementById('step2DebugPanel')) return;
+  window.__step2Debug = step2Debug;
+  const panel = document.createElement('section');
+  panel.id = 'step2DebugPanel';
+  panel.setAttribute('aria-label', 'Step 2 runtime state trace');
+  // Top-anchor the diagnostic so it can never cover the app footer, Back, or Next CTA.
+  panel.style.cssText = 'position:fixed!important;top:max(52px, env(safe-area-inset-top));left:8px;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;width:min(72vw,330px);max-height:42vh;overflow:auto;background:#071a30;color:#eff8ff;border:3px solid #28c7fa;border-radius:8px;padding:8px;font:11px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.55);pointer-events:auto;';
+  const heading = document.createElement('div');
+  heading.textContent = 'STEP2 RUNTIME TRACE ACTIVE';
+  heading.style.cssText = 'display:inline-block;font-weight:800;color:#071a30;background:#28c7fa;padding:4px 6px;margin-bottom:6px;';
+  panel.appendChild(heading);
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.textContent = 'Expand';
+  toggle.style.cssText = 'float:right;min-height:30px;padding:4px 7px;margin-left:5px;background:#28c7fa;color:#071a30;border:1px solid #28c7fa;border-radius:4px;font-weight:800;';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = 'COPY STEP2 TRACE';
+  copy.style.cssText = 'float:right;min-height:30px;padding:4px 7px;background:#fff;color:#071a30;border:1px solid #fff;border-radius:4px;font-weight:800;';
+  copy.addEventListener('click', async () => {
+    const trace = JSON.stringify(step2Debug, null, 2);
+    try {
+      await navigator.clipboard.writeText(trace);
+      copy.textContent = 'TRACE COPIED';
+    } catch {
+      window.prompt('Copy Step 2 trace:', trace);
+    }
+  });
+  panel.appendChild(copy);
+  const output = document.createElement('pre');
+  output.id = 'step2DebugOutput';
+  output.style.cssText = 'clear:both;display:block;margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font:10px/1.35 monospace;';
+  output.textContent = 'Waiting for Step 2 render.';
+  output.hidden = true;
+  toggle.addEventListener('click', () => {
+    const expanded = output.hidden;
+    output.hidden = !expanded;
+    toggle.textContent = expanded ? 'Collapse' : 'Expand';
+  });
+  panel.appendChild(toggle);
+  panel.appendChild(output);
+  document.body.appendChild(panel);
+}
+
+function renderStep2DebugPanel(entry = getStep2DebugState()) {
+  setupStep2DebugPanel();
+  const output = document.getElementById('step2DebugOutput');
+  if (!output) return;
+  output.textContent = [
+    `EVENT: ${entry.event} #${entry.EVENT_SEQUENCE}`,
+    `CLICKED_CARD: ${entry.CLICKED_CARD}`,
+    `ACTIVE_CARD: ${entry.ACTIVE_CARD}`,
+    `STATE_BEAD_SIZE: ${entry.STATE_BEAD_SIZE ?? 'NULL'}`,
+    `STATE_MIXED_PLACING_SIZE: ${entry.STATE_MIXED_PLACING_SIZE ?? 'NULL'}`,
+    `EXPLICIT_SELECTION: ${entry.EXPLICIT_SELECTION}`,
+    `VALIDATION_RESULT: ${entry.VALIDATION_RESULT}`,
+    `CURRENT_STEP: ${entry.CURRENT_STEP}`,
+    `NEXT_HANDLER_CALLS: ${entry.NEXT_HANDLER_CALLS}`,
+    `LAST_TRANSITION_RESULT: ${entry.LAST_TRANSITION_RESULT}`,
+    `LAST_RENDER_SEQUENCE: ${entry.LAST_RENDER_SEQUENCE}`
+  ].join('\n');
+}
+
+function updateSlotForensicsExportStatus(method, success) {
+  slotForensics.exportStatus = {
+    method,
+    snapshotCount: Object.keys(slotForensics.captures).length,
+    historyCount: slotForensics.history.length,
+    success: success ? 'YES' : 'NO'
+  };
+  window.__slotForensics = slotForensics;
+  const latest = slotForensics.history[slotForensics.history.length - 1];
+  if (latest) renderSlotForensicsOverlay(latest);
+}
+
+function recordSlotForensicsExportEvent(event, details = {}) {
+  if (!SLOT_FORENSICS_ENABLED) return;
+  slotForensics.exportTrace.push({
+    sequence: slotForensics.exportTrace.length + 1,
+    event,
+    historyCount: slotForensics.history.length,
+    ...details
+  });
+  window.__slotForensics = slotForensics;
+}
+
+function serializeSlotForensicsTrace() {
+  // The export must use the public forensic object and must tolerate a future
+  // diagnostic field that contains a repeated object reference.
+  const ancestors = [];
+  const trace = JSON.stringify(window.__slotForensics || slotForensics, function serializeDiagnosticValue(key, value) {
+    if (typeof value === 'bigint') return value.toString();
+    if (value && typeof value === 'object') {
+      // Shared snapshot objects are intentionally stored in both captures and
+      // ordered history. Only replace a true ancestor cycle, never a sibling
+      // shared reference, so history remains complete in the exported JSON.
+      while (ancestors.length && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.includes(value)) return '[Circular diagnostic reference]';
+      ancestors.push(value);
+    }
+    return value;
+  }, 2);
+  if (!trace) throw new Error('Slot forensic export serialization returned empty');
+  return trace;
+}
+
+function formatSlotForensicsExportTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function downloadSlotForensicsTrace(trace) {
+  const blob = new Blob([trace], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `slot-forensics-${formatSlotForensicsExportTimestamp()}.json`;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  updateSlotForensicsExportStatus('DOWNLOAD', true);
+}
+
+function openSlotForensicsExportModal(trace, clipboardState = 'UNAVAILABLE') {
+  recordSlotForensicsExportEvent('FALLBACK_MODAL_CREATE', { jsonBytes: trace.length });
+  document.getElementById('slotForensicsExportModal')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'slotForensicsExportModal';
+  overlay.dataset.forensicsVisible = 'PENDING';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Slot forensics trace export');
+  overlay.style.cssText = 'position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;width:100vw!important;height:100dvh!important;min-height:100vh!important;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;overflow:auto!important;overscroll-behavior:contain!important;padding:12px!important;box-sizing:border-box!important;background:rgba(0,0,0,.82)!important;pointer-events:auto!important;';
+  const modal = document.createElement('section');
+  modal.style.cssText = 'display:flex!important;flex-direction:column!important;box-sizing:border-box!important;width:100%!important;max-width:620px!important;min-height:calc(100dvh - 24px)!important;margin:0 auto!important;padding:12px!important;background:#111!important;color:#fff!important;border:3px solid #ffd166!important;border-radius:10px!important;font:12px/1.35 system-ui,sans-serif!important;';
+  const heading = document.createElement('strong');
+  heading.textContent = 'SLOT FORENSICS EXPORT';
+  modal.appendChild(heading);
+  const status = document.createElement('div');
+  status.id = 'slotForensicsExportStatus';
+  status.style.cssText = 'display:block!important;margin:7px 0!important;padding:6px!important;background:#252525!important;color:#fff!important;font:11px/1.4 monospace!important;white-space:pre-wrap!important;';
+  status.textContent = [
+    `HISTORY COUNT: ${slotForensics.history.length}`,
+    `JSON SIZE: ${trace.length} bytes`,
+    `CLIPBOARD: ${clipboardState}`,
+    'FALLBACK: ACTIVE'
+  ].join('\n');
+  modal.appendChild(status);
+  const help = document.createElement('p');
+  help.textContent = 'Clipboard is unavailable in this browser. Select All, Copy, or Download the complete ordered history.';
+  help.style.cssText = 'margin:6px 0;';
+  modal.appendChild(help);
+  const textarea = document.createElement('textarea');
+  textarea.readOnly = true;
+  textarea.value = trace;
+  textarea.setAttribute('aria-label', 'Complete slot forensics JSON trace');
+  textarea.style.cssText = 'display:block!important;box-sizing:border-box!important;width:100%!important;height:48vh!important;min-height:300px!important;resize:vertical!important;overflow:auto!important;padding:8px!important;background:#fff!important;color:#111!important;border:0!important;border-radius:4px!important;font:10px/1.35 monospace!important;-webkit-user-select:text!important;user-select:text!important;';
+  modal.appendChild(textarea);
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;';
+  const createButton = (label) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.style.cssText = 'min-height:34px;padding:5px 8px;border:0;border-radius:4px;background:#ffd166;color:#111;font-weight:800;';
+    controls.appendChild(button);
+    return button;
+  };
+  const selectAll = createButton('SELECT ALL');
+  selectAll.addEventListener('click', () => {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+  });
+  const copy = createButton('COPY');
+  copy.addEventListener('click', () => {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = typeof document.execCommand === 'function' && document.execCommand('copy');
+    // The selectable full-text export remains usable even when WebView blocks execCommand.
+    updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', true);
+    copy.textContent = copied ? 'Copied' : 'Selected — long-press to copy';
+  });
+  const download = createButton('DOWNLOAD JSON');
+  download.addEventListener('click', () => downloadSlotForensicsTrace(trace));
+  const close = createButton('CLOSE');
+  close.addEventListener('click', () => overlay.remove());
+  modal.appendChild(controls);
+  overlay.appendChild(modal);
+  (document.body || document.documentElement).appendChild(overlay);
+  overlay.dataset.forensicsVisible = overlay.isConnected ? 'YES' : 'NO';
+  recordSlotForensicsExportEvent('FALLBACK_MODAL_APPEND', { connected: overlay.isConnected ? 'YES' : 'NO' });
+  const computed = window.getComputedStyle(overlay);
+  const visible = overlay.isConnected && computed.display !== 'none' && computed.visibility !== 'hidden' && computed.opacity !== '0';
+  overlay.dataset.forensicsVisible = visible ? 'YES' : 'NO';
+  recordSlotForensicsExportEvent('FALLBACK_MODAL_VISIBLE', { visible: visible ? 'YES' : 'NO' });
+  updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', true);
+}
+
+async function exportSlotForensicsTrace() {
+  recordSlotForensicsExportEvent('EXPORT_CLICK');
+  let trace;
+  try {
+    trace = serializeSlotForensicsTrace();
+    recordSlotForensicsExportEvent('SERIALIZE_SUCCESS', { jsonBytes: trace.length });
+    if (FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE) throw new Error('Forced clipboard failure');
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+    recordSlotForensicsExportEvent('CLIPBOARD_ATTEMPT');
+    await navigator.clipboard.writeText(trace);
+    updateSlotForensicsExportStatus('CLIPBOARD', true);
+    return;
+  } catch (error) {
+    recordSlotForensicsExportEvent('CLIPBOARD_REJECTED', { reason: error?.message || 'unknown' });
+    // Re-serialize after rejection so the fallback includes its activation trace.
+    try {
+      const clipboardState = FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE || navigator.clipboard?.writeText ? 'FAILED' : 'UNAVAILABLE';
+      openSlotForensicsExportModal(serializeSlotForensicsTrace(), clipboardState);
+    } catch (fallbackError) {
+      recordSlotForensicsExportEvent('FALLBACK_MODAL_CREATE_FAILED', { reason: fallbackError?.message || 'unknown' });
+      updateSlotForensicsExportStatus('TEXTAREA_FALLBACK', false);
+    }
+  }
+}
+
+function setupSlotForensicsPanel() {
+  if (!SLOT_FORENSICS_ENABLED || document.getElementById('slotForensicsPanel')) return;
+  window.__slotForensics = slotForensics;
+  const panel = document.createElement('section');
+  panel.id = 'slotForensicsPanel';
+  panel.setAttribute('aria-label', 'Slot forensics diagnostic');
+  // Append directly to body at DOM-ready, before any Step 3 render. Fixed
+  // positioning keeps it outside page/sticky overflow and mobile breakpoints.
+  panel.style.cssText = 'position:fixed!important;top:max(8px, env(safe-area-inset-top));right:8px;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;max-width:calc(100vw - 16px);max-height:46vh;overflow:auto;background:#111;color:#fff;border:3px solid #ff3158;border-radius:8px;padding:8px;font:12px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.55);pointer-events:auto;';
+  const badge = document.createElement('div');
+  badge.id = 'slotForensicsBadge';
+  badge.textContent = 'SLOT FORENSICS ACTIVE';
+  badge.style.cssText = 'display:block!important;background:#ff3158;color:#fff;font-weight:800;letter-spacing:.04em;padding:5px 7px;margin:-2px -2px 7px;';
+  panel.appendChild(badge);
+  const controls = document.createElement('div');
+  controls.id = 'slotForensicsControls';
+  controls.style.cssText = 'display:flex!important;flex-wrap:wrap;gap:5px;margin-bottom:6px;';
+  [
+    ['STATE_A_BEFORE_DELETE', 'Capture A'],
+    ['STATE_B_IMMEDIATE_AFTER_DELETE_MUTATION', 'Capture B'],
+    ['STATE_C_FIRST_RENDER_AFTER_DELETE', 'Capture C']
+  ].forEach(([stateName, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.style.cssText = 'display:inline-block!important;min-height:32px;padding:4px 7px;background:#fff;color:#111;border:1px solid #fff;border-radius:4px;font-weight:700;';
+    button.addEventListener('click', () => captureSlotForensics(stateName));
+    controls.appendChild(button);
+  });
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.textContent = 'Export / Copy Trace';
+  exportButton.style.cssText = 'display:inline-block!important;min-height:32px;padding:4px 7px;background:#ffd166;color:#111;border:1px solid #ffd166;border-radius:4px;font-weight:800;';
+  exportButton.addEventListener('click', exportSlotForensicsTrace);
+  controls.appendChild(exportButton);
+  panel.appendChild(controls);
+  const output = document.createElement('pre');
+  output.id = 'slotForensicsOutput';
+  output.style.cssText = 'display:block!important;margin:0;max-width:100%;max-height:24vh;overflow:auto;white-space:pre-wrap;color:#f7f2e8;background:#111;font:10px/1.4 monospace;';
+  output.textContent = 'Activation confirmed. Enter Step 3, then Capture A before delete, B after delete, and C after re-add.';
+  panel.appendChild(output);
+  document.body.appendChild(panel);
+}
+
+function renderSlotForensicsOverlay(snapshot) {
+  setupSlotForensicsPanel();
+  const output = document.getElementById('slotForensicsOutput');
+  if (!output) return;
+  const anomaly = snapshot.anomaly;
+  output.textContent = [
+    `${snapshot.state} action=${snapshot.ACTION_SEQUENCE} render=${snapshot.RENDER_SEQUENCE}`,
+    `VISIBLE_GAP_NODE: ${anomaly.VISIBLE_GAP_NODE}/${anomaly.VISIBLE_GAP_SOURCE_INDEX ?? 'NONE'}`,
+    `VISIBLE_GAP_ARC_MM: ${anomaly.VISIBLE_GAP_ARC_MM}`,
+    `OLD_SIZE_METADATA_ACTIVE_AFTER_READD: ${anomaly.OLD_SIZE_METADATA_ACTIVE_AFTER_READD}`,
+    `CANONICAL_EMPTY: ${anomaly.CANONICAL_EMPTY} | RESOLVED_EMPTY: ${anomaly.RESOLVED_EMPTY} | DOM_PLACEHOLDER: ${anomaly.DOM_PLACEHOLDER}`,
+    `COMPLETE: ${anomaly.COMPLETE} | GAP_WITHOUT_EMPTY_NODE: ${anomaly.GAP_WITHOUT_EMPTY_NODE}`,
+    `ABNORMAL_ANGULAR_GAP_FOUND: ${anomaly.ABNORMAL_ANGULAR_GAP_FOUND}`,
+    `FULL_RENDER_HISTORY: ${slotForensics.history.length} snapshots`,
+    `CAPTURES STORED: ${slotForensics.history.length}`,
+    `FIRST POST-READD CAPTURE: ${slotForensics.history.some((item) => item.state === 'STATE_F_FIRST_RENDER_AFTER_READD') ? 'YES' : 'NO'}`,
+    `FINAL SETTLED CAPTURE: ${slotForensics.history.some((item) => item.state === 'STATE_H_FINAL_SETTLED_RENDER') ? 'YES' : 'NO'}`,
+    `TRANSIENT DIFFERENCE FOUND: ${snapshot.firstPostReaddComparison?.transientRenderDivergence || 'NO'}`,
+    `EXPORT METHOD: ${slotForensics.exportStatus.method}`,
+    `EXPORT SNAPSHOT COUNT: ${slotForensics.exportStatus.snapshotCount}`,
+    `EXPORT HISTORY COUNT: ${slotForensics.exportStatus.historyCount}`,
+    `EXPORT SUCCESS: ${slotForensics.exportStatus.success}`,
+    `EXPORT TRACE: ${slotForensics.exportTrace.map((item) => item.event).join(' > ') || 'NONE'}`,
+    `FORCE CLIPBOARD FAILURE: ${FORCE_SLOT_FORENSICS_CLIPBOARD_FAILURE ? 'YES' : 'NO'}`,
+    'Full JSON: Export / Copy Trace includes ordered history and first-post-readd comparison'
+  ].join('\n');
 }
 
 // Setup SVG defs for sheen gradient
@@ -7853,8 +10343,24 @@ function createSvgDefs() {
 }
 
 // Render step 3 workspace elements
-function renderStep3() {
-  ensureCurrentDesignMatchesBeadSize();
+// Owner report 2026-10-11 (iPhone): adding/removing beads quickly felt laggy because EVERY tap ran the
+// full Step 3 render, which rebuilds all 27 catalog cards (and the charm/spacer section) plus the ring.
+// Composition edits now ask for a coalesced render: the ring and the numbers are painted on the next
+// frame (one render per frame no matter how fast the taps arrive) and the heavy catalog/charm sections
+// are refreshed once, after the burst settles. State, pricing, geometry and Undo stay synchronous.
+const STEP3_CATALOG_SETTLE_MS = 140;
+let step3RenderFrame = null;
+let step3CatalogSettleTimer = null;
+
+function renderStep3(options = {}) {
+  const withCatalog = options.catalog !== false;
+  const withCharmSection = options.charmSection !== false;
+  const withEntry = options.entry !== false;
+  const compositionOnly = options.compositionOnly === true;
+  if (!compositionOnly) {
+    invalidateBraceletLayoutCache();
+    ensureCurrentDesignMatchesBeadSize();
+  }
   const resolvedLayout = createCurrentBraceletResolvedLayout();
   const validationState = getStep3ValidationState(resolvedLayout);
   const pricing = calculateLiveBraceletPricing();
@@ -7864,7 +10370,7 @@ function renderStep3() {
   const totalDiameter = validationState.totalDiameter;
   const remainingSpace = validationState.remainingSpace;
   
-  syncCatalogSectionFilter();
+  if (!compositionOnly) syncCatalogSectionFilter();
   
   // Render statistics text
   DOM.canvasPriceText.textContent = `฿${pricing.subtotal.toLocaleString()}`;
@@ -7872,7 +10378,9 @@ function renderStep3() {
   if (canvasInfoRow) {
     const helperText = canvasInfoRow.querySelector('.helper-tooltip');
     if (helperText) {
-      helperText.textContent = '\u0e41\u0e15\u0e30\u0e17\u0e35\u0e48\u0e2b\u0e34\u0e19\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e25\u0e1a';
+      // TASK A3 (owner request 2026-10-12): the remove hint reads แตะที่เม็ดหินเพื่อลบ (escapes keep it
+      // byte-exact). It is the LEFT item of the Step 3 information row.
+      helperText.textContent = '\u0e41\u0e15\u0e30\u0e17\u0e35\u0e48\u0e40\u0e21\u0e47\u0e14\u0e2b\u0e34\u0e19\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e25\u0e1a';
     }
 
     let inlinePrice = canvasInfoRow.querySelector('.canvas-inline-price');
@@ -7906,7 +10414,9 @@ function renderStep3() {
   // Update wrist context label
   const wristContext = document.getElementById('canvasWristContext');
   if (wristContext) {
-    wristContext.textContent = `ข้อมือ ${State.wristSize.toFixed(1)} cm`;
+    // TASK D (owner request 2026-10-11): the preview-bracelet button was removed from this area, so it
+    // now shows only the wrist size chosen in Step 1, e.g. "16.0 cm" / "17.5 cm".
+    wristContext.textContent = `${State.wristSize.toFixed(1)} cm`;
   }
   
   // Center label inside circular design canvas
@@ -7921,14 +10431,165 @@ function renderStep3() {
   
   // Render SVG loop and catalog
   renderBraceletCanvas(resolvedLayout);
-  renderCatalogGrid();
-  renderCharmOptions();
-  syncCatalogSectionFilter();
-  syncStep3NextValidationUI(validationState);
-  showStep3CategoryHint();
+  markStep2ToStep3Timing('T4_bracelet_render_complete');
+  if (withCatalog) renderCatalogGrid();
+  if (withCharmSection) renderActiveCharmSpacerSection();
+  markStep2ToStep3Timing('T5_catalog_cards_complete');
+  if (!compositionOnly) {
+    settleStep3ImagesForTiming();
+    syncCatalogSectionFilter();
+    showStep3CategoryHint();
+  }
+  if (withEntry) renderLumiStep3Entry();
   
   // Clear newly added IDs after rendering so they only animate on insertion
-  State.newlyAddedIds = [];
+  if (State.newlyAddedIds.length > 0) {
+    State.newlyAddedIds = [];
+    invalidateBraceletLayoutCache();
+  }
+}
+
+// Composition edits (add / remove / replace) use this instead of a full synchronous render: one ring
+// render per animation frame, then a single catalog/charm refresh once the taps have settled.
+function requestCompositionRender() {
+  if (step3RenderFrame === null) {
+    step3RenderFrame = window.requestAnimationFrame(() => {
+      step3RenderFrame = null;
+      if (State.currentStep !== 3) return;
+      renderStep3({ catalog: false, charmSection: false, entry: false, compositionOnly: true });
+    });
+  }
+  window.clearTimeout(step3CatalogSettleTimer);
+  step3CatalogSettleTimer = window.setTimeout(() => {
+    step3CatalogSettleTimer = null;
+    if (State.currentStep !== 3) return;
+    syncCatalogCompositionState();
+  }, STEP3_CATALOG_SETTLE_MS);
+}
+
+// TASK A1 (owner report 2026-10-12): a composition edit (add / remove / undo / Lucky) never changes the
+// catalog STRUCTURE - it only changes which cards are selected and how many of each item the bracelet
+// holds. The previous settle rebuilt every catalog card, and every card owns an <img>, so each tap made
+// the browser re-create ~27 stone cards plus the charm/spacer cards, re-decode their images and lay the
+// grid out again. Android Chrome absorbs that; iOS Safari did not, which is the "tap then wait" the
+// owner saw. The counts are now patched onto the existing cards, so the structure, the images and the
+// Beryl preview controller are left exactly as they are.
+function syncCatalogCardCompositionState(card, { selectedClassName, isSelected, actionText, actionTitle = null, actionAriaLabel = null }) {
+  if (!card) return;
+  card.classList.toggle(selectedClassName, Boolean(isSelected));
+  if (card.hasAttribute('aria-pressed')) card.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+  const action = card.querySelector('.stone-add-btn');
+  if (!action) return;
+  action.classList.toggle('selected', Boolean(isSelected));
+  if (actionText !== null && action.textContent !== actionText) action.textContent = actionText;
+  if (actionTitle !== null) action.title = actionTitle;
+  if (actionAriaLabel !== null) action.setAttribute('aria-label', actionAriaLabel);
+}
+
+function syncStoneCatalogCard(stoneId) {
+  const id = String(stoneId || '').trim();
+  if (!id) return;
+  const count = getSelectedStoneCountsById()[id] || 0;
+  const card = DOM.stoneCatalogGrid?.querySelector(`[data-stone-id="${CSS.escape(id)}"]`);
+  syncCatalogCardCompositionState(card, {
+    selectedClassName: 'stone-card-selected',
+    isSelected: count > 0,
+    actionText: count > 0 ? String(count) : '+',
+    actionTitle: count > 0 ? `Add another stone (currently ${count} selected)` : 'Add Stone',
+    actionAriaLabel: count > 0 ? `Add another stone. ${count} selected in bracelet.` : 'Add Stone'
+  });
+}
+
+function syncCharmCatalogCard(charmId) {
+  const id = String(charmId || '').trim();
+  if (!id) return;
+  const isSelected = getSelectedCharmCatalogEntries().some((charm) => charm.id === id);
+  DOM.charmSectionMount?.querySelectorAll(`[data-charm-id="${CSS.escape(id)}"]`).forEach((card) => {
+    syncCatalogCardCompositionState(card, {
+      selectedClassName: 'selected',
+      isSelected,
+      actionText: '+',
+      actionTitle: isSelected ? `Selected ${CUSTOMER_COMPONENT_LABELS.charm}` : `Select ${CUSTOMER_COMPONENT_LABELS.charm}`
+    });
+  });
+}
+
+function syncSpacerCatalogCard(spacerId) {
+  const id = String(spacerId || '').trim();
+  if (!id) return;
+  const count = getSelectedSpacerItems().filter((spacer) => spacer.id === id).length;
+  const card = DOM.charmSectionMount?.querySelector(`[data-spacer-id="${CSS.escape(id)}"]`);
+  syncCatalogCardCompositionState(card, {
+    selectedClassName: 'selected',
+    isSelected: count > 0,
+    actionText: count > 0 ? String(count) : '+',
+    actionTitle: count > 0 ? `Add Another ${CUSTOMER_COMPONENT_LABELS.spacer}` : `Add ${CUSTOMER_COMPONENT_LABELS.spacer}`
+  });
+}
+
+// Mirrors the parts of renderCatalogGrid() / renderCharmOptions() / renderSpacerOptions() that depend on
+// the current composition. Anything structural (bead size, category filter, availability, layout order,
+// catalog refresh) still goes through the full renders.
+function syncCatalogCompositionState() {
+  const stoneCounts = getSelectedStoneCountsById();
+  DOM.stoneCatalogGrid?.querySelectorAll('[data-stone-id]').forEach((card) => {
+    const count = stoneCounts[card.dataset.stoneId] || 0;
+    syncCatalogCardCompositionState(card, {
+      selectedClassName: 'stone-card-selected',
+      isSelected: count > 0,
+      actionText: count > 0 ? String(count) : '+',
+      actionTitle: count > 0 ? `Add another stone (currently ${count} selected)` : 'Add Stone',
+      actionAriaLabel: count > 0 ? `Add another stone. ${count} selected in bracelet.` : 'Add Stone'
+    });
+  });
+
+  const selectedCharmIds = new Set(getSelectedCharmCatalogEntries().map((charm) => charm.id));
+  DOM.charmSectionMount?.querySelectorAll('.charm-component-section [data-charm-id]').forEach((card) => {
+    const isSelected = selectedCharmIds.has(card.dataset.charmId);
+    syncCatalogCardCompositionState(card, {
+      selectedClassName: 'selected',
+      isSelected,
+      actionText: '+',
+      actionTitle: isSelected ? `Selected ${CUSTOMER_COMPONENT_LABELS.charm}` : `Select ${CUSTOMER_COMPONENT_LABELS.charm}`
+    });
+  });
+
+  const spacerCounts = getSelectedSpacerItems().reduce((counts, spacer) => {
+    counts[spacer.id] = (counts[spacer.id] || 0) + 1;
+    return counts;
+  }, {});
+  DOM.charmSectionMount?.querySelectorAll('.spacer-component-section [data-spacer-id]').forEach((card) => {
+    const count = spacerCounts[card.dataset.spacerId] || 0;
+    syncCatalogCardCompositionState(card, {
+      selectedClassName: 'selected',
+      isSelected: count > 0,
+      actionText: count > 0 ? String(count) : '+',
+      actionTitle: count > 0 ? `Add Another ${CUSTOMER_COMPONENT_LABELS.spacer}` : `Add ${CUSTOMER_COMPONENT_LABELS.spacer}`
+    });
+  });
+}
+
+// First-time onboarding owns the first Step 3 visit, so the legacy Step 3 tab-hint
+// sequence (which cycles the visible catalog section) and the legacy stone-info hint
+// (which auto-opens a modal) must not animate underneath the onboarding overlay.
+// Nothing is persisted here: the legacy hints still run on a later visit.
+function suspendStep3HintsForOnboarding() {
+  const step3View = document.getElementById('stepView3');
+  clearStep3CategoryHintTimers();
+  step3View?.classList.remove('step3-tab-hinting', 'step3-tab-hint-pending');
+  clearStep3CategoryHintTab();
+  clearStep3InfoHintTimers();
+  if (step3InfoHintModalOpen) {
+    step3InfoHintAutoClosing = true;
+    closeStoneInfoModal();
+    step3InfoHintAutoClosing = false;
+  }
+  step3View?.querySelectorAll('.step3-info-hint-card, .step3-info-hint-card-final').forEach((node) => node.classList.remove('step3-info-hint-card', 'step3-info-hint-card-final'));
+  step3View?.querySelectorAll('.step3-info-hint-button, .step3-info-hint-final').forEach((node) => node.classList.remove('step3-info-hint-button', 'step3-info-hint-final'));
+  step3View?.querySelectorAll('.step3-info-hint-callout').forEach((node) => node.remove());
+  step3InfoHintTarget = null;
+  step3CategoryHintPlayedThisPage = true;
+  step3InfoHintPlayedThisPage = true;
 }
 
 function showStep3CategoryHint() {
@@ -8250,7 +10911,11 @@ async function renderStep4() {
         </div>
         <div class="billing-item-name">
           <h5>${item.nameTh} (${item.name})</h5>
-          <p>${item.size}mm x ${item.count} เม็ด</p>
+          <p>${item.nominalProductSizeMm || item.size}mm x ${item.count} เม็ด${
+            Number(item.nominalProductSizeMm) !== Number(item.selectionGroupMm)
+              ? ` • group ${item.selectionGroupMm}mm • packing ${item.braceletPackingMm}mm`
+              : ''
+          }</p>
         </div>
       </div>
       <div class="billing-item-price">฿${item.totalPrice.toLocaleString()}</div>
@@ -8384,7 +11049,8 @@ function buildDesignConfigurationCode() {
     c: normalizeSelectedCharmIds(State.selectedCharmIds),
     s: selectedStoneItems.map((stone) => ({ i: stone.stoneId, z: stone.size })),
     p: selectedSpacerItems.map((spacer) => ({ i: spacer.id, l: spacer.effectiveLengthMm })),
-    l: State.selectedStones.map((item) => serializeSelectedLoopItem(item))
+    l: State.selectedStones.map((item) => serializeSelectedLoopItem(item)),
+    v: normalizeVisualVariantIndex(State.pearlVariantCursor) ?? 0
   };
 
   return btoa(unescape(encodeURIComponent(JSON.stringify(designData))));
@@ -8520,13 +11186,17 @@ function buildCurrentOrderPayload(overrides = {}) {
     totalBeads: selectedStoneItems.length,
     beads: selectedStoneItems.map((stone) => {
       const stoneData = STONES.find((entry) => entry.id === stone.stoneId);
+      const sizeMetadata = getStoneSizeMetadata(stoneData, stone.size);
       return {
         stoneId: stone.stoneId,
         name: stoneData ? stoneData.name : 'Unknown Stone',
         nameTh: stoneData ? stoneData.nameTh : 'หินธรรมชาติ',
         color: stoneData ? stoneData.color : '#E2E8F0',
         image: stoneData ? stoneData.image : '',
-        size: stone.size
+        size: stone.size,
+        selectionGroupMm: sizeMetadata.selectionGroupMm,
+        nominalProductSizeMm: sizeMetadata.nominalProductSizeMm,
+        braceletPackingMm: sizeMetadata.braceletPackingMm
       };
     }),
     stoneVariants: createStoneVariantPayload(pricing.aggregatedStones),
@@ -8697,7 +11367,6 @@ async function handleStripeCheckout() {
     showToast("This order has already been created.");
     return;
   }
-
   if (stripeCheckoutInProgress) return;
 
   const checkoutButton = State.currentStep === 4 ? DOM.btnNext : DOM.btnPayWithStripe;
@@ -8713,9 +11382,9 @@ async function handleStripeCheckout() {
   stripeCheckoutInProgress = true;
   checkoutButton.disabled = true;
   checkoutButton.setAttribute('aria-busy', 'true');
-  checkoutButton.textContent = 'กำลังพาไปชำระเงิน...';
+  checkoutButton.textContent = '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e1e\u0e32\u0e44\u0e1b\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19...';
 
-  ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
+ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
 
   const fitEligibility = getCurrentCheckoutFitEligibility();
   if (!fitEligibility.eligible) {
@@ -8875,26 +11544,34 @@ function detectVisibleImageBounds(image) {
   const sourceHeight = image?.naturalHeight || image?.height || 0;
   if (!sourceWidth || !sourceHeight) return null;
 
+  // Performance: scan a small analysis canvas instead of the natural-resolution image. Charm and
+  // spacer sources are 1000px+ squares; the downscaled scan is far cheaper and the bounds are scaled
+  // back into source coordinates, so the rendered placement is unchanged.
+  const analysisScale = Math.max(sourceWidth, sourceHeight) > CHARM_BOUNDS_ANALYSIS_MAX_PX
+    ? CHARM_BOUNDS_ANALYSIS_MAX_PX / Math.max(sourceWidth, sourceHeight)
+    : 1;
+  const analysisWidth = Math.max(1, Math.round(sourceWidth * analysisScale));
+  const analysisHeight = Math.max(1, Math.round(sourceHeight * analysisScale));
   const canvas = document.createElement('canvas');
-  canvas.width = sourceWidth;
-  canvas.height = sourceHeight;
+  canvas.width = analysisWidth;
+  canvas.height = analysisHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
 
   try {
-    ctx.clearRect(0, 0, sourceWidth, sourceHeight);
-    ctx.drawImage(image, 0, 0, sourceWidth, sourceHeight);
-    const { data } = ctx.getImageData(0, 0, sourceWidth, sourceHeight);
+    ctx.clearRect(0, 0, analysisWidth, analysisHeight);
+    ctx.drawImage(image, 0, 0, analysisWidth, analysisHeight);
+    const { data } = ctx.getImageData(0, 0, analysisWidth, analysisHeight);
 
-    let minX = sourceWidth;
-    let minY = sourceHeight;
+    let minX = analysisWidth;
+    let minY = analysisHeight;
     let maxX = -1;
     let maxY = -1;
 
-    for (let y = 0; y < sourceHeight; y++) {
-      for (let x = 0; x < sourceWidth; x++) {
-        const alpha = data[(y * sourceWidth + x) * 4 + 3];
-        if (alpha > 8) {
+    for (let y = 0; y < analysisHeight; y++) {
+      for (let x = 0; x < analysisWidth; x++) {
+        const alpha = data[(y * analysisWidth + x) * 4 + 3];
+        if (alpha > CHARM_BOUNDS_ALPHA_THRESHOLD) {
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (x > maxX) maxX = x;
@@ -8907,7 +11584,14 @@ function detectVisibleImageBounds(image) {
       return normalizeImageBounds(null, sourceWidth, sourceHeight);
     }
 
-    return normalizeImageBounds({ minX, minY, maxX, maxY }, sourceWidth, sourceHeight);
+    const scaleX = sourceWidth / analysisWidth;
+    const scaleY = sourceHeight / analysisHeight;
+    return normalizeImageBounds({
+      minX: Math.max(0, Math.floor(minX * scaleX)),
+      minY: Math.max(0, Math.floor(minY * scaleY)),
+      maxX: Math.min(sourceWidth - 1, Math.max(0, Math.ceil((maxX + 1) * scaleX) - 1)),
+      maxY: Math.min(sourceHeight - 1, Math.max(0, Math.ceil((maxY + 1) * scaleY) - 1))
+    }, sourceWidth, sourceHeight);
   } catch (error) {
     console.warn('Failed to detect visible charm bounds.', error);
     return null;
@@ -8933,6 +11617,30 @@ function getVisibleImageBounds(image, cacheKey = '') {
   return detectedBounds;
 }
 
+// Performance: coalesce a burst of charm/spacer image-bound discoveries into ONE bracelet repaint.
+// Only the bracelet canvas is refreshed here - catalog grids and the selection are never rebuilt.
+const STEP3_BOUNDS_COALESCE_MS = 120;
+let step3BoundsRefreshPending = false;
+let step3BoundsRefreshScheduled = false;
+function scheduleStep3BoundsRefresh() {
+  if (State.currentStep !== 3 || State.orderDetailMode) return;
+  step3BoundsRefreshPending = true;
+  if (step3BoundsRefreshScheduled) return;
+  step3BoundsRefreshScheduled = true;
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      step3BoundsRefreshScheduled = false;
+      if (!step3BoundsRefreshPending) return;
+      step3BoundsRefreshPending = false;
+      if (State.currentStep !== 3 || State.orderDetailMode) return;
+      try {
+        renderBraceletCanvas(createCurrentBraceletResolvedLayout());
+      } catch (error) {
+        console.warn('Bracelet bounds refresh skipped.', error);
+      }
+    }, STEP3_BOUNDS_COALESCE_MS);
+  });
+}
 function scheduleCharmVisibleBoundsDetection(imageUrl) {
   if (!imageUrl) return Promise.resolve(null);
   if (charmVisibleBoundsCache.has(imageUrl)) {
@@ -8948,9 +11656,7 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
     img.onload = async () => {
       const bounds = getVisibleImageBounds(img, imageUrl);
       resolve(bounds);
-      if (State.currentStep === 3) {
-        renderStep3();
-      }
+      scheduleStep3BoundsRefresh();
     };
     img.onerror = () => resolve(null);
     img.src = imageUrl;
@@ -9109,6 +11815,18 @@ function getInlineCharmPlacement(frameWidth, frameHeight, sourceWidth, sourceHei
 function getCharmRenderPlacement(component, frameWidth, frameHeight, image = null, bounds = null, rotationRad = 0, centerAngle = 0) {
   const sourceWidth = image?.naturalWidth || image?.width || Number(component?.assetWidth) || 0;
   const sourceHeight = image?.naturalHeight || image?.height || Number(component?.assetHeight) || 0;
+  if (isApprovedThreadedPendant(component)) {
+    // Pendant artwork includes a tall bail above the sellable body. Fit the visible
+    // body to its approved visual width before rotating it around the bracelet path;
+    // rotation-aware containment made both pendants collapse to roughly 60% width.
+    return getApprovedThreadedPendantPlacement(
+      frameWidth,
+      frameHeight,
+      sourceWidth,
+      sourceHeight,
+      bounds
+    );
+  }
   if (isHangingSpacerComponent(component)) {
     return getFixedHangingSpacerPlacement(component, frameWidth, frameHeight, sourceWidth, sourceHeight, bounds);
   }
@@ -9126,6 +11844,17 @@ function getCharmRenderPlacement(component, frameWidth, frameHeight, image = nul
     rotationRad,
     centerAngle
   );
+}
+
+function getApprovedThreadedPendantPlacement(frameWidth, frameHeight, sourceWidth, sourceHeight, bounds = null) {
+  const visibleBounds = normalizeImageBounds(bounds, sourceWidth, sourceHeight);
+  const scale = frameWidth / visibleBounds.width;
+  return {
+    width: sourceWidth * scale,
+    height: sourceHeight * scale,
+    x: (frameWidth / 2) - ((visibleBounds.minX + (visibleBounds.width / 2)) * scale),
+    y: (frameHeight / 2) - ((visibleBounds.minY + (visibleBounds.height / 2)) * scale)
+  };
 }
 
 function getVisibleBoundsPlacement(frameWidth, frameHeight, image = null, bounds = null) {
@@ -9260,9 +11989,31 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const imgUrl = getComponentRenderImageUrl(component);
     const imgObj = imageCache[imgUrl];
     const renderComponent = getHangingSpacerPreviewComponent(component);
-    const outwardOffsetPx = (component.type === 'charm' || isHangingSpacerComponent(component))
-      ? getCharmOutwardOffsetPx(renderComponent, node.renderScalePxPerMm || 0)
+    const isThreadedPendant = isApprovedThreadedPendant(component);
+    const charmFrame = (component.type === 'charm' || isHangingSpacerComponent(component))
+      ? getCharmRenderFrameDimensions(renderComponent, node.renderScalePxPerMm || 0)
+      : null;
+    const charmBounds = imgObj && charmFrame ? getVisibleImageBounds(imgObj, imgUrl) : null;
+    const charmPlacement = imgObj && charmFrame
+      ? getCharmRenderPlacement(renderComponent, charmFrame.widthPx, charmFrame.heightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle)
+      : null;
+    const pendantInsetPx = isThreadedPendant && charmPlacement
+      ? getPendantAttachmentAnchorInsetPx({
+        placementHeightPx: charmPlacement.height,
+        sourceHeightPx: charmBounds?.sourceHeight,
+        visibleHeightPx: charmBounds?.height,
+        anchorFromTopRatio: component.attachmentAnchorFromTopRatio
+      })
       : 0;
+    const outwardOffsetPx = isThreadedPendant
+      ? Math.max(0, (
+        charmBounds
+          ? charmPlacement.height * (charmBounds.height / charmBounds.sourceHeight) / 2
+          : charmPlacement.height / 2
+      ) - pendantInsetPx)
+      : ((component.type === 'charm' || isHangingSpacerComponent(component))
+      ? getCharmOutwardOffsetPx(renderComponent, node.renderScalePxPerMm || 0)
+      : 0);
     const renderCenterX = bx + (Math.cos(node.centerAngle) * outwardOffsetPx);
     const renderCenterY = by + (Math.sin(node.centerAngle) * outwardOffsetPx);
 
@@ -9273,10 +12024,10 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     if (component.type === 'charm' || isHangingSpacerComponent(component)) {
       if (imgObj) {
         const isHangingSpacer = isHangingSpacerComponent(component);
-        const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(renderComponent, node.renderScalePxPerMm || 0);
-        const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getCharmRenderPlacement(renderComponent, charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
-        const useCharmClip = !isHangingSpacer && component.edgeFitMode !== 'horizontal_fill';
+        const charmFrameWidthPx = charmFrame.widthPx;
+        const charmFrameHeightPx = charmFrame.heightPx;
+        const placement = charmPlacement;
+        const useCharmClip = !isHangingSpacer && !isThreadedPendant && component.edgeFitMode !== 'horizontal_fill';
         ctx.save();
         if (useCharmClip) {
           ctx.beginPath();
@@ -9311,7 +12062,12 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
         );
         ctx.restore();
       } else {
-        const placement = getContainImagePlacement(spacerSizePx, spacerSizePx, imgObj);
+        const explicitBounds = Array.isArray(component.visualBounds) && component.visualBounds.length > 0
+          ? component.visualBounds[0]
+          : (imgObj ? getVisibleImageBounds(imgObj, imgUrl) : null);
+        const placement = explicitBounds
+          ? getVisibleBoundsPlacement(spacerSizePx, spacerSizePx, imgObj, explicitBounds)
+          : getContainImagePlacement(spacerSizePx, spacerSizePx, imgObj);
         ctx.drawImage(
           imgObj,
           -halfSpacer + placement.x,
@@ -9321,13 +12077,33 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
         );
       }
     } else if (imgObj) {
+      const stoneData = STONES.find((stone) => stone.id === component.stoneId);
+      const isIrregularStone = APPROVED_IRREGULAR_STONE_IDS.has(component.stoneId)
+        || component.renderShape === 'irregular'
+        || stoneData?.renderShape === 'irregular';
+      const selectedVariantIndex = normalizeVisualVariantIndex(component.visualVariantIndex) ?? 0;
+      const irregularBounds = isIrregularStone && Array.isArray(component.visualBounds)
+        ? component.visualBounds[selectedVariantIndex] || component.visualBounds[0] || null
+        : null;
       ctx.save();
       ctx.beginPath();
       ctx.arc(0, 0, bRadiusPx, 0, 2 * Math.PI);
       ctx.clip();
-      const scaleFactor = 1.3;
-      const imgSize = bRadiusPx * 2 * scaleFactor;
-      ctx.drawImage(imgObj, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+      if (isIrregularStone && irregularBounds) {
+        const frameSize = bRadiusPx * 2;
+        const placement = getVisibleBoundsPlacement(frameSize, frameSize, imgObj, irregularBounds);
+        ctx.drawImage(
+          imgObj,
+          -frameSize / 2 + placement.x,
+          -frameSize / 2 + placement.y,
+          placement.width,
+          placement.height
+        );
+      } else {
+        const scaleFactor = 1.3;
+        const imgSize = bRadiusPx * 2 * scaleFactor;
+        ctx.drawImage(imgObj, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+      }
       ctx.restore();
     }
 
@@ -9619,7 +12395,7 @@ function renderBraceletShowcaseFallback(previewKey = '') {
     ctx.translate(x, y);
     ctx.rotate(node.renderRotationRad || 0);
 
-    if (component.type === 'charm') {
+    if (component.type === 'charm' || isHangingSpacerComponent(component)) {
       const frame = getCharmRenderFrameDimensions(component, node.renderScalePxPerMm || 0);
       ctx.fillStyle = '#D7B56D';
       ctx.strokeStyle = '#8B6A2B';
@@ -10163,3 +12939,7 @@ function showCustomConfirm(message, title = "Confirm") {
     DOM.confirmModal.addEventListener('click', onBackdrop);
   });
 }
+
+
+
+

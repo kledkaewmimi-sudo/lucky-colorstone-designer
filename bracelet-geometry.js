@@ -15,19 +15,38 @@ export function getComponentPhysicalLengthMm(component) {
   if (component.type === 'empty' || component.componentType === 'empty') return 0;
 
   if (component.type === 'stone') {
+    const packingLengthMm = positiveNumber(component.packingLengthMm);
+    if (packingLengthMm > 0) return packingLengthMm;
     const sizeMm = positiveNumber(component.sizeMm ?? component.size);
     return PHYSICAL_STONE_SIZES_MM.has(sizeMm) ? sizeMm : 0;
   }
 
   if (component.type === 'spacer') {
-    return positiveNumber(component.effectiveLengthMm ?? component.sizeMm ?? component.size);
+    return positiveNumber(component.packingLengthMm ?? component.effectiveLengthMm ?? component.sizeMm ?? component.size);
   }
 
   if (component.type === 'charm') {
-    return positiveNumber(component.footprintMm ?? component.sizeMm ?? component.size);
+    return positiveNumber(component.threadingOccupancyMm ?? component.footprintMm ?? component.sizeMm ?? component.size);
   }
 
   return positiveNumber(component.sizeMm ?? component.size);
+}
+
+export function getPendantAttachmentAnchorInsetPx({
+  placementHeightPx = 0,
+  sourceHeightPx = 0,
+  visibleHeightPx = 0,
+  anchorFromTopRatio = 0
+} = {}) {
+  const renderedHeight = positiveNumber(placementHeightPx);
+  const sourceHeight = positiveNumber(sourceHeightPx);
+  const visibleHeight = positiveNumber(visibleHeightPx);
+  const ratio = Number(anchorFromTopRatio);
+  if (renderedHeight <= 0 || sourceHeight <= 0 || visibleHeight <= 0 || !Number.isFinite(ratio) || ratio <= 0) {
+    return 0;
+  }
+  const visibleRenderedHeight = renderedHeight * (visibleHeight / sourceHeight);
+  return Math.max(0, Math.min(visibleRenderedHeight, visibleRenderedHeight * ratio));
 }
 
 export function getTotalUsedLengthMm(components = []) {

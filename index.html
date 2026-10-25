@@ -74,28 +74,101 @@
   <!-- LANDING PAGE SECTION -->
   <section class="landing-page" id="landingView">
     <div class="landing-hero-panel">
-      <div class="landing-background" style="background-image: url('/assets/landing-page-p1.jpg')"></div>
-      <div class="landing-overlay"></div>
+      <div class="landing-background" aria-hidden="true"></div>
+      <div class="landing-overlay" aria-hidden="true"></div>
 
       <div class="landing-container">
         <div class="landing-header">
-          <h1 class="landing-logo">LUCKY.COLORSTONE</h1>
+          <div class="landing-brand">
+            <h1 class="landing-logo">LUCKY.COLORSTONE</h1>
+            <p class="landing-logo-tagline" aria-hidden="true">EVERYTHING YOUR HEART WISHES FOR</p>
+          </div>
+          <!-- Reference top navigation. Visual parity only: the reference items have no
+               existing destination in this app, so they stay non-interactive (no new routes,
+               no business behaviour) and are hidden from assistive tech. -->
+          <nav class="landing-nav" aria-hidden="true">
+            <span class="landing-nav-link">CUSTOMIZE</span>
+            <span class="landing-nav-link">COLLECTION</span>
+            <span class="landing-nav-link">ABOUT</span>
+            <span class="landing-nav-bag">
+              <svg viewBox="0 0 24 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.7 8.6h14.6l.9 13.1a1.7 1.7 0 0 1-1.7 1.8H5.5a1.7 1.7 0 0 1-1.7-1.8z"></path><path d="M8.9 8.6V6.4a3.1 3.1 0 0 1 6.2 0v2.2"></path></svg>
+            </span>
+            <span class="landing-nav-menu"><i></i><i></i><i></i></span>
+          </nav>
         </div>
 
         <div class="landing-hero">
-          <h2 class="landing-hero-title">กำไลหินที่ออกแบบได้ด้วยตัวคุณเอง</h2>
+          <span class="landing-gap landing-gap-a" aria-hidden="true"></span>
+          <span class="landing-moon-glow" aria-hidden="true"></span>
+          <span class="landing-gap landing-gap-b" aria-hidden="true"></span>
+          <span class="landing-moon" aria-hidden="true">☾</span>
+          <span class="landing-gap landing-gap-c" aria-hidden="true"></span>
+          <span class="landing-mark" aria-hidden="true">LUCKY.COLORSTONE</span>
 
+          <h2 class="landing-hero-title">กำไลหินที่ออกแบบได้<br>ด้วยตัวคุณเอง</h2>
+
+          <span class="landing-gap landing-gap-d" aria-hidden="true"></span>
           <p class="landing-hero-subtitle">
             เลือกสี เลือกพลัง เลือกความหมาย<br>
             ในแบบที่เป็นคุณ
           </p>
 
-          <button class="btn-start-customize" id="btnLandingLogin">
-            <span class="btn-sparkle">✦</span>
-            <span class="btn-text">เริ่มออกแบบ</span>
-            <span class="btn-sparkle">✦</span>
-          </button>
-          <p class="landing-load-reassurance" id="landingLoadReassurance" aria-live="polite">กำลงเตรยมพรอม พนทสำหรบออกแบบ </p>
+          <div class="landing-cta-stack">
+            <div class="landing-decor" aria-hidden="true">
+            <span class="ld-spark ld-spark-4" style="--x:8%;--y:6%;--s:17px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:20%;--y:1%;--s:10px;--tone:white"></span>
+            <span class="ld-spark ld-spark-4" style="--x:90%;--y:4%;--s:20px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:96%;--y:16%;--s:9px;--tone:warm"></span>
+            <span class="ld-spark ld-spark-4" style="--x:3%;--y:44%;--s:15px;--tone:white"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:13%;--y:62%;--s:11px;--tone:blue"></span>
+            <span class="ld-spark ld-spark-4" style="--x:95%;--y:58%;--s:16px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:86%;--y:72%;--s:7px;--tone:white"></span>
+            <span class="ld-spark ld-spark-4" style="--x:17%;--y:88%;--s:14px;--tone:blue"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:72%;--y:92%;--s:6px;--tone:warm"></span>
+            <span class="ld-spark ld-spark-4" style="--x:46%;--y:2%;--s:13px;--tone:white"></span>
+            <span class="ld-heart ld-heart-l" style="--x:2%;--y:52%;--s:34px;--rot:-8deg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.6a4.4 4.4 0 0 1 0-6.3 4.6 4.6 0 0 1 6.4 0l.7.7.7-.7a4.6 4.6 0 0 1 6.4 0 4.4 4.4 0 0 1 0 6.3Z"></path></svg></span>
+            <span class="ld-heart ld-heart-r" style="--x:88%;--y:66%;--s:30px;--rot:10deg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.6a4.4 4.4 0 0 1 0-6.3 4.6 4.6 0 0 1 6.4 0l.7.7.7-.7a4.6 4.6 0 0 1 6.4 0 4.4 4.4 0 0 1 0 6.3Z"></path></svg></span>
+            <span class="ld-heart ld-heart-s" style="--x:24%;--y:80%;--s:22px;--rot:6deg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.6a4.4 4.4 0 0 1 0-6.3 4.6 4.6 0 0 1 6.4 0l.7.7.7-.7a4.6 4.6 0 0 1 6.4 0 4.4 4.4 0 0 1 0 6.3Z"></path></svg></span>
+            <span class="ld-spark ld-spark-4" style="--x:30%;--y:12%;--s:14px;--tone:white"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:64%;--y:18%;--s:9px;--tone:lavender"></span>
+            <span class="ld-spark ld-spark-4" style="--x:12%;--y:26%;--s:12px;--tone:white"></span>
+            <span class="ld-spark ld-spark-dot" style="--x:82%;--y:34%;--s:8px;--tone:blue"></span>
+            <span class="ld-strokes" style="--x:88%;--y:30%"><i></i><i></i><i></i></span>
+            <span class="ld-orbit" aria-hidden="true">
+              <svg viewBox="0 0 400 150" preserveAspectRatio="none" fill="none">
+                <ellipse cx="200" cy="78" rx="196" ry="62" stroke="rgba(255,255,255,0.55)" stroke-width="1.4"></ellipse>
+                <ellipse cx="200" cy="78" rx="196" ry="62" stroke="rgba(176,140,225,0.35)" stroke-width="1" stroke-dasharray="5 9"></ellipse>
+              </svg>
+              <span class="ld-orbit-spark"></span>
+            </span>
+            </div>
+            <img class="landing-mascot" src="/assets/lucky/landing/lucky-landing-mascot.webp" width="1254" height="1254" alt="" aria-hidden="true" decoding="async" fetchpriority="high">
+            <button class="btn-start-customize" id="btnLandingLogin">
+              <span class="btn-sparkle" aria-hidden="true">✦</span>
+              <span class="btn-text">เริ่มออกแบบ</span>
+              <span class="btn-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"></path><path d="m12.5 6 6 6-6 6"></path></svg>
+              </span>
+            </button>
+            <p class="landing-load-reassurance" id="landingLoadReassurance" aria-live="polite">กำลังเตรียมพื้นที่สำหรับออกแบบ</p>
+          </div>
+
+          <span class="landing-gap landing-gap-e" aria-hidden="true"></span>
+          <section class="landing-social-proof" id="landingSocialProof" aria-label="ผู้ใช้งาน Lucky Colorstone">
+            <span class="sp-spark" aria-hidden="true"></span>
+            <div class="sp-left">
+              <span class="sp-label">กำไลที่ Lucky คัดสรร</span>
+              <span class="sp-count"><strong id="landingSocialProofCount">1,350</strong><span class="sp-unit">เส้น</span></span>
+            </div>
+            <span class="sp-divider" aria-hidden="true"></span>
+            <div class="sp-right" id="landingSocialProofThumbs">
+              <span class="sp-thumb" data-sp-thumb="0"></span>
+              <span class="sp-thumb" data-sp-thumb="1"></span>
+              <span class="sp-thumb" data-sp-thumb="2"></span>
+              <span class="sp-thumb" data-sp-thumb="3"></span>
+              <span class="sp-heart" aria-hidden="true"></span>
+            </div>
+          </section>
         </div>
 
       </div>
@@ -147,6 +220,10 @@
           <div class="step1-heading-block">
             <h2 class="step-title">วัดขนาดข้อมือ</h2>
             <p class="step-subtitle">วัดรอบข้อมือแบบพอดี (หน่วยเซนติเมตร)</p>
+          </div>
+          <div class="step1-auth-status" id="step1AuthStatus" role="status" aria-live="polite" hidden>
+            <span id="step1AuthStatusText"></span>
+            <button class="step1-auth-connect" id="btnStep1LineConnect" type="button" hidden></button>
           </div>
 
           <!-- Premium Visual Aid - Hand with Measuring Tape -->
@@ -264,11 +341,18 @@
                 <div class="bead-size-details">
                   <span class="bead-size-label">6mm</span>
                   <h4>คลาสสิก ใส่ง่าย</h4>
-                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องราง">
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
                     <span class="bead-size-support-item">
                       <span>เครื่องราง</span>
                       <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
                         <img src="/assets/charms/pixiu/px02.webp" alt="">
+                      </span>
+                    </span>
+                  
+<span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
                       </span>
                     </span>
                   </div>
@@ -292,6 +376,20 @@
                 <div class="bead-size-details">
                   <span class="bead-size-label">4mm</span>
                   <h4>มินิมอล ละมุน</h4>
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
+                    <span class="bead-size-support-item">
+                      <span>เครื่องราง</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
+                        <img src="/assets/charms/pixiu/px01.webp" alt="">
+                      </span>
+                    </span>
+                    <span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
+                      </span>
+                    </span>
+                  </div>
                 </div>
               </div>
               <div class="bead-size-hand-panel">
@@ -364,22 +462,13 @@
               </div>
             </div>
 
-            <!-- Context & Tooltip Row -->
+            <!-- Context & Tooltip Row. Left: remove hint. Centre: wrist size from Step 1 (fit content).
+                 Right: the price indicator the renderer appends. The DOM order matches the visual
+                 order so the grid places the hint left, the wrist size in the centred auto column and
+                 the price right. -->
             <div class="canvas-info-row">
+              <span class="helper-tooltip">แตะที่เม็ดหินเพื่อลบ</span>
               <span class="wrist-context-label" id="canvasWristContext">ข้อมือ 16.0 cm</span>
-              <span class="helper-tooltip">แตะที่หินเพื่อลบ</span>
-              <div class="inspiration-trigger-row">
-                <button class="inspiration-gallery-btn" id="btnInspirationGallery" type="button">
-                  <svg class="inspiration-gallery-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    aria-hidden="true">
-                    <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.7" />
-                    <path d="M8 15l2.4-2.7 2 2L15.2 11 19 15" stroke="currentColor" stroke-width="1.7"
-                      stroke-linecap="round" stroke-linejoin="round" />
-                    <circle cx="9" cy="9" r="1.1" fill="currentColor" />
-                  </svg>
-                  <span>ดูตัวอย่างกำไล</span>
-                </button>
-              </div>
             </div>
 
             <!-- Canvas Container -->
@@ -394,6 +483,12 @@
                 <span class="center-value" id="canvasCenterValue">16.0cm</span>
                 <span class="center-subvalue fit" id="canvasCenterSub" hidden>Perfect Fit</span>
               </div>
+              <!-- Fail-safe Lucky CTA shell: visible before the state-machine JS runs. -->
+              <button class="lumi-entry lumi-center-entry lumi-entry-pending" type="button" aria-label="Lucky">
+                <img class="lumi-entry-mascot" src="/assets/lucky/mascot/lucky_02.webp" alt="" aria-hidden="true" decoding="async">
+                <span class="lumi-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 12.4V6.3a1.6 1.6 0 0 1 3.2 0v5.2"></path><path d="M12.8 11.3V9.9a1.6 1.6 0 0 1 3.2 0v1.4"></path><path d="M16 11.3v-.5a1.6 1.6 0 0 1 3.2 0V15a6 6 0 0 1-6 6h-1a4.7 4.7 0 0 1-3.4-1.5l-3.3-3.6a1.6 1.6 0 0 1 2.3-2.2l1.2 1.2"></path></svg></span>
+                <span class="lumi-entry-label" hidden></span>
+              </button>
             </div>
             <button class="ctrl-btn reset-btn canvas-reset-control" id="btnResetBracelet" type="button">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -402,6 +497,14 @@
                 <path d="M3 3v5h5" />
               </svg>
               รีเซ็ตกำไล
+            </button>
+            <button class="ctrl-btn undo-btn canvas-undo-control" id="btnUndoBracelet" type="button" disabled aria-disabled="true" aria-label="Undo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11" />
+              </svg>
+              Undo
             </button>
           </div>
 

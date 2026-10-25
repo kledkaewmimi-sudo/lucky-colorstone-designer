@@ -1,0 +1,1 @@
+export const LUMI_RECOMMENDATION_CONFIG=Object.freeze({policy:Object.freeze({name:'DESIGN_GRAMMAR_V2',minDistinctStoneCount:4}),supported:Object.freeze({composition:'2.0.0',pattern:'2.0.0',fit:'1.0.0'})});

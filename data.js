@@ -13,6 +13,74 @@ const CANONICAL_CATEGORY_LABELS = {
   takrud: { en: "Takrud", th: "ตะกรุด" }
 };
 
+
+// SECURITY HOTFIX (Phase 2): CRM/admin requests are authorized by a server-issued, HttpOnly
+// session cookie. The legacy shared header is still accepted for compatible tooling, but the
+// master secret is no longer entered into or persisted by browser storage. State-changing
+// requests also carry the CSRF token the server binds to the operator session.
+function readCookieValue(name) {
+  try {
+    const entry = String(document.cookie || '').split(';').map((part) => part.trim()).find((part) => part.startsWith(name + '='));
+    return entry ? decodeURIComponent(entry.slice(name.length + 1)) : '';
+  } catch { return ''; }
+}
+export function getCrmAdminSecret() { try { return localStorage.getItem('lucky_crm_admin_secret') || ''; } catch { return ''; } }
+export function setCrmAdminSecret(value) { try { if (value) localStorage.setItem('lucky_crm_admin_secret', String(value)); else localStorage.removeItem('lucky_crm_admin_secret'); } catch {} }
+export function getCrmAdminCsrf() { return readCookieValue('lcs_admin_csrf'); }
+export function crmAdminHeaders(extra = {}) {
+  const headers = { ...extra };
+  const secret = getCrmAdminSecret();
+  if (secret) headers['x-admin-secret'] = secret;
+  const csrf = getCrmAdminCsrf();
+  if (csrf) headers['x-csrf-token'] = csrf;
+  return headers;
+}
+export async function adminLogin(password, username = 'admin') {
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) { const error = new Error(payload.error || 'Login failed.'); error.status = res.status; throw error; }
+  return payload;
+}
+// SECURITY HOTFIX (Phase 3): when a customer opens an order link that predates signed tokens,
+// prove ownership with the LIFF LINE ID token and ask the server for a fresh, scoped token.
+async function obtainLiffIdToken() {
+  try {
+    const api = (typeof window !== 'undefined' && window.liff) ? window.liff : (typeof liff !== 'undefined' ? liff : null);
+    if (api && typeof api.getIDToken === 'function') {
+      const value = api.getIDToken();
+      if (value) return String(value);
+    }
+  } catch (error) { /* not running inside LIFF */ }
+  return '';
+}
+export async function reauthorizeOrderAccess(orderId = '') {
+  const idToken = await obtainLiffIdToken();
+  if (!idToken) return null;
+  try {
+    const res = await fetch('/api/orders/reauthorize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderId ? { idToken, orderId } : { idToken })
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) { return null; }
+}
+export async function adminLogout() {
+  try { await fetch('/api/admin/logout', { method: 'POST', headers: crmAdminHeaders({ 'Content-Type': 'application/json' }) }); } catch { /* ignore */ }
+}
+export async function getAdminSession() {
+  try {
+    const res = await fetch('/api/admin/session', { cache: 'no-store' });
+    if (!res.ok) return { authenticated: false };
+    return await res.json();
+  } catch { return { authenticated: false }; }
+}
+
 export const CATALOG_LAYOUT_ORDER_STORAGE_KEY = "lucky_crm_catalog_layout_order";
 
 // Bump this when replacing catalog assets with the same filename so browsers/CDNs fetch the new file.
@@ -368,6 +436,16 @@ function normalizeStoneRecord(record, index = 0) {
   };
 
   const { p8: legacyP8, ...stoneRecord } = record;
+  const nestedInStock = record.availability && record.availability.inStock !== undefined
+    ? record.availability.inStock !== false
+    : null;
+  const nestedIsActive = record.availability && record.availability.isActive !== undefined
+    ? record.availability.isActive !== false
+    : null;
+  const flatInStock = record.inStock === undefined ? null : record.inStock !== false;
+  const flatIsActive = record.isActive === undefined ? null : record.isActive !== false;
+  const availabilityInStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const availabilityIsActive = nestedIsActive ?? flatIsActive ?? true;
   return {
     ...stoneRecord,
     id,
@@ -390,8 +468,15 @@ function normalizeStoneRecord(record, index = 0) {
       ? [...new Set(record.sizes.map((size) => Number(size) === 8 ? 10 : Number(size)))]
       : [4, 6, 10],
     stockQty,
-    inStock: record.inStock !== false && (stockQty === null || stockQty > 0),
-    isActive: record.isActive !== false
+    inStock: availabilityInStock,
+    isActive: availabilityIsActive,
+    stock_qty: stockQty,
+    availability: {
+      inStock: availabilityInStock,
+      isActive: availabilityIsActive,
+      stockQty,
+      stock_qty: stockQty
+    }
   };
 }
 
@@ -464,7 +549,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative orange spacer bead",
     inStock: true,
     displayOrder: 10
@@ -480,7 +565,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative pink spacer bead",
     inStock: true,
     displayOrder: 20
@@ -496,7 +581,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative purple spacer bead",
     inStock: true,
     displayOrder: 30
@@ -512,7 +597,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative white spacer bead",
     inStock: true,
     displayOrder: 40
@@ -532,7 +617,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 120,
+    price: 15,
     stockQty: 20,
     inStock: true,
     isActive: true,
@@ -552,7 +637,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 7,
     effectiveLengthMm: 7,
     renderSizeMm: 7,
-    price: 0,
+    price: 10,
     description: "Decorative gold spacer bead",
     inStock: true,
     displayOrder: 50
@@ -569,7 +654,7 @@ export const SPACER_CATALOG = Object.freeze([
     effectiveLengthMm: 1,
     thicknessMm: 1,
     renderSizeMm: 6,
-    price: 0,
+    price: 9,
     description: "Flat gold flower spacer",
     inStock: true,
     displayOrder: 60
@@ -586,10 +671,72 @@ export const SPACER_CATALOG = Object.freeze([
     effectiveLengthMm: 1,
     thicknessMm: 1,
     renderSizeMm: 6,
-    price: 0,
+    price: 9,
     description: "Flat silver flower spacer",
     inStock: true,
     displayOrder: 70
+  },
+  {
+    id: 'mallow',
+    sku: 'SP-MALLOW',
+    slug: 'mallow',
+    name: { en: 'Mallow', th: '\u0E2D\u0E31\u0E0D\u0E21\u0E13\u0E35\u0E41\u0E2B\u0E48\u0E07\u0E40\u0E2A\u0E19\u0E48\u0E2B\u0E4C' },
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'gold',
+    image: { primary: '/assets/spacers/Mallow.webp' },
+    inStock: true,
+    meaning: { en: 'Mushroom hanging charm', th: '' },
+    pricing: { base: 150 },
+    business: {
+      sizeMm: 33.5,
+      displaySizeMm: 33.5,
+      effectiveLengthMm: 4.2,
+      renderSizeMm: 33.5,
+      renderWidthMm: 17,
+      renderHeightMm: 33.5,
+      attachmentLoopMm: 4.2,
+      thicknessMm: 0
+    },
+    isActive: true,
+    stockQty: 50,
+    stock_qty: 50,
+    categoryId: 'spacer',
+    collection: 'spacer',
+    entityType: 'spacer',
+    availability: { inStock: true, isActive: true, stockQty: 50, stock_qty: 50 },
+    displayOrder: 80
+  },
+  {
+    id: 'pony',
+    sku: 'SP-PONY',
+    slug: 'pony',
+    name: { en: 'Pony', th: '\u0E21\u0E49\u0E32\u0E41\u0E2B\u0E48\u0E07\u0E1D\u0E31\u0E19' },
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'pink',
+    image: { primary: '/assets/spacers/Pony.webp' },
+    inStock: true,
+    meaning: { en: 'Horse hanging charm', th: '' },
+    pricing: { base: 150 },
+    business: {
+      sizeMm: 30,
+      displaySizeMm: 30,
+      effectiveLengthMm: 4.2,
+      renderSizeMm: 30,
+      renderWidthMm: 21,
+      renderHeightMm: 30,
+      attachmentLoopMm: 4.2,
+      thicknessMm: 0
+    },
+    isActive: true,
+    stockQty: 50,
+    stock_qty: 50,
+    categoryId: 'spacer',
+    collection: 'spacer',
+    entityType: 'spacer',
+    availability: { inStock: true, isActive: true, stockQty: 50, stock_qty: 50 },
+    displayOrder: 90
   }
 ]);
 
@@ -1005,6 +1152,39 @@ export const CHARM_CATALOG = [
       "inStock": true,
       "isActive": true,
       "displayOrder": 160
+    },
+    {
+      "id": "cl01",
+      "sku": "CL01",
+      "slug": "clover-gold",
+      "nameTh": "ลคก ใบโคลเวอร นำโชค",
+      "nameEn": "Lucky Clover",
+      "type": "bee_heart",
+      "collection": "clover",
+      "categoryId": "clover",
+      "entityType": "charm",
+      "image": "/assets/charms/clover/cl01.webp",
+      "sizeCm": 2.65,
+      "footprintMm": 4.2,
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 1,
+      "edgeFitMode": "horizontal_fill",
+      "targetWidthFillRatio": 1,
+      "contactInsetLeft": 0.4,
+      "contactInsetRight": 0.4,
+      "rotation": 0,
+      "anchor": "top",
+      "price": 290,
+      "meaningTh": "สอถงโชคลาภ ความสำเรจ และโอกาสดทเขามาในชวต",
+      "meaningEn": "Symbolizes luck, success, and positive opportunities.",
+      "inStock": true,
+      "stockQty": 10,
+      "stock_qty": 10,
+      "isActive": true,
+      "displayOrder": 170
     }
   ];
 
@@ -1110,22 +1290,63 @@ function normalizeCharmRecord(record, index = 0) {
     record.business?.footprintMm ?? record.footprintMm,
     safeSizeCm * 10
   );
+  const threadingOccupancyMm = toFiniteNumber(
+    record.business?.threadingOccupancyMm ?? record.threadingOccupancyMm,
+    0
+  );
+  const loopWidthMm = toFiniteNumber(record.business?.loopWidthMm ?? record.loopWidthMm, 0);
+  const loopHeightMm = toFiniteNumber(record.business?.loopHeightMm ?? record.loopHeightMm, 0);
+  const pendantBodyWidthMm = toFiniteNumber(record.business?.pendantBodyWidthMm ?? record.pendantBodyWidthMm, 0);
+  const pendantBodyHeightMm = toFiniteNumber(record.business?.pendantBodyHeightMm ?? record.pendantBodyHeightMm, 0);
+  const attachmentAnchorFromTopRatio = toFiniteNumber(
+    record.business?.attachmentAnchorFromTopRatio ?? record.attachmentAnchorFromTopRatio,
+    0
+  );
+  const thicknessMm = toFiniteNumber(record.business?.thicknessMm ?? record.thicknessMm, 0);
   const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
+
+  // Owner-reported 2026-10-11: the CRM form writes status through the nested availability object, but
+  // a record that was disabled earlier still carries flat inStock:false / isActive:false at the top
+  // level. ANDing both representations let the stale flat copy win forever, so re-enabling a talisman
+  // could never be saved. An explicitly present nested value is authoritative; the flat keys are then
+  // kept in sync so every reader (CRM, customer catalog, backend payload) agrees.
+  const nestedInStock = record.availability && record.availability.inStock !== undefined
+    ? record.availability.inStock !== false
+    : null;
+  const nestedIsActive = record.availability && record.availability.isActive !== undefined
+    ? record.availability.isActive !== false
+    : null;
+  const flatInStock = record.inStock === undefined ? null : record.inStock !== false;
+  const flatIsActive = record.isActive === undefined ? null : record.isActive !== false;
+  const availabilityInStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const availabilityIsActive = nestedIsActive ?? flatIsActive ?? true;
 
   return {
     ...safeRecord,
+    inStock: availabilityInStock,
+    isActive: availabilityIsActive,
+    stockQty,
+    stock_qty: stockQty,
     business: {
       sizeCm: safeSizeCm,
-      footprintMm: safeFootprintMm
+      footprintMm: safeFootprintMm,
+      threadingOccupancyMm,
+      loopWidthMm,
+      loopHeightMm,
+      pendantBodyWidthMm,
+      pendantBodyHeightMm,
+      attachmentAnchorFromTopRatio,
+      thicknessMm
     },
     meaning: {
       en: record.meaning?.en || record.meaningEn || "",
       th: record.meaning?.th || record.meaningTh || ""
     },
     availability: {
-      inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
-      isActive: record.availability?.isActive !== false && record.isActive !== false,
-      stockQty
+      inStock: availabilityInStock,
+      isActive: availabilityIsActive,
+      stockQty,
+      stock_qty: stockQty
     },
     renderTuning: {
       visualScale: record.renderTuning?.visualScale ?? record.visualScale,
@@ -1152,15 +1373,36 @@ function normalizeSpacerRecord(record, index = 0) {
 
   const displaySizeMm = toFiniteNumber(record.business?.displaySizeMm ?? record.displaySizeMm ?? record.sizeMm, 0);
   const effectiveLengthMm = toFiniteNumber(record.business?.effectiveLengthMm ?? record.effectiveLengthMm ?? record.footprintMm, displaySizeMm);
+  const packingLengthMm = toFiniteNumber(
+    record.business?.packingLengthMm ?? record.packingLengthMm,
+    effectiveLengthMm
+  );
+  const visualBounds = Array.isArray(record.business?.visualBounds ?? record.visualBounds)
+    ? (record.business?.visualBounds ?? record.visualBounds)
+    : null;
   const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
   const manualCostValue = record.manualCost;
   const manualCost = manualCostValue === undefined || manualCostValue === null || manualCostValue === ''
     ? null
     : (Number.isFinite(Number(manualCostValue)) && Number(manualCostValue) >= 0 ? Number(manualCostValue) : null);
+  const nestedInStock = record.availability && record.availability.inStock !== undefined
+    ? record.availability.inStock !== false
+    : null;
+  const nestedIsActive = record.availability && record.availability.isActive !== undefined
+    ? record.availability.isActive !== false
+    : null;
+  const flatInStock = record.inStock === undefined ? null : record.inStock !== false;
+  const flatIsActive = record.isActive === undefined ? null : record.isActive !== false;
+  const availabilityInStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const availabilityIsActive = nestedIsActive ?? flatIsActive ?? true;
 
   return {
     id,
     entityType: "spacer",
+    inStock: availabilityInStock,
+    isActive: availabilityIsActive,
+    stockQty,
+    stock_qty: stockQty,
     sku: record.sku || id.toUpperCase(),
     slug: record.slug || id,
     name: {
@@ -1183,20 +1425,23 @@ function normalizeSpacerRecord(record, index = 0) {
       sizeMm: displaySizeMm,
       displaySizeMm,
       effectiveLengthMm,
+      packingLengthMm,
       renderWidthMm: toFiniteNumber(record.business?.renderWidthMm ?? record.renderWidthMm, 0),
       renderHeightMm: toFiniteNumber(record.business?.renderHeightMm ?? record.renderHeightMm, 0),
       attachmentLoopMm: toFiniteNumber(record.business?.attachmentLoopMm ?? record.attachmentLoopMm, 0),
       renderSizeMm: toFiniteNumber(record.business?.renderSizeMm ?? record.renderSizeMm, displaySizeMm),
-      thicknessMm: toFiniteNumber(record.business?.thicknessMm ?? record.thicknessMm, 0)
+      thicknessMm: toFiniteNumber(record.business?.thicknessMm ?? record.thicknessMm, 0),
+      visualBounds
     },
     meaning: {
       en: record.meaning?.en || record.description || record.meaningEn || "",
       th: record.meaning?.th || record.descriptionTh || record.meaningTh || ""
     },
     availability: {
-      inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
-      isActive: record.availability?.isActive !== false && record.isActive !== false,
-      stockQty
+      inStock: availabilityInStock,
+      isActive: availabilityIsActive,
+      stockQty,
+      stock_qty: stockQty
     },
     displayOrder: toFiniteNumber(record.displayOrder, (index + 1) * 10)
   };
@@ -1218,6 +1463,15 @@ export function adaptNormalizedCharmToLegacy(record) {
     image: normalized.image.primary,
     sizeCm: normalized.business.sizeCm,
     footprintMm: normalized.business.footprintMm,
+    threadingOccupancyMm: normalized.business.threadingOccupancyMm,
+    loopWidthMm: normalized.business.loopWidthMm,
+    loopHeightMm: normalized.business.loopHeightMm,
+    pendantBodyWidthMm: normalized.business.pendantBodyWidthMm,
+    pendantBodyHeightMm: normalized.business.pendantBodyHeightMm,
+    attachmentAnchorFromTopRatio: normalized.business.attachmentAnchorFromTopRatio,
+    thicknessMm: normalized.business.thicknessMm,
+    attachmentAnchor: normalized.attachmentAnchor,
+    threadingAxis: normalized.threadingAxis,
     price: normalized.pricing.base,
     meaningTh: normalized.meaning.th,
     meaningEn: normalized.meaning.en,
@@ -1248,10 +1502,28 @@ export function adaptNormalizedCharmCatalogToLegacy(records = []) {
 
 // --- In-memory cache ---
 export let STONES = [];
-export let SETTINGS = { globalDiscountPercent: 20, discountEnabled: true, showDiscountBanner: true };
+export const LANDING_BRACELET_COUNT_FALLBACK = 1350;
+export function normalizeLandingBraceletCount(value) {
+  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
+  const numeric = Number(value);
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : null;
+}
+
+export let SETTINGS = {
+  globalDiscountPercent: 20,
+  discountEnabled: true,
+  showDiscountBanner: true,
+  landingBraceletCount: LANDING_BRACELET_COUNT_FALLBACK
+};
 export let ORDERS = [];
 export let CHARM_RECORDS = [];
 export let SPACER_RECORDS = [];
+let ordersFetchSequence = 0;
+let committedOrdersFetchSequence = 0;
+let ordersMutationRevision = 0;
+let settingsFetchSequence = 0;
+let committedSettingsFetchSequence = 0;
+let settingsMutationRevision = 0;
 
 // --- Price calculation helper based on bead size ---
 export function getStonePriceForSize(stone, size) {
@@ -1464,14 +1736,23 @@ export async function refreshSpacerCatalog() {
   return SPACER_RECORDS;
 }
 
+let lastSpacerSaveError = "";
+export function getLastSpacerSaveError() {
+  return lastSpacerSaveError;
+}
+
 export async function saveSharedSpacerCatalogEntry(record) {
   const normalizedRecord = normalizeSpacerRecord(record);
-  if (!normalizedRecord || !normalizedRecord.id) return null;
+  lastSpacerSaveError = "";
+  if (!normalizedRecord || !normalizedRecord.id) {
+    lastSpacerSaveError = "A charm ID is required.";
+    return null;
+  }
 
   try {
     const res = await fetch(`/api/spacers/${encodeURIComponent(normalizedRecord.id)}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(normalizedRecord)
     });
     if (res.ok) {
@@ -1480,8 +1761,11 @@ export async function saveSharedSpacerCatalogEntry(record) {
       window.dispatchEvent(new Event("storage_sync"));
       return savedRecord;
     }
+    const payload = await res.json().catch(() => ({}));
+    lastSpacerSaveError = payload.error || `The charm could not be saved (HTTP ${res.status}).`;
   } catch (e) {
     console.error("Failed to save spacer to API", e);
+    lastSpacerSaveError = "The charm could not be saved because the server could not be reached.";
   }
   return null;
 }
@@ -1493,36 +1777,136 @@ export async function getSharedSpacerCatalog() {
   return SPACER_RECORDS;
 }
 
+// First-paint catalog seed. The deployment ships its own catalog JSON under /data (same-origin,
+// CDN-served), so this fills the in-memory catalogs far faster than the /api backend, which can
+// cold-start for several seconds. It never overwrites data an authoritative /api refresh already
+// produced: every array is only filled while it is still empty.
+let bundledCatalogSeedPromise = null;
+export async function seedCatalogFromBundledFiles() {
+  if (bundledCatalogSeedPromise) return bundledCatalogSeedPromise;
+  bundledCatalogSeedPromise = (async () => {
+    const load = async (file) => {
+      try {
+        const response = await fetch(file, { cache: 'force-cache' });
+        if (!response.ok) return null;
+        const payload = await response.json();
+        return Array.isArray(payload) ? payload : null;
+      } catch {
+        return null;
+      }
+    };
+    const [stones, charms, spacers] = await Promise.all([
+      load('/data/stones.json'),
+      load('/data/charms.json'),
+      load('/data/spacers.json')
+    ]);
+    if (stones && STONES.length === 0) {
+      STONES.length = 0;
+      STONES.push(...stones.map((record, index) => normalizeStoneRecord(record, index)).filter(Boolean));
+    }
+    if (charms && CHARM_RECORDS.length === 0) {
+      CHARM_RECORDS.length = 0;
+      CHARM_RECORDS.push(...charms.map((record, index) => normalizeCharmRecord(record, index)).filter(Boolean));
+    }
+    if (spacers && SPACER_RECORDS.length === 0) {
+      SPACER_RECORDS.length = 0;
+      SPACER_RECORDS.push(...spacers.map((record, index) => normalizeSpacerRecord(record, index)).filter(Boolean));
+    }
+    return true;
+  })().catch(() => false);
+  return bundledCatalogSeedPromise;
+}
 export async function getLegacyCharmCatalog() {
   const sharedCharms = await getSharedCharmCatalog();
   return adaptNormalizedCharmCatalogToLegacy(sharedCharms);
 }
 
-export async function saveSharedCharmCatalogEntry(record) {
-  const normalizedRecord = normalizeCharmRecord(record);
-  if (!normalizedRecord || !normalizedRecord.id) return null;
+// The talisman write path must not rely on the customer-visible catalog to decide whether a record
+// already exists. Hidden/inactive records can be missing from that list (and when /api/charms is
+// unreachable the list is the bundled snapshot, which can drift from the stored catalog), so an
+// edit of such a record used to be sent as POST /api/charms and refused with 409 - a failure the
+// CRM swallowed. The server response is authoritative here: 409 means the id is already stored
+// (update that exact record), 404 means it is gone.
+let lastCharmSaveError = "";
 
-  const existingRecords = await getSharedCharmCatalog();
-  const hasExisting = existingRecords.some((entry) => entry.id === normalizedRecord.id);
-  const endpoint = hasExisting
-    ? `/api/charms/${encodeURIComponent(normalizedRecord.id)}`
-    : "/api/charms";
-  const method = hasExisting ? "PUT" : "POST";
+/** Human-readable reason the last charm save failed; empty after a successful save. */
+export function getLastCharmSaveError() {
+  return lastCharmSaveError;
+}
+
+function describeCharmSaveFailure(status, charmId) {
+  if (status === 404) return `This talisman is no longer in the catalog. Reload the page and try again.`;
+  if (status === 409) return `Talisman ID '${charmId}' already exists in the catalog. Open it from the talisman list to edit it.`;
+  if (status === 401 || status === 403) return "Your admin session or CSRF token is no longer valid. Sign in again and retry.";
+  if (status === 400) return "The server rejected these talisman details. Check the Thai text and the required fields.";
+  return `The talisman could not be saved (HTTP ${status}).`;
+}
+
+async function readCharmSaveFailureDetail(res) {
+  const body = await res.json().catch(() => null);
+  return String(body?.error || body?.message || "").trim();
+}
+
+export async function saveSharedCharmCatalogEntry(record, options = {}) {
+  const normalizedRecord = normalizeCharmRecord(record);
+  lastCharmSaveError = "";
+  if (!normalizedRecord || !normalizedRecord.id) {
+    lastCharmSaveError = "A talisman ID is required.";
+    return null;
+  }
+
+  const charmId = normalizedRecord.id;
+  // An explicit mode is authoritative: the CRM knows whether it opened the form for an existing
+  // record. Without one, fall back to the visible catalog.
+  const explicitMode = options.mode === "update" || options.mode === "create" ? options.mode : null;
+  const knownExisting = explicitMode
+    ? explicitMode === "update"
+    : (await getSharedCharmCatalog()).some((entry) => entry.id === charmId);
+
+  const write = (method, payload) => fetch(
+    method === "PUT" ? `/api/charms/${encodeURIComponent(charmId)}` : "/api/charms",
+    {
+      method,
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload)
+    }
+  );
 
   try {
-    const res = await fetch(endpoint, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(normalizedRecord)
-    });
-    if (res.ok) {
-      const savedRecord = normalizeCharmRecord(await res.json());
-      await refreshCharmCatalog();
-      window.dispatchEvent(new Event("storage_sync"));
-      return savedRecord;
+    let res = await write(knownExisting ? "PUT" : "POST", normalizedRecord);
+
+    // The server already stores this id even though the visible catalog did not list it. Retry
+    // against that exact id, carrying the stored record's protected fields (render tuning, image,
+    // footprint) so the update cannot silently blank them out.
+    if (!knownExisting && res.status === 409) {
+      const authoritative = (await refreshCharmCatalog()).find((entry) => entry.id === charmId);
+      if (!authoritative) {
+        lastCharmSaveError = describeCharmSaveFailure(409, charmId);
+        return null;
+      }
+      res = await write("PUT", {
+        ...authoritative,
+        ...normalizedRecord,
+        id: charmId,
+        renderTuning: authoritative.renderTuning || normalizedRecord.renderTuning
+      });
     }
+
+    if (!res.ok) {
+      const detail = await readCharmSaveFailureDetail(res);
+      lastCharmSaveError = detail
+        ? `${describeCharmSaveFailure(res.status, charmId)} (${detail})`
+        : describeCharmSaveFailure(res.status, charmId);
+      return null;
+    }
+
+    const savedRecord = normalizeCharmRecord(await res.json());
+    await refreshCharmCatalog();
+    window.dispatchEvent(new Event("storage_sync"));
+    return savedRecord;
   } catch (e) {
     console.error("Failed to save charm to API", e);
+    lastCharmSaveError = "The talisman could not be saved because the server could not be reached.";
   }
   return null;
 }
@@ -1532,7 +1916,8 @@ export async function deleteSharedCharmCatalogEntry(charmId) {
 
   try {
     const res = await fetch(`/api/charms/${encodeURIComponent(charmId)}`, {
-      method: "DELETE"
+      method: "DELETE",
+      headers: crmAdminHeaders()
     });
     if (res.ok) {
       await refreshCharmCatalog();
@@ -1546,7 +1931,7 @@ export async function deleteSharedCharmCatalogEntry(charmId) {
   try {
     const fallbackRes = await fetch("/api/charms/delete", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: charmId })
     });
     if (fallbackRes.ok) {
@@ -1561,12 +1946,18 @@ export async function deleteSharedCharmCatalogEntry(charmId) {
   return false;
 }
 
+let lastStoneSaveError = "";
+export function getLastStoneSaveError() {
+  return lastStoneSaveError;
+}
+
 export async function saveSharedCatalog(stone) {
+  lastStoneSaveError = "";
   try {
     const normalizedStone = normalizeStoneRecord(stone);
     const res = await fetch("/api/stones/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(normalizedStone || stone)
     });
     if (res.ok) {
@@ -1574,8 +1965,11 @@ export async function saveSharedCatalog(stone) {
       window.dispatchEvent(new Event("storage_sync"));
       return await res.json();
     }
+    const payload = await res.json().catch(() => ({}));
+    lastStoneSaveError = payload.error || `The stone could not be saved (HTTP ${res.status}).`;
   } catch (e) {
     console.error("Failed to save stone to API", e);
+    lastStoneSaveError = "The stone could not be saved because the server could not be reached.";
   }
   return null;
 }
@@ -1611,7 +2005,7 @@ export async function deleteSharedCatalog(stoneId) {
     url: "/api/stones/delete",
     options: {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: stoneId })
     }
   };
@@ -1645,11 +2039,20 @@ export async function deleteSharedCatalog(stoneId) {
 }
 
 export async function getSharedSettings() {
+  const requestSequence = ++settingsFetchSequence;
+  const mutationRevisionAtStart = settingsMutationRevision;
   try {
-    const res = await fetch("/api/settings");
+    const res = await fetch("/api/settings", { cache: "no-store" });
     if (res.ok) {
       const loaded = await res.json();
-      SETTINGS = loaded;
+      if (requestSequence < committedSettingsFetchSequence || mutationRevisionAtStart !== settingsMutationRevision) {
+        return SETTINGS;
+      }
+      SETTINGS = {
+        ...loaded,
+        landingBraceletCount: normalizeLandingBraceletCount(loaded?.landingBraceletCount) ?? LANDING_BRACELET_COUNT_FALLBACK
+      };
+      committedSettingsFetchSequence = requestSequence;
       return SETTINGS;
     }
   } catch (e) {
@@ -1681,21 +2084,34 @@ export async function refreshCatalogLayoutOrder() {
 }
 
 export async function saveSharedSettings(newSettings) {
+  const normalizedLandingCount = normalizeLandingBraceletCount(newSettings?.landingBraceletCount);
+  if (normalizedLandingCount === null) return null;
+  const payload = {
+    ...newSettings,
+    landingBraceletCount: normalizedLandingCount
+  };
+  settingsMutationRevision += 1;
   try {
     const res = await fetch("/api/settings/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newSettings)
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload)
     });
     if (res.ok) {
-      SETTINGS = await res.json();
+      const saved = await res.json();
+      const savedLandingCount = normalizeLandingBraceletCount(saved?.landingBraceletCount);
+      if (savedLandingCount !== normalizedLandingCount) return null;
+      SETTINGS = {
+        ...saved,
+        landingBraceletCount: savedLandingCount
+      };
       window.dispatchEvent(new Event("storage_sync"));
       return SETTINGS;
     }
   } catch (e) {
     console.error("Failed to save settings to API", e);
   }
-  return SETTINGS;
+  return null;
 }
 
 export async function saveSharedCatalogLayoutOrder(order = {}) {
@@ -1722,7 +2138,7 @@ export async function saveSharedCatalogLayoutOrder(order = {}) {
   try {
     const res = await fetch("/api/settings/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(nextSettings)
     });
     if (!res.ok) {
@@ -1742,9 +2158,41 @@ export async function saveSharedCatalogLayoutOrder(order = {}) {
   }
 }
 
-export async function getSharedOrders() {
+// SECURITY HOTFIX 2026-10-09: the full order collection is no longer publicly readable.
+// Callers must supply the entitlement they already hold: a Stripe checkout session id, or an
+// order id plus the signed access token that arrived with the order link (?t=...).
+export async function getSharedOrders({ sessionId = "", orderId = "", token = "" } = {}) {
   try {
-    const res = await fetch("/api/orders");
+    // SECURITY HOTFIX: if the caller does not pass an entitlement, derive it from the current page.
+    // Legitimate flows are the Stripe return (?session_id=...) and an order link (?orderId=...&t=...).
+    let entitlementSession = sessionId;
+    let entitlementOrderId = orderId;
+    let entitlementToken = token;
+    if (!entitlementSession && !entitlementOrderId) {
+      try {
+        const pageParams = new URLSearchParams(window.location.search);
+        entitlementSession = pageParams.get('session_id') || pageParams.get('sessionId') || '';
+        entitlementOrderId = pageParams.get('orderId') || '';
+        entitlementToken = pageParams.get('t') || '';
+      } catch (error) { /* ignore */ }
+    }
+    if (entitlementOrderId && !entitlementToken) {
+      // Legacy link without a signed token: reauthorize with the customer's LINE identity.
+      const reauthorized = await reauthorizeOrderAccess(entitlementOrderId);
+      const match = Array.isArray(reauthorized?.orders) ? reauthorized.orders.find((entry) => entry.id === entitlementOrderId) : null;
+      if (match?.token) {
+        entitlementToken = match.token;
+      } else {
+        // Outside LINE, or LINE could not verify the customer: never fetch with a tokenless order id.
+        console.warn('Order link requires a signed access token or a LINE-verified session.');
+        return [];
+      }
+    }
+    const params = new URLSearchParams();
+    if (entitlementSession) params.set("session_id", entitlementSession);
+    else if (entitlementOrderId) { params.set("orderId", entitlementOrderId); if (entitlementToken) params.set("t", entitlementToken); }
+    else { console.warn("getSharedOrders requires sessionId or orderId (public order collection is disabled)"); return []; }
+    const res = await fetch("/api/orders?" + params.toString());
     if (res.ok) {
       const loaded = await res.json();
       ORDERS = loaded;
@@ -1757,30 +2205,54 @@ export async function getSharedOrders() {
 }
 
 export async function getSharedCrmOrders() {
+  const requestSequence = ++ordersFetchSequence;
+  const mutationRevisionAtStart = ordersMutationRevision;
   try {
-    const res = await fetch("/api/crm/orders");
-    if (res.ok) return await res.json();
+    const res = await fetch("/api/crm/orders", { headers: crmAdminHeaders(), cache: "no-store" });
+    if (res.ok) {
+      const loaded = await res.json();
+      if (requestSequence < committedOrdersFetchSequence || mutationRevisionAtStart !== ordersMutationRevision) {
+        return ORDERS;
+      }
+      ORDERS = Array.isArray(loaded) ? loaded : [];
+      committedOrdersFetchSequence = requestSequence;
+      return ORDERS;
+    }
   } catch (e) {
     console.error("Failed to fetch CRM orders from API", e);
   }
-  return getSharedOrders();
+  return ORDERS;
 }
 
 export async function getCrmOverview() {
-  const res = await fetch('/api/crm/overview');
+  const res = await fetch('/api/crm/overview', { headers: crmAdminHeaders() });
   if (!res.ok) throw new Error(`GET /api/crm/overview failed with HTTP ${res.status}`);
   return res.json();
 }
 
 export async function getCrmOrderPage(page = 1, limit = 20) {
-  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-  const res = await fetch(`/api/crm/orders?${params.toString()}`);
+  // TURN 10.1: the order cards need their saved bracelet preview, but transferring 20 inline base64
+  // snapshots on every list page cost ~246 KB per page. The CRM now asks for `previewMode=url`: the list
+  // carries a small authenticated URL per order and the browser fetches the image lazily and caches it
+  // immutably.
+  const params = new URLSearchParams({ page: String(page), limit: String(limit), previewMode: 'url' });
+  const res = await fetch(`/api/crm/orders?${params.toString()}`, { headers: crmAdminHeaders() });
   if (!res.ok) throw new Error(`GET /api/crm/orders failed with HTTP ${res.status}`);
-  return res.json();
+  const payload = await res.json();
+  // Deployment-order safety: an older backend ignores the unknown parameter and answers without the
+  // `previewTransport` marker, which would leave every card without its saved preview. In that case ask
+  // once more in the legacy form. Once the backend is upgraded the marker is present and the extra
+  // request never happens.
+  if (payload && payload.previewTransport !== 'url') {
+    const legacyParams = new URLSearchParams({ page: String(page), limit: String(limit), includePreview: '1' });
+    const legacyRes = await fetch(`/api/crm/orders?${legacyParams.toString()}`, { headers: crmAdminHeaders() });
+    if (legacyRes.ok) return legacyRes.json();
+  }
+  return payload;
 }
 
 export async function getCrmOrderDetail(orderId) {
-  const res = await fetch(`/api/crm/orders/${encodeURIComponent(orderId)}`);
+  const res = await fetch(`/api/crm/orders/${encodeURIComponent(orderId)}`, { headers: crmAdminHeaders() });
   if (!res.ok) throw new Error(`GET /api/crm/orders/:id failed with HTTP ${res.status}`);
   return normalizeCrmOrderDetailResponse(await res.json());
 }
@@ -1812,50 +2284,63 @@ export async function addSharedOrder(orderData) {
 }
 
 export async function updateOrderStatus(orderId, newStatus, updates = {}) {
+  ordersMutationRevision += 1;
   try {
     const res = await fetch("/api/orders/update-status", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: crmAdminHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id: orderId, status: newStatus, ...updates })
     });
-    if (res.ok) {
-      await getSharedOrders();
-      window.dispatchEvent(new Event("storage_sync"));
-      return true;
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { success: false, error: payload.error || `Order update failed with HTTP ${res.status}.` };
     }
+    const refreshed = await getSharedCrmOrders();
+    const savedOrder = (Array.isArray(refreshed) ? refreshed : []).find((order) => order?.id === orderId);
+    const requestedTracking = Object.prototype.hasOwnProperty.call(updates, "trackingNumber")
+      ? String(updates.trackingNumber || "").trim()
+      : null;
+    const persistedTracking = savedOrder
+      ? String(savedOrder.trackingNumber || savedOrder.trackingNo || "").trim()
+      : "";
+    if (!savedOrder || savedOrder.status !== newStatus || (requestedTracking !== null && persistedTracking !== requestedTracking)) {
+      return { success: false, error: "The server did not confirm the saved order status and tracking number." };
+    }
+    window.dispatchEvent(new Event("storage_sync"));
+    return { success: true, order: savedOrder };
   } catch (e) {
     console.error("Failed to update order status to API", e);
   }
-  return false;
+  return { success: false, error: "Unable to reach the order service." };
 }
 
 export async function getSharedPurchaseEntries() {
-  const res = await fetch('/api/purchases');
+  const res = await fetch('/api/purchases', { headers: crmAdminHeaders() });
   if (!res.ok) throw new Error('Unable to load purchase history.');
   return res.json();
 }
 
 export async function getSharedStonePurchaseCostSummaries() {
-  const res = await fetch('/api/purchase-costs/stones');
+  const res = await fetch('/api/purchase-costs/stones', { headers: crmAdminHeaders() });
   if (!res.ok) throw new Error('Unable to load stone purchase costs.');
   return res.json();
 }
 
 export async function getSharedPurchaseCostSummaries() {
-  const res = await fetch('/api/purchase-costs');
+  const res = await fetch('/api/purchase-costs', { headers: crmAdminHeaders() });
   if (!res.ok) throw new Error('Unable to load purchase costs.');
   return res.json();
 }
 
 export async function savePurchaseEntry(entry, id = '') {
   const res = await fetch(id ? `/api/purchases/${encodeURIComponent(id)}` : '/api/purchases', {
-    method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry)
+    method: id ? 'PUT' : 'POST', headers: crmAdminHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(entry)
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Unable to save purchase entry.');
   return res.json();
 }
 
 export async function deletePurchaseEntry(id) {
-  const res = await fetch(`/api/purchases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const res = await fetch(`/api/purchases/${encodeURIComponent(id)}`, { method: 'DELETE', headers: crmAdminHeaders() });
   if (!res.ok) throw new Error('Unable to delete purchase entry.');
 }

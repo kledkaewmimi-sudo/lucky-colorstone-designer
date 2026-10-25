@@ -2,6 +2,7 @@
   "globalDiscountPercent": 20,
   "discountEnabled": true,
   "showDiscountBanner": true,
+  "landingBraceletCount": 1350,
   "catalogCategories": [
     {
       "id": "wealth",
@@ -66,5 +67,28 @@
       "displayOrder": 30,
       "isActive": true
     }
-  ]
+  ],
+  "lumiEnabled": true,
+  "catalogLayoutOrder": {
+    "charms": [
+      "tg01",
+      "tg02",
+      "tg03",
+      "px01",
+      "px02",
+      "px03",
+      "px04",
+      "px05",
+      "px06",
+      "px07",
+      "px08",
+      "px09",
+      "tl01",
+      "bh01",
+      "bh02",
+      "bh03"
+    ],
+    "stones": [],
+    "spacers": []
+  }
 }

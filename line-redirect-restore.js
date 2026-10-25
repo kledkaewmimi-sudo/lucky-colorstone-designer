@@ -19,6 +19,7 @@ export function shouldDeferInitialLineLogin({ featureEnabled = false, requiresLi
 
 const HANDOFF_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ALLOWED_TARGET_STEPS = new Set([1, 4]);
+const LEGACY_ALLOWED_TARGET_STEPS = new Set([1, 2]);
 
 export function parseCustomizationLoginIntent(rawIntent, { now = Date.now(), ttlMs = 10 * 60 * 1000 } = {}) {
   if (typeof rawIntent !== 'string') return null;
@@ -26,7 +27,12 @@ export function parseCustomizationLoginIntent(rawIntent, { now = Date.now(), ttl
     const intent = JSON.parse(rawIntent);
     const ts = Number(intent?.ts);
     if (!Number.isFinite(ts) || now - ts < 0 || now - ts > ttlMs) return null;
-    if (!intent.version) return Number(intent.step) === 1 ? { version: 1, ts, step: 1, targetStep: 1, mode: 'legacy' } : null;
+    if (!intent.version) {
+      const targetStep = Number(intent.targetStep || 1);
+      return Number(intent.step) === 1 && LEGACY_ALLOWED_TARGET_STEPS.has(targetStep)
+        ? { version: 1, ts, step: 1, targetStep, mode: 'legacy' }
+        : null;
+    }
     if (intent.version !== LINE_REDIRECT_INTENT_VERSION) return null;
     const targetStep = Number(intent.targetStep);
     if (!ALLOWED_TARGET_STEPS.has(targetStep) || !HANDOFF_TOKEN_PATTERN.test(String(intent.handoffToken || ''))) return null;

@@ -1,0 +1,1 @@
+export const LUMI_RECOMMENDATION_VERSION='2.0.0';

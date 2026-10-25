@@ -333,24 +333,24 @@
     "sku": "TG01",
     "slug": "tg01",
     "name": {
-      "en": "Takrud Ganesha Silver TG01",
-      "th": "ตะกรุดพระพิฆเนศ เงิน TG01"
+      "en": "Takrud Lakshmi",
+      "th": "ตะกรุดพระแม่ลักษมี"
     },
     "categoryId": "takrud",
-    "type": "takrud_ganesha",
+    "type": "takrud_lukshmi",
     "collection": "takrud",
     "image": {
       "primary": "/assets/charms/takrud/tg01.webp"
     },
     "pricing": {
-      "base": 990
+      "base": 590
     },
     "business": {
       "sizeCm": 3,
       "footprintMm": 30
     },
     "meaning": {
-      "en": "Symbolizes removing obstacles, opening paths, success, and confident beginnings.",
+      "en": "Symbolizes opening of paths, success, removal of obstacles and confidence in new beginnings.",
       "th": "สื่อถึงการเปิดทาง ความสำเร็จ การขจัดอุปสรรค และความมั่นใจในการเริ่มต้น"
     },
     "availability": {
@@ -384,7 +384,7 @@
       "primary": "/assets/charms/takrud/tg03.webp"
     },
     "pricing": {
-      "base": 990
+      "base": 450
     },
     "business": {
       "sizeCm": 3,
@@ -448,7 +448,8 @@
       "rotation": 0,
       "anchor": "top"
     },
-    "displayOrder": 100
+    "displayOrder": 100,
+    "legacyNotInLiveCatalog": true
   },
   {
     "id": "tg02",
@@ -530,7 +531,8 @@
       "rotation": 0,
       "anchor": "top"
     },
-    "displayOrder": 120
+    "displayOrder": 120,
+    "legacyNotInLiveCatalog": true
   },
   {
     "id": "bh01",
@@ -666,5 +668,48 @@
       "anchor": "top"
     },
     "displayOrder": 160
+  },
+  {
+    "id": "cl01",
+    "entityType": "charm",
+    "sku": "CL01",
+    "slug": "clover-gold",
+    "name": {
+      "en": "Lucky Clover",
+      "th": "ลัคกี้ ใบโคลเวอร์ นำโชค"
+    },
+    "categoryId": "clover",
+    "type": "bee_heart",
+    "collection": "clover",
+    "image": {
+      "primary": "/assets/charms/clover/cl01.webp"
+    },
+    "pricing": {
+      "base": 290
+    },
+    "business": {
+      "sizeCm": 2.7,
+      "footprintMm": 4.2
+    },
+    "meaning": {
+      "en": "Symbolizes luck, success and positive opportunities.",
+      "th": "สื่อถึงโชคลาภ ความสำเร็จ และโอกาสดีที่เข้ามาในชีวิต"
+    },
+    "availability": {
+      "inStock": false,
+      "isActive": true
+    },
+    "stockQty": 0,
+    "stock_qty": 0,
+    "renderTuning": {
+      "visualScale": 1,
+      "visualOffsetX": 0,
+      "visualOffsetY": 0,
+      "maxWidthRatio": 1,
+      "maxHeightRatio": 1,
+      "rotation": 0,
+      "anchor": "top"
+    },
+    "displayOrder": 170
   }
 ]
