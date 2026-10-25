@@ -4706,6 +4706,7 @@ function getOrderDetailItemCount(order = {}) {
 }
 
 function getOrderShippedNotification(order = {}) {
+  if (!['Shipped', 'Completed'].includes(String(order?.status || '').trim())) return null;
   if (order?.shippedNotification && typeof order.shippedNotification === 'object') return order.shippedNotification;
   const legacySentAt = order?.notifications?.shippedSentAt;
   return legacySentAt ? { state: 'sent', sentAt: legacySentAt } : null;
@@ -4721,12 +4722,23 @@ function getShippedNotificationStatusText(notification = null) {
   return String(notification.state);
 }
 
-function getOrderNotificationToastSuffix(notification = null) {
-  if (!notification?.state) return '';
+function getOrderStatusDropdownClass(status = '') {
+  if (status === 'Stone Selection Photo Sent') return 'photo-sent';
+  if (status === 'Payment Received') return 'paid';
+  if (status === 'Shipped') return 'shipped';
+  if (status === 'Completed') return 'completed';
+  return 'new-order';
+}
+
+function getOrderNotificationToastSuffix(notification = null, status = '') {
+  if (status !== 'Shipped' || !notification?.state) return '';
   if (notification.state === 'sent') return ' LINE notification sent.';
   if (notification.state === 'failed') return ' LINE notification failed; the order remains saved.';
   if (notification.state === 'uncertain') return ' LINE delivery is uncertain; automatic resend was blocked.';
-  if (notification.state === 'skipped') return ' LINE notification skipped.';
+  if (notification.state === 'skipped') {
+    const reason = notification.lastErrorCode === 'no_line_user' ? 'no LINE recipient' : (notification.lastErrorCode || 'not eligible');
+    return ` LINE notification skipped (${reason}).`;
+  }
   return ' LINE notification pending.';
 }
 
@@ -4780,12 +4792,53 @@ function toggleCarrierCustomField(rowElement) {
 function setOrderWorkflowBusy(rowElement, busy) {
   if (!rowElement) return;
   rowElement.dataset.workflowBusy = busy ? '1' : '0';
-  rowElement.querySelectorAll('.status-dropdown, .order-carrier-select, .order-carrier-custom-input, .order-tracking-input')
+  rowElement.querySelectorAll('.status-dropdown, .order-carrier-select, .order-carrier-custom-input, .order-tracking-input, .btn-order-shipping-save')
     .forEach((control) => {
       control.disabled = Boolean(busy);
       if (busy) control.setAttribute('aria-busy', 'true');
       else control.removeAttribute('aria-busy');
     });
+}
+
+function applyConfirmedOrderWorkflowState(rowElement, confirmedOrder = {}) {
+  if (!rowElement) return;
+  const status = String(confirmedOrder.status || '').trim();
+  const shippingFields = normalizeOrderShippingFields(confirmedOrder);
+  const dropdown = rowElement.querySelector('.status-dropdown');
+  const carrierSelect = rowElement.querySelector('.order-carrier-select');
+  const carrierCustomInput = rowElement.querySelector('.order-carrier-custom-input');
+  const trackingInput = rowElement.querySelector('.order-tracking-input');
+
+  if (dropdown) {
+    dropdown.value = status;
+    dropdown.className = `status-dropdown ${getOrderStatusDropdownClass(status)}`;
+    rowElement.dataset.persistedStatus = status;
+  }
+  if (carrierSelect) carrierSelect.value = shippingFields.shippingCarrier;
+  if (carrierCustomInput) carrierCustomInput.value = shippingFields.shippingCarrierCustom;
+  if (trackingInput) trackingInput.value = shippingFields.trackingNumber;
+  toggleCarrierCustomField(rowElement);
+
+  const summary = rowElement.querySelector('[data-order-shipping-summary]');
+  if (summary) {
+    const carrierDisplay = getOrderShippingCarrierDisplay(confirmedOrder);
+    const carrierRow = summary.querySelector('[data-order-shipping-carrier]');
+    const trackingRow = summary.querySelector('[data-order-shipping-tracking]');
+    if (carrierRow) {
+      carrierRow.hidden = !carrierDisplay;
+      const value = carrierRow.querySelector('[data-order-shipping-value]');
+      if (value) value.textContent = carrierDisplay;
+    }
+    if (trackingRow) {
+      trackingRow.hidden = !shippingFields.trackingNumber;
+      const value = trackingRow.querySelector('[data-order-shipping-value]');
+      if (value) value.textContent = shippingFields.trackingNumber;
+    }
+    summary.hidden = !carrierDisplay && !shippingFields.trackingNumber;
+  }
+
+  const notificationState = rowElement.querySelector('[data-order-notification-live-state]');
+  if (notificationState) notificationState.innerHTML = buildOrderNotificationStateHtml(confirmedOrder);
 }
 
 async function persistOrderWorkflowDetails(orderId, rowElement, currentStatus) {
@@ -4795,11 +4848,12 @@ async function persistOrderWorkflowDetails(orderId, rowElement, currentStatus) {
     const result = await updateOrderStatus(orderId, currentStatus, readOrderWorkflowInputs(rowElement));
     if (!result?.success) {
       showToast(result?.error || 'Unable to save shipping details.');
-      await loadDashboardData();
+      const dropdown = rowElement?.querySelector('.status-dropdown');
+      if (dropdown && rowElement?.dataset.persistedStatus) dropdown.value = rowElement.dataset.persistedStatus;
       return false;
     }
-    showToast(`Shipping details saved.${getOrderNotificationToastSuffix(result.notification)}`);
-    await loadDashboardData();
+    applyConfirmedOrderWorkflowState(rowElement, result.order);
+    showToast(`Shipping details saved for ${orderId}. Status unchanged: ${currentStatus}.`);
     return true;
   } finally {
     setOrderWorkflowBusy(rowElement, false);
@@ -4903,11 +4957,7 @@ function renderOrdersList(orders) {
     const shippingCarrierDisplay = getOrderShippingCarrierDisplay(order);
     
     // Map status to css selector tag
-    let dropdownColorClass = 'new-order';
-    if (currentStatus === 'Stone Selection Photo Sent') dropdownColorClass = 'photo-sent';
-    if (currentStatus === 'Payment Received') dropdownColorClass = 'paid';
-    if (currentStatus === 'Shipped') dropdownColorClass = 'shipped';
-    if (currentStatus === 'Completed') dropdownColorClass = 'completed';
+    const dropdownColorClass = getOrderStatusDropdownClass(currentStatus);
     
     const statusSelectHtml = `
       <select class="status-dropdown ${dropdownColorClass}" data-id="${order.id}">
@@ -4937,13 +4987,12 @@ function renderOrdersList(orders) {
             <span class="order-inline-label">เลขพัสดุ</span>
             <input type="text" class="order-inline-input order-tracking-input" value="${escapeHtml(shippingFields.trackingNumber)}" placeholder="เช่น TH1234567890">
           </label>
-          ${shippingCarrierDisplay || shippingFields.trackingNumber ? `
-            <div class="order-shipping-summary">
-              ${shippingCarrierDisplay ? `<div>ผู้ให้บริการ: ${escapeHtml(shippingCarrierDisplay)}</div>` : ''}
-              ${shippingFields.trackingNumber ? `<div>เลขพัสดุ: ${escapeHtml(shippingFields.trackingNumber)}</div>` : ''}
-            </div>
-          ` : ''}
-          ${buildOrderNotificationStateHtml(order)}
+          <div class="order-shipping-summary" data-order-shipping-summary ${shippingCarrierDisplay || shippingFields.trackingNumber ? '' : 'hidden'}>
+            <div data-order-shipping-carrier ${shippingCarrierDisplay ? '' : 'hidden'}>ผู้ให้บริการ: <span data-order-shipping-value>${escapeHtml(shippingCarrierDisplay)}</span></div>
+            <div data-order-shipping-tracking ${shippingFields.trackingNumber ? '' : 'hidden'}>เลขพัสดุ: <span data-order-shipping-value>${escapeHtml(shippingFields.trackingNumber)}</span></div>
+          </div>
+          <button type="button" class="btn btn-outline btn-order-shipping-save">Save Shipping</button>
+          <div data-order-notification-live-state>${buildOrderNotificationStateHtml(order)}</div>
         </div>
       </div>
     `;
@@ -4988,18 +5037,14 @@ function renderOrdersList(orders) {
     // Event bindings inside rows
     const dropdown = tr.querySelector('.status-dropdown');
     const carrierSelect = tr.querySelector('.order-carrier-select');
-    const carrierCustomInput = tr.querySelector('.order-carrier-custom-input');
-    const trackingInput = tr.querySelector('.order-tracking-input');
+    const saveShippingButton = tr.querySelector('.btn-order-shipping-save');
+    tr.dataset.persistedStatus = currentStatus;
 
     dropdown.addEventListener('change', (e) => handleOrderStatusChange(order.id, e.target.value, tr));
-    carrierSelect?.addEventListener('change', async () => {
+    carrierSelect?.addEventListener('change', () => {
       toggleCarrierCustomField(tr);
-      await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
     });
-    carrierCustomInput?.addEventListener('change', async () => {
-      await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
-    });
-    trackingInput?.addEventListener('change', async () => {
+    saveShippingButton?.addEventListener('click', async () => {
       await persistOrderWorkflowDetails(order.id, tr, dropdown.value);
     });
 
@@ -5023,21 +5068,22 @@ function renderOrdersList(orders) {
 
 async function handleOrderStatusChange(orderId, newStatus, rowElement = null) {
   if (rowElement?.dataset.workflowBusy === '1') {
-    await loadDashboardData();
     return;
   }
+  const dropdown = rowElement?.querySelector('.status-dropdown');
+  const previousStatus = rowElement?.dataset.persistedStatus || dropdown?.value || '';
   const workflowUpdates = rowElement ? readOrderWorkflowInputs(rowElement) : {};
   setOrderWorkflowBusy(rowElement, true);
   try {
     const result = await updateOrderStatus(orderId, newStatus, workflowUpdates);
     if (!result?.success) {
       showToast(result?.error || 'Unable to save the order status.');
-      await loadDashboardData();
+      if (dropdown && previousStatus) dropdown.value = previousStatus;
       return;
     }
+    applyConfirmedOrderWorkflowState(rowElement, result.order);
     addLog(`Changed order ${orderId} status to '${newStatus}'.`);
-    showToast(`Order status updated to: ${newStatus}.${getOrderNotificationToastSuffix(result.notification)}`);
-    await loadDashboardData();
+    showToast(`Status updated to ${newStatus}. Shipping details confirmed.${getOrderNotificationToastSuffix(result.notification, newStatus)}`);
   } finally {
     setOrderWorkflowBusy(rowElement, false);
   }

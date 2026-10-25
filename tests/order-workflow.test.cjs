@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const {
   normalizeOrderStatus,
@@ -82,4 +84,22 @@ test('CRM overview projection omits shipping and tracking fields', () => {
   });
   assert.equal('shippingCarrier' in overview, false);
   assert.equal('trackingNumber' in overview, false);
+});
+
+test('CRM saves status and shipping together without rebuilding the edited card', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'crm.js'), 'utf8');
+  const persistStart = source.indexOf('async function persistOrderWorkflowDetails');
+  const persistEnd = source.indexOf('function renderOrdersList', persistStart);
+  const statusStart = source.indexOf('async function handleOrderStatusChange');
+  const statusEnd = source.indexOf('function getOrderCharmDisplayText', statusStart);
+  const persistBody = source.slice(persistStart, persistEnd);
+  const statusBody = source.slice(statusStart, statusEnd);
+
+  assert.doesNotMatch(source, /trackingInput\?\.addEventListener\('change'/);
+  assert.doesNotMatch(source, /carrierSelect\?\.addEventListener\('change', async/);
+  assert.doesNotMatch(persistBody, /loadDashboardData\(/);
+  assert.doesNotMatch(statusBody, /loadDashboardData\(/);
+  assert.match(statusBody, /readOrderWorkflowInputs\(rowElement\)/);
+  assert.match(statusBody, /updateOrderStatus\(orderId, newStatus, workflowUpdates\)/);
+  assert.match(statusBody, /applyConfirmedOrderWorkflowState\(rowElement, result\.order\)/);
 });
