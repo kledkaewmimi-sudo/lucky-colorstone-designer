@@ -234,6 +234,9 @@ Render source commit:
 Render build and deploy events both ended in success. No `server_failed` event
 was recorded for the release.
 
+Live deployment evidence:
+[phase2-36-render-live.png](qa/browser/phase2-36-render-live.png)
+
 Vercel deployment ID:
 
 `dpl_Hkotao697pQUUc7DtEApnVWLWLfB`
