@@ -63,6 +63,7 @@ try {
     assert.match(migration, /birth_date date not null/);
     assert.match(migration, /enable row level security/);
     assert.match(migration, /revoke all on table public\.lucky_birthday_submissions from anon, authenticated, public/);
+    assert.match(migration, /revoke all on table public\.lucky_birthday_submissions from service_role/);
     assert.match(migration, /grant select, insert, delete on table public\.lucky_birthday_submissions to service_role/);
     assert.match(migration, /minimum_cohort_size integer default 10/);
     assert.match(migration, /lucky_birthday_prune\(retention_days integer\)/);

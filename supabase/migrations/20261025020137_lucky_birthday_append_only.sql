@@ -12,6 +12,7 @@ create table if not exists public.lucky_birthday_submissions (
 
 alter table public.lucky_birthday_submissions enable row level security;
 revoke all on table public.lucky_birthday_submissions from anon, authenticated, public;
+revoke all on table public.lucky_birthday_submissions from service_role;
 grant select, insert, delete on table public.lucky_birthday_submissions to service_role;
 
 create index if not exists idx_lucky_birthday_submissions_created_at
