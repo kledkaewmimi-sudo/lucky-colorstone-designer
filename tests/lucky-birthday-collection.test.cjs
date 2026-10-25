@@ -29,3 +29,10 @@ test('builds an idempotent insert without accepting a browser collection key', (
   assert.deepEqual(Object.keys(first.row).sort(), ['analytics_session_id', 'birth_date', 'birth_weekday', 'collection_key', 'consent_version', 'source']);
   assert.equal(buildLuckyBirthdayInsert('server-secret', { ...input, birthDate: '2026-10-26' }, { today: '2026-10-25' }), null);
 });
+
+test('accepts the backend-normalized date field without losing idempotency', () => {
+  const normalized = { date: '1990-01-01', weekday: 1, sessionId: 'session_123456789012', consentVersion: 'lucky-birthday-consent-th-v1' };
+  const insert = buildLuckyBirthdayInsert('server-secret', normalized, { today: '2026-10-25' });
+  assert.equal(insert?.row.birth_date, '1990-01-01');
+  assert.equal(insert?.row.birth_weekday, 1);
+});

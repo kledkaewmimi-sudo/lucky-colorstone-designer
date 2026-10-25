@@ -29,7 +29,7 @@ function createLuckyBirthdayCollectionKey(secret, { sessionId, consentVersion })
 function buildLuckyBirthdayInsert(secret, input, { today = bangkokDateKey() } = {}) {
   const sessionId = String(input?.sessionId || '').trim();
   const consentVersion = String(input?.consentVersion || '').trim();
-  const birth = normalizeLuckyBirthDate(input?.birthDate, { today });
+  const birth = normalizeLuckyBirthDate(input?.birthDate || input?.date, { today });
   if (!/^[A-Za-z0-9_-]{12,120}$/.test(sessionId) || !birth || !consentVersion) return null;
   const collectionKey = createLuckyBirthdayCollectionKey(secret, { sessionId, consentVersion });
   if (!collectionKey) return null;
