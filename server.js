@@ -17,6 +17,7 @@ const { validateAuthoritativeOrder } = require('./server-order-validation.js');
 const { validateOrderWorkflowUpdate, confirmedOrderMatchesUpdate, normalizeOrderStatus } = require('./order-workflow.js');
 const { normalizeLuckyBirthDate, buildLuckyBirthdayInsert } = require('./lucky-birthday-collection.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
+const { verifyAdminPassword } = require('./server-admin-password.js');
 const {
   attachAdminOrderNumbers,
   buildAdminOrderNumberLine,
@@ -340,6 +341,9 @@ function hasDeferredLoginQaAdminAccess(req) {
 function getAdminApiSecret() {
   return getEnvValue('ADMIN_API_SECRET') || getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET');
 }
+function getAdminPasswordHash() {
+  return String(getEnvValue('ADMIN_PASSWORD_HASH') || '').trim();
+}
 function adminApiConfigured() { return Boolean(getAdminApiSecret()); }
 function hasAdminApiAccess(req) {
   const secret = getAdminApiSecret();
@@ -361,11 +365,10 @@ function denyAdminApi(res) {
 }
 
 // ---- admin operator sessions --------------------------------------------
-// Operators exchange the server master secret for a short-lived, HttpOnly, signed
-// session cookie plus a CSRF token bound to that session. Cookie-authenticated
-// state changes must also present the CSRF token, so a cross-site page can never
-// replay an operator session. The master secret is never stored in frontend source
-// and never persisted in browser storage.
+// Operators verify a dedicated salted scrypt password hash and receive a short-lived,
+// HttpOnly, signed session cookie plus a CSRF token bound to that session. The API
+// secret remains a separate machine credential and is never accepted as the dashboard
+// password. Cookie-authenticated writes must also present the CSRF token.
 const ADMIN_SESSION_COOKIE = 'lcs_admin_session';
 const ADMIN_CSRF_COOKIE = 'lcs_admin_csrf';
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -384,9 +387,12 @@ function getClientIp(req) {
   return String(req.socket?.remoteAddress || 'unknown');
 }
 function getAdminSessionKey() {
-  const base = getAdminApiSecret() || getEnvValue('SUPABASE_SERVICE_ROLE_KEY');
-  if (!base) return null;
-  return crypto.createHmac('sha256', base).update('lcs-admin-session-v1').digest();
+  const base = getAdminApiSecret();
+  const passwordHash = getAdminPasswordHash();
+  if (!base || !passwordHash) return null;
+  return crypto.createHmac('sha256', base)
+    .update(`lcs-admin-session-v2:${passwordHash}`)
+    .digest();
 }
 function base64UrlEncode(value) { return Buffer.from(value, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 function base64UrlDecode(value) { const padded = String(value || '').replace(/-/g, '+').replace(/_/g, '/'); return Buffer.from(padded + '='.repeat((4 - (padded.length % 4)) % 4), 'base64').toString('utf8'); }
@@ -4914,14 +4920,13 @@ async function handleApiRequest(req, res, urlObj) {
   }
   if (pathname === '/api/admin/login' && method === 'POST') {
     if (!adminApiConfigured()) { sendJson(res, 503, { authenticated: false, error: 'Admin API is not configured.' }); return true; }
+    const passwordHash = getAdminPasswordHash();
+    if (!passwordHash) { sendJson(res, 503, { authenticated: false, error: 'Admin dashboard authentication is not configured.' }); return true; }
     if (adminLoginRateLimited(req)) { sendJson(res, 429, { authenticated: false, error: 'Too many attempts. Try again later.' }); return true; }
-    const secret = getAdminApiSecret();
     const username = String(bodyObj?.username || '').trim();
-    const password = String(bodyObj?.password || bodyObj?.secret || '');
-    const userOk = username === '' || username === getAdminUsername();
-    const passBuffer = Buffer.from(password, 'utf8');
-    const secretBuffer = Buffer.from(secret, 'utf8');
-    const passOk = passBuffer.length === secretBuffer.length && crypto.timingSafeEqual(passBuffer, secretBuffer);
+    const password = String(bodyObj?.password || '');
+    const passOk = await verifyAdminPassword(password, passwordHash);
+    const userOk = username === getAdminUsername();
     if (!userOk || !passOk) {
       recordAdminLoginFailure(req);
       sendJson(res, 401, { authenticated: false, error: 'Invalid credentials.' });
