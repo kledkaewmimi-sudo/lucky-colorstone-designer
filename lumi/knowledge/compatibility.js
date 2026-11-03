@@ -1,0 +1,8 @@
+import { ALL_MATERIAL_KNOWLEDGE } from './profiles.js';
+const overrides = new Map([['moonstone|rose_quartz',.92],['citrine|golden_rutile',.92],['black_tourmaline|clear_quartz',.91],['citrine|pyrite',.88],['amethyst|moonstone',.88]]);
+const index = new Map(ALL_MATERIAL_KNOWLEDGE.map((x)=>[x.materialId,x]));
+const resolve = (value) => typeof value === 'string' ? index.get(value) : value;
+const pair = (a,b) => [a.materialId,b.materialId].sort().join('|');
+export function getVisualCompatibility(left,right) { const a=resolve(left), b=resolve(right); if (!a || !b) return 0; const override=overrides.get(pair(a,b)); if (override != null) return override; const colorsA=a.colors||[], colorsB=b.colors||[]; const same=colorsA.some(c=>colorsB.includes(c)); const contrast=(colorsA.includes('black')&&colorsB.some(c=>['clear','white','gold','silver'].includes(c))) || (colorsB.includes('black')&&colorsA.some(c=>['clear','white','gold','silver'].includes(c))); return Number(Math.max(.25, Math.min(.86, .52 + (same?.16:0) + (contrast?.18:0) - Math.abs((a.visualWeight||2)-(b.visualWeight||2))*.05)).toFixed(2)); }
+export function getSemanticCompatibility(left,right) { const a=resolve(left), b=resolve(right); if (!a || !b || !a.goalAffinity || !b.goalAffinity) return .5; const shared=Object.keys(a.goalAffinity).reduce((n,goal)=>n+Math.min(a.goalAffinity[goal]||0,b.goalAffinity[goal]||0),0)/6; const tags=(a.meaningTags||[]).filter(tag=>(b.meaningTags||[]).includes(tag)).length; return Number(Math.min(.95,.3+shared*.55+tags*.05).toFixed(2)); }
+export const LUMI_COMPATIBILITY_OVERRIDES = Object.freeze([...overrides.entries()].map(([pair,visualCompatibility])=>Object.freeze({pair,visualCompatibility,semanticCompatibility:null,provenance:'brand_curated_v1'})));

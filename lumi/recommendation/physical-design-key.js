@@ -1,0 +1,2 @@
+﻿export function physicalDesignCanonicalKey(physical){return JSON.stringify({sequence:(physical.sequence||[]).map(x=>[x.componentType,x.materialId,x.sizeMm||null,x.role]),anchored:(physical.anchoredCharms||[]).map(x=>[x.materialId,x.role]).sort()});}
+export function stableLumiRecommendationHash(value){let h=2166136261;for(const char of value){h^=char.charCodeAt(0);h=Math.imul(h,16777619)}return(h>>>0).toString(16).padStart(8,'0');}

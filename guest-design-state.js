@@ -13,6 +13,10 @@ const MAX_COMPONENTS = 240;
 const MAX_CHARM_IDS = 2;
 const MAX_ID_LENGTH = 120;
 const MAX_SERIALIZED_BYTES = 32 * 1024;
+const UNLIMITED_ANCHORED_CHARM_IDS = new Set([
+  'phase27-gold-star-pendant',
+  'phase27-gold-heart-pendant'
+]);
 
 function failure(reason) {
   return { ok: false, reason };
@@ -53,7 +57,13 @@ function normalizeCanonicalComponent(component, beadSize) {
   const fallbackSize = beadSize === MIXED_BEAD_SIZE_MODE ? '' : beadSize;
   const size = String(component.size ?? component.sizeMm ?? fallbackSize).trim();
   if (!['4', '6', '10'].includes(size)) return null;
-  return { type, id, size: Number(size) };
+  const variant = Number(component.variant ?? component.visualVariantIndex);
+  return {
+    type,
+    id,
+    size: Number(size),
+    ...(Number.isInteger(variant) && variant >= 0 && variant < 3 ? { variant } : {})
+  };
 }
 
 function normalizeCanonicalDesign(input = {}) {
@@ -70,16 +80,35 @@ function normalizeCanonicalDesign(input = {}) {
   if (components.some((component) => component === null)) return null;
 
   const selectedCharmIds = Array.isArray(input.selectedCharmIds) ? input.selectedCharmIds : [];
-  if (selectedCharmIds.length > MAX_CHARM_IDS) return null;
   const normalizedCharmIds = selectedCharmIds.map(normalizeId);
   if (normalizedCharmIds.some((id) => !id)) return null;
+  if (normalizedCharmIds.length > MAX_COMPONENTS) return null;
+  if (normalizedCharmIds.filter((id) => !UNLIMITED_ANCHORED_CHARM_IDS.has(id)).length > MAX_CHARM_IDS) return null;
+
+  const rawAnchors = input.approvedPendantAnchors;
+  const approvedPendantAnchors = rawAnchors && typeof rawAnchors === 'object' && !Array.isArray(rawAnchors)
+    ? Object.fromEntries(
+      Object.entries(rawAnchors)
+        .filter(([id]) => UNLIMITED_ANCHORED_CHARM_IDS.has(id))
+        .map(([id, anchors]) => [
+          id,
+          (Array.isArray(anchors) ? anchors : [anchors])
+            .filter((anchorId) => anchorId === null || typeof anchorId === 'string' || typeof anchorId === 'number')
+            .slice(0, MAX_COMPONENTS)
+        ])
+    )
+    : {};
 
   return {
     wristSize,
     beadSize,
     mixedPlacingSize: normalizeMixedPlacingSize(input.mixedPlacingSize, beadSize === MIXED_BEAD_SIZE_MODE ? '6' : beadSize),
     selectedCharmIds: normalizedCharmIds,
-    components
+    components,
+    pearlVariantCursor: Number.isInteger(Number(input.pearlVariantCursor))
+      ? Math.max(0, Number(input.pearlVariantCursor)) % 3
+      : 0,
+    ...(Object.keys(approvedPendantAnchors).length > 0 ? { approvedPendantAnchors } : {})
   };
 }
 

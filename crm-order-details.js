@@ -12,6 +12,18 @@ export function getOrderFinalBraceletPreviewImage(order = {}) {
   return candidates.find((value) => typeof value === 'string' && value.startsWith('data:image/')) || '';
 }
 
+// TURN 10.1: the CRM order list no longer inlines base64 snapshots; it carries an authenticated,
+// immutably cacheable URL per order. Both forms are accepted here so a list page, a detail response and
+// an older backend all render through the same call site.
+export function getOrderBraceletPreviewSource(order = {}) {
+  const url = [order.braceletPreviewUrl, order.checkoutSummary?.braceletPreviewUrl]
+    .find((value) => typeof value === 'string' && value.startsWith('/api/crm/orders/'));
+  if (url) return { kind: 'url', value: url };
+  const inline = getOrderFinalBraceletPreviewImage(order);
+  if (inline) return { kind: 'data', value: inline };
+  return { kind: 'none', value: '' };
+}
+
 // CRM detail responses may be returned directly or under an `order` key by a
 // compatible backend. Normalize only the transport shape; stored snapshots
 // and the selected-order preview remain untouched.

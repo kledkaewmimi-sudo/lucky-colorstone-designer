@@ -1,0 +1,2 @@
+// Advisory identity only: FNV-1a is deliberately not a security or privacy primitive.
+export function createLumiProfileFingerprint(profile) { const payload=JSON.stringify({profileVersion:profile.profileVersion,knowledgeVersion:profile.knowledgeVersion,weekday:profile.weekday,yearArchetype:profile.yearArchetype,goals:profile.goals,style:profile.style,braceletContext:profile.braceletContext}); let hash=0x811c9dc5; for(let i=0;i<payload.length;i++){hash^=payload.charCodeAt(i);hash=Math.imul(hash,0x01000193)>>>0;} return `lumi-p1-${hash.toString(16).padStart(8,'0')}`; }

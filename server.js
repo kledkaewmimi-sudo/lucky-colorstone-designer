@@ -14,7 +14,10 @@ const {
 } = require('./tiktok-events-api.js');
 const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const { validateAuthoritativeOrder } = require('./server-order-validation.js');
+const { validateOrderWorkflowUpdate, confirmedOrderMatchesUpdate, normalizeOrderStatus } = require('./order-workflow.js');
+const { normalizeLuckyBirthDate, buildLuckyBirthdayInsert } = require('./lucky-birthday-collection.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
+const { verifyAdminPassword } = require('./server-admin-password.js');
 const {
   attachAdminOrderNumbers,
   buildAdminOrderNumberLine,
@@ -43,6 +46,7 @@ const dataFileNames = {
   stones: "stones.json",
   charms: "charms.json",
   orders: "orders.json",
+  orderNotifications: "order_notifications.json",
   settings: "settings.json",
   analyticsSessions: "analytics_sessions.json",
   analyticsEvents: "analytics_events.json",
@@ -59,6 +63,7 @@ const defaultFileText = {
   stones: "[]",
   charms: "[]",
   orders: "[]",
+  orderNotifications: "[]",
   settings: "{\"globalDiscountPercent\":20,\"discountEnabled\":true,\"showDiscountBanner\":true}",
   analyticsSessions: "[]",
   analyticsEvents: "[]",
@@ -71,14 +76,97 @@ const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8"
 };
+
+// ============================================================================
+// SECURITY HOTFIX 2026-10-10 - public static asset policy (Render origin).
+//
+// The static fallback used to serve ANY file that existed under the workspace:
+// server.js, server.ps1, lucky-colorstone-designer.zip, package.json,
+// .env.local, reports/, tests/ and the writable data stores were all publicly
+// downloadable from the Render origin. Static serving is now an explicit
+// ALLOWLIST: only web assets whose extension is public are served, and every
+// internal path class is denied first.
+//
+// A denied path is reported exactly like a missing file, so the response cannot
+// be used to confirm that server-side source, archives or backups exist on disk.
+// ============================================================================
+const PUBLIC_STATIC_EXTENSIONS = new Set([
+  ".html", ".css", ".js", ".mjs", ".json", ".png", ".jpg", ".jpeg", ".webp",
+  ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".webmanifest", ".txt"
+]);
+
+// Directories that are never public (server code, tooling, docs, tests, stores).
+const PUBLIC_STATIC_DENY_SEGMENTS = new Set([
+  "reports", "tests", "test-results", "scripts", "docs", "supabase",
+  "node_modules", "production-backups", "assets_backup", "backup", "backups",
+  "logs", "tmp", "temp", "private", "internal", "secrets", "server", "api-backup"
+]);
+
+// Files whose extension is public but whose content is not.
+const PUBLIC_STATIC_DENY_FILES = new Set([
+  "server.js", "server.cjs", "server.mjs", "server.ps1", "package.json",
+  "package-lock.json", "npm-shrinkwrap.json", "vercel.json", "procfile",
+  "dockerfile", "docker-compose.yml", "orders.json", "analytics_events.json",
+  "analytics_sessions.json", "analytics_errors.json", "admin_order_numbers.json",
+  "purchase_entries.json", "stone_purchase_entries.json", "order_notifications.json"
+]);
+
+// Extensions that must never be served, even if a future allowlist entry slips.
+const PUBLIC_STATIC_DENY_EXTENSIONS = new Set([
+  ".zip", ".tar", ".gz", ".tgz", ".rar", ".7z", ".md", ".log", ".yml", ".yaml",
+  ".sql", ".sh", ".bash", ".ps1", ".bat", ".cmd", ".ini", ".cfg", ".conf",
+  ".bak", ".backup", ".orig", ".rej", ".patch", ".diff", ".key", ".pem", ".crt",
+  ".cer", ".p12", ".pfx", ".map", ".csv", ".tsv", ".db", ".sqlite", ".env"
+]);
+
+// Extension-less files that the release package classifies as client-required.
+const PUBLIC_STATIC_EXCEPTION_FILES = new Set(["_redirects"]);
+
+function isPublicStaticAsset(relativePath) {
+  const raw = String(relativePath || "");
+  if (!raw || raw.length > 512) return false;
+  if (raw.startsWith("/") || raw.includes("\\") || raw.includes("\0")) return false;
+
+  const segments = raw.split("/");
+  if (!segments.length) return false;
+  for (const segment of segments) {
+    if (!segment || segment === "." || segment === "..") return false;
+    // Dotfiles/dotdirs, trailing dot or space (Windows normalises them away),
+    // any whitespace, NTFS alternate data streams, 8.3 short names and any
+    // remaining escape/encoding artefact are all rejected outright.
+    if (segment.startsWith(".") || segment.endsWith(".") || segment.endsWith(" ")) return false;
+    if (/[\s~:]/.test(segment)) return false;
+    if (/%[0-9a-f]{2}/i.test(segment)) return false;
+  }
+
+  const lower = segments.map((segment) => segment.toLowerCase());
+  if (lower.some((segment) => PUBLIC_STATIC_DENY_SEGMENTS.has(segment))) return false;
+
+  const base = lower[lower.length - 1];
+  if (PUBLIC_STATIC_DENY_FILES.has(base)) return false;
+  if (PUBLIC_STATIC_EXCEPTION_FILES.has(base)) return true;
+
+  const dot = base.lastIndexOf(".");
+  const ext = dot > 0 ? base.slice(dot) : "";
+  if (!ext) return false;
+  if (PUBLIC_STATIC_DENY_EXTENSIONS.has(ext)) return false;
+  return PUBLIC_STATIC_EXTENSIONS.has(ext);
+}
 
 function stripBom(text = "") {
   return String(text).replace(/^\uFEFF+/, "");
@@ -136,6 +224,7 @@ function seedDatabase() {
   ensureDataFile(dataFiles.stones, defaultFileText.stones, bundledDataFiles.stones);
   ensureDataFile(dataFiles.charms, defaultFileText.charms, bundledDataFiles.charms);
   ensureDataFile(dataFiles.orders, defaultFileText.orders, bundledDataFiles.orders);
+  ensureDataFile(dataFiles.orderNotifications, defaultFileText.orderNotifications);
   ensureDataFile(dataFiles.settings, defaultFileText.settings, bundledDataFiles.settings);
   ensureDataFile(dataFiles.analyticsSessions, defaultFileText.analyticsSessions, bundledDataFiles.analyticsSessions);
   ensureDataFile(dataFiles.analyticsEvents, defaultFileText.analyticsEvents, bundledDataFiles.analyticsEvents);
@@ -166,6 +255,30 @@ function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   setCorsHeaders(res);
+  res.end(payload);
+}
+
+// TURN 10 (data transfer): public catalog/settings and authenticated CRM JSON were previously
+// re-transferred in full on every request because the response carried no validator. A strong ETag plus
+// must-revalidate semantics keeps freshness exactly as it is (a change still revalidates immediately)
+// while a warm reload costs a 304 with no body. The validator is content-derived, so it cannot go stale
+// behind a data change.
+function sendJsonValidated(req, res, statusCode, data, { cacheControl = "public, max-age=0, must-revalidate", vary = null } = {}) {
+  const payload = JSON.stringify(data);
+  const etag = `W/"${crypto.createHash("sha1").update(payload).digest("hex")}"`;
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", cacheControl);
+  res.setHeader("ETag", etag);
+  if (vary) res.setHeader("Vary", vary);
+  setCorsHeaders(res);
+  const inm = String(req?.headers?.["if-none-match"] || "");
+  if (inm && inm.split(",").map((value) => value.trim()).includes(etag)) {
+    res.statusCode = 304;
+    res.removeHeader("Content-Type");
+    res.end();
+    return;
+  }
   res.end(payload);
 }
 
@@ -214,6 +327,242 @@ function hasDeferredLoginQaAdminAccess(req) {
   const expectedBuffer = Buffer.from(expected, 'utf8');
   const providedBuffer = Buffer.from(provided, 'utf8');
   return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+// ============================================================================
+// SECURITY HOTFIX 2026-10-09 — server-verified authorization for customer and
+// CRM data. Nothing else in this file was changed: routes, order payloads,
+// pricing, Stripe and PromptPay behaviour are untouched.
+// ============================================================================
+
+// ---- admin (CRM) authorization -------------------------------------------
+// A server-side shared secret must be configured. If it is missing the admin
+// API fails CLOSED (503) instead of exposing data.
+function getAdminApiSecret() {
+  return getEnvValue('ADMIN_API_SECRET') || getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET');
+}
+function getAdminPasswordHash() {
+  return String(getEnvValue('ADMIN_PASSWORD_HASH') || '').trim();
+}
+function adminApiConfigured() { return Boolean(getAdminApiSecret()); }
+function hasAdminApiAccess(req) {
+  const secret = getAdminApiSecret();
+  const provided = String(req.headers['x-admin-secret'] || '');
+  if (secret && provided) {
+    const expectedBuffer = Buffer.from(secret, 'utf8');
+    const providedBuffer = Buffer.from(provided, 'utf8');
+    if (expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer)) return true;
+  }
+  return Boolean(getAdminSession(req));
+}
+function denyAdminApi(res) {
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (!adminApiConfigured()) {
+    sendJson(res, 503, { error: 'Admin API is not configured.' });
+    return;
+  }
+  sendJson(res, 401, { error: 'Admin authorization required.' });
+}
+
+// ---- admin operator sessions --------------------------------------------
+// Operators verify a dedicated salted scrypt password hash and receive a short-lived,
+// HttpOnly, signed session cookie plus a CSRF token bound to that session. The API
+// secret remains a separate machine credential and is never accepted as the dashboard
+// password. Cookie-authenticated writes must also present the CSRF token.
+const ADMIN_SESSION_COOKIE = 'lcs_admin_session';
+const ADMIN_CSRF_COOKIE = 'lcs_admin_csrf';
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const ADMIN_LOGIN_MAX_ATTEMPTS = 10;
+const adminLoginAttempts = new Map();
+const revokedAdminSessions = new Map();
+
+function getAdminUsername() { return String(getEnvValue('ADMIN_USERNAME') || 'admin').trim() || 'admin'; }
+function getClientIp(req) {
+  // Behind Vercel/Render the edge appends the address of the peer it actually saw, so the LAST entry
+  // is the one the trusted hop supplied. Every earlier entry (including anything the client sent) is
+  // attacker-controlled and must never key the rate limiter, or a spoofed x-forwarded-for could bypass it.
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((v) => v.trim()).filter(Boolean);
+  if (chain.length) return chain[chain.length - 1];
+  return String(req.socket?.remoteAddress || 'unknown');
+}
+function getAdminSessionKey() {
+  const base = getAdminApiSecret();
+  const passwordHash = getAdminPasswordHash();
+  if (!base || !passwordHash) return null;
+  return crypto.createHmac('sha256', base)
+    .update(`lcs-admin-session-v2:${passwordHash}`)
+    .digest();
+}
+function base64UrlEncode(value) { return Buffer.from(value, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function base64UrlDecode(value) { const padded = String(value || '').replace(/-/g, '+').replace(/_/g, '/'); return Buffer.from(padded + '='.repeat((4 - (padded.length % 4)) % 4), 'base64').toString('utf8'); }
+function createAdminSessionToken(ttlMs = ADMIN_SESSION_TTL_MS) {
+  const key = getAdminSessionKey();
+  if (!key) return null;
+  const payload = { exp: Date.now() + ttlMs, csrf: crypto.randomBytes(24).toString('hex'), user: getAdminUsername(), jti: crypto.randomBytes(12).toString('hex') };
+  const body = base64UrlEncode(JSON.stringify(payload));
+  const sig = crypto.createHmac('sha256', key).update(body).digest('hex');
+  return { token: body + '.' + sig, payload };
+}
+function verifyAdminSessionToken(token) {
+  const key = getAdminSessionKey();
+  const value = String(token || '').trim();
+  if (!key || !value.includes('.')) return null;
+  const parts = value.split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const expected = crypto.createHmac('sha256', key).update(parts[0]).digest('hex');
+  const a = Buffer.from(expected, 'utf8'); const b = Buffer.from(parts[1], 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let payload = null;
+  try { payload = JSON.parse(base64UrlDecode(parts[0])); } catch { return null; }
+  if (!payload || !Number.isFinite(payload.exp) || Date.now() > payload.exp) return null;
+  if (payload.jti && revokedAdminSessions.has(payload.jti)) {
+    if (revokedAdminSessions.get(payload.jti) > Date.now()) return null;
+    revokedAdminSessions.delete(payload.jti);
+  }
+  return payload;
+}
+function getAdminSession(req) { return verifyAdminSessionToken(getRequestCookie(req, ADMIN_SESSION_COOKIE)); }
+function isAdminCookieAuthenticated(req) { return Boolean(getAdminSession(req)); }
+function hasValidAdminCsrf(req) {
+  const session = getAdminSession(req);
+  if (!session) return false;
+  const provided = String(req.headers['x-csrf-token'] || '');
+  return Boolean(provided) && provided === session.csrf;
+}
+function adminSessionCookieAttributes(maxAgeSeconds) {
+  return 'Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=' + Math.max(0, Math.trunc(maxAgeSeconds));
+}
+function setAdminSessionCookies(res, session) {
+  const maxAge = Math.ceil(ADMIN_SESSION_TTL_MS / 1000);
+  res.setHeader('Set-Cookie', [
+    ADMIN_SESSION_COOKIE + '=' + session.token + '; ' + adminSessionCookieAttributes(maxAge),
+    ADMIN_CSRF_COOKIE + '=' + session.payload.csrf + '; Path=/; Secure; SameSite=Strict; Max-Age=' + maxAge
+  ]);
+}
+function clearAdminSessionCookies(res) {
+  res.setHeader('Set-Cookie', [
+    ADMIN_SESSION_COOKIE + '=; ' + adminSessionCookieAttributes(0),
+    ADMIN_CSRF_COOKIE + '=; Path=/; Secure; SameSite=Strict; Max-Age=0'
+  ]);
+}
+function adminLoginRateLimited(req) {
+  const entry = adminLoginAttempts.get(getClientIp(req));
+  if (!entry || Date.now() - entry.first > ADMIN_LOGIN_WINDOW_MS) return false;
+  return entry.count >= ADMIN_LOGIN_MAX_ATTEMPTS;
+}
+function recordAdminLoginFailure(req) {
+  const ip = getClientIp(req); const now = Date.now();
+  const entry = adminLoginAttempts.get(ip);
+  if (!entry || now - entry.first > ADMIN_LOGIN_WINDOW_MS) adminLoginAttempts.set(ip, { first: now, count: 1 });
+  else { entry.count += 1; adminLoginAttempts.set(ip, entry); }
+}
+function clearAdminLoginFailures(req) { adminLoginAttempts.delete(getClientIp(req)); }
+
+// Single gate for every administrative read and write. Fails closed when no server
+// secret is configured, and requires a CSRF token for cookie-authenticated writes.
+function requireAdminAccess(req, res, { write = false } = {}) {
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (!adminApiConfigured()) { sendJson(res, 503, { error: 'Admin API is not configured.' }); return false; }
+  if (!hasAdminApiAccess(req)) { sendJson(res, 401, { error: 'Admin authorization required.' }); return false; }
+  if (write && isAdminCookieAuthenticated(req) && !hasValidAdminCsrf(req)) { sendJson(res, 403, { error: 'CSRF token required for admin changes.' }); return false; }
+  return true;
+}
+
+// ---- customer order access tokens ----------------------------------------
+// A signed, order-scoped, expiring token. The HMAC key is derived from an
+// existing server-only secret with a domain-separation label, so no new
+// secret material is required and the token can never be forged by a client.
+const ORDER_ACCESS_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+function getOrderAccessTokenKey() {
+  const base = getEnvValue('SUPABASE_SERVICE_ROLE_KEY') || getEnvValue('STRIPE_WEBHOOK_SECRET') || getEnvValue('LINE_CHANNEL_SECRET');
+  if (!base) return null;
+  return crypto.createHmac('sha256', base).update('lcs-order-access-token-v1').digest();
+}
+function signOrderAccessToken(orderId, expiresAt) {
+  const key = getOrderAccessTokenKey();
+  if (!key || !orderId) return null;
+  return crypto.createHmac('sha256', key).update('order:' + orderId + ':' + expiresAt).digest('hex');
+}
+function createOrderAccessToken(orderId, ttlMs = ORDER_ACCESS_TOKEN_TTL_MS) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  const expiresAt = Date.now() + ttlMs;
+  const signature = signOrderAccessToken(id, expiresAt);
+  return signature ? expiresAt + '.' + signature : null;
+}
+function verifyOrderAccessToken(orderId, token) {
+  const id = String(orderId || '').trim();
+  const value = String(token || '').trim();
+  if (!id || !value) return false;
+  const [rawExpiry, signature] = value.split('.');
+  const expiresAt = Number(rawExpiry);
+  if (!Number.isFinite(expiresAt) || !signature) return false;
+  if (Date.now() > expiresAt) return false;
+  const expected = signOrderAccessToken(id, expiresAt);
+  if (!expected) return false;
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(signature, 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// ---- scoped order reads (server-side filtering, never "download all") ----
+async function readOrderByIdScoped(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', 'payload->>id': 'eq.' + id, limit: '1' } });
+    return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+  }
+  return readJsonArray('orders').find((entry) => getOrderId(entry) === id) || null;
+}
+async function readOrderBySessionIdScoped(sessionId) {
+  const value = String(sessionId || '').trim();
+  if (!value) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', stripe_checkout_session_id: 'eq.' + value, limit: '1' } });
+    return Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+  }
+  return readJsonArray('orders').find((entry) => entry?.stripeCheckoutSessionId === value) || null;
+}
+// ---- LINE-verified customer reauthorization ------------------------------
+// Legacy order links (created before signed tokens existed) can still be opened safely when
+// the customer proves ownership: the browser returns a LINE ID token from LIFF, the server
+// verifies it with LINE, and only that verified customer's own orders are ever returned.
+function getLineLoginChannelId() {
+  const explicit = getEnvValue('LINE_LOGIN_CHANNEL_ID') || getEnvValue('LINE_CHANNEL_ID');
+  if (explicit) return String(explicit).trim();
+  const liffId = String(getEnvValue('PRODUCTION_LIFF_ID') || getEnvValue('LINE_LIFF_ID') || '2010525799-qImIuhla').trim();
+  const prefix = liffId.split('-')[0];
+  return /^[0-9]+$/.test(prefix) ? prefix : '';
+}
+async function verifyLineIdToken(idToken, channelId) {
+  const endpoint = String(getEnvValue('LINE_TOKEN_VERIFY_URL') || 'https://api.line.me/oauth2/v2.1/verify').trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id_token: idToken, client_id: channelId }).toString(),
+      signal: controller.signal
+    });
+    if (!response.ok) return '';
+    const payload = await response.json().catch(() => null);
+    const sub = String(payload?.sub || '').trim();
+    return /^U[0-9a-f]{32}$/i.test(sub) ? sub : '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function readOrdersByLineUserIdScoped(lineUserId) {
+  const id = String(lineUserId || '').trim();
+  if (!id) return [];
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest('orders', { params: { select: 'payload', line_user_id: 'eq.' + id, order: 'created_at.desc', limit: '50' } });
+    return (Array.isArray(rows) ? rows : []).map((row) => row?.payload).filter(Boolean);
+  }
+  return readJsonArray('orders').filter((entry) => String(entry?.lineUserId || '').trim() === id).slice(0, 50);
 }
 
 function hasCorruptedThaiText(value) {
@@ -502,7 +851,10 @@ function verifyLineSignature(rawBodyBuffer, signatureHeader) {
 async function sendLinePushMessages({ userId, messages }) {
   const lineChannelAccessToken = getLineChannelAccessToken();
   if (!lineChannelAccessToken) {
-    throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
+    const error = new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
+    error.deliveryOutcome = "rejected";
+    error.deliveryCode = "not_configured";
+    throw error;
   }
 
   const normalizedUserId = String(userId || "").trim();
@@ -514,17 +866,32 @@ async function sendLinePushMessages({ userId, messages }) {
     throw new Error("LINE push message requires at least one message.");
   }
 
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lineChannelAccessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      to: normalizedUserId,
-      messages
-    })
-  });
+  const endpoint = String(getEnvValue("LINE_PUSH_API_URL") || "https://api.line.me/v2/bot/message/push").trim();
+  const timeoutMs = Math.max(100, Math.min(30000, Number(getEnvValue("LINE_PUSH_TIMEOUT_MS")) || 10000));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lineChannelAccessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        to: normalizedUserId,
+        messages
+      }),
+      signal: controller.signal
+    });
+  } catch (fetchError) {
+    const error = new Error(fetchError?.name === "AbortError" ? "LINE push API timed out." : "LINE push API network failure.");
+    error.deliveryOutcome = "uncertain";
+    error.deliveryCode = fetchError?.name === "AbortError" ? "timeout" : "network_error";
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (response.ok) {
     return {
@@ -532,8 +899,13 @@ async function sendLinePushMessages({ userId, messages }) {
     };
   }
 
-  const responseText = await response.text();
-  throw new Error(`LINE push API returned HTTP ${response.status}: ${responseText}`);
+  const error = new Error(`LINE push API returned HTTP ${response.status}.`);
+  error.deliveryOutcome = response.status >= 500 || response.status === 408 || response.status === 429
+    ? "uncertain"
+    : "rejected";
+  error.deliveryCode = `http_${response.status}`;
+  error.httpStatus = response.status;
+  throw error;
 }
 
 async function sendLinePushMessage(to, messages) {
@@ -808,6 +1180,10 @@ function buildOrderDetailUrl(order) {
   const url = new URL(getPublicCustomerOrigin());
   if (orderId) {
     url.searchParams.set("orderId", orderId);
+    // SECURITY HOTFIX: server-generated order links carry a signed, expiring
+    // order-scoped token so the customer can still open their own order.
+    const token = createOrderAccessToken(orderId);
+    if (token) url.searchParams.set("t", token);
   }
   return url.toString();
 }
@@ -1102,7 +1478,11 @@ async function sendLineFlexMessageWithTextFallback({ userId, flexMessage, fallba
       messages: [flexMessage]
     });
   } catch (error) {
-    console.error("LINE Flex message failed; sending plain text fallback.", error);
+    // Only a definitive HTTP 400 proves the Flex request was rejected without a
+    // delivered message. Timeouts and 5xx responses are uncertain and must not
+    // trigger a second customer message.
+    if (error?.deliveryOutcome !== "rejected" || error?.httpStatus !== 400) throw error;
+    console.warn(`LINE Flex message rejected category=${error.deliveryCode || "http_400"}; sending plain text fallback.`);
     return await sendLinePushTextMessage({
       userId,
       text: fallbackText
@@ -1409,9 +1789,8 @@ function shouldSendShippedLineNotification(previousOrder, nextOrder) {
     return false;
   }
 
-  const previousStatus = String(previousOrder?.status || "").trim();
   const nextStatus = String(nextOrder?.status || "").trim();
-  return previousStatus !== "Shipped" && nextStatus === "Shipped";
+  return nextStatus === "Shipped";
 }
 
 function markOrderNotificationSent(order, notificationKey) {
@@ -1422,6 +1801,211 @@ function markOrderNotificationSent(order, notificationKey) {
       [notificationKey]: new Date().toISOString()
     }
   };
+}
+
+const ORDER_NOTIFICATION_OUTBOX_TABLE = 'order_notification_outbox';
+const SHIPPED_NOTIFICATION_TYPE = 'shipped';
+
+function serializeShippedNotification(row = null) {
+  if (!row) return { state: 'pending' };
+  return {
+    state: row.state === 'sending' ? 'pending' : row.state,
+    deliveryState: row.state,
+    lastErrorCode: row.last_error_code || '',
+    claimedAt: row.claimed_at || null,
+    sentAt: row.sent_at || null,
+    failedAt: row.failed_at || null,
+    uncertainAt: row.uncertain_at || null,
+    skippedAt: row.skipped_at || null,
+    updatedAt: row.updated_at || null
+  };
+}
+
+async function readShippedNotificationIntent(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      params: {
+        select: '*',
+        order_id: `eq.${id}`,
+        notification_type: `eq.${SHIPPED_NOTIFICATION_TYPE}`,
+        limit: '1'
+      }
+    });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+  return readJsonArray('orderNotifications').find((row) => (
+    row?.order_id === id && row?.notification_type === SHIPPED_NOTIFICATION_TYPE
+  )) || null;
+}
+
+async function readShippedNotificationIntents(orderIds = []) {
+  const ids = [...new Set(orderIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return new Map();
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      params: {
+        select: '*',
+        order_id: `in.(${ids.join(',')})`,
+        notification_type: `eq.${SHIPPED_NOTIFICATION_TYPE}`
+      }
+    });
+    return new Map((Array.isArray(rows) ? rows : []).map((row) => [row.order_id, row]));
+  }
+  const idSet = new Set(ids);
+  return new Map(readJsonArray('orderNotifications')
+    .filter((row) => row?.notification_type === SHIPPED_NOTIFICATION_TYPE && idSet.has(row.order_id))
+    .map((row) => [row.order_id, row]));
+}
+
+async function insertShippedNotificationIntent(orderId, state, extra = {}) {
+  const now = new Date().toISOString();
+  const row = {
+    order_id: String(orderId || '').trim(),
+    notification_type: SHIPPED_NOTIFICATION_TYPE,
+    state,
+    last_error_code: extra.lastErrorCode || null,
+    sent_at: extra.sentAt || null,
+    skipped_at: extra.skippedAt || null,
+    created_at: now,
+    updated_at: now
+  };
+  if (isSupabaseConfigured()) {
+    await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      method: 'POST',
+      params: { on_conflict: 'order_id,notification_type' },
+      prefer: 'resolution=ignore-duplicates,return=minimal',
+      body: row
+    });
+    return await readShippedNotificationIntent(orderId);
+  }
+  const rows = readJsonArray('orderNotifications');
+  const existing = rows.find((entry) => entry?.order_id === row.order_id && entry?.notification_type === SHIPPED_NOTIFICATION_TYPE);
+  if (existing) return existing;
+  const stored = { id: crypto.randomUUID(), ...row };
+  rows.push(stored);
+  writeJsonFile(dataFiles.orderNotifications, rows);
+  return stored;
+}
+
+async function claimShippedNotificationIntent(orderId, { allowFailedRetry = false } = {}) {
+  const now = new Date().toISOString();
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      method: 'PATCH',
+      params: {
+        order_id: `eq.${String(orderId || '').trim()}`,
+        notification_type: `eq.${SHIPPED_NOTIFICATION_TYPE}`,
+        state: allowFailedRetry ? 'in.(pending,failed)' : 'eq.pending'
+      },
+      prefer: 'return=representation',
+      body: { state: 'sending', claimed_at: now, updated_at: now }
+    });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+  const rows = readJsonArray('orderNotifications');
+  const row = rows.find((entry) => (
+    entry?.order_id === String(orderId || '').trim() &&
+    entry?.notification_type === SHIPPED_NOTIFICATION_TYPE &&
+    (entry.state === 'pending' || (allowFailedRetry && entry.state === 'failed'))
+  ));
+  if (!row) return null;
+  row.state = 'sending';
+  row.claimed_at = now;
+  row.updated_at = now;
+  writeJsonFile(dataFiles.orderNotifications, rows);
+  return row;
+}
+
+async function finishShippedNotificationIntent(row, state, details = {}) {
+  const now = new Date().toISOString();
+  const values = {
+    state,
+    last_error_code: details.errorCode || null,
+    sent_at: state === 'sent' ? now : null,
+    failed_at: state === 'failed' ? now : null,
+    uncertain_at: state === 'uncertain' ? now : null,
+    updated_at: now
+  };
+  if (isSupabaseConfigured()) {
+    const rows = await supabaseRequest(ORDER_NOTIFICATION_OUTBOX_TABLE, {
+      method: 'PATCH',
+      params: { id: `eq.${row.id}`, state: 'eq.sending' },
+      prefer: 'return=representation',
+      body: values
+    });
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+  const rows = readJsonArray('orderNotifications');
+  const stored = rows.find((entry) => entry?.id === row.id && entry?.state === 'sending');
+  if (!stored) return null;
+  Object.assign(stored, values);
+  writeJsonFile(dataFiles.orderNotifications, rows);
+  return stored;
+}
+
+function classifyShippedLineFailure(error) {
+  return {
+    state: error?.deliveryOutcome === 'uncertain' ? 'uncertain' : 'failed',
+    errorCode: error?.deliveryCode || 'delivery_error'
+  };
+}
+
+async function notifyShippedOrderAfterPersistence(previousOrder, confirmedOrder) {
+  const orderId = getOrderId(confirmedOrder);
+  const lineUserId = getOrderLineUserId(confirmedOrder);
+  const legacySentAt = getOrderNotifications(confirmedOrder).shippedSentAt || null;
+  let row = await readShippedNotificationIntent(orderId);
+
+  if (!row) {
+    const insertState = legacySentAt ? 'sent' : (lineUserId ? 'pending' : 'skipped');
+    const insertDetails = legacySentAt
+      ? { sentAt: legacySentAt }
+      : (lineUserId ? {} : { lastErrorCode: 'no_line_user', skippedAt: new Date().toISOString() });
+    row = await insertShippedNotificationIntent(
+      orderId,
+      insertState,
+      insertDetails
+    );
+  }
+  if (!row) return { state: 'failed', lastErrorCode: 'outbox_unavailable' };
+  if (!lineUserId || legacySentAt || ['sent', 'skipped', 'uncertain'].includes(row.state)) return serializeShippedNotification(row);
+  if (row.state === 'sending') return serializeShippedNotification(row);
+  if (row.state === 'failed' && normalizeOrderStatus(previousOrder?.status) !== 'Shipped') return serializeShippedNotification(row);
+
+  const claimed = await claimShippedNotificationIntent(orderId, { allowFailedRetry: normalizeOrderStatus(previousOrder?.status) === 'Shipped' });
+  if (!claimed) {
+    row = await readShippedNotificationIntent(orderId);
+    return serializeShippedNotification(row);
+  }
+
+  try {
+    await sendLineFlexMessageWithTextFallback({
+      userId: lineUserId,
+      flexMessage: buildShippedFlexMessage(confirmedOrder),
+      fallbackText: buildShippedFallbackLineMessage(confirmedOrder)
+    });
+  } catch (error) {
+    const failure = classifyShippedLineFailure(error);
+    console.warn(`[shipped-line-notify] failure order=${orderId} category=${failure.errorCode} state=${failure.state}`);
+    let failed = null;
+    try {
+      failed = await finishShippedNotificationIntent(claimed, failure.state, { errorCode: failure.errorCode });
+    } catch {
+      // The claim remains "sending", which is surfaced as pending/uncertain and is never auto-resent.
+    }
+    return serializeShippedNotification(failed || { ...claimed, state: failure.state, last_error_code: failure.errorCode });
+  }
+
+  console.info(`[shipped-line-notify] success order=${orderId}`);
+  try {
+    const sent = await finishShippedNotificationIntent(claimed, 'sent');
+    if (sent) return serializeShippedNotification(sent);
+  } catch {
+    // LINE accepted the message; leave the durable state in "sending" rather than inventing success.
+  }
+  return serializeShippedNotification({ ...claimed, state: 'sending', last_error_code: 'outbox_finalize_failed' });
 }
 
 function buildCarrierAwareShippedOrderLineMessage(order) {
@@ -1516,20 +2100,13 @@ async function trySendPaidOrderLineNotification(order) {
   };
 }
 
-async function trySendShippedLineNotification(previousOrder, nextOrder) {
-  if (!shouldSendShippedLineNotification(previousOrder, nextOrder)) {
-    return { sent: false, order: nextOrder };
-  }
-
-  await sendLineFlexMessageWithTextFallback({
-    userId: getOrderLineUserId(nextOrder),
-    flexMessage: buildShippedFlexMessage(nextOrder),
-    fallbackText: buildShippedFallbackLineMessage(nextOrder)
-  });
-
+async function trySendShippedLineNotification(previousOrder, nextOrder, { persistenceConfirmed = false } = {}) {
+  if (!persistenceConfirmed) throw new Error("Shipped LINE notification requires confirmed order persistence.");
+  const notification = await notifyShippedOrderAfterPersistence(previousOrder, nextOrder);
   return {
-    sent: true,
-    order: markOrderNotificationSent(nextOrder, "shippedSentAt")
+    sent: notification.state === 'sent',
+    order: nextOrder,
+    notification
   };
 }
 
@@ -2027,8 +2604,21 @@ function mergeCatalogRowAvailability(row) {
 
 function normalizeCatalogAvailabilityPayload(item) {
   const stockQty = getCatalogPayloadStockQty(item);
-  const inStock = item?.availability?.inStock !== false && item?.inStock !== false && (stockQty === null || stockQty > 0);
-  const isActive = item?.availability?.isActive !== false && item?.isActive !== false;
+  // Owner-reported 2026-10-11: the admin form writes status through the nested availability object,
+  // while a record disabled earlier still carries flat inStock:false / isActive:false at the top
+  // level. ANDing both representations let the stale flat copy win forever, so a reactivation could
+  // never be persisted. An explicitly present nested value is authoritative; the flat keys are then
+  // derived from it so the payload and the catalog columns stay consistent.
+  const nestedInStock = item?.availability && item.availability.inStock !== undefined
+    ? item.availability.inStock !== false
+    : null;
+  const nestedIsActive = item?.availability && item.availability.isActive !== undefined
+    ? item.availability.isActive !== false
+    : null;
+  const flatInStock = item?.inStock === undefined ? null : item.inStock !== false;
+  const flatIsActive = item?.isActive === undefined ? null : item.isActive !== false;
+  const inStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const isActive = nestedIsActive ?? flatIsActive ?? true;
   const next = { ...item, stockQty, stock_qty: stockQty, inStock, isActive };
   if (item?.availability && typeof item.availability === "object") {
     next.availability = {
@@ -2200,14 +2790,45 @@ async function upsertAnalyticsSession(payload) {
   };
 
   if (isSupabaseConfigured()) {
-    const existingRows = await supabaseRequest("analytics_sessions", {
-      params: {
-        select: "*",
-        session_id: `eq.${payload.sessionId}`,
-        limit: "1"
-      }
-    });
-    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    // TURN 10 (data transfer): every analytics event used to read the whole session row back from
+    // Supabase before upserting it - one extra round trip (and one billed read) per event, measured at
+    // 9-26 reads per page load / interaction burst. The read only exists to stop the upsert from
+    // clobbering first-touch attribution and sticky identity fields with NULL, so it can be replaced by
+    // a bounded cache whose entry is only reused while EVERY sticky field is already known: in that
+    // state a fresh read would return the same values and the merge result is provably identical.
+    // Anything still unknown (a new visitor id, a newly linked LINE user, an unfilled first-touch
+    // column, a session with no cached order id) still performs the real read.
+    const cacheKey = String(payload.sessionId || "");
+    const cachedEntry = cacheKey ? analyticsSessionReadCache.get(cacheKey) : null;
+    const cacheFresh = cachedEntry && Date.now() - cachedEntry.at < ANALYTICS_SESSION_READ_CACHE_MS;
+    let existing = null;
+    if (cacheFresh) {
+      const cachedRow = cachedEntry.row;
+      const stickyComplete = Boolean(
+        (cachedRow.visitor_id || sessionRow.visitor_id) &&
+        (cachedRow.line_user_id || sessionRow.line_user_id) &&
+        cachedRow.first_source && cachedRow.first_medium && cachedRow.first_campaign &&
+        cachedRow.referrer && cachedRow.landing_url && cachedRow.platform_guess && cachedRow.started_at
+      );
+      if (stickyComplete) existing = cachedRow;
+    }
+    // A fresh cache entry is only usable when every sticky field is already known. If it is not usable
+    // (or absent) the real read must still happen - skipping it here was a regression the first-touch
+    // test caught: a session whose LINE identity was still unknown had its attribution overwritten with
+    // 'unknown' instead of being merged.
+    if (!existing) {
+      const existingRows = await supabaseRequest("analytics_sessions", {
+        params: {
+          // Only the merge inputs are read; the previous `select=*` also transferred columns this path
+          // never uses (current_step, last_seen_at, user_agent, created timestamps, ...).
+          select: "session_id,visitor_id,line_user_id,first_source,first_medium,first_campaign,referrer,landing_url,platform_guess,started_at,order_id,converted,revenue",
+          session_id: `eq.${payload.sessionId}`,
+          limit: "1"
+        }
+      });
+      existing = Array.isArray(existingRows) ? existingRows[0] : null;
+      if (cacheKey && existing) analyticsSessionReadCache.set(cacheKey, { at: Date.now(), row: existing });
+    }
     if (existing) {
       sessionRow.line_user_id = sessionRow.line_user_id || existing.line_user_id || null;
       sessionRow.visitor_id = sessionRow.visitor_id || existing.visitor_id || null;
@@ -2229,6 +2850,9 @@ async function upsertAnalyticsSession(payload) {
       prefer: "resolution=merge-duplicates,return=minimal",
       params: { on_conflict: "session_id" }
     });
+    // Remember exactly what was just persisted, so the next event of this session can reuse it without
+    // a read (the cache is only consulted when every sticky field is already present).
+    if (cacheKey) analyticsSessionReadCache.set(cacheKey, { at: Date.now(), row: sessionRow });
     return;
   }
 
@@ -2310,7 +2934,80 @@ async function hasSavedV2FunnelStage(eventRow = {}) {
   return readJsonArray('analyticsEvents').some(isSameStage);
 }
 
+// TURN 10.2 error-reporting controls. All three are process-local on purpose: they are a rate limiter, not
+// a source of truth, so a second Render instance simply has its own budget. Nothing here can lose a
+// failure that has not already been stored by another instance or by an earlier window.
+const ANALYTICS_ERROR_DEDUPE_MS = 60000;
+const ANALYTICS_ERROR_SESSION_WINDOW_MS = 3600000;
+const ANALYTICS_ERROR_SESSION_CAP = 100;
+const ANALYTICS_ERROR_PROPERTIES_LIMIT = 2000;
+let analyticsErrorSignatures = new Map();
+let analyticsErrorSessionBudget = new Map();
+
+function boundAnalyticsErrorProperties(properties = {}) {
+  const source = properties && typeof properties === "object" ? properties : {};
+  let serialized = "";
+  try {
+    serialized = JSON.stringify(source);
+  } catch {
+    return { schema_version: ANALYTICS_SCHEMA_VERSION, funnel_version: ANALYTICS_FUNNEL_VERSION, properties_unserializable: true };
+  }
+  if (serialized.length <= ANALYTICS_ERROR_PROPERTIES_LIMIT) return source;
+  // Keep the identification fields the dashboard and any triage actually read, and record that the rest
+  // was too large to store instead of silently dropping the row.
+  return {
+    schema_version: source.schema_version ?? ANALYTICS_SCHEMA_VERSION,
+    funnel_version: source.funnel_version ?? ANALYTICS_FUNNEL_VERSION,
+    error_type: truncateText(source.error_type, 120),
+    source: truncateText(source.source, 500),
+    step: source.step ?? null,
+    properties_truncated: true,
+    properties_bytes: serialized.length
+  };
+}
+
+function shouldStoreAnalyticsError(errorRow = {}) {
+  const now = Date.now();
+  if (analyticsErrorSignatures.size > 5000) {
+    for (const [key, at] of analyticsErrorSignatures) {
+      if (now - at > ANALYTICS_ERROR_DEDUPE_MS) analyticsErrorSignatures.delete(key);
+    }
+    if (analyticsErrorSignatures.size > 5000) analyticsErrorSignatures = new Map();
+  }
+  const signature = [errorRow.session_id, errorRow.error_type, errorRow.message, errorRow.source].join("\u0000");
+  const lastAt = analyticsErrorSignatures.get(signature);
+  if (lastAt && now - lastAt < ANALYTICS_ERROR_DEDUPE_MS) return false;
+
+  if (analyticsErrorSessionBudget.size > 5000) analyticsErrorSessionBudget = new Map();
+  const sessionKey = String(errorRow.session_id || "unknown");
+  const budget = analyticsErrorSessionBudget.get(sessionKey);
+  const window = budget && now - budget.windowStartedAt < ANALYTICS_ERROR_SESSION_WINDOW_MS
+    ? budget
+    : { count: 0, windowStartedAt: now };
+  if (window.count >= ANALYTICS_ERROR_SESSION_CAP) {
+    if (window.count === ANALYTICS_ERROR_SESSION_CAP) {
+      window.count += 1;
+      console.warn(`[analytics] error rate limit reached for session ${sessionKey}; further distinct errors in this hour are not stored.`);
+    }
+    analyticsErrorSessionBudget.set(sessionKey, window);
+    return false;
+  }
+  window.count += 1;
+  analyticsErrorSessionBudget.set(sessionKey, window);
+  analyticsErrorSignatures.set(signature, now);
+  return true;
+}
+
 async function saveAnalyticsError(payload) {
+  // TURN 10.2 (owner preference: remove unnecessary granular tracking): client error reporting is kept -
+  // actionable production failures are the whole point of the table - but it is no longer allowed to
+  // amplify. Three controls, in order of severity:
+  //   1. an identical failure signature is stored at most once per 60 s window,
+  //   2. a single session may create at most 100 NEW signatures per hour, and a tripped cap is logged,
+  //   3. `properties` is bounded.
+  // A failure that has not been seen before is always stored, so a unique critical failure is never
+  // suppressed by control 1. Only control 2 can drop a first-seen signature, and only for a session that
+  // is already producing >100 distinct errors per hour - the pathological case the control exists for.
   const errorRow = {
     session_id: payload.sessionId,
     error_type: truncateText(payload.properties?.error_type || payload.eventName, 120),
@@ -2319,9 +3016,11 @@ async function saveAnalyticsError(payload) {
     source: truncateText(payload.properties?.source, 500),
     step: payload.step,
     url: payload.url || null,
-    properties: payload.properties || {},
+    properties: boundAnalyticsErrorProperties(payload.properties),
     created_at: payload.timestamp || new Date().toISOString()
   };
+
+  if (!shouldStoreAnalyticsError(errorRow)) return;
 
   if (isSupabaseConfigured()) {
     await supabaseRequest("analytics_errors", {
@@ -2337,11 +3036,51 @@ async function saveAnalyticsError(payload) {
   writeJsonFile(dataFiles.analyticsErrors, errors.slice(-1000));
 }
 
+// Turn 10.3: bounded idempotency window for design-summary bursts.
+const ANALYTICS_DESIGN_SUMMARY_DEDUPE_MS = 10 * 60 * 1000;
+const ANALYTICS_DESIGN_SUMMARY_DEDUPE_MAX = 20000;
+let analyticsDesignSummaryIds = new Map();
+
+function claimDesignSummaryId(payload = {}) {
+  const properties = payload.properties && typeof payload.properties === "object" ? payload.properties : {};
+  const summaryId = truncateText(properties.summary_id || properties.summaryId, 80);
+  if (!summaryId) return true;
+  const now = Date.now();
+  if (analyticsDesignSummaryIds.size > ANALYTICS_DESIGN_SUMMARY_DEDUPE_MAX) {
+    for (const [key, at] of analyticsDesignSummaryIds) {
+      if (now - at > ANALYTICS_DESIGN_SUMMARY_DEDUPE_MS) analyticsDesignSummaryIds.delete(key);
+    }
+    // Still oversized means the traffic is pathological; start clean rather than growing without bound.
+    if (analyticsDesignSummaryIds.size > ANALYTICS_DESIGN_SUMMARY_DEDUPE_MAX) analyticsDesignSummaryIds = new Map();
+  }
+  const key = `${payload.sessionId}\u0000${summaryId}`;
+  const seenAt = analyticsDesignSummaryIds.get(key);
+  if (seenAt && now - seenAt < ANALYTICS_DESIGN_SUMMARY_DEDUPE_MS) return false;
+  analyticsDesignSummaryIds.set(key, now);
+  return true;
+}
+
 async function saveAnalyticsPayload(payload) {
   if (!payload.sessionId || !payload.eventName) {
     throw new Error("Missing sessionId or eventName.");
   }
   await upsertAnalyticsSession(payload);
+  // TURN 10.2 (owner preference: remove unnecessary granular tracking): `session_heartbeat` exists only
+  // to keep the session row's `last_seen_at` fresh, and the upsert above already writes it. The event row
+  // itself was never read by the analytics summary, the funnel, the daily trend or any report, so it is no
+  // longer inserted. The request the browser sends is unchanged, so session inactivity expiration
+  // (ANALYTICS_SESSION_TIMEOUT_MS), the 30-minute `insights.activeWindowMinutes` figure and every
+  // attribution field behave exactly as before.
+  if (payload.eventName === "session_heartbeat") return;
+  // TURN 10.3 idempotency. A `design_summary` is the one event whose loss would silently under-report a
+  // customer's design, so the browser retries a failed delivery and may also deliver it twice through the
+  // lifecycle beacons. The burst carries a `summary_id`, and a repeat inside the window is dropped here
+  // instead of being counted twice in `popularItems` / `popularBeadSizes` / `popularCategories`.
+  // The first delivery of an id is always stored; only a repeat inside the window is dropped. The check is
+  // process-local on purpose - it is a duplicate guard, not a source of truth, so a second Render instance
+  // simply has its own window and nothing is lost when it is not shared.
+  // A summary with no `summary_id` is accepted, so a browser running an older bundle keeps reporting.
+  if (payload.eventName === "design_summary" && !claimDesignSummaryId(payload)) return;
   if (payload.eventName === "javascript_error" || payload.eventName === "unhandled_promise_rejection" || payload.eventName === "api_error" || payload.eventName === "image_load_error" || payload.eventName.includes("error")) {
     await saveAnalyticsError(payload);
   } else {
@@ -2386,7 +3125,73 @@ async function linkAnalyticsOrderConversion(order = {}) {
   if (funnelVersion === ANALYTICS_FUNNEL_VERSION) await saveAnalyticsEvent(payload);
 }
 
+const LUCKY_BIRTHDAY_CONSENT_VERSION = 'lucky-birthday-consent-th-v1';
+
+function isSameOriginBrowserRequest(req) {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return true;
+  try {
+    const originHost = new URL(origin).host;
+    const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+    return originHost === String(req.headers.host || '').trim() || originHost === forwardedHost;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeLuckyBirthdaySubmission(payload = {}) {
+  const birth = normalizeLuckyBirthDate(payload.birthDate);
+  const sessionId = truncateText(payload.sessionId, 120);
+  const consentVersion = truncateText(payload.consentVersion, 80);
+  if (!birth || !/^[A-Za-z0-9_-]{12,120}$/.test(sessionId) || consentVersion !== LUCKY_BIRTHDAY_CONSENT_VERSION || payload.source !== 'lucky') return null;
+  return { ...birth, sessionId, consentVersion };
+}
+
+async function saveLuckyBirthday(payload) {
+  const normalized = normalizeLuckyBirthdaySubmission(payload);
+  if (!normalized) return { ok: false, status: 400, code: 'invalid_submission' };
+  if (!isSupabaseConfigured()) return { ok: false, status: 503, code: 'configuration' };
+  const insert = buildLuckyBirthdayInsert(getSupabaseConfig().serviceRoleKey, normalized);
+  if (!insert) return { ok: false, status: 503, code: 'collection_key' };
+  // The server-derived collection key makes retries idempotent without allowing browser writes to update a row.
+  await supabaseRequest('lucky_birthday_submissions', {
+    method: 'POST',
+    params: { on_conflict: 'collection_key' },
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    body: { ...insert.row }
+  });
+  return { ok: true, status: 202 };
+}
+
+function classifyLuckyBirthdayPersistenceError(error) {
+  const message = String(error?.message || '');
+  if (/permission denied/i.test(message)) return 'permission_denied';
+  if (/invalid api key|jwt|unauthorized|401/i.test(message)) return 'authentication';
+  if (/schema cache|could not find the table/i.test(message)) return 'schema_cache';
+  if (/row-level security/i.test(message)) return 'rls_denied';
+  if (/conflict|duplicate/i.test(message)) return 'conflict';
+  if (/fetch failed|network|timed out|timeout/i.test(message)) return 'network';
+  return 'write_failed';
+}
+
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
+// TURN 10 (data transfer): the exact column sets the CRM analytics summary reads. Measured against the
+// previous `select=*` behaviour in tools/turn10-bench.mjs. `properties` must stay on events (the funnel,
+// bead-size, duration and category breakdowns read it); `stack` is deliberately absent from errors
+// because no part of the dashboard renders it.
+const ANALYTICS_SUMMARY_SESSION_FIELDS = "session_id,visitor_id,line_user_id,first_source,first_medium,first_campaign,platform_guess,started_at,last_seen_at,current_step,order_id,converted,revenue";
+const ANALYTICS_SUMMARY_EVENT_FIELDS = "session_id,event_name,step,properties,created_at";
+const ANALYTICS_SUMMARY_ERROR_FIELDS = "session_id,error_type,message,step,properties,url,created_at";
+const ANALYTICS_SUMMARY_EVENT_LIMIT = 10000;
+// Short-lived in-process cache so switching dashboard range/tab does not re-read the same rows from
+// Supabase. Read-only and range-keyed; it never serves one range's rows for another.
+const ANALYTICS_SUMMARY_CACHE_MS = 30000;
+let analyticsSummaryCache = new Map();
+// TURN 10 (data transfer): bounded cache for the per-event session row read. It is only reused when
+// every sticky field is already known, so the upsert merge result is identical to a fresh read.
+const ANALYTICS_SESSION_READ_CACHE_MS = 60000;
+const ANALYTICS_SESSION_READ_CACHE_MAX = 5000;
+let analyticsSessionReadCache = new Map();
 const ANALYTICS_FUNNEL_STAGES = Object.freeze([
   ["landing_view", "\u0E40\u0E02\u0E49\u0E32\u0E40\u0E27\u0E47\u0E1A\u0E44\u0E0B\u0E15\u0E4C"],
   ["start_design", "\u0E40\u0E23\u0E34\u0E48\u0E21\u0E2D\u0E2D\u0E01\u0E41\u0E1A\u0E1A"],
@@ -2633,26 +3438,161 @@ function getAnalyticsSessionRevenue(session = {}) {
   return Number.isFinite(value) ? value : 0;
 }
 
-async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangeParams()) {
+// TURN 10.2 (option C - server-side aggregation): the dashboard used to read the newest 10,000
+// `analytics_events` rows and aggregate them inside Render. At the measured production rate (~3,036
+// events/day) that read silently covered only ~3.3 days of a 7-day range, and it transferred ~5.6 MB per
+// dashboard call. Option C replaces that raw read with one `analytics_summary_aggregate` RPC that returns
+// the same information as counts plus one row per (session, stage), so the range is complete and the
+// transfer is bounded by sessions x stages instead of by event volume.
+//
+// The aggregate is re-expanded into the EXISTING event row shape, which keeps every downstream consumer
+// in buildAnalyticsSummary (funnel, daily trend, channel/day, popular items/sizes/categories, step
+// durations, current stage) running its untouched code path. Parity is a property of the substitution
+// rather than of a parallel re-implementation, and it is verified against a complete uncapped fixture by
+// tests/turn10-2-aggregate-equivalence.test.mjs.
+const ANALYTICS_AGGREGATE_STAGE_EVENTS = new Set([...ANALYTICS_V2_FUNNEL_STAGES, 'line_auth_started', 'line_auth_success', 'oa_friend_required', 'oa_friend_cancelled', 'line_callback_resume']);
+
+function createAggregateEvent(sessionId, eventName, properties = {}, createdAt = null) {
+  return {
+    session_id: sessionId,
+    event_name: eventName,
+    step: null,
+    properties: {
+      schema_version: ANALYTICS_SCHEMA_VERSION,
+      funnel_version: ANALYTICS_FUNNEL_VERSION,
+      funnel_stage: eventName,
+      funnel_stage_key: `v${ANALYTICS_FUNNEL_VERSION}:${sessionId}:${eventName}`,
+      current_stage: eventName,
+      ...properties
+    },
+    created_at: createdAt
+  };
+}
+
+function mapAnalyticsSummaryAggregate(aggregate, includeTest = false) {
+  if (!aggregate || typeof aggregate !== 'object') return null;
+  const events = [];
+  // TURN 10.2 correction: a count-based aggregate row carries no session id, so it cannot be dropped by the
+  // summary's test-session filter the way a raw row is. The aggregate therefore tags every count with whether
+  // it came from a `prelaunch_test` session, and the same include_test switch that governs the funnel governs
+  // these blocks too. Without this, `popularItems` / `popularBeadSizes` / `popularCategories` / `stepDurations`
+  // over-reported by the share of prelaunch_test traffic: tools/turn10-2-crosscheck.mjs measured +10
+  // placements and +12 duration samples on a fixture where 1 session in 17 is a test session. The funnel was
+  // already correct because stage rows keep their session id.
+  const keepCount = (row) => includeTest || !row?.test;
+  // One row per (session, stage): the funnel sets, the per-session latest stage used by the
+  // active-session panel and the stage date used by the daily trend and the channel/day matrix.
+  (Array.isArray(aggregate.stages) ? aggregate.stages : []).forEach((row) => {
+    const sessionId = String(row?.session_id || '').trim();
+    const eventName = String(row?.event_name || '').trim();
+    if (!sessionId || !ANALYTICS_AGGREGATE_STAGE_EVENTS.has(eventName)) return;
+    events.push(createAggregateEvent(sessionId, eventName, {}, row?.first_at || row?.last_at || null));
+  });
+  // Step durations are only ever consumed as a SUM plus a SAMPLE COUNT per step
+  // (averageMs = round(total / samples)), so re-expanding the aggregate as equal shares cannot change any
+  // rendered number - the remainder is added to the last share so the sum is exact.
+  (Array.isArray(aggregate.durations) ? aggregate.durations : []).filter(keepCount).forEach((row) => {
+    const samples = Math.max(0, Math.trunc(Number(row?.samples) || 0));
+    const totalMs = Math.max(0, Math.trunc(Number(row?.total_ms) || 0));
+    if (!samples || !totalMs) return;
+    const share = Math.floor(totalMs / samples);
+    for (let index = 0; index < samples; index += 1) {
+      events.push(createAggregateEvent('__aggregate__', 'step_duration', { from_step: row?.step ?? 'unknown', duration_ms: index === samples - 1 ? totalMs - share * (samples - 1) : share }, null));
+    }
+  });
+  // Placements, bead sizes and categories arrive already collapsed: one synthetic `design_summary` row per
+  // distinct label carries the exact count the raw stream would have produced.
+  const placements = (Array.isArray(aggregate.placements) ? aggregate.placements : []).filter(keepCount);
+  if (placements.length) {
+    events.push(createAggregateEvent('__aggregate__', 'design_summary', { items: placements.map((row) => ({ itemId: row?.label ?? null, sizeMm: null, itemType: null, count: Math.max(0, Math.trunc(Number(row?.count) || 0)) })).filter((row) => row.count > 0) }, null));
+  }
+  const beadSizes = (Array.isArray(aggregate.bead_sizes) ? aggregate.bead_sizes : []).filter(keepCount);
+  if (beadSizes.length) {
+    events.push(createAggregateEvent('__aggregate__', 'design_summary', { items: beadSizes.map((row) => ({ itemId: null, sizeMm: row?.label ?? null, itemType: null, count: Math.max(0, Math.trunc(Number(row?.count) || 0)) })).filter((row) => row.count > 0 && row.sizeMm !== null) }, null));
+  }
+  const categories = (Array.isArray(aggregate.categories) ? aggregate.categories : []).filter(keepCount);
+  if (categories.length) {
+    events.push(createAggregateEvent('__aggregate__', 'design_summary', { categories: categories.map((row) => ({ category: row?.label ?? null, count: Math.max(0, Math.trunc(Number(row?.count) || 0)) })).filter((row) => row.count > 0 && row.category) }, null));
+  }
+  return {
+    events,
+    earliestEventAt: aggregate.earliest_event_at || null,
+    totalEvents: Math.max(0, Math.trunc(Number(aggregate.total_events) || 0))
+  };
+}
+
+const ANALYTICS_SUMMARY_SESSION_PARAMS = { select: ANALYTICS_SUMMARY_SESSION_FIELDS, order: "last_seen_at.desc", limit: "5000" };
+const ANALYTICS_SUMMARY_ERROR_PARAMS = { select: ANALYTICS_SUMMARY_ERROR_FIELDS, order: "created_at.desc", limit: "500" };
+
+async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangeParams(), includeTest = false) {
+  const aggregateRpcName = getEnvValue('ANALYTICS_SUMMARY_RPC');
+  if (isSupabaseConfigured() && aggregateRpcName) {
+    try {
+      // Option C: one RPC replaces the raw event read. Sessions and errors stay as the same bounded,
+      // projected reads because their shape is unchanged and their volume is already capped - the event
+      // table is the one that carries both the 10,000-row cap and the large transfer.
+      const [sessions, errors, aggregate] = await Promise.all([
+        supabaseRequest("analytics_sessions", { params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_SESSION_PARAMS }, "last_seen_at", rangeInfo) }),
+        supabaseRequest("analytics_errors", { params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_ERROR_PARAMS }, "created_at", rangeInfo) }),
+        supabaseRpc(aggregateRpcName, { p_start: rangeInfo.startIso, p_end: rangeInfo.endIso })
+      ]);
+      const mapped = mapAnalyticsSummaryAggregate(aggregate, includeTest);
+      if (mapped) {
+        return {
+          sessions: Array.isArray(sessions) ? sessions : [],
+          events: mapped.events,
+          errors: Array.isArray(errors) ? errors : [],
+          // The aggregate is uncapped by construction, so the range is complete and the truncation banner
+          // must not fire. `eventsCoveredSince` still reports the oldest event the aggregate saw.
+          eventsTruncated: false,
+          eventsLimit: null,
+          eventsCoveredSince: mapped.earliestEventAt,
+          aggregateSource: aggregateRpcName,
+          aggregateEventCount: mapped.totalEvents
+        };
+      }
+    } catch (error) {
+      // A missing/unprivileged function must never take the dashboard down: fall through to the raw read.
+      warnSupabaseReadFallback("/api/analytics/summary (aggregate rpc)", error);
+    }
+  }
   if (isSupabaseConfigured()) {
     try {
       const [sessions, events, errors] = await Promise.all([
         supabaseRequest("analytics_sessions", {
           // Keep session attribution available for in-range events that belong to an older session.
           // The summary applies its own selected-period filter to session-start KPIs below.
-          params: { select: "*", order: "last_seen_at.desc", limit: "5000" }
+          // TURN 10 (data transfer): this used to read `select=*` for the newest 5,000 sessions on
+          // every dashboard call, which is ~4 MB per call for columns the summary never touches
+          // (referrer, landing_url, user_agent). It now selects only the columns the summary reads,
+          // and - when the caller asks for a bounded range - only the sessions seen inside that range.
+          // Every session that owns an in-range event has an in-range `last_seen_at`, because the
+          // ingest path stamps `last_seen_at = now` on every event, so attribution is unchanged.
+          params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_SESSION_PARAMS }, "last_seen_at", rangeInfo)
         }),
         supabaseRequest("analytics_events", {
-          params: addDateRangeFilters({ select: "*", order: "created_at.desc", limit: "10000" }, "created_at", rangeInfo)
+          params: addDateRangeFilters({ select: ANALYTICS_SUMMARY_EVENT_FIELDS, order: "created_at.desc", limit: String(ANALYTICS_SUMMARY_EVENT_LIMIT) }, "created_at", rangeInfo)
         }),
         supabaseRequest("analytics_errors", {
-          params: addDateRangeFilters({ select: "*", order: "created_at.desc", limit: "500" }, "created_at", rangeInfo)
+          // `stack` is never rendered by the dashboard (recentErrors shows type/step/message only) and
+          // is the single largest column in this table, so it is not transferred any more.
+          params: addDateRangeFilters({ ...ANALYTICS_SUMMARY_ERROR_PARAMS }, "created_at", rangeInfo)
         })
       ]);
       return {
         sessions: Array.isArray(sessions) ? sessions : [],
         events: Array.isArray(events) ? events : [],
-        errors: Array.isArray(errors) ? errors : []
+        errors: Array.isArray(errors) ? errors : [],
+        // TURN 10.1: surface the read cap instead of silently reporting a partial range. A full 7-day
+        // range needs ~21k events at the measured production rate while the query asks for 10,000, so the
+        // dashboard could show a shorter window than its label claims. The boolean lets the CRM warn,
+        // and the covered boundary is reported so the UI can tell the operator how far back the numbers
+        // actually go.
+        eventsTruncated: Array.isArray(events) && events.length >= ANALYTICS_SUMMARY_EVENT_LIMIT,
+        eventsLimit: ANALYTICS_SUMMARY_EVENT_LIMIT,
+        eventsCoveredSince: Array.isArray(events) && events.length
+          ? events[events.length - 1]?.created_at || null
+          : null
       };
     } catch (error) {
       warnSupabaseReadFallback("/api/analytics/summary", error);
@@ -2662,7 +3602,10 @@ async function readAnalyticsRowsForSummary(rangeInfo = normalizeAnalyticsRangePa
   return {
     sessions: readJsonArray("analyticsSessions"),
     events: readJsonArray("analyticsEvents").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"])),
-    errors: readJsonArray("analyticsErrors").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"]))
+    errors: readJsonArray("analyticsErrors").filter((row) => isAnalyticsRowInRange(row, rangeInfo, ["created_at", "timestamp"])),
+    eventsTruncated: false,
+    eventsLimit: ANALYTICS_SUMMARY_EVENT_LIMIT,
+    eventsCoveredSince: null
   };
 }
 
@@ -2671,18 +3614,28 @@ function incrementCount(map, key, amount = 1) {
   map[safeKey] = (map[safeKey] || 0) + amount;
 }
 
-function addAnalyticsCount(map, key, labelKey = "label") {
+// TURN 10.2: `amount` lets one `design_summary` row contribute the per-item counts it accumulated, so
+// the dashboard totals stay identical to the previous one-row-per-bead stream.
+function addAnalyticsCount(map, key, labelKey = "label", amount = 1) {
   const safeKey = normalizeAnalyticsDimension(key, "unknown");
   if (!map[safeKey]) {
     map[safeKey] = { [labelKey]: safeKey, count: 0 };
   }
-  map[safeKey].count += 1;
+  map[safeKey].count += amount;
 }
 
 async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
   const rangeInfo = normalizeAnalyticsRangeParams(searchParams);
-  const analyticsRows = await readAnalyticsRowsForSummary(rangeInfo);
-  const includeTest = searchParams.get("include_test") === "1";
+  const includeTestParam = searchParams.get("include_test") === "1";
+  // The key must not include the computed end boundary: "last 7 days" recomputes `now` on every call,
+  // so keying on it would make every request a cache miss (measured: 4 dashboard calls, 4 full reads).
+  const cacheKey = `${rangeInfo.range}|${searchParams.get("start") || ""}|${searchParams.get("end") || ""}|${includeTestParam ? 1 : 0}`;
+  const cached = analyticsSummaryCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < ANALYTICS_SUMMARY_CACHE_MS) {
+    return { ...cached.payload, generatedAt: new Date().toISOString(), servedFromCache: true, cacheAgeMs: Date.now() - cached.at, cacheTtlMs: ANALYTICS_SUMMARY_CACHE_MS };
+  }
+  const analyticsRows = await readAnalyticsRowsForSummary(rangeInfo, includeTestParam);
+  const includeTest = includeTestParam;
   const testSessionIds = new Set((analyticsRows.sessions || [])
     .filter((session) => String(session.first_campaign || session.firstCampaign || "").trim().toLowerCase() === "prelaunch_test")
     .map(getAnalyticsSessionId));
@@ -2725,6 +3678,33 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
       if (properties.category || properties.item_type || properties.itemType) addAnalyticsCount(categoryCounts, properties.category || properties.item_type || properties.itemType, "category");
     }
     if (eventName === "category_changed" && (properties.category || properties.section)) addAnalyticsCount(categoryCounts, properties.category || properties.section, "category");
+    // TURN 10.2: the single `design_summary` row that now replaces the per-bead `item_added` and
+    // per-tab `category_changed` rows. The two legacy branches above are deliberately KEPT so that the
+    // ~396k historical rows already stored in `analytics_events` keep contributing to the same totals -
+    // removing them would silently under-report every past period.
+    // `properties.bead_size` is not read here: it would double count `bead_size_selected`, which already
+    // feeds `popularBeadSizes`. Only the per-bead sizes the customer actually placed are counted, exactly
+    // as the legacy `item_added` branch did.
+    if (eventName === "design_summary") {
+      const designItems = Array.isArray(properties.items) ? properties.items : [];
+      designItems.forEach((entry) => {
+        const amount = Math.max(0, Math.trunc(Number(entry?.count) || 0));
+        if (!amount) return;
+        const sizeMm = entry?.sizeMm ?? entry?.size_mm;
+        if (sizeMm) addAnalyticsCount(beadSizeCounts, `${sizeMm}mm`, "beadSize", amount);
+        const itemId = entry?.itemId ?? entry?.item_id;
+        if (itemId) addAnalyticsCount(itemCounts, itemId, "item", amount);
+        const itemCategory = entry?.category ?? entry?.itemType ?? entry?.item_type;
+        if (itemCategory) addAnalyticsCount(categoryCounts, itemCategory, "category", amount);
+      });
+      const designCategories = Array.isArray(properties.categories) ? properties.categories : [];
+      designCategories.forEach((entry) => {
+        const amount = Math.max(0, Math.trunc(Number(entry?.count) || 0));
+        if (!amount) return;
+        const category = entry?.category;
+        if (category) addAnalyticsCount(categoryCounts, category, "category", amount);
+      });
+    }
   });
 
   const landingSessionIds = stageSets.get("landing_view");
@@ -2854,8 +3834,9 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     time: session.last_seen_at || session.started_at || null, source: normalizeAnalyticsChannel(session.first_source || session.firstSource, session.platform_guess || session.platformGuess).channel, campaign: normalizeAnalyticsDimension(session.first_campaign || session.firstCampaign), orderId: session.order_id || session.orderId || "", revenue: getAnalyticsSessionRevenue(session), currentStep: session.current_step ?? session.currentStep ?? null
   }));
 
-  return {
+  const summaryPayload = {
     success: true, modelVersion: ANALYTICS_FUNNEL_VERSION, legacyExcluded: true, range: rangeInfo.range, start: rangeInfo.startIso, end: rangeInfo.endIso, generatedAt: new Date().toISOString(),
+    eventsTruncated: Boolean(analyticsRows.eventsTruncated), eventsLimit: analyticsRows.eventsLimit ?? ANALYTICS_SUMMARY_EVENT_LIMIT, eventsCoveredSince: analyticsRows.eventsCoveredSince ?? null,
     totals: { sessions: sessions.length, uniqueVisitors: visitorIds.size, visitorTrackedSessions: sessions.filter((session) => getAnalyticsVisitorId(session)).length, legacySessionsWithoutVisitorId: sessions.filter((session) => !getAnalyticsVisitorId(session)).length, orders: totalOrders, conversionRate: landingCount ? (totalOrders / landingCount) * 100 : 0, revenue, aov: totalOrders ? revenue / totalOrders : 0, errors: errors.length },
     ownerChannels: OWNER_ANALYTICS_CHANNELS.map((definition) => serializeOwner(ownerChannels.get(definition.key))),
     sourceDetails: Array.from(sourceDetails.values()).map((row) => ({ ...row, conversionRate: row.sessions ? (row.orders / row.sessions) * 100 : 0, aov: row.orders ? row.revenue / row.orders : 0 })).sort((a, b) => b.sessions - a.sessions || b.revenue - a.revenue),
@@ -2863,6 +3844,10 @@ async function buildAnalyticsSummary(searchParams = new URLSearchParams()) {
     insights: { completedNoPayment: Math.max(0, checkoutIds.size - totalOrders), activeWindowMinutes: 30 },
     channels: [], sources: [], bySource: [], stepDurations, averageTimePerStep: stepDurations.map((row) => ({ step: row.step, average_ms: row.averageMs, samples: row.samples })), popularBeadSizes: sortCountRows(beadSizeCounts), popularItems: sortCountRows(itemCounts), popularCategories: sortCountRows(categoryCounts), recentErrors, recentOrders: [], recentSessions, testCampaignExcluded: true, paymentSuccessAuthority: "stripe_webhook_authoritative"
   };
+  if (analyticsSummaryCache.size > 8) analyticsSummaryCache = new Map();
+  if (analyticsSessionReadCache.size > ANALYTICS_SESSION_READ_CACHE_MAX) analyticsSessionReadCache = new Map(analyticsSessionReadCache);
+  analyticsSummaryCache.set(cacheKey, { at: Date.now(), payload: summaryPayload });
+  return { ...summaryPayload, servedFromCache: false, cacheAgeMs: 0, cacheTtlMs: ANALYTICS_SUMMARY_CACHE_MS };
 }
 
 async function getSupabaseRecordById(tableName, id) {
@@ -2982,6 +3967,289 @@ function sortOrdersForApi(orders) {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Landing-page social proof (additive route merged 2026-10-10 from the full UAT feature migration).
+//
+// This is the ONLY backend change the migration brings: a read-only, PUBLIC, AGGREGATE-ONLY counter.
+// It is ported onto the hardened production server rather than adopting the candidate's pre-hotfix
+// server.js, so every security control added by the hotfix (session auth, entitlement-scoped order
+// reads, static allowlist, rate limiting, webhook signature checks) is preserved verbatim.
+//
+// PRIVACY (2026-10-10): the first merged revision reused the frozen candidate's design, which returned
+// up to four real customer bracelet preview images. That design was rejected and never deployed to the
+// backend. This revision publishes a NUMBER ONLY:
+//   * the response body is exactly { displayCount, successfulOrderCount }: no images, no order ids,
+//     no names, no phone numbers, no addresses, no payment data and no base64 payloads of any kind;
+//   * the count is obtained without reading order records - a PostgREST exact-count request filtered by
+//     the CRM's own paid-order filter and projecting a single id column, with the existing
+//     readCrmPaidOrderCount() helper as the fallback when the count header is unavailable;
+//   * the payload is cached in-process for 60s, so a public page view cannot amplify Supabase reads
+//     (the owner-reported Free-plan egress constraint) or hammer the database;
+//   * any failure degrades to the static base count instead of throwing.
+const SOCIAL_PROOF_BASE_COUNT = 1035;
+const SOCIAL_PROOF_ORDER_MULTIPLIER = 3;
+const SOCIAL_PROOF_CACHE_MS = 60000;
+// Landing social proof also publishes the four newest eligible bracelet previews. The publication was
+// authorised by the owner on 2026-10-11 (the count-only revision of 2026-10-10 is superseded); the
+// privacy contract of the response is unchanged in kind - it still carries no order identifiers, no
+// customer details and no payment data, and the imagery is a bracelet render, not a photo of a person.
+const SOCIAL_PROOF_PREVIEW_COUNT = 4;
+const SOCIAL_PROOF_PREVIEW_SCAN_LIMIT = 10;   // bounded: only the newest 10 paid orders are ever read
+const SOCIAL_PROOF_THUMB_PX = 176;            // crisp for the ~26-40px strip thumbs at up to 4x DPR
+const SOCIAL_PROOF_THUMB_QUALITY = 78;
+const SOCIAL_PROOF_PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
+const SOCIAL_PROOF_PREVIEW_SHORT_TTL_MS = 15 * 60 * 1000;
+const SOCIAL_PROOF_MAX_SOURCE_CHARS = 640000; // ~470KB binary: rejects oversized stored payloads
+const SOCIAL_PROOF_PREVIEW_FIELD_SELECT = "created_at,preview:payload->>braceletPreviewImage,checkoutPreview:payload->checkoutSummary->>braceletPreviewImage";
+let socialProofCache = { at: 0, payload: null };
+// Thumbnails are kept until the newest paid order changes, so the (bounded) preview read stays off the
+// public request path: a landing page view cannot amplify Supabase egress.
+let socialProofPreviewCache = { stamp: null, thumbs: [], at: 0 };
+
+let socialProofSharpLoaded = false;
+let socialProofSharp = null;
+function getSocialProofSharp() {
+  if (socialProofSharpLoaded) return socialProofSharp;
+  socialProofSharpLoaded = true;
+  try {
+    socialProofSharp = require("sharp");
+  } catch (error) {
+    socialProofSharp = null;
+    console.warn("[/api/social-proof] sharp unavailable; stored previews are published unoptimized.", error?.message || error);
+  }
+  return socialProofSharp;
+}
+
+const isPaidOrderRecord = (order) => String(order?.stripePaymentStatus || order?.paymentStatus || "").trim().toLowerCase() === "paid";
+
+// A stored preview is only ever accepted as a bounded inline image data URL. Anything else (missing
+// field, remote URL, oversized payload, non-image data) is skipped instead of being published.
+function isPublishablePreviewDataUrl(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length < 33 || trimmed.length > SOCIAL_PROOF_MAX_SOURCE_CHARS) return false;
+  return /^data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed);
+}
+
+function readOrderPreviewDataUrl(order) {
+  const candidates = [
+    order?.braceletPreviewImage,
+    order?.checkoutSummary?.braceletPreviewImage,
+    order?.braceletPreviewDataUrl,
+    order?.checkoutSummary?.braceletPreviewDataUrl
+  ];
+  return candidates.find(isPublishablePreviewDataUrl) || null;
+}
+
+function readProjectedPreviewDataUrl(row) {
+  return [row?.preview, row?.checkoutPreview].find(isPublishablePreviewDataUrl) || null;
+}
+
+// TURN 10.1: fetch only the preview columns for one order (the CRM card and the preview endpoint both
+// need just the image), instead of reading the whole order payload to extract one field.
+async function readOrderPreviewRow(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return null;
+  if (!isSupabaseConfigured()) {
+    const order = readJsonArray('orders').find((entry) => getOrderId(entry) === id) || null;
+    return order ? { preview: order.braceletPreviewImage || null, checkoutPreview: order.checkoutSummary?.braceletPreviewImage || null } : null;
+  }
+  try {
+    const rows = await supabaseRequest('orders', {
+      params: {
+        select: SOCIAL_PROOF_PREVIEW_FIELD_SELECT,
+        'payload->>id': `eq.${id}`,
+        limit: '1'
+      }
+    });
+    return Array.isArray(rows) ? rows[0] || null : null;
+  } catch (error) {
+    console.warn('[crm-order-preview] read failed:', error?.message || error);
+    return null;
+  }
+}
+
+// TURN 10.1: which of these orders actually have a stored preview? Asking for the ids (and filtering on
+// `not.is.null`) costs a few hundred bytes and lets the list advertise a preview URL only where one
+// exists, so legacy orders without a snapshot keep rendering the SVG layout fallback exactly as before.
+async function readOrderIdsWithStoredPreview(ids = []) {
+  const wanted = ids.map((id) => String(id || '').trim()).filter(Boolean);
+  if (!wanted.length) return new Set();
+  if (!isSupabaseConfigured()) {
+    return new Set(readJsonArray('orders')
+      .filter((order) => readProjectedPreviewDataUrl({ preview: order?.braceletPreviewImage, checkoutPreview: order?.checkoutSummary?.braceletPreviewImage }))
+      .map((order) => getOrderId(order)));
+  }
+  try {
+    const rows = await supabaseRequest('orders', {
+      params: {
+        select: 'id:payload->>id',
+        'payload->>id': `in.(${wanted.join(',')})`,
+        or: '(payload->>braceletPreviewImage.not.is.null,payload->checkoutSummary->>braceletPreviewImage.not.is.null)'
+      }
+    });
+    return new Set((Array.isArray(rows) ? rows : []).map((row) => row.id).filter(Boolean));
+  } catch (error) {
+    // A lookup failure must not hide previews: fall back to advertising the URL for every id and let the
+    // client's error handler degrade gracefully.
+    console.warn('[crm-order-preview] existence lookup failed:', error?.message || error);
+    return new Set(wanted);
+  }
+}
+
+// The stored snapshot is a bounded `data:image/...;base64,...` string. Decode it once per request so the
+// browser receives image bytes rather than a 33% larger base64 wrapper inside JSON.
+function decodeStoredPreviewDataUrl(dataUrl) {
+  if (!isPublishablePreviewDataUrl(dataUrl)) return null;
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i.exec(dataUrl.trim());
+  if (!match) return null;
+  try {
+    const buffer = Buffer.from(match[2], 'base64');
+    if (!buffer.length) return null;
+    return { contentType: match[1].toLowerCase(), buffer };
+  } catch {
+    return null;
+  }
+}
+
+// Aggregate paid-order count. Returns a number only; it never reads or returns customer records and
+// never touches bracelet previews.
+async function readPaidOrderCountAggregate() {
+  if (!isSupabaseConfigured()) {
+    // Local/JSON mode (development and the offline harnesses): count in place, still without
+    // surfacing any field of any order.
+    return sortOrdersForApi(readJsonArray("orders")).filter((order) =>
+      String(order?.stripePaymentStatus || order?.paymentStatus || "").trim().toLowerCase() === "paid").length;
+  }
+  try {
+    const { serviceRoleKey } = getSupabaseConfig();
+    const params = applyCrmPaidOrderFilter({ select: "id:payload->>id", limit: 1 });
+    const response = await fetch(createSupabaseRestUrl("orders", params), {
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: "count=exact" }
+    });
+    if (response.ok) {
+      const total = Number(String(response.headers.get("content-range") || "").split("/")[1]);
+      if (Number.isFinite(total) && total >= 0) return total;
+    }
+  } catch (error) {
+    console.warn("[/api/social-proof] exact count unavailable; using the fallback count.", error?.message || error);
+  }
+  return readCrmPaidOrderCount();
+}
+
+async function readSocialProofForApi() {
+  const now = Date.now();
+  if (socialProofCache.payload && now - socialProofCache.at < SOCIAL_PROOF_CACHE_MS) {
+    return socialProofCache.payload;
+  }
+  let successfulOrderCount = 0;
+  try {
+    successfulOrderCount = await readPaidOrderCountAggregate();
+  } catch (error) {
+    console.warn("[/api/social-proof] count unavailable; returning the safe default.", error?.message || error);
+  }
+  let recentBracelets = [];
+  try {
+    recentBracelets = await readRecentBraceletPreviews(now);
+  } catch (error) {
+    console.warn("[/api/social-proof] previews unavailable; publishing the aggregate only.", error?.message || error);
+    recentBracelets = [];
+  }
+  const payload = {
+    displayCount: SOCIAL_PROOF_BASE_COUNT + successfulOrderCount * SOCIAL_PROOF_ORDER_MULTIPLIER,
+    successfulOrderCount,
+    recentBracelets
+  };
+  socialProofCache = { at: now, payload };
+  return payload;
+}
+
+// Newest paid order timestamp. Two tiny columns only, used to decide whether the preview set needs to
+// be rebuilt - the expensive read never runs for an unchanged catalogue of orders.
+async function readNewestPaidOrderStamp() {
+  if (!isSupabaseConfigured()) {
+    const paid = sortOrdersForApi(readJsonArray("orders")).filter(isPaidOrderRecord);
+    const newest = paid[0] || null;
+    return newest ? String(newest.created_at || newest.date || "") : "";
+  }
+  const params = applyCrmPaidOrderFilter({ select: "created_at", order: "created_at.desc", limit: 1 });
+  const rows = await supabaseRequest("orders", { params });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row ? String(row.created_at || "") : "";
+}
+
+// Bounded, newest-first read of the paid orders that can contribute a preview. Only the creation
+// timestamp and the two preview columns are requested, and the scan is capped, so the egress for a
+// refresh is a handful of small image payloads instead of the whole order table.
+async function readRecentBraceletPreviewSources() {
+  if (!isSupabaseConfigured()) {
+    return sortOrdersForApi(readJsonArray("orders"))
+      .filter(isPaidOrderRecord)
+      .map(readOrderPreviewDataUrl)
+      .filter(Boolean)
+      .slice(0, SOCIAL_PROOF_PREVIEW_SCAN_LIMIT);
+  }
+  const params = applyCrmPaidOrderFilter({
+    select: SOCIAL_PROOF_PREVIEW_FIELD_SELECT,
+    order: "created_at.desc",
+    limit: SOCIAL_PROOF_PREVIEW_SCAN_LIMIT
+  });
+  const rows = await supabaseRequest("orders", { params });
+  return (Array.isArray(rows) ? rows : []).map(readProjectedPreviewDataUrl).filter(Boolean);
+}
+
+// Publishes at most four optimized thumbnails. sharp re-encodes each stored render to a small square
+// WebP with metadata dropped (no EXIF/ICC/profile survives), which keeps the public payload tiny and
+// removes any embedded metadata before it can reach a visitor.
+async function buildSocialProofThumbnails(sources) {
+  const thumbs = [];
+  const sharp = getSocialProofSharp();
+  for (const source of sources) {
+    if (thumbs.length >= SOCIAL_PROOF_PREVIEW_COUNT) break;
+    const base64 = source.slice(source.indexOf(",") + 1);
+    let sourceBuffer;
+    try {
+      sourceBuffer = Buffer.from(base64, "base64");
+    } catch (error) {
+      continue;
+    }
+    if (!sourceBuffer.length) continue;
+    if (!sharp) {
+      // Graceful degradation: without the optimizer only modest stored previews are published, so a
+      // page view stays bounded even in that failure mode.
+      if (sourceBuffer.length <= 96000) thumbs.push(source);
+      continue;
+    }
+    try {
+      const thumbBuffer = await sharp(sourceBuffer, { failOn: "none" })
+        .resize(SOCIAL_PROOF_THUMB_PX, SOCIAL_PROOF_THUMB_PX, {
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255, alpha: 0 },
+          withoutEnlargement: false
+        })
+        .webp({ quality: SOCIAL_PROOF_THUMB_QUALITY, alphaQuality: 92, effort: 4 })
+        .toBuffer();
+      if (thumbBuffer && thumbBuffer.length) thumbs.push("data:image/webp;base64," + thumbBuffer.toString("base64"));
+    } catch (error) {
+      console.warn("[/api/social-proof] preview skipped:", error?.message || error);
+    }
+  }
+  return thumbs;
+}
+
+async function readRecentBraceletPreviews(now) {
+  const stamp = await readNewestPaidOrderStamp();
+  const cached = socialProofPreviewCache;
+  const ttl = cached.thumbs.length >= SOCIAL_PROOF_PREVIEW_COUNT ? SOCIAL_PROOF_PREVIEW_TTL_MS : SOCIAL_PROOF_PREVIEW_SHORT_TTL_MS;
+  if (cached.thumbs.length > 0 && cached.stamp === stamp && now - cached.at < ttl) {
+    return cached.thumbs;
+  }
+  const sources = await readRecentBraceletPreviewSources();
+  const thumbs = await buildSocialProofThumbnails(sources);
+  socialProofPreviewCache = { stamp, thumbs, at: now };
+  return thumbs;
+}
+
 async function readOrdersForApi() {
   if (!isSupabaseConfigured()) {
     const jsonOrders = sortOrdersForApi(readJsonArray("orders"));
@@ -3046,10 +4314,22 @@ function applyCrmPaidOrderFilter(params) {
   return params;
 }
 
+function stripOrderListPreview(order) {
+  if (!order || typeof order !== 'object') return order;
+  const { braceletPreviewImage, braceletPreviewDataUrl, braceletPreviewSnapshot, ...rest } = order;
+  return rest;
+}
+
 async function readCrmOrderProjection({ page = null, limit = null, paidOnly = false, includePreview = false } = {}) {
-  if (!isSupabaseConfigured()) return readOrdersForCrmApi();
+  if (!isSupabaseConfigured()) {
+    const rows = await readOrdersForCrmApi();
+    return includePreview ? rows : rows.map(stripOrderListPreview);
+  }
   const select = 'id:payload->>id,date:payload->>date,status:payload->>status,customerName:payload->>customerName,stripePaymentStatus:payload->>stripePaymentStatus,paymentStatus:payload->>paymentStatus,wristSize:payload->>wristSize,beadSize:payload->>beadSize,totalBeads:payload->>totalBeads,hasCharm:payload->>hasCharm,charmNameTh:payload->>charmNameTh,charmNameEn:payload->>charmNameEn,charmSku:payload->>charmSku,charmSizeCm:payload->>charmSizeCm,hasSpacer:payload->>hasSpacer,spacerCount:payload->>spacerCount,' + (includePreview ? 'braceletPreviewImage:payload->>braceletPreviewImage,braceletPreviewDataUrl:payload->>braceletPreviewDataUrl,braceletPreviewSnapshot:payload->>braceletPreviewSnapshot,checkoutBraceletPreviewImage:payload->checkoutSummary->>braceletPreviewImage,checkoutBraceletPreviewDataUrl:payload->checkoutSummary->>braceletPreviewDataUrl,checkoutBraceletPreviewSnapshot:payload->checkoutSummary->>braceletPreviewSnapshot,' : '') + 'costSnapshotStatus:payload->costSnapshot->>status,costSnapshotMaterialCost:payload->costSnapshot->>materialCost,costSnapshotDeliveryCost:payload->costSnapshot->>deliveryCost,costSnapshotTotalCost:payload->costSnapshot->>totalCost,costSnapshotProfit:payload->costSnapshot->>profit,costSnapshotMarginPercent:payload->costSnapshot->>marginPercent,subtotal:payload->>subtotal,discountPercent:payload->>discountPercent,discountAmount:payload->>discountAmount,totalPrice:payload->>totalPrice,finalPrice:payload->>finalPrice,netPrice:payload->>netPrice,checkoutSubtotal:payload->checkoutSummary->>subtotal,checkoutDiscountPercent:payload->checkoutSummary->>discountPercent,checkoutDiscountAmount:payload->checkoutSummary->>discountAmount,checkoutTotalPrice:payload->checkoutSummary->>totalPrice,checkoutFinalPrice:payload->checkoutSummary->>finalPrice,checkoutNetPrice:payload->checkoutSummary->>netPrice,created_at';
-  const params = { select, order: 'date.desc.nullslast,created_at.desc' };
+  // The authenticated CRM order cards present the same shipping information as View Detail, so the
+  // projection carries the recipient/phone/address fields. No public route reads this projection.
+  const selectWithShipping = select + ',shippingCarrier:payload->>shippingCarrier,shippingCarrierCustom:payload->>shippingCarrierCustom,trackingNumber:payload->>trackingNumber,trackingUrl:payload->>trackingUrl,recipientName:payload->>recipientName,phoneNumber:payload->>phoneNumber,addressLine:payload->>addressLine,province:payload->>province,postalCode:payload->>postalCode,shippingInfo:payload->shippingInfo';
+  const params = { select: selectWithShipping, order: 'date.desc.nullslast,created_at.desc' };
   if (paidOnly) applyCrmPaidOrderFilter(params);
   if (Number.isInteger(page) && Number.isInteger(limit)) { params.limit = limit; params.offset = (page - 1) * limit; }
   const rows = await supabaseRequest('orders', { params });
@@ -3060,7 +4340,14 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
     braceletPreviewImage: row.braceletPreviewImage,
     braceletPreviewDataUrl: row.braceletPreviewDataUrl,
     braceletPreviewSnapshot: row.braceletPreviewSnapshot,
-    checkoutSummary: { braceletPreviewImage: row.checkoutBraceletPreviewImage, braceletPreviewDataUrl: row.checkoutBraceletPreviewDataUrl, braceletPreviewSnapshot: row.checkoutBraceletPreviewSnapshot },
+    // Fall back to the legacy top-level address fields exactly like getOrderShippingInfo in crm.js.
+    shippingInfo: {
+      recipientName: row.shippingInfo?.recipientName ?? row.recipientName ?? '',
+      phoneNumber: row.shippingInfo?.phoneNumber ?? row.phoneNumber ?? '',
+      addressLine: row.shippingInfo?.addressLine ?? row.addressLine ?? '',
+      province: row.shippingInfo?.province ?? row.province ?? '',
+      postalCode: row.shippingInfo?.postalCode ?? row.postalCode ?? ''
+    },
     costSnapshot: {
       status: row.costSnapshotStatus,
       materialCost: row.costSnapshotMaterialCost,
@@ -3070,6 +4357,13 @@ async function readCrmOrderProjection({ page = null, limit = null, paidOnly = fa
       marginPercent: row.costSnapshotMarginPercent
     },
     checkoutSummary: {
+      // TASK B1 (2026-10-12): this literal used to be assigned twice, and the second assignment threw
+      // the preview fields away - so an order whose bracelet preview lives only in checkoutSummary
+      // (which includePreview=1 explicitly pays to fetch) rendered an order card with no preview even
+      // though View Detail could resolve it. The projection now keeps both halves in one object.
+      braceletPreviewImage: row.checkoutBraceletPreviewImage,
+      braceletPreviewDataUrl: row.checkoutBraceletPreviewDataUrl,
+      braceletPreviewSnapshot: row.checkoutBraceletPreviewSnapshot,
       subtotal: row.checkoutSubtotal,
       discountPercent: row.checkoutDiscountPercent,
       discountAmount: row.checkoutDiscountAmount,
@@ -3449,31 +4743,109 @@ async function handleApiRequest(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = req.method;
 
+  // SECURITY HOTFIX: sensitive order/CRM/payment/business responses must never be cached by
+  // shared caches or intermediaries. Applied to the whole sensitive surface up front.
+  if (pathname === '/api/orders' ||
+      pathname === '/api/analytics/summary' ||
+      pathname === '/api/stripe/checkout-session' ||
+      pathname === '/api/stripe/purchase-tracking' ||
+      pathname === '/api/purchases' ||
+      pathname.startsWith('/api/purchases/') ||
+      pathname === '/api/purchase-costs' ||
+      pathname.startsWith('/api/purchase-costs/') ||
+      pathname.startsWith('/api/crm/') ||
+      pathname.startsWith('/api/admin/')) {
+    res.setHeader('Cache-Control', 'private, no-store');
+  }
+
   if (pathname === '/api/crm/overview' && method === 'GET') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     sendJson(res, 200, buildCrmOverview(await readCrmOrderProjection({ paidOnly: true })));
     return true;
   }
 
   if (pathname.startsWith('/api/crm/orders/') && method === 'GET') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
+    // TURN 10.1: an order's saved bracelet preview is an immutable snapshot, so it is served as raw
+    // image bytes from its own authenticated, immutably cacheable URL instead of being inlined as
+    // base64 in every order row of every list page. The read selects only the two preview columns, so
+    // producing one preview no longer drags the whole ~113 KB order payload through Supabase.
+    if (pathname.endsWith('/preview')) {
+      const previewOrderId = decodeURIComponent(pathname.slice('/api/crm/orders/'.length, -'/preview'.length));
+      const row = await readOrderPreviewRow(previewOrderId);
+      const dataUrl = row ? readProjectedPreviewDataUrl(row) : null;
+      const decoded = decodeStoredPreviewDataUrl(dataUrl);
+      if (!decoded) { sendJson(res, 404, { error: 'No bracelet preview stored for this order.' }); return true; }
+      const etag = `W/"${crypto.createHash('sha1').update(decoded.buffer).digest('hex')}"`;
+      const inm = String(req.headers['if-none-match'] || '');
+      res.setHeader('Content-Type', decoded.contentType);
+      res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
+      res.setHeader('Vary', 'Cookie');
+      setCorsHeaders(res);
+      if (inm.split(',').map((value) => value.trim()).includes(etag)) { res.statusCode = 304; res.end(); return true; }
+      res.statusCode = 200;
+      res.end(decoded.buffer);
+      return true;
+    }
     const orderId = decodeURIComponent(pathname.slice('/api/crm/orders/'.length));
-    const rows = await supabaseRequest('orders', { params: { select: 'payload', 'payload->>id': `eq.${orderId}`, limit: '1' } });
-    const order = Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+    const order = await readOrderByIdScoped(orderId);
     if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
     order.adminOrderNumber = await getAdminOrderNumberForOrderId(orderId);
-    sendJson(res, 200, order);
+    const shippedNotificationRow = await readShippedNotificationIntent(orderId);
+    if (shippedNotificationRow) {
+      order.shippedNotification = serializeShippedNotification(shippedNotificationRow);
+    } else if (order?.notifications?.shippedSentAt) {
+      order.shippedNotification = { state: 'sent', sentAt: order.notifications.shippedSentAt };
+    }
+    // TURN 10: an order detail is a large authenticated document (design + preview). A private
+    // validator lets the operator's browser reuse it across card/detail navigation instead of
+    // re-transferring ~117 KB per open, without any shared-cache exposure.
+    sendJsonValidated(req, res, 200, order, { cacheControl: 'private, max-age=60, must-revalidate', vary: 'Cookie' });
     return true;
   }
 
   if (pathname === '/api/crm/orders' && method === 'GET') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     const page = Math.max(1, Math.trunc(Number(urlObj.searchParams.get('page')) || 1));
     const limit = Math.min(100, Math.max(1, Math.trunc(Number(urlObj.searchParams.get('limit')) || 20)));
+    // TURN 10.1: `previewMode=url` is the new, smaller transport - the list carries a per-order
+    // authenticated preview URL instead of 20 inline base64 images. `includePreview=1` keeps working
+    // exactly as before for any client that has not been updated yet, so the two sides can deploy in
+    // any order.
+    const previewModeUrl = urlObj.searchParams.get('previewMode') === 'url';
     const [rows, total] = await Promise.all([
-      readCrmOrderProjection({ page, limit, paidOnly: true, includePreview: true }),
+      readCrmOrderProjection({ page, limit, paidOnly: true, includePreview: urlObj.searchParams.get('includePreview') === '1' }),
       readCrmPaidOrderCount()
     ]);
     const orders = rows.map(toCrmOrderSummary);
+    try {
+      const notificationRows = await readShippedNotificationIntents(orders.map((order) => order.id));
+      for (const order of orders) {
+        const notificationRow = notificationRows.get(order.id);
+        if (notificationRow) order.shippedNotification = serializeShippedNotification(notificationRow);
+      }
+    } catch (error) {
+      console.warn(`[crm-orders] notification status lookup failed category=${error?.code || 'read_error'}`);
+    }
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    sendJson(res, 200, { page, limit, total, totalPages, orders, hasMore: page < totalPages });
+    if (previewModeUrl) {
+      const withPreview = await readOrderIdsWithStoredPreview(orders.map((order) => order.id));
+      for (const order of orders) {
+        order.braceletPreviewUrl = order.id && withPreview.has(order.id)
+          ? `/api/crm/orders/${encodeURIComponent(order.id)}/preview`
+          : '';
+      }
+    }
+    // TURN 10: the list page is re-fetched on every pagination click; a private validator makes a
+    // revisit a 304 instead of another preview-heavy body.
+    // `previewTransport` is an explicit capability marker: a CRM client that asked for `previewMode=url`
+    // can tell an upgraded backend from an older one and only then stop expecting inline snapshots, so
+    // the frontend and backend can be deployed in either order without operators losing previews.
+    sendJsonValidated(req, res, 200, {
+      page, limit, total, totalPages, orders, hasMore: page < totalPages,
+      ...(previewModeUrl ? { previewTransport: 'url' } : {})
+    }, { cacheControl: 'private, max-age=60, must-revalidate', vary: 'Cookie' });
     return true;
   }
 
@@ -3537,6 +4909,43 @@ async function handleApiRequest(req, res, urlObj) {
   const bodyObj = req.headers["content-length"] || req.headers["transfer-encoding"]
     ? await parseJsonBody(req)
     : null;
+
+  // ---- admin operator session endpoints (Phase 2) --------------------------
+  if (pathname === '/api/admin/session' && method === 'GET') {
+    if (!adminApiConfigured()) { sendJson(res, 503, { authenticated: false, error: 'Admin API is not configured.' }); return true; }
+    const session = getAdminSession(req);
+    if (!session) { sendJson(res, 200, { authenticated: false, csrf: '', username: '' }); return true; }
+    sendJson(res, 200, { authenticated: true, csrf: String(session.csrf || ''), username: String(session.user || getAdminUsername()) });
+    return true;
+  }
+  if (pathname === '/api/admin/login' && method === 'POST') {
+    if (!adminApiConfigured()) { sendJson(res, 503, { authenticated: false, error: 'Admin API is not configured.' }); return true; }
+    const passwordHash = getAdminPasswordHash();
+    if (!passwordHash) { sendJson(res, 503, { authenticated: false, error: 'Admin dashboard authentication is not configured.' }); return true; }
+    if (adminLoginRateLimited(req)) { sendJson(res, 429, { authenticated: false, error: 'Too many attempts. Try again later.' }); return true; }
+    const username = String(bodyObj?.username || '').trim();
+    const password = String(bodyObj?.password || '');
+    const passOk = await verifyAdminPassword(password, passwordHash);
+    const userOk = username === getAdminUsername();
+    if (!userOk || !passOk) {
+      recordAdminLoginFailure(req);
+      sendJson(res, 401, { authenticated: false, error: 'Invalid credentials.' });
+      return true;
+    }
+    clearAdminLoginFailures(req);
+    const session = createAdminSessionToken();
+    if (!session) { sendJson(res, 503, { authenticated: false, error: 'Admin session unavailable.' }); return true; }
+    setAdminSessionCookies(res, session);
+    sendJson(res, 200, { authenticated: true, csrf: session.payload.csrf, username: session.payload.user });
+    return true;
+  }
+  if (pathname === '/api/admin/logout' && method === 'POST') {
+    const active = getAdminSession(req);
+    if (active && active.jti) revokedAdminSessions.set(active.jti, Number(active.exp) || (Date.now() + ADMIN_SESSION_TTL_MS));
+    clearAdminSessionCookies(res);
+    sendJson(res, 200, { authenticated: false });
+    return true;
+  }
 
   if (pathname === '/api/internal/deferred-login-qa-sessions' && method === 'POST') {
     if (!hasDeferredLoginQaAdminAccess(req)) {
@@ -3663,6 +5072,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/uploads/image" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
@@ -3769,6 +5179,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/storage/status" && method === "GET") {
+    if (!requireAdminAccess(req, res)) return true;
     sendJson(res, 200, {
       mode: getStorageMode(),
       supabaseConfigured: isSupabaseConfigured(),
@@ -3799,7 +5210,29 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === '/api/lucky/birthday' && method === 'POST') {
+    if (!isSameOriginBrowserRequest(req) || !bodyObj) {
+      sendJson(res, 403, { success: false });
+      return true;
+    }
+    if (Buffer.byteLength(JSON.stringify(bodyObj), 'utf8') > 8 * 1024) {
+      sendJson(res, 413, { success: false });
+      return true;
+    }
+    try {
+      const result = await saveLuckyBirthday(bodyObj);
+      sendJson(res, result.status, { success: result.ok, code: result.code });
+    } catch (error) {
+      // Log only an allowlisted category: birth dates, session IDs, and keys must never reach logs.
+      const code = classifyLuckyBirthdayPersistenceError(error);
+      console.warn(`[lucky-birthday] persistence failed category=${code}`);
+      sendJson(res, 503, { success: false, code });
+    }
+    return true;
+  }
+
   if ((pathname === "/api/analytics/summary" || pathname === "/api/crm/analytics/summary") && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     try {
       sendJson(res, 200, await buildAnalyticsSummary(urlObj.searchParams));
     } catch (error) {
@@ -3829,6 +5262,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchases" && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const entries = await supabaseRequest('stone_purchase_entries', { params: { select: '*', order: 'purchased_at.desc,created_at.desc' } });
     sendJson(res, 200, Array.isArray(entries) ? entries : []);
@@ -3836,6 +5270,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchase-costs/stones" && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Stone purchase costs require Supabase.');
     const entries = await supabaseRequest('stone_purchase_entries', { params: { select: 'catalog_item_id,size_mm,quantity,total_cost', item_type: 'eq.stone', catalog_item_id: 'not.is.null' } });
     const summaries = new Map();
@@ -3853,6 +5288,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchase-costs" && method === "GET") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase costs require Supabase.');
     const entries = await supabaseRequest('stone_purchase_entries', { params: { select: 'item_type,catalog_item_id,size_mm,quantity,total_cost', item_type: 'in.(stone,charm,spacer)', catalog_item_id: 'not.is.null' } });
     const summaries = { stones: new Map(), charms: new Map(), spacers: new Map() };
@@ -3886,6 +5322,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/purchases" && method === "POST") {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);
     const entry = normalizePurchaseEntry(bodyObj, { stones, charms, spacers });
@@ -3895,6 +5332,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith('/api/purchases/') && pathname.endsWith('/catalog-link') && method === 'PATCH') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length, -'/catalog-link'.length));
     const catalogItemId = String(bodyObj?.catalogItemId || '').trim();
@@ -3933,6 +5371,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith('/api/purchases/') && method === 'PUT') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
     const [stones, charms, spacers] = await Promise.all([readStonesForApi(), readCharmsForApi(), readSpacersForApi()]);
@@ -3944,6 +5383,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith('/api/purchases/') && method === 'DELETE') {
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     if (!isSupabaseConfigured()) throw new Error('Purchase history requires Supabase.');
     const id = decodeURIComponent(pathname.slice('/api/purchases/'.length));
     const rows = await supabaseRequest('stone_purchase_entries', { method: 'DELETE', params: { id: `eq.${id}` }, prefer: 'return=representation' });
@@ -3953,11 +5393,12 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/stones" && method === "GET") {
-    sendJson(res, 200, await readStonesForApi());
+    sendJsonValidated(req, res, 200, await readStonesForApi());
     return true;
   }
 
   if (pathname === "/api/stones/save" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
@@ -3991,6 +5432,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/stones/delete" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { success: false, error: "Missing ID" });
       return true;
@@ -4020,6 +5462,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith("/api/stones/") && method === "DELETE") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     const stoneId = decodeURIComponent(pathname.slice("/api/stones/".length));
     if (!stoneId) {
       sendJson(res, 400, { error: "Missing stone ID" });
@@ -4050,16 +5493,17 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/charms" && method === "GET") {
-    sendJson(res, 200, await readCharmsForApi());
+    sendJsonValidated(req, res, 200, await readCharmsForApi());
     return true;
   }
 
   if (pathname === "/api/spacers" && method === "GET") {
-    sendJson(res, 200, await readSpacersForApi());
+    sendJsonValidated(req, res, 200, await readSpacersForApi());
     return true;
   }
 
   if (pathname === "/api/charms" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { error: "Missing charm ID" });
       return true;
@@ -4090,6 +5534,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/charms/delete" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id) {
       sendJson(res, 400, { error: "Missing charm ID" });
       return true;
@@ -4119,6 +5564,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith("/api/charms/")) {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     const charmId = decodeURIComponent(pathname.slice("/api/charms/".length));
     if (!charmId) {
       sendJson(res, 400, { error: "Missing charm ID" });
@@ -4184,6 +5630,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname.startsWith("/api/spacers/")) {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     const spacerId = decodeURIComponent(pathname.slice("/api/spacers/".length));
     if (!spacerId) {
       sendJson(res, 400, { error: "Missing spacer ID" });
@@ -4212,12 +5659,76 @@ async function handleApiRequest(req, res, urlObj) {
     }
   }
 
+  if (pathname === "/api/social-proof" && method === "GET") {
+    // Public, anonymous, cacheable: the CDN and the browser reuse the payload so a landing-page view
+    // does not reach the origin (and therefore not Supabase) on every load.
+    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=600");
+    sendJson(res, 200, await readSocialProofForApi());
+    return true;
+  }
+
   if (pathname === "/api/orders" && method === "GET") {
-    sendJson(res, 200, await readOrdersForApi());
+    // SECURITY HOTFIX: the full order collection is never returned to a client.
+    // A caller must present either the Stripe checkout session id (the existing
+    // server-validated Stripe-return entitlement) or a signed, expiring,
+    // order-scoped access token.
+    res.setHeader('Cache-Control', 'private, no-store');
+    const sessionId = String(urlObj.searchParams.get('session_id') || '').trim();
+    const orderId = String(urlObj.searchParams.get('orderId') || '').trim();
+    const orderToken = String(urlObj.searchParams.get('t') || '').trim();
+    if (sessionId) {
+      const order = await readOrderBySessionIdScoped(sessionId);
+      if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
+      sendJson(res, 200, [order]);
+      return true;
+    }
+    if (orderId && verifyOrderAccessToken(orderId, orderToken)) {
+      const order = await readOrderByIdScoped(orderId);
+      if (!order) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
+      sendJson(res, 200, [order]);
+      return true;
+    }
+    sendJson(res, 403, { error: 'Order access requires a valid session or order access token.' });
+    return true;
+  }
+
+  if (pathname === '/api/orders/reauthorize' && method === 'POST') {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const idToken = String(bodyObj?.idToken || bodyObj?.id_token || '').trim();
+    const requestedOrderId = String(bodyObj?.orderId || '').trim();
+    if (!idToken) { sendJson(res, 400, { error: 'A LINE ID token is required.' }); return true; }
+    const channelId = getLineLoginChannelId();
+    if (!channelId) { sendJson(res, 503, { error: 'LINE reauthorization is not configured.' }); return true; }
+    let lineUserId = '';
+    try {
+      lineUserId = await verifyLineIdToken(idToken, channelId);
+    } catch (error) {
+      console.warn('[orders] LINE reauthorization verify failed:', error?.message || error);
+    }
+    if (!lineUserId) { sendJson(res, 401, { error: 'LINE identity could not be verified.' }); return true; }
+    try {
+      const owned = await readOrdersByLineUserIdScoped(lineUserId);
+      const scoped = requestedOrderId ? owned.filter((order) => getOrderId(order) === requestedOrderId) : owned;
+      if (requestedOrderId && scoped.length === 0) { sendJson(res, 404, { error: 'Order not found.' }); return true; }
+      const orders = scoped.slice(0, 50).map((order) => ({
+        id: getOrderId(order),
+        date: order?.date || '',
+        status: order?.status || '',
+        totalPrice: Number(order?.totalPrice ?? order?.finalPrice ?? order?.netPrice ?? 0),
+        token: createOrderAccessToken(getOrderId(order))
+      })).filter((entry) => entry.id && entry.token);
+      sendJson(res, 200, { orders });
+    } catch (error) {
+      console.warn('[orders] reauthorization lookup failed:', error?.message || error);
+      sendJson(res, 500, { error: 'Unable to load orders.' });
+    }
     return true;
   }
 
   if (pathname === "/api/crm/orders" && method === "GET") {
+    // Defensive: this branch is unreachable (the paginated handler above always returns first),
+    // but it must never become an unguarded path if the route order ever changes.
+    if (!hasAdminApiAccess(req)) { denyAdminApi(res); return true; }
     sendJson(res, 200, await readOrdersForCrmApi());
     return true;
   }
@@ -4308,73 +5819,76 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/orders/update-status" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj || !bodyObj.id || bodyObj.status == null) {
       sendJson(res, 400, { error: "Missing parameters" });
       return true;
     }
 
-    if (isSupabaseConfigured()) {
-      const previousOrder = await getSupabaseRecordById("orders", bodyObj.id);
-      if (previousOrder) {
-        if (isUnpaidStripeCheckoutOrder(previousOrder)) {
-          sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
-          return true;
-        }
-        let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
-
-        try {
-          const notificationResult = await trySendShippedLineNotification(previousOrder, nextOrder);
-          if (notificationResult.sent) {
-            nextOrder = notificationResult.order;
-          }
-        } catch (error) {
-          console.error(`Failed to send shipped LINE notification for ${bodyObj.id}:`, error);
-        }
-
-        await upsertSupabaseRow("orders", buildOrderRow(nextOrder));
-      }
-
-      sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
+    const orderId = String(bodyObj.id || '').trim();
+    if (!orderId || orderId.length > 120 || /[\u0000-\u001F\u007F]/.test(orderId)) {
+      sendJson(res, 400, { error: "Invalid order ID." });
       return true;
     }
 
-    const orders = readJsonArray("orders");
-    const orderIndex = orders.findIndex((entry) => entry && entry.id === bodyObj.id);
-    if (orderIndex >= 0) {
-      const previousOrder = orders[orderIndex];
-      if (isUnpaidStripeCheckoutOrder(previousOrder)) {
-        sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
-        return true;
-      }
-      let nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
-      orders[orderIndex] = nextOrder;
-      writeJsonFile(dataFiles.orders, orders);
+    let previousOrder;
+    try {
+      previousOrder = await readOrderByIdScoped(orderId);
+    } catch {
+      sendJson(res, 500, { error: "Unable to read the order." });
+      return true;
+    }
+    if (!previousOrder) {
+      sendJson(res, 404, { error: "Order not found." });
+      return true;
+    }
+    if (isUnpaidStripeCheckoutOrder(previousOrder)) {
+      sendJson(res, 409, { error: "Unpaid Stripe Checkout orders cannot enter the fulfillment workflow." });
+      return true;
+    }
 
+    const validation = validateOrderWorkflowUpdate(previousOrder, bodyObj);
+    if (!validation.ok) {
+      sendJson(res, validation.status, { error: validation.error });
+      return true;
+    }
+
+    const nextOrder = applyOrderWorkflowUpdates(previousOrder, bodyObj);
+    let confirmedOrder;
+    try {
+      await saveOrderForApi(nextOrder);
+      confirmedOrder = await readOrderByIdScoped(orderId);
+      if (!confirmedOrder || !confirmedOrderMatchesUpdate(confirmedOrder, bodyObj)) {
+        throw new Error("Saved order confirmation mismatch.");
+      }
+    } catch (error) {
+      console.error(`[orders] update persistence failed order=${orderId} category=${error?.code || 'persistence_error'}`);
+      sendJson(res, 500, { error: "Unable to save the order status and shipping details." });
+      return true;
+    }
+
+    let notification = { state: 'skipped' };
+    if (normalizeOrderStatus(confirmedOrder.status) === 'Shipped') {
       try {
-        const notificationResult = await trySendShippedLineNotification(previousOrder, nextOrder);
-        if (notificationResult.sent) {
-          nextOrder = notificationResult.order;
-          orders[orderIndex] = nextOrder;
-          writeJsonFile(dataFiles.orders, orders);
-        }
+        const notificationResult = await trySendShippedLineNotification(previousOrder, confirmedOrder, { persistenceConfirmed: true });
+        notification = notificationResult.notification;
       } catch (error) {
-        console.error(`Failed to send shipped LINE notification for ${bodyObj.id}:`, error);
+        console.warn(`[shipped-line-notify] outbox failure order=${orderId} category=${error?.deliveryCode || 'outbox_error'}`);
+        notification = { state: 'failed', lastErrorCode: 'outbox_error' };
       }
-
-      sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
-      return true;
     }
-
-    sendJson(res, 200, { success: true, id: bodyObj.id, status: bodyObj.status });
+    confirmedOrder.shippedNotification = notification;
+    sendJson(res, 200, { success: true, order: confirmedOrder, notification });
     return true;
   }
 
   if (pathname === "/api/settings" && method === "GET") {
-    sendJson(res, 200, await readSettingsForApi());
+    sendJsonValidated(req, res, 200, await readSettingsForApi());
     return true;
   }
 
   if (pathname === "/api/settings/save" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     if (!bodyObj) {
       sendJson(res, 400, { error: "Empty body" });
       return true;
@@ -4390,6 +5904,7 @@ async function handleApiRequest(req, res, urlObj) {
   }
 
   if (pathname === "/api/reset" && method === "POST") {
+    if (!requireAdminAccess(req, res, { write: true })) return true;
     restoreSeedData();
     sendJson(res, 200, { success: true });
     return true;
@@ -4407,22 +5922,43 @@ function resolveRootDocument(req) {
 }
 
 function sanitizeStaticPath(pathname) {
-  const decoded = decodeURIComponent(pathname || "/");
-  if (decoded === "/") {
-    return resolveRootDocument({ headers: { host: "" } });
+  // Returns a safe relative path, or null when the request is not a plain,
+  // single-encoded static path. Traversal is rejected instead of silently
+  // rewritten, so two different requests can never alias the same file.
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(String(pathname || "/"));
+  } catch {
+    return null; // malformed percent-encoding
   }
+  if (!decoded.startsWith("/")) return null;
+  if (/%[0-9a-f]{2}/i.test(decoded)) return null; // double-encoded input
+  if (decoded.includes("\0") || decoded.includes("\\")) return null;
 
-  const normalized = path.normalize(decoded).replace(/^(\.\.(\/|\\|$))+/, "");
-  return normalized.replace(/^[/\\]+/, "");
+  const normalized = path.posix.normalize(decoded);
+  if (!normalized.startsWith("/")) return null;
+
+  const relative = normalized.replace(/^\/+/, "");
+  if (!relative) return null;
+  if (relative.split("/").some((segment) => segment === "." || segment === ".." || segment === "")) return null;
+  return relative;
 }
 
 async function serveStaticFile(req, res, urlObj) {
   const relativePath = urlObj.pathname === "/"
     ? resolveRootDocument(req)
     : sanitizeStaticPath(urlObj.pathname);
-  const localFile = path.join(workspaceDir, relativePath);
 
-  if (!localFile.startsWith(workspaceDir)) {
+  // SECURITY HOTFIX: static serving is an allowlist. A path that is not an
+  // approved public web asset is answered exactly like a missing file.
+  if (!relativePath || !isPublicStaticAsset(relativePath)) {
+    sendText(res, 404, `File Not Found: ${urlObj.pathname}`);
+    return;
+  }
+
+  const localFile = path.join(workspaceDir, relativePath);
+  const workspaceBoundary = workspaceDir.endsWith(path.sep) ? workspaceDir : workspaceDir + path.sep;
+  if (localFile !== workspaceDir && !localFile.startsWith(workspaceBoundary)) {
     sendText(res, 403, "Forbidden");
     return;
   }
@@ -4434,7 +5970,15 @@ async function serveStaticFile(req, res, urlObj) {
       return;
     }
 
-    const content = await fsp.readFile(localFile);
+    // Containment is re-checked on the resolved target so a symlink inside the
+    // workspace cannot be used to read a file outside it.
+    const realFile = await fsp.realpath(localFile);
+    if (realFile !== workspaceDir && !realFile.startsWith(workspaceBoundary)) {
+      sendText(res, 403, "Forbidden");
+      return;
+    }
+
+    const content = await fsp.readFile(realFile);
     const ext = path.extname(localFile).toLowerCase();
     res.statusCode = 200;
     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
@@ -4460,6 +6004,15 @@ const server = http.createServer(async (req, res) => {
     }
 
     const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+    // SECURITY HOTFIX: a request target beginning with "//" is parsed as a protocol-relative
+    // URL, so `new URL("//server.js", base)` would silently turn "server.js" into a host and
+    // resolve the path to "/". Such a target is never a legitimate static request - reject it
+    // instead of answering with the application document.
+    if (/^\/\//.test(String(req.url || ""))) {
+      sendText(res, 404, `File Not Found: ${req.url}`);
+      return;
+    }
 
     if (urlObj.pathname.startsWith("/api/")) {
       try {
