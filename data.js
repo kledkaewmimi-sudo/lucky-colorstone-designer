@@ -14,6 +14,38 @@ const CANONICAL_CATEGORY_LABELS = {
 
 export const CATALOG_LAYOUT_ORDER_STORAGE_KEY = "lucky_crm_catalog_layout_order";
 
+// Out-of-stock customer display preference. Kept separate from stock quantity and
+// active/inactive state; stored inside each catalog record's JSONB payload.
+export const OUT_OF_STOCK_DISPLAY_MODES = Object.freeze(['sold_out', 'hide']);
+
+export function normalizeOutOfStockDisplayMode(value) {
+  return String(value || '').trim().toLowerCase() === 'hide' ? 'hide' : 'sold_out';
+}
+
+export function getCatalogAvailabilityState(item) {
+  if (!item || typeof item !== 'object') return 'hidden';
+  if (item.isActive === false || item.availability?.isActive === false) return 'hidden';
+
+  const stockQty = normalizeStockQty(
+    item.stockQty ?? item.stock_qty ?? item.availability?.stockQty ?? item.availability?.stock_qty,
+    null
+  );
+  const mode = normalizeOutOfStockDisplayMode(
+    item.outOfStockDisplayMode ?? item.out_of_stock_display_mode ??
+    item.availability?.outOfStockDisplayMode ?? item.availability?.out_of_stock_display_mode
+  );
+
+  // A zero stock quantity is the authoritative out-of-stock signal. The legacy
+  // inStock flag is derived on write and must not override the chosen display mode.
+  if (stockQty !== null && stockQty <= 0) {
+    return mode === 'hide' ? 'hidden' : 'sold_out';
+  }
+
+  // Preserve the existing manual "in stock" control for positive-stock records.
+  if (item.inStock === false || item.availability?.inStock === false) return 'hidden';
+  return 'normal';
+}
+
 // Bump this when replacing catalog assets with the same filename so browsers/CDNs fetch the new file.
 export const ASSET_VERSION = "20260804-blue-diamond-ball-normalized";
 
@@ -360,6 +392,7 @@ function normalizeStoneRecord(record, index = 0) {
   const categoryId = String(record.categoryId || record.category || "").trim();
   const normalizedCategory = categoryId || "uncategorized";
   const stockQty = normalizeStockQty(record.stockQty ?? record.stock_qty ?? record.availability?.stockQty ?? record.availability?.stock_qty, null);
+  const outOfStockDisplayMode = normalizeOutOfStockDisplayMode(record.outOfStockDisplayMode ?? record.out_of_stock_display_mode ?? record.availability?.outOfStockDisplayMode ?? record.availability?.out_of_stock_display_mode);
   const normalizeManualCost = (value) => {
     if (value === undefined || value === null || value === '') return null;
     const numeric = Number(value);
@@ -389,6 +422,8 @@ function normalizeStoneRecord(record, index = 0) {
       ? [...new Set(record.sizes.map((size) => Number(size) === 8 ? 10 : Number(size)))]
       : [4, 6, 10],
     stockQty,
+    outOfStockDisplayMode,
+    out_of_stock_display_mode: outOfStockDisplayMode,
     inStock: record.inStock !== false && (stockQty === null || stockQty > 0),
     isActive: record.isActive !== false
   };
@@ -463,7 +498,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative orange spacer bead",
     inStock: true,
     displayOrder: 10
@@ -479,7 +514,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative pink spacer bead",
     inStock: true,
     displayOrder: 20
@@ -495,7 +530,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative purple spacer bead",
     inStock: true,
     displayOrder: 30
@@ -511,7 +546,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 0,
+    price: 15,
     description: "Decorative white spacer bead",
     inStock: true,
     displayOrder: 40
@@ -531,7 +566,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 9,
     effectiveLengthMm: 9,
     renderSizeMm: 9,
-    price: 120,
+    price: 15,
     stockQty: 20,
     inStock: true,
     isActive: true,
@@ -551,7 +586,7 @@ export const SPACER_CATALOG = Object.freeze([
     displaySizeMm: 7,
     effectiveLengthMm: 7,
     renderSizeMm: 7,
-    price: 0,
+    price: 10,
     description: "Decorative gold spacer bead",
     inStock: true,
     displayOrder: 50
@@ -568,7 +603,7 @@ export const SPACER_CATALOG = Object.freeze([
     effectiveLengthMm: 1,
     thicknessMm: 1,
     renderSizeMm: 6,
-    price: 0,
+    price: 9,
     description: "Flat gold flower spacer",
     inStock: true,
     displayOrder: 60
@@ -585,10 +620,72 @@ export const SPACER_CATALOG = Object.freeze([
     effectiveLengthMm: 1,
     thicknessMm: 1,
     renderSizeMm: 6,
-    price: 0,
+    price: 9,
     description: "Flat silver flower spacer",
     inStock: true,
     displayOrder: 70
+  },
+  {
+    id: 'mallow',
+    sku: 'SP-MALLOW',
+    slug: 'mallow',
+    name: { en: 'Mallow', th: '\u0E2D\u0E31\u0E0D\u0E21\u0E13\u0E35\u0E41\u0E2B\u0E48\u0E07\u0E40\u0E2A\u0E19\u0E48\u0E2B\u0E4C' },
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'gold',
+    image: { primary: '/assets/spacers/Mallow.webp' },
+    inStock: true,
+    meaning: { en: 'Mushroom hanging charm', th: '' },
+    pricing: { base: 150 },
+    business: {
+      sizeMm: 33.5,
+      displaySizeMm: 33.5,
+      effectiveLengthMm: 4.2,
+      renderSizeMm: 33.5,
+      renderWidthMm: 17,
+      renderHeightMm: 33.5,
+      attachmentLoopMm: 4.2,
+      thicknessMm: 0
+    },
+    isActive: true,
+    stockQty: 50,
+    stock_qty: 50,
+    categoryId: 'spacer',
+    collection: 'spacer',
+    entityType: 'spacer',
+    availability: { inStock: true, isActive: true, stockQty: 50, stock_qty: 50 },
+    displayOrder: 80
+  },
+  {
+    id: 'pony',
+    sku: 'SP-PONY',
+    slug: 'pony',
+    name: { en: 'Pony', th: '\u0E21\u0E49\u0E32\u0E41\u0E2B\u0E48\u0E07\u0E1D\u0E31\u0E19' },
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'pink',
+    image: { primary: '/assets/spacers/Pony.webp' },
+    inStock: true,
+    meaning: { en: 'Horse hanging charm', th: '' },
+    pricing: { base: 150 },
+    business: {
+      sizeMm: 30,
+      displaySizeMm: 30,
+      effectiveLengthMm: 4.2,
+      renderSizeMm: 30,
+      renderWidthMm: 21,
+      renderHeightMm: 30,
+      attachmentLoopMm: 4.2,
+      thicknessMm: 0
+    },
+    isActive: true,
+    stockQty: 50,
+    stock_qty: 50,
+    categoryId: 'spacer',
+    collection: 'spacer',
+    entityType: 'spacer',
+    availability: { inStock: true, isActive: true, stockQty: 50, stock_qty: 50 },
+    displayOrder: 90
   }
 ]);
 
@@ -1143,9 +1240,12 @@ function normalizeCharmRecord(record, index = 0) {
     safeSizeCm * 10
   );
   const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
+  const outOfStockDisplayMode = normalizeOutOfStockDisplayMode(record.outOfStockDisplayMode ?? record.out_of_stock_display_mode ?? record.availability?.outOfStockDisplayMode ?? record.availability?.out_of_stock_display_mode);
 
   return {
     ...safeRecord,
+    outOfStockDisplayMode,
+    out_of_stock_display_mode: outOfStockDisplayMode,
     business: {
       sizeCm: safeSizeCm,
       footprintMm: safeFootprintMm
@@ -1157,7 +1257,9 @@ function normalizeCharmRecord(record, index = 0) {
     availability: {
       inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
       isActive: record.availability?.isActive !== false && record.isActive !== false,
-      stockQty
+      stockQty,
+      outOfStockDisplayMode,
+      out_of_stock_display_mode: outOfStockDisplayMode
     },
     renderTuning: {
       visualScale: record.renderTuning?.visualScale ?? record.visualScale,
@@ -1185,6 +1287,7 @@ function normalizeSpacerRecord(record, index = 0) {
   const displaySizeMm = toFiniteNumber(record.business?.displaySizeMm ?? record.displaySizeMm ?? record.sizeMm, 0);
   const effectiveLengthMm = toFiniteNumber(record.business?.effectiveLengthMm ?? record.effectiveLengthMm ?? record.footprintMm, displaySizeMm);
   const stockQty = normalizeStockQty(record.availability?.stockQty ?? record.availability?.stock_qty ?? record.stockQty ?? record.stock_qty, null);
+  const outOfStockDisplayMode = normalizeOutOfStockDisplayMode(record.outOfStockDisplayMode ?? record.out_of_stock_display_mode ?? record.availability?.outOfStockDisplayMode ?? record.availability?.out_of_stock_display_mode);
   const manualCostValue = record.manualCost;
   const manualCost = manualCostValue === undefined || manualCostValue === null || manualCostValue === ''
     ? null
@@ -1204,6 +1307,9 @@ function normalizeSpacerRecord(record, index = 0) {
     collection: record.collection || "spacer",
     color: record.color || "",
     manualCost,
+    outOfStockDisplayMode,
+    out_of_stock_display_mode: outOfStockDisplayMode,
+    presentation: record.presentation || 'inline',
     image: {
       primary: record.image?.primary || record.image || ""
     },
@@ -1214,6 +1320,9 @@ function normalizeSpacerRecord(record, index = 0) {
       sizeMm: displaySizeMm,
       displaySizeMm,
       effectiveLengthMm,
+      renderWidthMm: toFiniteNumber(record.business?.renderWidthMm ?? record.renderWidthMm, 0),
+      renderHeightMm: toFiniteNumber(record.business?.renderHeightMm ?? record.renderHeightMm, 0),
+      attachmentLoopMm: toFiniteNumber(record.business?.attachmentLoopMm ?? record.attachmentLoopMm, 0),
       renderSizeMm: toFiniteNumber(record.business?.renderSizeMm ?? record.renderSizeMm, displaySizeMm),
       thicknessMm: toFiniteNumber(record.business?.thicknessMm ?? record.thicknessMm, 0)
     },
@@ -1224,7 +1333,9 @@ function normalizeSpacerRecord(record, index = 0) {
     availability: {
       inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
       isActive: record.availability?.isActive !== false && record.isActive !== false,
-      stockQty
+      stockQty,
+      outOfStockDisplayMode,
+      out_of_stock_display_mode: outOfStockDisplayMode
     },
     displayOrder: toFiniteNumber(record.displayOrder, (index + 1) * 10)
   };
@@ -1252,6 +1363,7 @@ export function adaptNormalizedCharmToLegacy(record) {
     inStock: normalized.availability.inStock,
     isActive: normalized.availability.isActive,
     stockQty: normalized.availability.stockQty,
+    outOfStockDisplayMode: normalized.outOfStockDisplayMode,
     displayOrder: normalized.displayOrder,
     visualScale: normalized.renderTuning.visualScale,
     visualOffsetX: normalized.renderTuning.visualOffsetX,
@@ -1521,6 +1633,45 @@ export async function getSharedSpacerCatalog() {
   return SPACER_RECORDS;
 }
 
+// First-paint catalog seed. The deployment ships its own catalog JSON under /data (same-origin,
+// CDN-served), so this fills the in-memory catalogs far faster than the /api backend, which can
+// cold-start for several seconds. It never overwrites data an authoritative /api refresh already
+// produced: every array is only filled while it is still empty.
+let bundledCatalogSeedPromise = null;
+export async function seedCatalogFromBundledFiles() {
+  if (bundledCatalogSeedPromise) return bundledCatalogSeedPromise;
+  bundledCatalogSeedPromise = (async () => {
+    const load = async (file) => {
+      try {
+        const response = await fetch(file, { cache: 'force-cache' });
+        if (!response.ok) return null;
+        const payload = await response.json();
+        return Array.isArray(payload) ? payload : null;
+      } catch {
+        return null;
+      }
+    };
+    const [stones, charms, spacers] = await Promise.all([
+      load('/data/stones.json'),
+      load('/data/charms.json'),
+      load('/data/spacers.json')
+    ]);
+    if (stones && STONES.length === 0) {
+      STONES.length = 0;
+      STONES.push(...stones.map((record, index) => normalizeStoneRecord(record, index)).filter(Boolean));
+    }
+    if (charms && CHARM_RECORDS.length === 0) {
+      CHARM_RECORDS.length = 0;
+      CHARM_RECORDS.push(...charms.map((record, index) => normalizeCharmRecord(record, index)).filter(Boolean));
+    }
+    if (spacers && SPACER_RECORDS.length === 0) {
+      SPACER_RECORDS.length = 0;
+      SPACER_RECORDS.push(...spacers.map((record, index) => normalizeSpacerRecord(record, index)).filter(Boolean));
+    }
+    return true;
+  })().catch(() => false);
+  return bundledCatalogSeedPromise;
+}
 export async function getLegacyCharmCatalog() {
   const sharedCharms = await getSharedCharmCatalog();
   return adaptNormalizedCharmCatalogToLegacy(sharedCharms);
