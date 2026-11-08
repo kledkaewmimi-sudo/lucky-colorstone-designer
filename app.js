@@ -1593,6 +1593,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Start the shared-data work immediately, but keep it off the mobile authentication/Step 1 path.
   startCustomerCatalogWarmup();
 
+  // Prime the server-assigned journey before LIFF/profile events so the
+  // callback event chain stays on the same anonymous journey.
+  if (shouldResumeInitialHandoff) {
+    await primeUatJourneyFromHandoff(initialHandoffToken);
+  }
   await startLineBootstrap();
   clearOAuthQueryParams();
   let restored = null;
@@ -2997,6 +3002,24 @@ function clearInitialHandoffQueryParam() {
     window.history.replaceState({}, document.title, `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`);
   } catch {
     // URL cleanup is best-effort and must not block the callback.
+  }
+}
+
+async function primeUatJourneyFromHandoff(token) {
+  if (!IS_UAT_MODE || !/^[A-Za-z0-9_-]{43}$/.test(String(token || ''))) return;
+  try {
+    const response = await fetch(`/api/auth-handoffs/${encodeURIComponent(token)}`);
+    const result = await response.json().catch(() => null);
+    const journeyId = String(result?.payload?.journeyId || '');
+    if (!response.ok || !/^[A-Za-z0-9_-]{8,128}$/.test(journeyId)) return;
+    uatJourneyId = journeyId;
+    try {
+      localStorage.setItem(UAT_JOURNEY_ID_KEY, journeyId);
+    } catch {
+      // The in-memory journey remains usable when storage is unavailable.
+    }
+  } catch {
+    // Attribution priming is best-effort; callback restore still proceeds.
   }
 }
 

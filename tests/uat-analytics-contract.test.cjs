@@ -4,6 +4,7 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const guard = fs.readFileSync(path.join(root, 'uat-backend-guard.js'), 'utf8');
 const schema = fs.readFileSync(path.join(root, 'supabase/uat/2026-11-08-line-login-analytics.sql'), 'utf8');
 
@@ -11,6 +12,9 @@ assert.match(guard, /pathname === '\/api\/uat\/analytics\/event'/,
   'UAT backend guard must allow the dedicated analytics route');
 assert.match(server, /pathname === "\/api\/uat\/analytics\/event"/);
 assert.match(server, /normalizeUatAnalyticsEvent/);
+assert.match(app, /primeUatJourneyFromHandoff/,
+  'Callback instrumentation must adopt the server handoff journey before auth events');
+assert.match(app, /await primeUatJourneyFromHandoff\(initialHandoffToken\)/);
 assert.match(server, /uat_analytics_journeys/);
 assert.match(server, /uat_analytics_events/);
 assert.match(server, /lineuserid|line_user_id/);
