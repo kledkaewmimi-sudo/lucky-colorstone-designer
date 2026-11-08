@@ -1,0 +1,3 @@
+﻿export const LUMI_GOALS = Object.freeze(['love', 'money', 'career', 'wellbeing', 'luck', 'protection']);
+// Thai labels are intentionally Unicode escaped to preserve exact UTF-8 source encoding.
+export const LUMI_GOAL_LABELS = Object.freeze({ love:'\u0e04\u0e27\u0e32\u0e21\u0e23\u0e31\u0e01', money:'\u0e01\u0e32\u0e23\u0e40\u0e07\u0e34\u0e19', career:'\u0e01\u0e32\u0e23\u0e07\u0e32\u0e19', wellbeing:'\u0e2a\u0e38\u0e02\u0e20\u0e32\u0e1e\u0e41\u0e25\u0e30\u0e2a\u0e21\u0e14\u0e38\u0e25', luck:'\u0e42\u0e0a\u0e04\u0e25\u0e32\u0e20', protection:'\u0e1b\u0e01\u0e1b\u0e49\u0e2d\u0e07\u0e04\u0e38\u0e49\u0e21\u0e04\u0e23\u0e2d\u0e07' });

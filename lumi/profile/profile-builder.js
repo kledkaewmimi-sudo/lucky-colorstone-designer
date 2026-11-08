@@ -1,0 +1,7 @@
+import { LUMI_KNOWLEDGE_VERSION } from '../knowledge/knowledge-version.js';
+import { LUMI_PROFILE_VERSION } from './profile-version.js';
+import { validateLumiProfileInput } from './profile-schema.js';
+import { createLumiProfileFingerprint } from './profile-fingerprint.js';
+const freeze=(value)=>Object.freeze(value);
+export function validateNormalizedLumiProfile(profile){if(!profile||profile.profileVersion!==LUMI_PROFILE_VERSION||profile.knowledgeVersion!==LUMI_KNOWLEDGE_VERSION||!Array.isArray(profile.goals)||!profile.yearArchetype||'birthYear' in profile)throw new TypeError('Invalid normalized Lumi profile.'); return profile;}
+export function buildLumiCustomerProfile(input){const validated=validateLumiProfileInput(input); const profile={profileVersion:LUMI_PROFILE_VERSION,knowledgeVersion:LUMI_KNOWLEDGE_VERSION,weekday:validated.weekday,yearArchetype:freeze({id:validated.yearArchetype.id,code:validated.yearArchetype.name}),goals:freeze(validated.goals.map(x=>freeze({id:x,weight:1/validated.goals.length}))),style:validated.style,braceletContext:freeze({...validated.braceletContext})}; profile.profileFingerprint=createLumiProfileFingerprint(profile); const normalized=freeze(profile); return validateNormalizedLumiProfile(normalized);}

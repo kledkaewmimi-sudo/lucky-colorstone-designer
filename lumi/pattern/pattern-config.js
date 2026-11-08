@@ -1,0 +1,1 @@
+export const LUMI_PATTERN_CONFIG=Object.freeze({bounds:Object.freeze({rawAttempts:48,retained:12}),weights:Object.freeze({visualHierarchy:.30,sizeCoherence:.25,patternBalance:.20,charmIntegration:.15,paletteCoherence:.10})});
