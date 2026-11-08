@@ -69,4 +69,24 @@ $$;
 revoke all on function public.cleanup_uat_analytics(int) from public, anon, authenticated;
 grant execute on function public.cleanup_uat_analytics(int) to service_role;
 
+-- Bounded cleanup for expired one-time login handoffs as well.
+create or replace function public.cleanup_uat_line_auth_handoffs(p_retention_hours int default 24)
+returns bigint
+language plpgsql security definer set search_path = public as $$
+declare
+  deleted bigint;
+begin
+  if p_retention_hours < 1 or p_retention_hours > 720 then
+    raise exception 'retention hours out of range';
+  end if;
+  delete from public.line_auth_handoffs
+   where expires_at < now() - make_interval(hours => p_retention_hours);
+  get diagnostics deleted = row_count;
+  return deleted;
+end;
+$$;
+
+revoke all on function public.cleanup_uat_line_auth_handoffs(int) from public, anon, authenticated;
+grant execute on function public.cleanup_uat_line_auth_handoffs(int) to service_role;
+
 commit;
