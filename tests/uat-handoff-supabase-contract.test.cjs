@@ -14,7 +14,7 @@ assert.match(server, /supabaseRpc\('read_uat_line_auth_handoff'/);
 assert.match(server, /supabaseRpc\('consume_uat_line_auth_handoff'/);
 assert.match(server, /readHandoffMatch[\s\S]*method === 'GET'/);
 assert.match(server, /consumeHandoffMatch[\s\S]*method === 'POST'/);
-assert.match(server, /isHandoffRequest && !isAllowedUatOriginRequest\(req\)/);
+assert.match(server, /isHandoffRead\s*\? isAllowedUatHandoffReadOriginRequest\(req\)\s*: isAllowedUatOriginRequest\(req\)/);
 assert.match(server, /"GET, POST, PUT, OPTIONS"/);
 assert.match(server, /buildSpacerRow\(nextRecord\)/);
 assert.match(app, /const handoffUrl = `\/api\/auth-handoffs\/\$\{encodeURIComponent\(token\)\}`/);

@@ -85,8 +85,12 @@ function normalizeHandoffPayload(input = {}, now = Date.now(), ttlMs = HANDOFF_T
   const requestedTtlMs = Number.isSafeInteger(Number(input.ttlMs)) && Number(input.ttlMs) >= 60 * 1000
     ? Number(input.ttlMs)
     : ttlMs;
-  const resolvedTtlMs = Number(requestedTtlMs);
-  if (!Number.isSafeInteger(resolvedTtlMs) || resolvedTtlMs < 60 * 1000 || resolvedTtlMs > HANDOFF_TTL_MS) return null;
+  const maxTtlMs = targetStep === 2 ? INITIAL_HANDOFF_TTL_MS : HANDOFF_TTL_MS;
+  const rawTtlMs = Number(requestedTtlMs);
+  if (!Number.isSafeInteger(rawTtlMs) || rawTtlMs < 60 * 1000) return null;
+  if (targetStep !== 2 && rawTtlMs > HANDOFF_TTL_MS) return null;
+  const resolvedTtlMs = Math.min(rawTtlMs, maxTtlMs);
+  if (!Number.isSafeInteger(resolvedTtlMs) || resolvedTtlMs < 60 * 1000) return null;
   const requestedJourneyId = typeof input.journeyId === 'string' ? input.journeyId.trim() : '';
   const journeyId = ID_PATTERN.test(requestedJourneyId) ? requestedJourneyId : createJourneyId();
   const payload = {

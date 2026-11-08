@@ -2841,13 +2841,15 @@ function persistCustomizationLoginIntent(intent) {
   }
 }
 
-function rememberCustomizationLoginIntent({ targetStep = 1, handoffToken = '', journeyId = '' } = {}) {
+function rememberCustomizationLoginIntent({ targetStep = 1, journeyId = '' } = {}) {
   const intent = {
     ts: Date.now(),
     step: 1,
     targetStep: targetStep === 2 ? 2 : 1
   };
-  if (/^[A-Za-z0-9_-]{43}$/.test(String(handoffToken || ''))) intent.handoffToken = String(handoffToken);
+  // The callback URL carries the one-time handoff token. Do not duplicate it
+  // into localStorage; the server token is single-use and must not outlive the
+  // navigation. Only non-sensitive continuity metadata is persisted here.
   if (/^[A-Za-z0-9_-]{8,128}$/.test(String(journeyId || ''))) intent.journeyId = String(journeyId);
   return persistCustomizationLoginIntent(intent);
 }
@@ -3061,7 +3063,10 @@ async function handleInitialHandoffCallback(token) {
   }
 
   if (restored.journeyId) uatJourneyId = restored.journeyId;
-  rememberCustomizationLoginIntent({ targetStep: 2, handoffToken: token });
+  // The callback token has been consumed. Remove any persisted token before
+  // storing the final Step 2 intent, while retaining the anonymous journey.
+  clearCustomizationLoginIntent();
+  rememberCustomizationLoginIntent({ targetStep: 2, journeyId: restored.journeyId || '' });
   customizationResumeInProgress = true;
   clearInitialHandoffQueryParam();
   trackUatStage('step_1_view', 1);
@@ -3095,7 +3100,6 @@ async function startLiffLoginForCustomization({
     try {
       const persisted = preserveExistingIntent || rememberCustomizationLoginIntent({
         targetStep: resumeStep,
-        handoffToken: initialHandoff?.token || '',
         journeyId: initialHandoff?.journeyId || ''
       });
       lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
@@ -3169,7 +3173,6 @@ async function openLineConnectEntryForCustomization({
     try {
       const persisted = preserveExistingIntent || rememberCustomizationLoginIntent({
         targetStep: resumeStep,
-        handoffToken: initialHandoff?.token || '',
         journeyId: initialHandoff?.journeyId || ''
       });
       lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });

@@ -12,6 +12,8 @@ const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snaps
 const { readOrderPayloads, saveOrderPayload } = require('./server-order-persistence.js');
 const { buildMetaPurchaseEvent, getMetaPurchaseEventId, summarizeMetaCapiSuccessBody } = require('./meta-capi-purchase.js');
 const { HANDOFF_TTL_MS, INITIAL_HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
+const { UAT_ALLOWED_ORIGIN, isExactUatOriginRequest, isAllowedUatHandoffReadRequest } = require('./uat-origin-policy.js');
+const { redactSensitiveUrl } = require('./uat-log-redaction.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
   DEFERRED_LOGIN_QA_TOKEN_PATTERN,
@@ -22,7 +24,7 @@ const {
 const workspaceDir = __dirname;
 const bundledDataDir = path.join(workspaceDir, "data");
 const isFixtureOnlyUatBackend = true;
-const uatAllowedOrigin = 'https://uat.customize.luckycolorstone.com';
+const uatAllowedOrigin = UAT_ALLOWED_ORIGIN;
 
 // This branch is deployable only as the isolated fixture-backed UAT service.
 // Refuse startup unless the host declares that identity and carries no service credentials.
@@ -162,11 +164,11 @@ function setCorsHeaders(res) {
 }
 
 function isAllowedUatOriginRequest(req) {
-  if (String(req.headers.origin || '').trim() === uatAllowedOrigin) return true;
-  // Same-origin browser GET requests (the handoff read step) may omit Origin.
-  const sameOriginSignal = String(req.headers['sec-fetch-site'] || '').trim() === 'same-origin'
-    && /^https:\/\/uat\.customize\.luckycolorstone\.com(?:\/|$)/i.test(String(req.headers.referer || ''));
-  return sameOriginSignal;
+  return isExactUatOriginRequest(req);
+}
+
+function isAllowedUatHandoffReadOriginRequest(req) {
+  return isAllowedUatHandoffReadRequest(req);
 }
 
 function sendJson(res, statusCode, data) {
@@ -3722,9 +3724,16 @@ async function handleApiRequest(req, res, urlObj) {
 
   const isHandoffRequest = pathname === '/api/auth-handoffs'
     || /^\/api\/auth-handoffs\/[A-Za-z0-9_-]{43}(?:\/consume)?$/.test(pathname);
-  if (isHandoffRequest && !isAllowedUatOriginRequest(req)) {
-    sendHandoffJson(res, 403, { error: 'UAT handoff requests require the approved UAT origin.' });
-    return true;
+  if (isHandoffRequest) {
+    console.info('[uat-handoff]', method, redactSensitiveUrl(urlObj.toString()));
+    const isHandoffRead = method === 'GET' && /^\/api\/auth-handoffs\/[A-Za-z0-9_-]{43}$/.test(pathname);
+    const allowed = isHandoffRead
+      ? isAllowedUatHandoffReadOriginRequest(req)
+      : isAllowedUatOriginRequest(req);
+    if (!allowed) {
+      sendHandoffJson(res, 403, { error: 'UAT handoff requests require the approved UAT origin.' });
+      return true;
+    }
   }
 
   if (pathname === '/api/auth-handoffs' && method === 'POST') {
