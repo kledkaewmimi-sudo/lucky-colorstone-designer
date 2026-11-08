@@ -1,5 +1,11 @@
 // Pure landing identity gate. It deliberately establishes identity before any
 // bracelet design exists, so it never creates or restores a design handoff.
+// UAT customer design testing must not require a LINE session before Step 1.
+// Production retains the established identity boundary; operational Step 4 keeps
+// its separate LINE/OA friendship guard.
+export function shouldRequireLineIdentityBeforeDesigner({ isUatMode = false } = {}) {
+  return isUatMode !== true;
+}
 export function isInitialLineIdentityCallback(search = '') {
   let candidate = String(search || '');
   for (let depth = 0; depth < 4 && candidate; depth += 1) {
