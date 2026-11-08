@@ -116,5 +116,6 @@ assert.match(schema, /expires_at > now\(\)/);
 assert.match(schema, /consumed_at is null/);
 assert.match(schema, /update public\.line_auth_handoffs/);
 assert.match(schema, /already_consumed/);
+assert.match(server, /acknowledgement\.consumed !== true/);
 
 console.log('uat-handoff-security.test.cjs passed');

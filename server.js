@@ -3777,7 +3777,7 @@ async function handleApiRequest(req, res, urlObj) {
   if (consumeHandoffMatch && method === 'POST') {
     try {
       const acknowledgement = await acknowledgeLineAuthHandoffConsume(consumeHandoffMatch[1]);
-      if (!acknowledgement) {
+      if (!acknowledgement || acknowledgement.consumed !== true) {
         sendHandoffJson(res, 404, { error: 'Handoff unavailable or expired.' });
         return true;
       }
