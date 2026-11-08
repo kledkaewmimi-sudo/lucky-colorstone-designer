@@ -15,6 +15,8 @@ assert.match(server, /normalizeUatAnalyticsEvent/);
 assert.match(app, /primeUatJourneyFromHandoff/,
   'Callback instrumentation must adopt the server handoff journey before auth events');
 assert.match(app, /await primeUatJourneyFromHandoff\(initialHandoffToken\)/);
+assert.match(app, /qa: isUatQaJourney\(\)/,
+  'Internal QA journeys must be distinguishable in UAT analytics');
 assert.match(server, /uat_analytics_journeys/);
 assert.match(server, /uat_analytics_events/);
 assert.match(server, /lineuserid|line_user_id/);

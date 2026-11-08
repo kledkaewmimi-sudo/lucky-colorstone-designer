@@ -252,6 +252,14 @@ function getUatAttribution() {
   };
 }
 
+function isUatQaJourney() {
+  try {
+    return new URLSearchParams(window.location.search).get('qa') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function trackUatEvent(eventName, properties = {}, { stageKey = '' } = {}) {
   if (!IS_UAT_MODE) return;
   try {
@@ -273,6 +281,7 @@ function trackUatEvent(eventName, properties = {}, { stageKey = '' } = {}) {
         clientTimestamp: new Date().toISOString(),
         properties: {
           ...properties,
+          qa: isUatQaJourney(),
           utm_source: attribution.source,
           utm_medium: attribution.medium,
           utm_campaign: attribution.campaign,
