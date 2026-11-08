@@ -162,7 +162,11 @@ function setCorsHeaders(res) {
 }
 
 function isAllowedUatOriginRequest(req) {
-  return String(req.headers.origin || '').trim() === uatAllowedOrigin;
+  if (String(req.headers.origin || '').trim() === uatAllowedOrigin) return true;
+  // Same-origin browser GET requests (the handoff read step) may omit Origin.
+  const sameOriginSignal = String(req.headers['sec-fetch-site'] || '').trim() === 'same-origin'
+    && /^https:\/\/uat\.customize\.luckycolorstone\.com(?:\/|$)/i.test(String(req.headers.referer || ''));
+  return sameOriginSignal;
 }
 
 function sendJson(res, statusCode, data) {
