@@ -177,6 +177,11 @@ function sendJson(res, statusCode, data) {
   res.end(payload);
 }
 
+function sendHandoffJson(res, statusCode, data) {
+  res.setHeader("Cache-Control", "no-store");
+  sendJson(res, statusCode, data);
+}
+
 function sendJsonString(res, statusCode, jsonString) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -3718,28 +3723,28 @@ async function handleApiRequest(req, res, urlObj) {
   const isHandoffRequest = pathname === '/api/auth-handoffs'
     || /^\/api\/auth-handoffs\/[A-Za-z0-9_-]{43}(?:\/consume)?$/.test(pathname);
   if (isHandoffRequest && !isAllowedUatOriginRequest(req)) {
-    sendJson(res, 403, { error: 'UAT handoff requests require the approved UAT origin.' });
+    sendHandoffJson(res, 403, { error: 'UAT handoff requests require the approved UAT origin.' });
     return true;
   }
 
   if (pathname === '/api/auth-handoffs' && method === 'POST') {
     if (!bodyObj) {
-      sendJson(res, 400, { error: 'Invalid handoff request.' });
+      sendHandoffJson(res, 400, { error: 'Invalid handoff request.' });
       return true;
     }
     if (Buffer.byteLength(JSON.stringify(bodyObj), 'utf8') > 16 * 1024) {
-      sendJson(res, 413, { error: 'Handoff request too large.' });
+      sendHandoffJson(res, 413, { error: 'Handoff request too large.' });
       return true;
     }
     try {
       const handoff = await createLineAuthHandoff(bodyObj);
       if (!handoff) {
-        sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+        sendHandoffJson(res, 503, { error: 'Handoff storage unavailable.' });
         return true;
       }
-      sendJson(res, 201, handoff);
+      sendHandoffJson(res, 201, handoff);
     } catch {
-      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+      sendHandoffJson(res, 503, { error: 'Handoff storage unavailable.' });
     }
     return true;
   }
@@ -3749,12 +3754,12 @@ async function handleApiRequest(req, res, urlObj) {
     try {
       const payload = await readLineAuthHandoff(readHandoffMatch[1]);
       if (!payload) {
-        sendJson(res, 404, { error: 'Handoff unavailable, expired, or consumed.' });
+        sendHandoffJson(res, 404, { error: 'Handoff unavailable, expired, or consumed.' });
         return true;
       }
-      sendJson(res, 200, { payload });
+      sendHandoffJson(res, 200, { payload });
     } catch {
-      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+      sendHandoffJson(res, 503, { error: 'Handoff storage unavailable.' });
     }
     return true;
   }
@@ -3764,12 +3769,12 @@ async function handleApiRequest(req, res, urlObj) {
     try {
       const acknowledgement = await acknowledgeLineAuthHandoffConsume(consumeHandoffMatch[1]);
       if (!acknowledgement) {
-        sendJson(res, 404, { error: 'Handoff unavailable or expired.' });
+        sendHandoffJson(res, 404, { error: 'Handoff unavailable or expired.' });
         return true;
       }
-      sendJson(res, 200, { ok: true, ...acknowledgement });
+      sendHandoffJson(res, 200, { ok: true, ...acknowledgement });
     } catch {
-      sendJson(res, 503, { error: 'Handoff storage unavailable.' });
+      sendHandoffJson(res, 503, { error: 'Handoff storage unavailable.' });
     }
     return true;
   }
