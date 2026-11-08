@@ -1,0 +1,12 @@
+{
+  "slides": [
+    { "file": "slide-01.webp", "objectPosition": "42% 48%" },
+    { "file": "slide-02.webp", "objectPosition": "50% 45%" },
+    { "file": "slide-03.webp", "objectPosition": "50% 50%" },
+    { "file": "slide-04.webp", "objectPosition": "46% 54%" },
+    { "file": "slide-05.webp", "objectPosition": "48% 44%" },
+    { "file": "slide-06.webp", "objectPosition": "58% 48%" },
+    { "file": "slide-07.webp", "objectPosition": "50% 50%" },
+    { "file": "slide-08.webp", "objectPosition": "52% 46%" }
+  ]
+}

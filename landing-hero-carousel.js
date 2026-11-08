@@ -4,29 +4,74 @@
  * Kept separate from app.js so the landing animation cannot interfere with
  * customization, LIFF, catalog, checkout, or analytics state.
  *
- * The image sequence is the single source of truth for hero slides. Each slide
- * may define its own object-position so portrait crops can be tuned without
- * changing the crossfade engine.
+ * Static deployments cannot enumerate a directory at runtime. The slide
+ * manifest is therefore the single data source for the hero: add or remove a
+ * numbered file in assets/hero/slides.json and the carousel picks it up without
+ * a JavaScript change. Entries are sorted by the numeric filename suffix.
  */
-const HERO_SLIDES = Object.freeze([
-  { src: '/assets/hero/slide-01.webp', objectPosition: '42% 48%' },
-  { src: '/assets/hero/slide-02.webp', objectPosition: '50% 45%' },
-  { src: '/assets/hero/slide-03.webp', objectPosition: '50% 50%' },
-  { src: '/assets/hero/slide-04.webp', objectPosition: '46% 54%' },
-  { src: '/assets/hero/slide-05.webp', objectPosition: '48% 44%' },
-  { src: '/assets/hero/slide-06.webp', objectPosition: '58% 48%' },
-  { src: '/assets/hero/slide-08.webp', objectPosition: '52% 46%' }
-]);
-
+const HERO_MANIFEST_URL = '/assets/hero/slides.json';
+const HERO_FIRST_INTERVAL_MS = 1000;
 const HERO_INTERVAL_MS = 2000;
 const HERO_CROSSFADE_MS = 500;
+const HERO_FILE_PATTERN = /^slide-(\d+)\.(webp|avif|png|jpe?g)$/i;
 
-function initLandingHeroCarousel() {
+function normalizeHeroSlides(payload) {
+  const entries = Array.isArray(payload) ? payload : payload?.slides;
+  if (!Array.isArray(entries)) return [];
+
+  const byNumber = new Map();
+  entries.forEach((entry) => {
+    const rawFile = typeof entry === 'string'
+      ? entry
+      : (entry?.file || entry?.src || '');
+    const file = String(rawFile).trim().split('/').pop();
+    const match = file.match(HERO_FILE_PATTERN);
+    if (!match) return;
+
+    const order = Number(match[1]);
+    if (!Number.isSafeInteger(order) || order < 1 || byNumber.has(order)) return;
+
+    byNumber.set(order, {
+      order,
+      src: `/assets/hero/${match[0]}`,
+      objectPosition: typeof entry?.objectPosition === 'string'
+        ? entry.objectPosition
+        : '50% 50%'
+    });
+  });
+
+  return [...byNumber.values()].sort((a, b) => a.order - b.order);
+}
+
+async function loadHeroSlides() {
+  const response = await fetch(HERO_MANIFEST_URL, { cache: 'no-cache' });
+  if (!response.ok) throw new Error(`Hero manifest returned ${response.status}`);
+  return normalizeHeroSlides(await response.json());
+}
+
+async function initLandingHeroCarousel() {
   const root = document.getElementById('landingHeroCarousel');
   if (!root) return;
 
   const layers = [...root.querySelectorAll('[data-hero-layer]')];
   if (layers.length < 2) return;
+
+  let slides = [];
+  try {
+    slides = await loadHeroSlides();
+  } catch (error) {
+    // The first image is already in the HTML and remains visible. Never let a
+    // manifest problem break the landing page or introduce an unrelated image.
+    console.warn('Landing hero slides unavailable; keeping the first image.', error);
+    layers[0].classList.add('is-active');
+    return;
+  }
+
+  if (!slides.length) {
+    console.warn('Landing hero manifest contains no numbered slides; keeping the first image.');
+    layers[0].classList.add('is-active');
+    return;
+  }
 
   let activeLayer = 0;
   let activeIndex = 0;
@@ -40,16 +85,21 @@ function initLandingHeroCarousel() {
   };
 
   const applySlide = (layer, index) => {
-    const slide = HERO_SLIDES[index];
+    const slide = slides[index];
+    if (!slide) return null;
     setLayerPosition(layer, slide);
     layer.dataset.slideIndex = String(index);
     layer.src = slide.src;
     return slide;
   };
 
+  const getDisplayDuration = (index) => (
+    index === 0 ? HERO_FIRST_INTERVAL_MS : HERO_INTERVAL_MS
+  );
+
   const primeNextLayer = () => {
     const inactiveLayer = layers[activeLayer === 0 ? 1 : 0];
-    const nextIndex = (activeIndex + 1) % HERO_SLIDES.length;
+    const nextIndex = (activeIndex + 1) % slides.length;
     applySlide(inactiveLayer, nextIndex);
   };
 
@@ -81,31 +131,42 @@ function initLandingHeroCarousel() {
   const schedule = () => {
     window.clearTimeout(timer);
     if (!running) return;
-    timer = window.setTimeout(advance, HERO_INTERVAL_MS);
+    timer = window.setTimeout(advance, getDisplayDuration(activeIndex));
   };
 
   const advance = async () => {
     if (!running) return;
 
     const token = runToken;
-    const nextIndex = (activeIndex + 1) % HERO_SLIDES.length;
     const nextLayerIndex = activeLayer === 0 ? 1 : 0;
     const nextLayer = layers[nextLayerIndex];
     const currentLayer = layers[activeLayer];
+    let candidate = (activeIndex + 1) % slides.length;
+    let ready = false;
 
-    // The inactive layer was primed after the previous crossfade completed.
-    // If that preload is still in flight, wait for it rather than painting a
-    // blank layer; the current image remains visible meanwhile.
-    if (nextLayer.dataset.slideIndex !== String(nextIndex)) {
-      applySlide(nextLayer, nextIndex);
+    // If a slide is missing or corrupt, skip it rather than painting a blank
+    // layer or stopping the whole carousel. The current image stays visible
+    // while this search runs.
+    for (let attempt = 0; attempt < slides.length; attempt += 1) {
+      applySlide(nextLayer, candidate);
+      ready = await waitForLayer(nextLayer, token);
+      if (!running || token !== runToken) return;
+      if (ready) break;
+      console.warn(`Landing hero slide failed to load: ${slides[candidate]?.src || candidate}`);
+      candidate = (candidate + 1) % slides.length;
     }
-    const ready = await waitForLayer(nextLayer, token);
-    if (!ready || !running || token !== runToken) return;
+
+    if (!ready) {
+      // Every candidate failed. Keep the current frame and retry after a full
+      // display interval instead of entering a zero-delay error loop.
+      schedule();
+      return;
+    }
 
     nextLayer.classList.add('is-active');
     currentLayer.classList.remove('is-active');
     activeLayer = nextLayerIndex;
-    activeIndex = nextIndex;
+    activeIndex = candidate;
     updateDebugState();
 
     // Prime the now-invisible layer only after the outgoing image has finished
@@ -115,18 +176,18 @@ function initLandingHeroCarousel() {
       if (running && token === runToken) primeNextLayer();
     }, HERO_CROSSFADE_MS);
 
-    // The next transition starts one interval after this crossfade begins.
-    // The two layers remain mounted, so the outgoing image never disappears.
+    // The display duration is measured from the start of this crossfade to the
+    // next transition; the first slide uses 1 second, all others use 2 seconds.
     schedule();
   };
 
   const start = () => {
-    if (running) return;
+    if (running || document.hidden) return;
     const firstLayer = layers[0];
     const firstSlide = applySlide(firstLayer, activeIndex);
+    if (!firstSlide) return;
     activeLayer = 0;
     layers.forEach((layer, index) => layer.classList.toggle('is-active', index === 0));
-    setLayerPosition(firstLayer, firstSlide);
     running = true;
     updateDebugState();
     primeNextLayer();
@@ -150,14 +211,13 @@ function initLandingHeroCarousel() {
   const observer = 'IntersectionObserver' in window
     ? new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting) start();
+        if (entry.isIntersecting && !document.hidden) start();
         else stop();
       });
     }, { threshold: 0.05 })
     : null;
 
   if (observer) observer.observe(root);
-  else start();
 
   // Start immediately as well: in hidden/headless contexts the initial
   // IntersectionObserver callback can arrive late, and the landing must not
@@ -166,7 +226,7 @@ function initLandingHeroCarousel() {
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stop();
-    else if (!observer) start();
+    else start();
   });
 
   window.addEventListener('pagehide', () => {
@@ -180,7 +240,9 @@ function initLandingHeroCarousel() {
       activeIndex,
       activeLayer,
       running,
-      slides: HERO_SLIDES.length,
+      slides: slides.length,
+      slideFiles: slides.map((slide) => slide.src),
+      firstIntervalMs: HERO_FIRST_INTERVAL_MS,
       intervalMs: HERO_INTERVAL_MS,
       crossfadeMs: HERO_CROSSFADE_MS
     }),
