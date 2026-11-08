@@ -59,6 +59,15 @@ const invalidTarget = normalizeHandoffPayload({
 }, now);
 assert.equal(invalidTarget, null);
 
+const oversized = normalizeHandoffPayload({
+  targetStep: 3,
+  designSnapshot: {
+    version: 1, savedAt: now, expiresAt: now + 60_000, step: 3,
+    design: { wristSize: 16, beadSize: '6', selectedCharmIds: [], components: Array.from({ length: 241 }, (_, index) => ({ type: 'stone', id: `stone-${index}` })) }
+  }
+}, now);
+assert.equal(oversized, null, 'oversized component lists must be rejected');
+
 assert.match(app, /getInitialHandoffToken/);
 assert.match(app, /handoffToken: initialHandoff\?\.token/);
 assert.match(app, /applyInitialHandoffSnapshot\(restored\.snapshot\)/);
