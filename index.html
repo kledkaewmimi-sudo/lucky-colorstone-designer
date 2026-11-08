@@ -9,6 +9,7 @@
     content="Design your custom stone bracelet and order directly via LINE. Select your wrist size, bead size, and customize with premium natural stones.">
   <!-- ponytail: absolute path for Vercel static serving -->
   <link rel="stylesheet" href="/index.css">
+  <link rel="preload" as="image" href="/assets/hero/slide-01.webp" fetchpriority="high">
   <script>
     // Prevent the static landing markup from painting while a valid deferred
     // LINE callback is returning. app.js confirms this state before release.
@@ -56,33 +57,55 @@
   </div>
 
   <!-- LANDING PAGE SECTION -->
-  <section class="landing-page" id="landingView">
-    <div class="landing-hero-panel">
-      <div class="landing-background" style="background-image: url('/assets/landing-page-p1.jpg')"></div>
-      <div class="landing-overlay"></div>
-
-      <div class="landing-container">
-        <div class="landing-header">
-          <h1 class="landing-logo">LUCKY.COLORSTONE</h1>
-        </div>
-
-        <div class="landing-hero">
-          <h2 class="landing-hero-title">กำไลหินที่ออกแบบได้ด้วยตัวคุณเอง</h2>
-
-          <p class="landing-hero-subtitle">
-            เลือกสี เลือกพลัง เลือกความหมาย<br>
-            ในแบบที่เป็นคุณ
-          </p>
-
-          <button class="btn-start-customize" id="btnLandingLogin">
-            <span class="btn-sparkle">✦</span>
-            <span class="btn-text">เริ่มออกแบบ</span>
-            <span class="btn-sparkle">✦</span>
-          </button>
-          <p class="landing-load-reassurance" id="landingLoadReassurance" aria-live="polite">กำลงเตรยมพรอม พนทสำหรบออกแบบ </p>
-        </div>
-
+  <section class="landing-page campaign-landing" id="landingView" aria-label="Lucky Color Stone">
+    <div class="campaign-hero" id="landingHeroCarousel">
+      <div class="campaign-hero__media" aria-hidden="true">
+        <img class="campaign-hero__slide is-active" data-hero-layer="0" alt="" decoding="async" fetchpriority="high">
+        <img class="campaign-hero__slide" data-hero-layer="1" alt="" decoding="async">
       </div>
+
+      <div class="campaign-hero__content">
+        <header class="campaign-hero__header">
+          <span class="campaign-hero__sparkle" aria-hidden="true"></span>
+          <h1 class="campaign-hero__brand">
+            <span class="campaign-hero__brand-line">LUCKY</span>
+            <span class="campaign-hero__brand-line">COLOR STONE</span>
+          </h1>
+          <span class="campaign-hero__divider" aria-hidden="true"></span>
+          <h2 class="landing-hero-subtitle campaign-hero__subheading">กำไลหินที่ออกแบบได้ด้วยตัวคุณเองเพียงเท่านั้น</h2>
+        </header>
+
+        <div class="campaign-hero__cta-wrap">
+          <button class="btn-start-customize campaign-hero__cta" id="btnLandingLogin" type="button" aria-label="เริ่มออกแบบเลย">
+            <span class="btn-sparkle" aria-hidden="true">✦</span>
+            <span class="btn-text">เริ่มออกแบบเลย</span>
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </button>
+          <p class="campaign-hero__customization-count" id="landingCustomizationCount" aria-label="มีผู้ออกแบบแล้ว 1,396 เส้น">
+            <span class="campaign-hero__count-spark" aria-hidden="true">✦</span>
+            <span class="campaign-hero__count-rule" aria-hidden="true"></span>
+            <span class="campaign-hero__count-text">มีผู้ออกแบบแล้ว <strong>1,396</strong> เส้น</span>
+            <span class="campaign-hero__count-rule" aria-hidden="true"></span>
+            <span class="campaign-hero__count-spark" aria-hidden="true">✦</span>
+          </p>
+          <p class="landing-load-reassurance" id="landingLoadReassurance" aria-live="polite">กำลังเตรียมพื้นที่สำหรับออกแบบ</p>
+        </div>
+      </div>
+
+      <!-- Existing social-proof contract is kept non-visual so the campaign
+           composition stays image-led while the endpoint and fallback data
+           continue to be available to the existing startup code. -->
+      <section class="landing-social-proof" id="landingSocialProof" hidden aria-hidden="true">
+        <span class="sp-label">มีผู้ Custom กำไลไปแล้ว</span>
+        <span class="sp-count"><strong id="landingSocialProofCount">1,035</strong><span class="sp-unit">เส้น</span></span>
+        <div class="sp-right" id="landingSocialProofThumbs">
+          <span class="sp-thumb" data-sp-thumb="0"></span>
+          <span class="sp-thumb" data-sp-thumb="1"></span>
+          <span class="sp-thumb" data-sp-thumb="2"></span>
+          <span class="sp-thumb" data-sp-thumb="3"></span>
+          <span class="sp-heart"></span>
+        </div>
+      </section>
     </div>
   </section>
 
@@ -131,6 +154,10 @@
           <div class="step1-heading-block">
             <h2 class="step-title">วัดขนาดข้อมือ</h2>
             <p class="step-subtitle">วัดรอบข้อมือแบบพอดี (หน่วยเซนติเมตร)</p>
+          </div>
+          <div class="step1-auth-status" id="step1AuthStatus" role="status" aria-live="polite" hidden>
+            <span id="step1AuthStatusText"></span>
+            <button class="step1-auth-connect" id="btnStep1LineConnect" type="button" hidden></button>
           </div>
 
           <!-- Premium Visual Aid - Hand with Measuring Tape -->
@@ -248,11 +275,18 @@
                 <div class="bead-size-details">
                   <span class="bead-size-label">6mm</span>
                   <h4>คลาสสิก ใส่ง่าย</h4>
-                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องราง">
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
                     <span class="bead-size-support-item">
                       <span>เครื่องราง</span>
                       <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
                         <img src="/assets/charms/pixiu/px02.webp" alt="">
+                      </span>
+                    </span>
+                  
+<span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
                       </span>
                     </span>
                   </div>
@@ -276,6 +310,20 @@
                 <div class="bead-size-details">
                   <span class="bead-size-label">4mm</span>
                   <h4>มินิมอล ละมุน</h4>
+                  <div class="bead-size-support-banner" aria-label="รองรับเครื่องรางและชาร์ม">
+                    <span class="bead-size-support-item">
+                      <span>เครื่องราง</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="talisman">
+                        <img src="/assets/charms/pixiu/px01.webp" alt="">
+                      </span>
+                    </span>
+                    <span class="bead-size-support-item">
+                      <span>ชาร์ม</span>
+                      <span class="bead-size-support-thumb" data-support-thumbnail="charm">
+                        <img src="/assets/spacers/diamond-ball-orange-9mm.png" alt="">
+                      </span>
+                    </span>
+                  </div>
                 </div>
               </div>
               <div class="bead-size-hand-panel">
@@ -378,6 +426,12 @@
                 <span class="center-value" id="canvasCenterValue">16.0cm</span>
                 <span class="center-subvalue fit" id="canvasCenterSub" hidden>Perfect Fit</span>
               </div>
+              <!-- Fail-safe Lucky CTA shell: visible before the state-machine JS runs. -->
+              <button class="lumi-entry lumi-center-entry lumi-entry-pending" type="button" aria-label="Lucky">
+                <img class="lumi-entry-mascot" src="/assets/lucky/mascot/lucky_02.webp" alt="" aria-hidden="true" decoding="async">
+                <span class="lumi-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 12.4V6.3a1.6 1.6 0 0 1 3.2 0v5.2"></path><path d="M12.8 11.3V9.9a1.6 1.6 0 0 1 3.2 0v1.4"></path><path d="M16 11.3v-.5a1.6 1.6 0 0 1 3.2 0V15a6 6 0 0 1-6 6h-1a4.7 4.7 0 0 1-3.4-1.5l-3.3-3.6a1.6 1.6 0 0 1 2.3-2.2l1.2 1.2"></path></svg></span>
+                <span class="lumi-entry-label" hidden></span>
+              </button>
             </div>
             <button class="ctrl-btn reset-btn canvas-reset-control" id="btnResetBracelet" type="button">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -677,6 +731,7 @@
   </div>
 
   <!-- ponytail: absolute path for Vercel static serving -->
+  <script type="module" src="/landing-hero-carousel.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 
