@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from '../line-identity-before-design.js';
+import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback, shouldRequireLineIdentityBeforeDesigner } from '../line-identity-before-design.js';
 
 test('initial identity callback recognises both direct and LIFF-wrapped markers', () => {
   assert.equal(isInitialLineIdentityCallback('?line_auth=identity'), true);
@@ -46,13 +46,16 @@ test('a first-time user starts LIFF login without any design handoff', async () 
   assert.equal(loginCalls, 1);
 });
 
-test('UAT app source gates Landing Start before Step 1 and retires Step 3 first-auth', async () => {
+test('UAT Landing Start bypasses initial LINE identity while Step 3 retains its later identity boundary', async () => {
   const source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
-  assert.match(source, /import \{ establishLineIdentityBeforeDesign, isInitialLineIdentityCallback \} from '\.\/line-identity-before-design\.js';/);
+  assert.equal(shouldRequireLineIdentityBeforeDesigner({ isUatMode: true }), false);
+  assert.equal(shouldRequireLineIdentityBeforeDesigner({ isUatMode: false }), true);
+  assert.match(source, /import \{ establishLineIdentityBeforeDesign, isInitialLineIdentityCallback, shouldRequireLineIdentityBeforeDesigner \} from '\.\/line-identity-before-design\.js';/);
+  assert.match(source, /if \(shouldRequireLineIdentityBeforeDesigner\(\{ isUatMode: IS_UAT_MODE \}\)\) \{/);
   assert.match(source, /requireLineLoginForCustomization\(\{ showLandingPrompt: true \}\)/);
   assert.doesNotMatch(source, /allowDeferredInitialLogin: true/);
   assert.match(source, /isInitialLineIdentityCallback\(window\.location\.search\)/);
-  assert.match(source, /getLiffRedirectUri\(\{ initialIdentity: !preserveExistingIntent \}\)/);
+  assert.match(source, /getLiffRedirectUri\(\{\s*initialIdentity: resumeStep === 1 && !preserveExistingIntent,\s*handoffToken: initialHandoff\?\.token \|\| ''\s*\}\)/);
   assert.match(source, /clearInitialLineIdentityCallbackMarker\(\)/);
   assert.match(source, /if \(!isLineIdentityAvailable\(\)\) \{\s*return \{ handled: true, ok: false, reason: 'line_identity_required' \};/);
   const boundaryStart = source.indexOf('async function beginDeferredStep3AuthBoundary');

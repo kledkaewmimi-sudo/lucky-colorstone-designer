@@ -7,10 +7,11 @@ const { URL } = require("url");
 const { assertSafeUatEnvironment, isUatSupabaseApiRequest } = require('./uat-backend-guard.js');
 const { buildUatSupabaseAuthHeaders, normalizeUatSupabaseKey } = require('./uat-supabase-auth.js');
 const { getAuthoritativeStoneVariant } = require('./server-order-validation.js');
+const { normalizeLuckyBirthDate, buildLuckyBirthdayInsert } = require('./lucky-birthday-collection.js');
 const { preserveOrCreateOrderCostSnapshot } = require('./server-order-cost-snapshot.js');
 const { readOrderPayloads, saveOrderPayload } = require('./server-order-persistence.js');
 const { buildMetaPurchaseEvent, getMetaPurchaseEventId, summarizeMetaCapiSuccessBody } = require('./meta-capi-purchase.js');
-const { HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
+const { HANDOFF_TTL_MS, INITIAL_HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
   DEFERRED_LOGIN_QA_TOKEN_PATTERN,
@@ -1878,6 +1879,19 @@ async function supabaseRequest(tableName, { method = "GET", params = {}, body = 
   return payload;
 }
 
+async function supabaseRpcRequest(functionName, body = {}) {
+  const { url, serviceRoleKey } = getSupabaseConfig();
+  const response = await fetch(new URL(`/rest/v1/rpc/${functionName}`, url), {
+    method: "POST",
+    headers: { ...buildUatSupabaseAuthHeaders(serviceRoleKey), "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  const payload = text ? parseJsonText(text) : null;
+  if (!response.ok) throw new Error(`${functionName} RPC failed: ${payload?.message || text || response.status}`);
+  return payload;
+}
+
 function warnSupabaseReadFallback(label, error) {
   console.warn(`Supabase read failed for ${label}; falling back to JSON data.`, error?.message || error);
 }
@@ -1925,7 +1939,10 @@ async function supabaseRpc(functionName, body = {}) {
 
 async function createLineAuthHandoff(input) {
   if (!isSupabaseConfigured()) return null;
-  const payload = normalizeHandoffPayload(input, Date.now(), resolveUatHandoffQaTtlMs());
+  const ttlMs = Number(input?.ttlMs) > 0
+    ? Number(input.ttlMs)
+    : (Number(input?.targetStep) === 2 ? INITIAL_HANDOFF_TTL_MS : resolveUatHandoffQaTtlMs());
+  const payload = normalizeHandoffPayload(input, Date.now(), ttlMs);
   if (!payload) return null;
   const token = createHandoffToken();
   await supabaseRequest('line_auth_handoffs', {
@@ -1933,7 +1950,7 @@ async function createLineAuthHandoff(input) {
     body: { token, payload, expires_at: new Date(payload.expiresAt).toISOString() },
     prefer: 'return=minimal'
   });
-  return { token, expiresAt: payload.expiresAt };
+  return { token, expiresAt: payload.expiresAt, journeyId: payload.journeyId };
 }
 
 async function readLineAuthHandoff(token) {
@@ -1950,6 +1967,105 @@ async function acknowledgeLineAuthHandoffConsume(token) {
     ? result
     : null;
 }
+
+const UAT_ANALYTICS_EVENT_NAMES = new Set([
+  'landing_view', 'start_design', 'step_1_view', 'wrist_size_selected',
+  'line_auth_started', 'liff_init_started', 'liff_init_success', 'liff_init_failed',
+  'line_auth_success', 'line_auth_failed', 'line_auth_cancelled',
+  'designer_returned', 'state_restore_started', 'state_restore_success',
+  'state_restore_failed', 'step_2_view'
+]);
+const UAT_ANALYTICS_FORBIDDEN_KEYS = new Set([
+  'lineuserid', 'line_user_id', 'userid', 'displayname', 'name', 'ownername',
+  'phone', 'phonenumber', 'address', 'shipping', 'shippinginfo',
+  'code', 'accesstoken', 'access_token', 'idtoken', 'id_token',
+  'refreshtoken', 'refresh_token', 'authorization', 'authorizationurl',
+  'design', 'designsnapshot', 'components', 'selectedstones'
+]);
+const UAT_ANALYTICS_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const UAT_ANALYTICS_EVENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function hasUatAnalyticsForbiddenKey(value, depth = 0) {
+  if (depth > 4 || !value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => hasUatAnalyticsForbiddenKey(item, depth + 1));
+  return Object.entries(value).some(([key, entry]) => (
+    UAT_ANALYTICS_FORBIDDEN_KEYS.has(String(key).toLowerCase())
+    || hasUatAnalyticsForbiddenKey(entry, depth + 1)
+  ));
+}
+
+function normalizeUatAnalyticsEvent(payload = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  if (hasUatAnalyticsForbiddenKey(payload)) return null;
+  const eventId = String(payload.eventId || payload.event_id || '').trim();
+  const journeyId = String(payload.journeyId || payload.journey_id || '').trim();
+  const eventName = String(payload.eventName || payload.event_name || '').trim().toLowerCase();
+  const stageKey = String(payload.stageKey || payload.stage_key || '').trim();
+  if (!UAT_ANALYTICS_EVENT_ID_PATTERN.test(eventId)) return null;
+  if (!UAT_ANALYTICS_ID_PATTERN.test(journeyId)) return null;
+  if (!UAT_ANALYTICS_EVENT_NAMES.has(eventName)) return null;
+  if (stageKey.length > 120) return null;
+  const stepValue = Number(payload.step);
+  const properties = payload.properties && typeof payload.properties === 'object' && !Array.isArray(payload.properties)
+    ? payload.properties
+    : {};
+  if (hasUatAnalyticsForbiddenKey(properties)) return null;
+  const serializedProperties = JSON.stringify(properties);
+  if (Buffer.byteLength(serializedProperties, 'utf8') > 4 * 1024) return null;
+  const entrySurface = ['direct', 'liff_url', 'line_client', 'unknown'].includes(payload.entrySurface)
+    ? payload.entrySurface
+    : (['direct', 'liff_url', 'line_client', 'unknown'].includes(payload.entry_surface) ? payload.entry_surface : 'unknown');
+  const clientTs = payload.clientTimestamp && Number.isFinite(Date.parse(payload.clientTimestamp))
+    ? new Date(payload.clientTimestamp).toISOString()
+    : null;
+  return {
+    event_id: eventId,
+    journey_id: journeyId,
+    event_name: eventName,
+    stage_key: stageKey,
+    step: Number.isFinite(stepValue) ? Math.trunc(stepValue) : null,
+    client_ts: clientTs,
+    properties,
+    entry_surface: entrySurface,
+    entry_context: String(payload.entryContext || payload.entry_context || '').slice(0, 40) || null,
+    platform: String(payload.platform || '').slice(0, 20) || null,
+    browser_family: String(payload.browserFamily || payload.browser_family || '').slice(0, 30) || null
+  };
+}
+
+async function saveUatAnalyticsEvent(event) {
+  if (!isSupabaseConfigured()) return false;
+  const nowIso = new Date().toISOString();
+  await supabaseRequest('uat_analytics_journeys', {
+    method: 'POST',
+    body: {
+      journey_id: event.journey_id,
+      entry_surface: event.entry_surface,
+      entry_context: event.entry_context,
+      platform: event.platform,
+      browser_family: event.browser_family,
+      last_seen_at: nowIso
+    },
+    prefer: 'resolution=merge-duplicates,return=minimal',
+    params: { on_conflict: 'journey_id' }
+  });
+  await supabaseRequest('uat_analytics_events', {
+    method: 'POST',
+    body: {
+      event_id: event.event_id,
+      journey_id: event.journey_id,
+      event_name: event.event_name,
+      stage_key: event.stage_key,
+      step: event.step,
+      client_ts: event.client_ts,
+      properties: event.properties
+    },
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    params: { on_conflict: 'event_id' }
+  });
+  return true;
+}
+
 
 async function createDeferredLoginQaSession() {
   if (!isSupabaseConfigured() || !getEnvValue('DEFERRED_LOGIN_QA_ADMIN_SECRET')) return null;
@@ -2393,6 +2509,44 @@ async function linkAnalyticsOrderConversion(order = {}) {
 
   await upsertAnalyticsSession(payload);
   if (funnelVersion === ANALYTICS_FUNNEL_VERSION) await saveAnalyticsEvent(payload);
+}
+
+const LUCKY_BIRTHDAY_CONSENT_VERSION = 'lucky-birthday-consent-th-v1';
+
+function isSameOriginBrowserRequest(req) {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return true; // Non-browser callers still need the server-side validation below.
+  try {
+    return new URL(origin).host === String(req.headers.host || '').trim();
+  } catch {
+    return false;
+  }
+}
+
+function normalizeLuckyBirthdaySubmission(payload = {}) {
+  const birth = normalizeLuckyBirthDate(payload.birthDate);
+  const sessionId = truncateText(payload.sessionId, 120);
+  const consentVersion = truncateText(payload.consentVersion, 80);
+  if (!birth || !/^[A-Za-z0-9_-]{12,120}$/.test(sessionId) || consentVersion !== LUCKY_BIRTHDAY_CONSENT_VERSION || payload.source !== 'lucky') return null;
+  return { ...birth, sessionId, consentVersion };
+}
+
+async function saveLuckyBirthday(payload) {
+  const normalized = normalizeLuckyBirthdaySubmission(payload);
+  if (!normalized) return { ok: false, status: 400 };
+  if (!isSupabaseConfigured()) return { ok: false, status: 503 };
+  const insert = buildLuckyBirthdayInsert(getSupabaseConfig().serviceRoleKey, normalized);
+  if (!insert) return { ok: false, status: 503 };
+  // Append-only collection: browser input can never overwrite an existing row.
+  await supabaseRequest('lucky_birthday_submissions', {
+    method: 'POST',
+    params: { on_conflict: 'collection_key' },
+    prefer: 'resolution=ignore-duplicates,return=minimal',
+    body: {
+      ...insert.row
+    }
+  });
+  return { ok: true, status: 202 };
 }
 
 const ANALYTICS_RANGE_PRESETS = Object.freeze(["today", "yesterday", "7d", "30d", "month", "all"]);
@@ -3730,6 +3884,30 @@ async function handleApiRequest(req, res, urlObj) {
     return true;
   }
 
+  if (pathname === "/api/uat/analytics/event" && method === "POST") {
+    if (!isAllowedUatOriginRequest(req) || !bodyObj) {
+      sendJson(res, 403, { success: false });
+      return true;
+    }
+    if (Buffer.byteLength(JSON.stringify(bodyObj), "utf8") > 8 * 1024) {
+      sendJson(res, 413, { success: false });
+      return true;
+    }
+    try {
+      const event = normalizeUatAnalyticsEvent(bodyObj);
+      if (!event) {
+        sendJson(res, 400, { success: false });
+        return true;
+      }
+      const saved = await saveUatAnalyticsEvent(event);
+      sendJson(res, saved ? 202 : 503, { success: saved });
+    } catch (error) {
+      console.warn("[uat-analytics] event rejected:", error?.message || error);
+      sendJson(res, 503, { success: false });
+    }
+    return true;
+  }
+
   if (pathname === "/api/analytics/event" && method === "POST") {
     if (!bodyObj) {
       sendJson(res, 400, { success: false, error: "Empty body" });
@@ -3748,6 +3926,25 @@ async function handleApiRequest(req, res, urlObj) {
     } catch (error) {
       console.warn("[analytics] event rejected:", error?.message || error);
       sendJson(res, 202, { success: false });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/lucky/birthday' && method === 'POST') {
+    if (!isSameOriginBrowserRequest(req) || !bodyObj) {
+      sendJson(res, 403, { success: false });
+      return true;
+    }
+    if (Buffer.byteLength(JSON.stringify(bodyObj), 'utf8') > 8 * 1024) {
+      sendJson(res, 413, { success: false });
+      return true;
+    }
+    try {
+      const result = await saveLuckyBirthday(bodyObj);
+      sendJson(res, result.status, { success: result.ok });
+    } catch {
+      // Deliberately do not log payloads: birth dates and LINE tokens are sensitive.
+      sendJson(res, 503, { success: false });
     }
     return true;
   }

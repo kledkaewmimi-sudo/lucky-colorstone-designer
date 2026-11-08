@@ -27,6 +27,8 @@ assert.match(server, /UAT_HANDOFF_QA_TTL_SECONDS/);
 assert.match(server, /APP_ENV[^\n]*=== 'uat'/);
 assert.match(server, /UAT_BACKEND[^\n]*=== 'true'/);
 assert.match(server, /seconds < 60 \|\| seconds > 300/);
-assert.match(server, /normalizeHandoffPayload\(input, Date\.now\(\), resolveUatHandoffQaTtlMs\(\)\)/);
+assert.match(server, /const ttlMs = Number\(input\?\.ttlMs\)/);
+assert.match(server, /INITIAL_HANDOFF_TTL_MS/);
+assert.match(server, /normalizeHandoffPayload\(input, Date\.now\(\), ttlMs\)/);
 
 console.log('uat-handoff-ttl-override.test.cjs passed');

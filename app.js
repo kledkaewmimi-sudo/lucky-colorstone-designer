@@ -1,4 +1,5 @@
-import { STONES, CATEGORIES, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel } from './data.js';
+import { getStep3OnboardingController } from './lumi/onboarding/step3-onboarding-smooth.js';
+import { STONES, CATEGORIES, CHARM_CATALOG, CHARM_PLACEHOLDER_IMAGE, refreshCatalog, refreshCharmCatalog, refreshSpacerCatalog, refreshCatalogLayoutOrder, getLegacyCharmCatalog, getSharedSpacerCatalog, seedCatalogFromBundledFiles, CHARM_RECORDS, adaptNormalizedCharmCatalogToLegacy, getSharedSettings, addSharedOrder, getSharedOrders, getStonePriceForSize, applyCatalogLayoutOrder, withCatalogImageVersion, getComponentTypeLabel, getCatalogAvailabilityState, normalizeOutOfStockDisplayMode } from './data.js';
 import { BERYL_STONE_ID, getBerylVisualImage } from './beryl-visuals.js';
 import { createBerylCatalogPreview, createBerylCatalogPreviewController, waitForBerylCatalogPreviewReady } from './beryl-catalog-preview.js';
 import { clearGuestDesignSnapshot as clearStoredGuestDesignSnapshot, reconcileGuestDesignSnapshot, restoreGuestDesignSnapshot as readGuestDesignSnapshot, saveGuestDesignSnapshot as writeGuestDesignSnapshot } from './guest-design-state.js';
@@ -9,7 +10,7 @@ import { getProductCardBadge } from './product-card-badges.js';
 import { trimTrailingOverflowAfterFixedConversion } from './mixed-size-transition-trim.js';
 import { parseCustomizationLoginIntent, resolveDeferredLineLoginFlag } from './line-redirect-restore.js';
 import { createDeferredStep3AuthBoundary } from './deferred-step3-auth-boundary.js';
-import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback } from './line-identity-before-design.js';
+import { establishLineIdentityBeforeDesign, isInitialLineIdentityCallback, shouldRequireLineIdentityBeforeDesigner } from './line-identity-before-design.js';
 import { invokeInitialLineAuthentication } from './initial-line-auth.js';
 import { createLineCallbackRestoreGuard, planLineCallbackBootstrap, runDormantV2CallbackRestore } from './line-callback-bootstrap.js';
 import { activateDeferredLoginQaSessionFromFragment, getValidatedDeferredLoginQaState } from './deferred-login-qa-client.js';
@@ -17,6 +18,13 @@ import { ANALYTICS_SESSION_TIMEOUT_MS, ANALYTICS_STAGE_RANK, createAnalyticsEven
 import { captureMetaAttribution, normalizeMetaAttribution, updateMetaAttribution } from './meta-attribution.js';
 import { getBrowserPurchaseStorageKey, normalizeBrowserPurchaseTracking } from './meta-browser-purchase.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
+import { createLumiCatalogSnapshot } from './lumi/contracts/catalog-snapshot.js';
+import { commitLumiStep3Import, prepareLumiStep3Import } from './lumi/import/step3-import.js';
+import { isLumiEnabled } from './lumi/foundation/feature-flag.js';
+import { createLumiUi } from './lumi/ui/lumi-ui.js';
+import { createLumiAnalytics } from './lumi/analytics/lumi-analytics.js';
+import { STEP3_ALL_CATEGORY, STEP3_GOAL_CATEGORIES, stoneMatchesGoalCategory } from './lumi/knowledge/stone-goal-taxonomy.js';
+import { isDiscontinuedMaterial } from './lumi/knowledge/discontinued-materials.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -29,7 +37,6 @@ if (urlParams.has('clear') || urlParams.has('logout') || urlParams.has('clearSto
   sessionStorage.removeItem('lucky_colorstone_landing_dismissed');
   window.location.href = window.location.pathname;
 }
-
 const LANDING_DISMISSED_KEY = 'lucky_colorstone_landing_dismissed';
 const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
@@ -86,6 +93,7 @@ const step2Debug = {
   nextHandlerCalls: 0,
   clickedCard: null,
   lastTransitionResult: 'NONE',
+  timings: null,
   events: []
 };
 const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
@@ -111,8 +119,8 @@ const CUSTOMER_COMPONENT_LABELS = {
 };
 const STOCK_UNAVAILABLE_TOAST = '\u0E2A\u0E34\u0E19\u0E04\u0E49\u0E32\u0E2B\u0E21\u0E14\u0E41\u0E25\u0E49\u0E27';
 const DESIGNER_CATEGORY_RULES_BY_BEAD_SIZE = Object.freeze({
-  '4': Object.freeze(['stones']),
-  '6': Object.freeze(['stones', 'charms']),
+  '4': Object.freeze(['stones', 'charms', 'spacer']),
+  '6': Object.freeze(['stones', 'charms', 'spacer']),
   '10': Object.freeze(['stones', 'charms', 'spacer'])
 });
 
@@ -155,6 +163,133 @@ const State = {
   showDiscountBanner: true,
   braceletPreviewKey: ''
 };
+
+// ==========================================
+// UAT experiment instrumentation and state handoff
+// ==========================================
+const UAT_JOURNEY_ID_KEY = 'lucky_uat_journey_id';
+const UAT_ENTRY_SURFACE_KEY = 'lucky_uat_entry_surface';
+const UAT_HANDOFF_TTL_MS = 10 * 60 * 1000;
+let uatJourneyId = '';
+let uatEntrySurface = '';
+
+function createUatRandomId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+    }
+  } catch {
+    // Fall through to a non-sensitive local identifier.
+  }
+  return `j${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeUatEntrySurface(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'liff') return 'liff_url';
+  if (['direct', 'liff_url', 'line_client', 'unknown'].includes(normalized)) return normalized;
+  return '';
+}
+
+function getUatEntrySurface() {
+  if (uatEntrySurface) return uatEntrySurface;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = normalizeUatEntrySurface(params.get('entry') || params.get('entry_surface'));
+    if (fromQuery) {
+      uatEntrySurface = fromQuery;
+      localStorage.setItem(UAT_ENTRY_SURFACE_KEY, fromQuery);
+      return uatEntrySurface;
+    }
+    const stored = normalizeUatEntrySurface(localStorage.getItem(UAT_ENTRY_SURFACE_KEY));
+    uatEntrySurface = stored || (isLiffInClient() ? 'line_client' : 'direct');
+  } catch {
+    uatEntrySurface = 'direct';
+  }
+  return uatEntrySurface;
+}
+
+function getUatJourneyId() {
+  if (uatJourneyId) return uatJourneyId;
+  try {
+    const stored = localStorage.getItem(UAT_JOURNEY_ID_KEY) || '';
+    uatJourneyId = /^[A-Za-z0-9_-]{8,128}$/.test(stored) ? stored : createUatRandomId();
+    localStorage.setItem(UAT_JOURNEY_ID_KEY, uatJourneyId);
+  } catch {
+    uatJourneyId = createUatRandomId();
+  }
+  return uatJourneyId;
+}
+
+function getUatPlatform() {
+  const ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  return 'web';
+}
+
+function getUatBrowserFamily() {
+  const ua = navigator.userAgent || '';
+  if (isLiffInClient()) return 'line';
+  if (/Instagram/i.test(ua)) return 'instagram';
+  if (/FBAN|FBAV/i.test(ua)) return 'facebook';
+  if (/CriOS|Chrome/i.test(ua)) return 'chrome';
+  if (/Safari/i.test(ua)) return 'safari';
+  return 'other';
+}
+
+function getUatAttribution() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    source: params.get('utm_source') || '',
+    medium: params.get('utm_medium') || '',
+    campaign: params.get('utm_campaign') || '',
+    content: params.get('utm_content') || '',
+    term: params.get('utm_term') || '',
+    platform: getUatPlatform()
+  };
+}
+
+function trackUatEvent(eventName, properties = {}, { stageKey = '' } = {}) {
+  if (!IS_UAT_MODE) return;
+  try {
+    const attribution = getUatAttribution();
+    fetch('/api/uat/analytics/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        eventId: createUatRandomId(),
+        journeyId: getUatJourneyId(),
+        eventName,
+        stageKey,
+        step: Number(State.currentStep) || null,
+        entrySurface: getUatEntrySurface(),
+        entryContext: isLiffInClient() ? 'in_client' : 'external',
+        platform: getUatPlatform(),
+        browserFamily: getUatBrowserFamily(),
+        clientTimestamp: new Date().toISOString(),
+        properties: {
+          ...properties,
+          utm_source: attribution.source,
+          utm_medium: attribution.medium,
+          utm_campaign: attribution.campaign,
+          utm_content: attribution.content,
+          utm_term: attribution.term
+        }
+      })
+    }).catch(() => {});
+  } catch {
+    // Analytics is best-effort and must never block the customer flow.
+  }
+}
+
+function trackUatStage(eventName, step, properties = {}) {
+  trackUatEvent(eventName, properties, { stageKey: `step_${step}` });
+}
+
 
 // Keep the initialization overlay in place while a URL-based order/payment view is restored.
 // The static markup defaults to Step 1, so exposing the app shell before the first Step 4 render
@@ -276,6 +411,9 @@ const DOM = {
   landingView: document.getElementById('landingView'),
   btnLandingLogin: document.getElementById('btnLandingLogin'),
   landingLoadReassurance: document.getElementById('landingLoadReassurance'),
+  step1AuthStatus: document.getElementById('step1AuthStatus'),
+  step1AuthStatusText: document.getElementById('step1AuthStatusText'),
+  btnStep1LineConnect: document.getElementById('btnStep1LineConnect'),
   liffLoadingOverlay: document.getElementById('liffLoadingOverlay'),
   callbackBootstrapOverlay: document.getElementById('callbackBootstrapOverlay')
 };
@@ -296,12 +434,23 @@ const SHIPPING_FIELD_CONFIG = Object.freeze([
 let braceletShowcaseRenderKey = '';
 let braceletShowcaseGenerationInFlight = false;
 let berylCatalogPreviewController = null;
+const CHARM_BOUNDS_ANALYSIS_MAX_PX = 224;
+const CHARM_BOUNDS_ALPHA_THRESHOLD = 8;
 const charmVisibleBoundsCache = new Map();
 const charmVisibleBoundsPromiseCache = new Map();
 let legacyCharmCatalogCache = [];
+// null = not resolved yet. The CTA fails VISIBLE so Step 3 never shows a blank centre while
+// the shared-settings request is in flight or unavailable; only an explicit false hides it.
+let lumiFeatureEnabled = null;
+let lumiUiController = null;
+let step2ToStep3TransitionInProgress = false;
+let step3ToStep4TransitionInProgress = false;
+let step4AuthorizationInProgress = false;
+let stripeCheckoutInProgress = false;
 let liffLoginInProgress = false;
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
+const LANDING_CTA_IDLE_TEXT = 'เริ่มออกแบบเลย';
 let landingPressTimer = null;
 let landingRippleTimer = null;
 let landingReassuranceDelayTimer = null;
@@ -321,6 +470,13 @@ const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
   resolveCustomerStartupBootstrap = resolve;
   rejectCustomerStartupBootstrap = reject;
 });
+let customerStartupBootstrapSettled = false;
+let lineProfileSyncPromise = null;
+let progressiveStartupEligible = false;
+let lineBootstrapPromise = null;
+let progressiveLineVerificationPromise = null;
+let step1ToStep2AuthInProgress = false;
+let step1AuthState = 'idle';
 let customerCatalogStartupPromise = null;
 let customerCatalogRefreshPromise = null;
 let customerCatalogRefreshEventsBound = false;
@@ -459,6 +615,48 @@ const SPACER_CATALOG = Object.freeze([
     thicknessMm: 1,
     renderSizeMm: 6,
     price: 0
+  },
+  {
+    id: 'mallow',
+    sku: 'SP-MALLOW',
+    nameTh: '\u0E2D\u0E31\u0E0D\u0E21\u0E13\u0E35\u0E41\u0E2B\u0E48\u0E07\u0E40\u0E2A\u0E19\u0E48\u0E2B\u0E4C',
+    nameEn: 'Mallow',
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'gold',
+    image: '/assets/spacers/Mallow.webp',
+    displaySizeMm: 33.5,
+    effectiveLengthMm: 4.2,
+    renderSizeMm: 33.5,
+    renderWidthMm: 17,
+    renderHeightMm: 33.5,
+    attachmentLoopMm: 4.2,
+    price: 150,
+    stockQty: 50,
+    inStock: true,
+    isActive: true,
+    displayOrder: 80
+  },
+  {
+    id: 'pony',
+    sku: 'SP-PONY',
+    nameTh: '\u0E21\u0E49\u0E32\u0E41\u0E2B\u0E48\u0E07\u0E1D\u0E31\u0E19',
+    nameEn: 'Pony',
+    type: 'hanging',
+    presentation: 'hanging',
+    color: 'pink',
+    image: '/assets/spacers/Pony.webp',
+    displaySizeMm: 30,
+    effectiveLengthMm: 4.2,
+    renderSizeMm: 30,
+    renderWidthMm: 21,
+    renderHeightMm: 30,
+    attachmentLoopMm: 4.2,
+    price: 150,
+    stockQty: 50,
+    inStock: true,
+    isActive: true,
+    displayOrder: 90
   }
 ]);
 let spacerCatalogCache = SPACER_CATALOG.slice();
@@ -470,11 +668,16 @@ function normalizeStockQtyForCustomer(value) {
   return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : null;
 }
 
+function getCustomerCatalogDisplayState(item) {
+  // Owner rule 2026-10-08: a discontinued material is never selectable or displayed in Step 3,
+  // regardless of bead size or goal category. The catalog record itself is kept (orders, CRM and
+  // price history still reference it); only customer availability is withdrawn.
+  if (isDiscontinuedMaterial(item?.id)) return 'hidden';
+  return getCatalogAvailabilityState(item);
+}
+
 function isCustomerCatalogItemAvailable(item) {
-  if (!item || item.isActive === false || item.inStock === false) return false;
-  if (item.availability?.isActive === false || item.availability?.inStock === false) return false;
-  const stockQty = normalizeStockQtyForCustomer(item.stockQty ?? item.stock_qty ?? item.availability?.stockQty ?? item.availability?.stock_qty);
-  return stockQty === null || stockQty > 0;
+  return getCustomerCatalogDisplayState(item) === 'normal';
 }
 
 function isStoneAvailableForCurrentBeadSize(stone) {
@@ -494,17 +697,22 @@ function adaptSpacerRecordForCustomer(record) {
     nameTh: record.name?.th || record.nameTh || record.name?.en || record.nameEn || record.id,
     nameEn: record.name?.en || record.nameEn || record.name?.th || record.nameTh || record.id,
     type: record.type || 'spacer',
+    presentation: record.presentation || 'inline',
     color: record.color || '',
     image: record.image?.primary || record.image || '',
     displaySizeMm: Number(record.business?.displaySizeMm || record.displaySizeMm || record.sizeMm || 0),
     effectiveLengthMm: Number(record.business?.effectiveLengthMm || record.effectiveLengthMm || record.footprintMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
     renderSizeMm: Number(record.business?.renderSizeMm || record.renderSizeMm || record.business?.displaySizeMm || record.displaySizeMm || 0),
+    renderWidthMm: Number(record.business?.renderWidthMm || record.renderWidthMm || 0),
+    renderHeightMm: Number(record.business?.renderHeightMm || record.renderHeightMm || 0),
+    attachmentLoopMm: Number(record.business?.attachmentLoopMm || record.attachmentLoopMm || 0),
     thicknessMm: Number(record.business?.thicknessMm || record.thicknessMm || 0),
     price: Number(record.pricing?.base || record.price || 0),
     displayOrder: Number(record.displayOrder || 0),
     inStock: record.availability?.inStock !== false && record.inStock !== false && (stockQty === null || stockQty > 0),
     isActive: record.availability?.isActive !== false && record.isActive !== false,
-    stockQty
+    stockQty,
+    outOfStockDisplayMode: normalizeOutOfStockDisplayMode(record.outOfStockDisplayMode ?? record.out_of_stock_display_mode ?? record.availability?.outOfStockDisplayMode ?? record.availability?.out_of_stock_display_mode)
   };
 }
 
@@ -557,13 +765,7 @@ function canUseCategoryForBeadSize(categoryId, beadSize = State.beadSize) {
 function getUnavailableCategoryMessage(categoryId, beadSize = State.beadSize) {
   const normalizedSize = normalizeBeadSizeOption(beadSize);
   const normalizedCategory = normalizeDesignerCategoryId(categoryId);
-  if (normalizedSize === '4') {
-    return '\u0E02\u0E19\u0E32\u0E14 4mm \u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E40\u0E09\u0E1E\u0E32\u0E30\u0E2B\u0E34\u0E19';
-  }
-  if (normalizedSize === '6' && normalizedCategory === 'spacer') {
-    return '\u0E02\u0E19\u0E32\u0E14\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E0A\u0E32\u0E23\u0E4C\u0E21';
-  }
-  return '\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E02\u0E19\u0E32\u0E14\u0E17\u0E35\u0E48\u0E40\u0E25\u0E37\u0E2D\u0E01';
+      return '\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E19\u0E35\u0E49\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A\u0E02\u0E19\u0E32\u0E14\u0E17\u0E35\u0E48\u0E40\u0E25\u0E37\u0E2D\u0E01';
 }
 
 function removeInvalidDesignerItemsForBeadSize({ showToastNotification = false } = {}) {
@@ -652,8 +854,12 @@ function getSpacerCatalogEntry(spacerId) {
   return SPACER_CATALOG_MAP.get(String(spacerId || '').trim()) || null;
 }
 
+function getCharmCatalogAuthority() {
+  return legacyCharmCatalogCache.length > 0 ? legacyCharmCatalogCache : CHARM_CATALOG;
+}
+
 function getCharmCatalogEntry(charmId) {
-  return legacyCharmCatalogCache.find((charm) => charm?.id === String(charmId || '').trim()) || null;
+  return getCharmCatalogAuthority().find((charm) => charm?.id === String(charmId || '').trim()) || null;
 }
 
 function isSlotPlaceableCharmType(charmType) {
@@ -1265,11 +1471,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     setCallbackBootstrapHold(true);
   }
   const returnParams = new URLSearchParams(window.location.search);
+  const initialHandoffToken = getInitialHandoffToken(window.location.search);
+  const shouldResumeInitialHandoff = !returnParams.has('orderId') && Boolean(initialHandoffToken);
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
     && isInitialLineIdentityCallback(window.location.search);
   // The head marker covers first paint. Confirm the initial identity callback
   // before any async startup work so it remains hidden through LIFF/profile sync.
-  if (shouldResumeInitialIdentityCallback) {
+  if (shouldResumeInitialIdentityCallback || shouldResumeInitialHandoff) {
     setCallbackBootstrapHold(true);
   }
   await initializeDeferredLoginQaSession();
@@ -1288,11 +1496,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldHoldForFriendshipResume = !returnParams.has('orderId')
     && hasLineOaFriendshipResumePending();
   const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
+    || shouldResumeInitialHandoff
     || shouldHoldForDeferredCallback
     || shouldHoldForFriendshipResume;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
     && (shouldResumeInitialIdentityCallback || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
+  progressiveStartupEligible = shouldStartFreshCustomization
+    && !shouldHoldForCallbackBootstrap
+    && !shouldOpenStep4FromUrl;
   // A cross-context V2 callback must apply validated handoff continuity before
   // the first analytics event can create a replacement browser session.
   const deferAnalyticsUntilCallbackRestore = shouldHoldForDeferredCallback;
@@ -1337,6 +1549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // The landing CTA must be interactive before LIFF and catalog bootstrapping finish.
   // Its handler waits for this bootstrap promise and continues the original first tap.
   setupLandingEvents();
+  setupProgressiveStep1AuthEvents();
   if (!deferAnalyticsUntilCallbackRestore) {
     initAnalytics();
     if (!State.landingDismissed) {
@@ -1369,19 +1582,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupModalEvents();
   setupShippingFormEvents();
 
+  // Desktop and explicitly non-LINE environments do not require identity before
+  // Step 1. Release the landing CTA immediately instead of making it wait for
+  // unrelated LIFF initialization and profile synchronization.
+  if (!requiresLineLoginForCustomization() && !shouldHoldForCallbackBootstrap) {
+    resolveCustomerStartupBootstrapOnce();
+  }
+
   // Catalog data and its images are needed for Step 3, not for the initial wrist-size step.
   // Start the shared-data work immediately, but keep it off the mobile authentication/Step 1 path.
   startCustomerCatalogWarmup();
 
-  // Load only the UAT LIFF configuration before initializing the SDK.
-  await loadUatLiffConfiguration();
-  lineDebugTrace('LIFF_CONFIG_READY', { captureState: true, details: { configurationReason: sanitizeLineDebugText(liffConfigurationReason, 80) } });
-  // Setup LIFF (LINE Front-end Framework). This remains the required mobile gate.
-  await initLIFF();
-  markStartupPerformance('T1_liff_ready');
+  await startLineBootstrap();
   clearOAuthQueryParams();
   let restored = null;
-  if (shouldResumeInitialIdentityCallback) {
+  if (shouldResumeInitialHandoff) {
+    const handled = await handleInitialHandoffCallback(initialHandoffToken);
+    if (!handled) {
+      restored = { ok: false, reason: 'initial_handoff_restore_failed' };
+    }
+  } else if (shouldResumeInitialIdentityCallback) {
     if (isLineIdentityAvailable()) {
       State.currentStep = 1;
       State.landingDismissed = true;
@@ -1421,6 +1641,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (State.currentStep < 4) trackMetaViewContent();
     }
   }
+  if (IS_UAT_MODE) {
+    if (!State.landingDismissed) {
+      trackUatEvent('landing_view', { entry_surface: getUatEntrySurface() }, { stageKey: 'landing' });
+    } else if (shouldResumeCustomizationStart && !shouldHoldForDeferredCallback) {
+      trackUatEvent('designer_returned', { source: 'legacy_intent' }, { stageKey: 'designer_returned' });
+    }
+  }
   
   // Perform the first render without waiting for catalog hydration.
   await renderApp();
@@ -1435,9 +1662,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (customizationResumeInProgress) {
     await completeCustomizationStartResume();
   }
-  resolveCustomerStartupBootstrap();
+  resolveCustomerStartupBootstrapOnce();
+  seedCatalogFromBundledFiles();
   startCustomerCatalogWarmup();
   bindCustomerCatalogRefreshEvents();
+  initLandingSocialProof();
+  if (new URLSearchParams(window.location.search).has('phase24Sandbox')) {
+    window.__phase24Renderer = {
+      render(components, wristSizeCm = 16) {
+        const config = {
+          wristSizeCm, toleranceCm: TOLERANCE_CM, braceletLengthMm: (wristSizeCm + TOLERANCE_CM) * 10,
+          beadSizeMode: 'mixed', placingSizeMm: 6, activeSlotIndex: null, newlyAddedIds: [],
+          svg: { centerX: 125, centerY: 125, radiusPx: 82 }
+        };
+        const layout = createResolvedBraceletLayout(config, components, { includeEditorPlaceholders: false });
+        renderBraceletCanvas(layout, { svg: DOM.braceletSvg, interactive: false, includeDebug: false, showEditorPlaceholders: false });
+        return {
+          summary: layout.summary,
+          nodes: layout.nodes.map((node) => ({ id: node.component?.uniqueId || node.index, centerX: node.centerX, centerY: node.centerY, angle: node.centerAngle, sizeMm: node.sizeMm }))
+        };
+      }
+    };
+  }
   } catch (error) {
     console.error('Customer startup bootstrap failed.', error);
     rejectCustomerStartupBootstrap(error);
@@ -1470,7 +1716,20 @@ function markStartupPerformance(stage) {
   }
 }
 
+function resolveCustomerStartupBootstrapOnce() {
+  if (customerStartupBootstrapSettled) return;
+  customerStartupBootstrapSettled = true;
+  resolveCustomerStartupBootstrap();
+}
+
 function applySharedCustomerSettings(sharedSettings) {
+  // Only an EXPLICIT Lumi flag may hide the CTA. When /api/settings is unavailable the shared
+  // default payload (no lumi key) is returned, and that must leave the CTA visible rather than
+  // blanking the centre of the bracelet.
+  lumiFeatureEnabled = (sharedSettings && ('lumiEnabled' in sharedSettings || 'lumi_enabled' in sharedSettings))
+    ? isLumiEnabled(sharedSettings)
+    : null;
+  if (State.currentStep === 3) renderLumiStep3Entry();
   State.discountEnabled = sharedSettings?.discountEnabled === undefined
     ? sharedSettings?.showDiscountBanner !== false
     : sharedSettings.discountEnabled !== false;
@@ -1480,6 +1739,85 @@ function applySharedCustomerSettings(sharedSettings) {
   State.showDiscountBanner = State.discountEnabled && sharedSettings?.showDiscountBanner !== false;
 }
 
+// ------------------------------------------------- Step 3 catalog caches (Step 2 -> 3 performance)
+// First-paint catalog availability. The Step 2 -> Step 3 transition must never block on /api/*: use
+// whatever the startup warmup already fetched, then the bundled deployment catalog, and only then
+// wait for the fast same-origin static seed. The authoritative /api refresh always runs afterwards.
+// ---------------------------------------------------------------- Landing social proof
+// Read-only, non-blocking. The landing paints immediately with the base count and the CSS fallback
+// thumbnails; real aggregate data is hydrated only after /api/social-proof answers. Any failure keeps
+// the safe defaults (base 1,035, fallback circles) and never surfaces a customer-facing error.
+const LANDING_SOCIAL_PROOF_BASE_COUNT = 1035;
+function initLandingSocialProof() {
+  const section = document.getElementById('landingSocialProof');
+  if (!section) return;
+  const countEl = document.getElementById('landingSocialProofCount');
+  const thumbsEl = document.getElementById('landingSocialProofThumbs');
+  const renderCount = (value) => {
+    if (!countEl || !Number.isFinite(value) || value <= 0) return;
+    countEl.textContent = Math.round(value).toLocaleString('en-US');
+  };
+  const renderThumbs = (images) => {
+    if (!thumbsEl) return;
+    const slots = [...thumbsEl.querySelectorAll('.sp-thumb')];
+    slots.forEach((slot, index) => {
+      const src = images[index];
+      const existing = slot.querySelector('img');
+      if (!src) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (existing) {
+        if (existing.getAttribute('src') !== src) existing.setAttribute('src', src);
+        return;
+      }
+      const img = document.createElement('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.addEventListener('error', () => img.remove(), { once: true });
+      img.src = src;
+      slot.appendChild(img);
+    });
+  };
+  renderCount(LANDING_SOCIAL_PROOF_BASE_COUNT);
+  fetch('/api/social-proof', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error('HTTP ' + response.status))))
+    .then((payload) => {
+      const display = Number(payload?.displayCount);
+      if (Number.isFinite(display) && display >= LANDING_SOCIAL_PROOF_BASE_COUNT) renderCount(display);
+      const images = Array.isArray(payload?.recentBracelets)
+        ? payload.recentBracelets
+          .map((entry) => (typeof entry === 'string' ? entry : entry?.image))
+          .filter((src) => typeof src === 'string' && src.trim().length > 0)
+          .slice(0, 4)
+        : [];
+      if (images.length) renderThumbs(images);
+    })
+    .catch((error) => {
+      console.warn('[landing] social proof unavailable; keeping safe defaults.', error);
+    });
+}
+function ensureStep3CatalogCaches() {
+  if (!legacyCharmCatalogCache.length) legacyCharmCatalogCache = CHARM_CATALOG.slice();
+  startCustomerCatalogWarmup();
+  bindCustomerCatalogRefreshEvents();
+  if (STONES.length > 0) return Promise.resolve(true);
+  return seedCatalogFromBundledFiles();
+}
+function step3CatalogSignatures() {
+  return {
+    stones: JSON.stringify(STONES),
+    charms: JSON.stringify(legacyCharmCatalogCache),
+    spacers: JSON.stringify(spacerCatalogCache)
+  };
+}
+// Performance: only the ACTIVE designer category is built; inactive categories are hydrated when
+// their tab is first opened (see setActiveCatalogSection).
+function renderActiveCharmSpacerSection() {
+  if (State.activeCatalogSection === 'charms') renderCharmOptions();
+  else if (State.activeCatalogSection === 'spacer') renderSpacerOptions();
+}
 function refreshCustomerCatalog({ includeLayoutOrder = false, renderStep3AfterRefresh = false } = {}) {
   if (customerCatalogRefreshPromise) return customerCatalogRefreshPromise;
 
@@ -1490,12 +1828,20 @@ function refreshCustomerCatalog({ includeLayoutOrder = false, renderStep3AfterRe
   ];
   if (includeLayoutOrder) tasks.push(refreshCatalogLayoutOrder(), getSharedSettings());
 
+  // Performance: compare the catalog before/after so an unchanged authoritative refresh cannot
+  // trigger a rebuild of the designer.
+  const signaturesBefore = step3CatalogSignatures();
   const pending = Promise.all(tasks).then((results) => {
     const sharedSettings = includeLayoutOrder ? results[4] : null;
     if (sharedSettings) applySharedCustomerSettings(sharedSettings);
+    if (CHARM_RECORDS.length > 0) legacyCharmCatalogCache = adaptNormalizedCharmCatalogToLegacy(CHARM_RECORDS);
     customerCatalogLastRefreshAt = Date.now();
-    // Repaint only the current designer; selected bracelet state remains intact.
-    if (renderStep3AfterRefresh && State.currentStep === 3) renderStep3();
+    const signaturesAfter = step3CatalogSignatures();
+    const catalogChanged = signaturesAfter.stones !== signaturesBefore.stones
+      || signaturesAfter.charms !== signaturesBefore.charms
+      || signaturesAfter.spacers !== signaturesBefore.spacers;
+    // Repaint only when the authoritative catalog actually changed; selection stays intact.
+    if (renderStep3AfterRefresh && State.currentStep === 3 && catalogChanged) renderStep3();
     return true;
   });
 
@@ -1828,6 +2174,9 @@ function trackAnalyticsEvent(eventName, properties = {}, options = {}) {
 function trackStepView(step) {
   const normalizedStep = Number(step);
   if (!normalizedStep || analyticsLastStep === normalizedStep) return;
+  if (IS_UAT_MODE && (normalizedStep === 1 || normalizedStep === 2)) {
+    trackUatStage(`step_${normalizedStep}_view`, normalizedStep);
+  }
   const now = Date.now();
   if (analyticsLastStep && analyticsStepEnteredAt) {
     trackAnalyticsEvent('step_duration', {
@@ -1961,7 +2310,7 @@ function setLandingButtonState(state, message = '') {
   const isLoading = state === 'starting' || state === 'line';
   const text = button.querySelector('.btn-text');
   if (text) {
-    text.textContent = isLoading ? message : (message || 'เริ่มออกแบบ');
+    text.textContent = isLoading ? message : (message || LANDING_CTA_IDLE_TEXT);
   }
   button.disabled = isLoading;
   button.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
@@ -2098,9 +2447,12 @@ function clearLineConnectPrompt() {
   setLandingSubtitleMessage('');
 }
 
-function getLiffRedirectUri({ initialIdentity = false } = {}) {
+function getLiffRedirectUri({ initialIdentity = false, handoffToken = '' } = {}) {
   const redirect = new URL(`${window.location.origin}${window.location.pathname}`);
   if (initialIdentity) redirect.searchParams.set('line_auth', 'identity');
+  if (/^[A-Za-z0-9_-]{43}$/.test(String(handoffToken || ''))) {
+    redirect.searchParams.set('handoff', String(handoffToken));
+  }
   return redirect.toString();
 }
 
@@ -2159,7 +2511,15 @@ function reportInitialLineAuthDiagnostic(result = {}) {
   });
 }
 
-async function syncLineProfileFromLiff() {
+function syncLineProfileFromLiff() {
+  if (lineProfileSyncPromise) return lineProfileSyncPromise;
+  lineProfileSyncPromise = performLineProfileSync().finally(() => {
+    lineProfileSyncPromise = null;
+  });
+  return lineProfileSyncPromise;
+}
+
+async function performLineProfileSync() {
   lineIdentityFailureCode = '';
   if (!isLiffLoggedIn()) {
     lineIdentityFailureCode = 'F05E3_NOT_LOGGED_IN';
@@ -2180,6 +2540,7 @@ async function syncLineProfileFromLiff() {
     }
     saveState();
     trackAnalyticsEvent('line_auth_success');
+    trackUatEvent('line_auth_success', { reason: 'profile_success' }, { stageKey: 'auth_success' });
     const synchronized = isLineIdentityAvailable();
     if (!synchronized) lineIdentityFailureCode = 'F05E3C';
     return synchronized;
@@ -2189,6 +2550,7 @@ async function syncLineProfileFromLiff() {
     trackAnalyticsEvent('line_auth_error', {
       message: profileErr?.message || String(profileErr || '')
     });
+    trackUatEvent('line_auth_failed', { reason: 'profile_fetch_failed' }, { stageKey: 'auth_failed' });
     return false;
   }
 }
@@ -2465,11 +2827,15 @@ function persistCustomizationLoginIntent(intent) {
   }
 }
 
-function rememberCustomizationLoginIntent() {
-  return persistCustomizationLoginIntent({
+function rememberCustomizationLoginIntent({ targetStep = 1, handoffToken = '', journeyId = '' } = {}) {
+  const intent = {
     ts: Date.now(),
-    step: 1
-  });
+    step: 1,
+    targetStep: targetStep === 2 ? 2 : 1
+  };
+  if (/^[A-Za-z0-9_-]{43}$/.test(String(handoffToken || ''))) intent.handoffToken = String(handoffToken);
+  if (/^[A-Za-z0-9_-]{8,128}$/.test(String(journeyId || ''))) intent.journeyId = String(journeyId);
+  return persistCustomizationLoginIntent(intent);
 }
 
 function hasCustomizationLoginIntent() {
@@ -2502,12 +2868,29 @@ function restoreCustomizationIntentAfterLogin() {
 
 async function completeCustomizationStartResume() {
   const loader = DOM.liffLoadingOverlay;
+  const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
+  const resumeIntent = parseCustomizationLoginIntent(rawIntent);
+  const resumeStep = resumeIntent?.version === 1 && resumeIntent.targetStep === 2 ? 2 : 1;
 
   if (hasCustomizationLoginIntent() && isLineIdentityAvailable() && State.currentStep === 1 && State.landingDismissed) {
     clearCustomizationLoginIntent();
     saveState();
     if (loader) loader.style.display = 'none';
     customizationResumeInProgress = false;
+    if (resumeStep === 2) {
+      setStep1AuthStatus('verified');
+      await goToStep(2);
+    }
+    return;
+  }
+
+  if (resumeStep === 2 && State.currentStep === 1 && State.landingDismissed) {
+    clearCustomizationLoginIntent();
+    saveState();
+    if (loader) loader.style.display = 'none';
+    customizationResumeInProgress = false;
+    setStep1AuthStatus('failed');
+    trackUatEvent('line_auth_cancelled', { reason: 'identity_unavailable' }, { stageKey: 'auth_cancelled' });
     return;
   }
 
@@ -2520,7 +2903,146 @@ async function completeCustomizationStartResume() {
   if (loader) loader.style.display = 'none';
 }
 
-function startLiffLoginForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+function createInitialHandoffDesignSnapshot() {
+  const now = Date.now();
+  const components = getSelectedLoopItems().map((item) => {
+    const type = item?.componentType || 'stone';
+    if (type === 'stone') return { type, id: item.stoneId, size: Number(item.size) };
+    if (type === 'charm') return { type, id: item.charmId };
+    if (type === 'spacer') return { type, id: item.spacerId };
+    return null;
+  }).filter(Boolean);
+  return {
+    version: 1,
+    savedAt: now,
+    expiresAt: now + UAT_HANDOFF_TTL_MS,
+    step: 1,
+    design: {
+      wristSize: State.wristSize,
+      beadSize: State.beadSize || null,
+      mixedPlacingSize: normalizeMixedPlacingSize(State.mixedPlacingSize, State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : State.beadSize),
+      selectedCharmIds: normalizeSelectedCharmIds(State.selectedCharmIds),
+      components
+    }
+  };
+}
+
+async function createInitialStateHandoff() {
+  if (!IS_UAT_MODE) return null;
+  const handoff = await createDeferredLineAuthHandoff({
+    targetStep: 2,
+    ttlMs: UAT_HANDOFF_TTL_MS,
+    journeyId: getUatJourneyId(),
+    designSnapshot: createInitialHandoffDesignSnapshot(),
+    analyticsContinuity: {
+      visitorId: analyticsVisitorId || localStorage.getItem(ANALYTICS_VISITOR_ID_KEY) || '',
+      sessionId: analyticsSessionId || localStorage.getItem(ANALYTICS_SESSION_ID_KEY) || '',
+      startedAt: analyticsStartedAt || localStorage.getItem(ANALYTICS_STARTED_AT_KEY) || '',
+      lastSeenAt: analyticsLastSeenAt || localStorage.getItem(ANALYTICS_LAST_SEEN_AT_KEY) || '',
+      attribution: getUatAttribution()
+    }
+  });
+  if (handoff?.journeyId) uatJourneyId = handoff.journeyId;
+  return handoff;
+}
+
+function applyInitialHandoffSnapshot(snapshot) {
+  const design = snapshot?.design;
+  if (!design) return false;
+  State.wristSize = Number(design.wristSize);
+  State.beadSize = design.beadSize == null ? null : String(design.beadSize);
+  State.mixedPlacingSize = normalizeMixedPlacingSize(
+    design.mixedPlacingSize,
+    State.beadSize === MIXED_BEAD_SIZE_MODE ? '6' : (State.beadSize || '6')
+  );
+  State.selectedCharmIds = normalizeSelectedCharmIds(design.selectedCharmIds || []);
+  syncSelectedCharmState();
+  State.selectedStones = normalizeSelectedLoopItems((design.components || []).map((component) => {
+    if (component.type === 'empty') return null;
+    if (component.type === 'stone') return { componentType: 'stone', stoneId: component.id, size: Number(component.size || getCurrentBeadSizeMm()) };
+    if (component.type === 'charm') return { componentType: 'charm', charmId: component.id };
+    return { componentType: 'spacer', spacerId: component.id };
+  }));
+  State.selectedStones.forEach((item, index) => { item.uniqueId = index + 1; });
+  State.uniqueCounter = State.selectedStones.length;
+  normalizeSelectedStoneSizes();
+  State.currentStep = 1;
+  State.landingDismissed = true;
+  persistLandingDismissed();
+  syncShellVisibility();
+  saveState();
+  return true;
+}
+
+function getInitialHandoffToken(search = '') {
+  let candidate = String(search || '');
+  for (let depth = 0; depth < 4 && candidate; depth += 1) {
+    const query = candidate.includes('?') ? candidate.slice(candidate.indexOf('?') + 1) : candidate.replace(/^\?/, '');
+    const params = new URLSearchParams(query);
+    const token = String(params.get('handoff') || '').trim();
+    if (/^[A-Za-z0-9_-]{43}$/.test(token)) return token;
+    const nested = params.get('liff.state');
+    if (!nested) return '';
+    candidate = nested;
+  }
+  return '';
+}
+
+function clearInitialHandoffQueryParam() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('handoff')) return;
+    params.delete('handoff');
+    const cleanSearch = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`);
+  } catch {
+    // URL cleanup is best-effort and must not block the callback.
+  }
+}
+
+async function handleInitialHandoffCallback(token) {
+  trackUatEvent('designer_returned', { entry_surface: getUatEntrySurface() });
+  if (!isLineIdentityAvailable()) {
+    trackUatEvent('line_auth_cancelled', { reason: lineIdentityFailureCode || 'F05E3' });
+    clearCustomizationLoginIntent();
+    clearInitialHandoffQueryParam();
+    State.currentStep = 1;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    setStep1AuthStatus('failed');
+    return false;
+  }
+
+  trackUatEvent('state_restore_started');
+  const restored = await consumeDeferredLineAuthHandoff(token);
+  if (!restored?.ok || Number(restored.targetStep) !== 2 || !applyInitialHandoffSnapshot(restored.snapshot)) {
+    trackUatEvent('state_restore_failed', { reason: restored?.reason || 'invalid_snapshot' });
+    clearCustomizationLoginIntent();
+    clearInitialHandoffQueryParam();
+    State.currentStep = 1;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    setStep1AuthStatus('failed');
+    return false;
+  }
+
+  if (restored.journeyId) uatJourneyId = restored.journeyId;
+  rememberCustomizationLoginIntent({ targetStep: 2, handoffToken: token });
+  customizationResumeInProgress = true;
+  clearInitialHandoffQueryParam();
+  trackUatStage('step_1_view', 1);
+  trackUatEvent('state_restore_success', { restored_step: 1 }, { stageKey: 'state_restore' });
+  return true;
+}
+
+async function startLiffLoginForCustomization({
+  preserveExistingIntent = false,
+  returnStartStatus = false,
+  resumeStep = 1,
+  keepStep1Visible = false
+} = {}) {
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) {
     console.warn("LIFF login already in progress.");
@@ -2529,9 +3051,21 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started');
+  trackUatEvent('line_auth_started', { method: 'liff_login', resume_step: resumeStep }, { stageKey: `line_auth_${Date.now()}` });
+  let initialHandoff = null;
+  if (IS_UAT_MODE && resumeStep === 2) {
+    initialHandoff = await createInitialStateHandoff().catch(() => null);
+    if (!initialHandoff?.token) {
+      trackUatEvent('state_restore_failed', { reason: 'handoff_create_failed' }, { stageKey: 'handoff_create' });
+    }
+  }
   const persistInitialIntent = () => {
     try {
-      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent({
+        targetStep: resumeStep,
+        handoffToken: initialHandoff?.token || '',
+        journeyId: initialHandoff?.journeyId || ''
+      });
       lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
       return persisted;
     } catch (error) {
@@ -2545,14 +3079,17 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
   console.log("LIFF customization login start");
-  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_LOGIN' } });
+  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_LOGIN', handoff: Boolean(initialHandoff?.token) } });
 
   const loginResult = invokeInitialLineAuthentication({
     method: 'LIFF_LOGIN',
     isInClient: isLiffInClient(),
     liffInitialized: State.liffInitialized,
     liff: typeof liff === 'undefined' ? null : liff,
-    redirectUri: getLiffRedirectUri({ initialIdentity: !preserveExistingIntent }),
+    redirectUri: getLiffRedirectUri({
+      initialIdentity: resumeStep === 1 && !preserveExistingIntent,
+      handoffToken: initialHandoff?.token || ''
+    }),
     persistIntent: persistInitialIntent,
     onBeforeLogin: () => lineDebugTrace('BEFORE_LIFF_LOGIN', { captureState: true }),
     onLoginInvoked: () => lineDebugTrace('LIFF_LOGIN_INVOKED', { captureState: true }),
@@ -2572,21 +3109,37 @@ function startLiffLoginForCustomization({ preserveExistingIntent = false, return
     trackAnalyticsEvent('line_auth_error', {
       message: loginResult.error?.message || loginResult.reason
     });
-    resetLandingStartAfterFailure();
+    trackUatEvent('line_auth_failed', { reason: loginResult.reason || 'login_start_failed' }, { stageKey: `line_auth_${Date.now()}` });
+    if (keepStep1Visible) setStep1AuthStatus('failed');
+    else resetLandingStartAfterFailure();
     return false;
   }
   return returnStartStatus ? true : false;
 }
 
-function openLineConnectEntryForCustomization({ preserveExistingIntent = false, returnStartStatus = false } = {}) {
+async function openLineConnectEntryForCustomization({
+  preserveExistingIntent = false,
+  returnStartStatus = false,
+  resumeStep = 1,
+  keepStep1Visible = false
+} = {}) {
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) return false;
 
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
+  trackUatEvent('line_auth_started', { method: 'liff_entry', resume_step: resumeStep }, { stageKey: `line_auth_${Date.now()}` });
+  let initialHandoff = null;
+  if (IS_UAT_MODE && resumeStep === 2) {
+    initialHandoff = await createInitialStateHandoff().catch(() => null);
+  }
   const persistInitialIntent = () => {
     try {
-      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent();
+      const persisted = preserveExistingIntent || rememberCustomizationLoginIntent({
+        targetStep: resumeStep,
+        handoffToken: initialHandoff?.token || '',
+        journeyId: initialHandoff?.journeyId || ''
+      });
       lineDebugTrace('REMEMBER_INTENT_RESULT', { details: { persisted: persisted !== false } });
       return persisted;
     } catch (error) {
@@ -2599,7 +3152,7 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
   setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
   if (loader) loader.style.display = 'flex';
   liffLoginInProgress = true;
-  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_ENTRY' } });
+  lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_ENTRY', handoff: Boolean(initialHandoff?.token) } });
 
   const entryResult = invokeInitialLineAuthentication({
     method: 'LIFF_ENTRY',
@@ -2620,14 +3173,16 @@ function openLineConnectEntryForCustomization({ preserveExistingIntent = false, 
       message: entryResult.error?.message || entryResult.reason,
       method: 'entry_url'
     });
-    resetLandingStartAfterFailure();
+    trackUatEvent('line_auth_failed', { reason: entryResult.reason || 'entry_start_failed' }, { stageKey: `line_auth_${Date.now()}` });
+    if (keepStep1Visible) setStep1AuthStatus('failed');
+    else resetLandingStartAfterFailure();
     return false;
   }
   return returnStartStatus ? true : false;
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { showLandingPrompt = false } = options;
+  const { showLandingPrompt = false, loginResumeStep = 1 } = options;
   lineDebugTrace('REQUIRE_LINE_LOGIN_ENTER', { captureState: true });
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
@@ -2643,10 +3198,22 @@ async function requireLineLoginForCustomization(options = {}) {
     startLogin: async () => {
       if (canUseLiffLoginFromCurrentBrowser()) {
         showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
-        return { started: startLiffLoginForCustomization({ returnStartStatus: true }) === true };
+        return {
+          started: (await startLiffLoginForCustomization({
+            returnStartStatus: true,
+            resumeStep: loginResumeStep,
+            keepStep1Visible: loginResumeStep === 2
+          })) === true
+        };
       }
       if (showLandingPrompt) {
-        return { started: openLineConnectEntryForCustomization({ returnStartStatus: true }) === true };
+        return {
+          started: (await openLineConnectEntryForCustomization({
+            returnStartStatus: true,
+            resumeStep: loginResumeStep,
+            keepStep1Visible: loginResumeStep === 2
+          })) === true
+        };
       }
       return { started: false, reason: 'LIFF_NOT_READY' };
     }
@@ -2707,7 +3274,7 @@ async function createDeferredLineAuthHandoff(payload) {
   }
 }
 
-function startDeferredLineLoginWithPersistedIntent() {
+async function startDeferredLineLoginWithPersistedIntent() {
   if (canUseLiffLoginFromCurrentBrowser()) {
     return startLiffLoginForCustomization({ preserveExistingIntent: true, returnStartStatus: true });
   }
@@ -2733,6 +3300,25 @@ async function beginDeferredStep3AuthBoundary() {
     getAnalyticsContinuity: getDeferredLineAuthAnalyticsContinuity
   });
   return boundary();
+}
+
+function startLineBootstrap() {
+  if (lineBootstrapPromise) return lineBootstrapPromise;
+  lineBootstrapPromise = (async () => {
+    await loadUatLiffConfiguration();
+    lineDebugTrace('LIFF_CONFIG_READY', {
+      captureState: true,
+      details: { configurationReason: sanitizeLineDebugText(liffConfigurationReason, 80) }
+    });
+    await initLIFF();
+    markStartupPerformance('T1_liff_ready');
+    return {
+      ok: State.liffInitialized === true,
+      loggedIn: isLiffLoggedIn(),
+      reason: lineIdentityFailureCode || liffConfigurationReason || ''
+    };
+  })();
+  return lineBootstrapPromise;
 }
 
 async function loadUatLiffConfiguration() {
@@ -2771,14 +3357,16 @@ async function initLIFF() {
   try {
     console.log("LIFF init start");
     lineDebugTrace('LIFF_INIT_START', { captureState: true });
+    trackUatEvent('liff_init_started', {}, { stageKey: 'liff_init' });
     await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
+    trackUatEvent('liff_init_success', {}, { stageKey: 'liff_init' });
     lineDebugTrace('LIFF_INIT_OK', { captureState: true });
 
     const isLoggedIn = liff.isLoggedIn();
     console.log("LIFF isLoggedIn:", isLoggedIn);
-    if (isLoggedIn) {
+    if (isLoggedIn && requiresLineLoginForCustomization()) {
       await syncLineProfileFromLiff();
     }
   } catch (err) {
@@ -2788,9 +3376,135 @@ async function initLIFF() {
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
       });
+    trackUatEvent('liff_init_failed', { reason: 'liff_init_failed' }, { stageKey: 'liff_init' });
   } finally {
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
   }
+}
+
+function renderStep1AuthStatus() {
+  const container = DOM.step1AuthStatus;
+  const text = DOM.step1AuthStatusText;
+  const action = DOM.btnStep1LineConnect;
+  if (!container || !text || !action) return;
+
+  if (!requiresLineLoginForCustomization() || step1AuthState === 'idle' || step1AuthState === 'verified') {
+    container.hidden = true;
+    action.hidden = true;
+    container.removeAttribute('data-state');
+    text.textContent = '';
+    return;
+  }
+
+  container.hidden = false;
+  container.dataset.state = step1AuthState;
+  if (step1AuthState === 'verifying') {
+    text.textContent = 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ';
+    action.hidden = true;
+    return;
+  }
+
+  text.textContent = step1AuthState === 'failed'
+    ? LINE_CONNECT_RETRY_MESSAGE
+    : 'เข้าสู่ระบบด้วย LINE';
+  action.textContent = 'เข้าสู่ระบบด้วย LINE';
+  action.hidden = false;
+}
+
+function setStep1AuthStatus(state) {
+  step1AuthState = state;
+  renderStep1AuthStatus();
+}
+
+async function startProgressiveLineVerification() {
+  if (!requiresLineLoginForCustomization()) {
+    setStep1AuthStatus('verified');
+    return true;
+  }
+  if (isLineIdentityAvailable()) {
+    setStep1AuthStatus('verified');
+    return true;
+  }
+  if (progressiveLineVerificationPromise) return progressiveLineVerificationPromise;
+
+  setStep1AuthStatus('verifying');
+  progressiveLineVerificationPromise = (async () => {
+    const bootstrap = await startLineBootstrap();
+    if (isLineIdentityAvailable()) {
+      setStep1AuthStatus('verified');
+      return true;
+    }
+    setStep1AuthStatus((!bootstrap?.ok || bootstrap?.loggedIn) ? 'failed' : 'required');
+    return false;
+  })().catch(() => {
+    setStep1AuthStatus('failed');
+    return false;
+  }).finally(() => {
+    if (step1AuthState !== 'verified') progressiveLineVerificationPromise = null;
+  });
+  return progressiveLineVerificationPromise;
+}
+
+async function ensureStep1LineAuthorization() {
+  if (!requiresLineLoginForCustomization()) return true;
+  if (isLineIdentityAvailable()) {
+    setStep1AuthStatus('verified');
+    return true;
+  }
+  const bootstrap = await startLineBootstrap();
+  if (!bootstrap?.ok) {
+    lineBootstrapPromise = null;
+    lineIdentityFailureCode = bootstrap?.reason || 'LIFF_INIT_FAILED';
+    setStep1AuthStatus('failed');
+    return false;
+  }
+  if (isLineIdentityAvailable()) {
+    setStep1AuthStatus('verified');
+    return true;
+  }
+  return withTimeout(
+    requireLineLoginForCustomization({ showLandingPrompt: true, loginResumeStep: 2 }),
+    8000,
+    'Step 1 LINE authorization'
+  );
+}
+
+async function attemptStep1AuthorizationAndContinue() {
+  if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
+  step1ToStep2AuthInProgress = true;
+  DOM.btnNext.disabled = true;
+  setStep1AuthStatus('verifying');
+  try {
+    const authorized = await ensureStep1LineAuthorization();
+    if (!authorized) {
+      setStep1AuthStatus(liffLoginInProgress ? 'verifying' : (lineIdentityFailureCode ? 'failed' : 'required'));
+      return false;
+    }
+    setStep1AuthStatus('verified');
+    await goToStep(2);
+    return true;
+  } catch (error) {
+    lineDebugTrace('STEP1_LINE_AUTH_FAILED', {
+      details: { error: sanitizeLineDebugText(error?.message || error, 180) }
+    });
+    setStep1AuthStatus('failed');
+    return false;
+  } finally {
+    step1ToStep2AuthInProgress = false;
+    if (State.currentStep === 1) {
+      DOM.btnNext.disabled = false;
+      configureFooterNavigation();
+      renderStep1AuthStatus();
+    }
+  }
+}
+
+function setupProgressiveStep1AuthEvents() {
+  if (!DOM.btnStep1LineConnect || DOM.btnStep1LineConnect.dataset.authHandlerReady === 'true') return;
+  DOM.btnStep1LineConnect.dataset.authHandlerReady = 'true';
+  DOM.btnStep1LineConnect.addEventListener('click', () => {
+    void attemptStep1AuthorizationAndContinue();
+  });
 }
 
 function setupLandingEvents() {
@@ -2806,9 +3520,30 @@ function setupLandingEvents() {
     lineDebugTrace('START_HANDLER_ENTER', { captureState: true });
     markStartupPerformance('T0_cta_click');
     trackAnalyticsEvent('start_customize_click');
+    trackUatEvent('start_design', { entry_surface: getUatEntrySurface() }, { stageKey: 'start_design' });
     triggerLandingStartFeedback();
     setLandingButtonState('starting', 'กำลังเปิด...');
     startLandingLoadReassurance();
+
+    if (progressiveStartupEligible) {
+      resetStep3DesignState('landing-start');
+      clearLineConnectPrompt();
+      stopLandingLoadReassurance();
+      State.currentStep = 1;
+      State.landingDismissed = true;
+      persistLandingDismissed();
+      if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+      markStartupPerformance('T1_progressive_step1_ready');
+      await renderApp();
+      void startProgressiveLineVerification();
+      trackStepView(1);
+      markStartupPerformance('T2_progressive_step1_rendered');
+      window.requestAnimationFrame(() => markStartupPerformance('T3_progressive_step1_interactive'));
+      trackMetaViewContent();
+      clearCustomizationLoginIntent();
+      resetLandingStartState();
+      return;
+    }
 
     try {
       lineDebugTrace('STARTUP_PROMISE_BEGIN', { captureState: true });
@@ -2832,17 +3567,19 @@ function setupLandingEvents() {
       return;
     }
 
-    let canContinue = false;
-    try {
-      canContinue = await withTimeout(
-        requireLineLoginForCustomization({ showLandingPrompt: true }),
-        8000,
-        "Start customization"
-      );
-    } catch (startErr) {
-      console.warn("Start customization check failed or timed out.", startErr);
-      resetLandingStartAfterFailure();
-      return;
+    let canContinue = true;
+    if (shouldRequireLineIdentityBeforeDesigner({ isUatMode: IS_UAT_MODE })) {
+      try {
+        canContinue = await withTimeout(
+          requireLineLoginForCustomization({ showLandingPrompt: true }),
+          8000,
+          "Start customization"
+        );
+      } catch (startErr) {
+        console.warn("Start customization check failed or timed out.", startErr);
+        resetLandingStartAfterFailure();
+        return;
+      }
     }
 
     if (!canContinue) {
@@ -3118,6 +3855,8 @@ async function consumeDeferredLineAuthHandoff(token) {
     return {
       ok: true,
       snapshot: readResult.payload.designSnapshot,
+      targetStep: readResult.payload.targetStep,
+      journeyId: readResult.payload.journeyId,
       analyticsContinuity: readResult.payload.analyticsContinuity || null
     };
   } catch {
@@ -3580,10 +4319,21 @@ async function renderApp() {
 
 async function renderStep2ToStep3Atomically() {
   syncShellVisibility();
-  await renderStepViews();
+  syncActiveStepView();
+  markStep2ToStep3Timing('T3_step3_visible');
+  DOM.stepViews[2]?.setAttribute('aria-busy', 'true');
   renderStepper();
   saveState();
   persistLandingDismissed();
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await renderStepViews({ activeViewCommitted: true });
+}
+
+function syncActiveStepView() {
+  DOM.stepViews.forEach((view, idx) => {
+    const stepNum = idx + 1;
+    view.classList.toggle('active', stepNum === State.currentStep);
+  });
 }
 
 // Stepper bar rendering logic
@@ -3674,6 +4424,99 @@ function getCurrentCheckoutFitEligibility() {
   return getResolvedLayoutFitEligibility(createCurrentBraceletResolvedLayout());
 }
 
+// Dormant Phase 0.5 integration seam: no UI or automatic invocation exists yet.
+// Validation completes against a catalog snapshot before this function mutates State.
+function applyLumiDesignToStep3(contract) {
+  const snapshot = createLumiCatalogSnapshot({
+    stones: STONES,
+    charms: legacyCharmCatalogCache,
+    spacers: spacerCatalogCache
+  });
+  const prepared = prepareLumiStep3Import({ contract, state: State, snapshot });
+  commitLumiStep3Import(State, prepared);
+  syncSelectedCharmState();
+  normalizeSelectedStoneSizes();
+  ensureCurrentDesignMatchesBeadSize();
+  saveState();
+  if (State.currentStep === 3) renderStep3();
+  return prepared;
+}
+
+const LUCKY_BIRTHDAY_CONSENT_VERSION = 'lucky-birthday-consent-th-v1';
+
+function submitLuckyBirthday(answers = {}) {
+  if (IS_UAT_MODE || answers?.birthdayConsent !== true || !analyticsSessionId) return Promise.resolve(false);
+  const year = Number(answers.birthYear);
+  const month = Number(answers.birthMonth);
+  const day = Number(answers.birthDate);
+  const birthDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const parsed = new Date(`${birthDate}T00:00:00.000Z`);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || parsed.toISOString().slice(0, 10) !== birthDate || birthDate > new Date().toISOString().slice(0, 10)) return Promise.resolve(false);
+  return fetch('/api/lucky/birthday', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'lucky', sessionId: analyticsSessionId, birthDate, consentVersion: LUCKY_BIRTHDAY_CONSENT_VERSION })
+  }).then((response) => response.status === 202).catch(() => false);
+}
+
+function getLumiUiController() {
+  if (lumiUiController) return lumiUiController;
+  lumiUiController = createLumiUi({
+    getContext: () => ({ wristSizeCm: State.wristSize, beadMode: String(State.beadSize), mixedPlacingSize: State.beadSize === MIXED_BEAD_SIZE_MODE ? State.mixedPlacingSize : null }),
+    getSnapshot: () => createLumiCatalogSnapshot({ stones: STONES, charms: legacyCharmCatalogCache, spacers: spacerCatalogCache }),
+    getState: () => State,
+    getComponentName: (id) => STONES.find((item) => item.id === id)?.nameTh || STONES.find((item) => item.id === id)?.name || getCharmCatalogEntry(id)?.nameTh || getCharmCatalogEntry(id)?.name || getSpacerCatalogEntry(id)?.nameTh || String(id),
+    getComponentDetails: (id) => { const stone = STONES.find((item) => item.id === id); const charm = getCharmCatalogEntry(id); const spacer = getSpacerCatalogEntry(id); const item = stone || charm || spacer; return item ? { name: item.nameTh || item.name || item.nameEn || String(id), image: item.image?.primary || item.image || '', meaning: stone?.meaningTh || stone?.meaning || charm?.meaningTh || charm?.meaning || '' } : null; },
+    getRecommendationPrice: calculateLumiRecommendationPrice,
+    hasExistingDesign: () => State.selectedStones.length > 0 || State.selectedCharmIds.length > 0,
+    analytics: createLumiAnalytics({ track: (eventName, properties) => trackAnalyticsEvent(eventName, { ...properties, current_step: 3 }) }),
+    onBasicInfoCompleted: submitLuckyBirthday,
+    onAccepted: async ({ action = 'adjust' } = {}) => {
+      syncSelectedCharmState();
+      normalizeSelectedStoneSizes();
+      ensureCurrentDesignMatchesBeadSize();
+      saveState();
+      if (State.currentStep === 3) renderStep3();
+      showToast('ใสแบบใหแลว');
+      if (action !== 'use') return true;
+      trackAnalyticsEvent('bracelet_completed', { item_count: getSelectedStoneItems().length });
+      return goToStep(4);
+    }
+  });
+  return lumiUiController;
+}
+
+// First-time Step 3 onboarding (presentation/tutorial layer only). Owns the
+// component / size / Next / Lucky guided tour and pauses the centre-CTA timeline
+// while it is on screen. It never writes design, catalog, pricing or order state.
+let step3OnboardingController = null;
+function getStep3OnboardingControllerInstance() {
+  if (!step3OnboardingController) {
+    step3OnboardingController = getStep3OnboardingController({
+      suspendLegacyHints: suspendStep3HintsForOnboarding,
+      isMixed: () => State.beadSize === MIXED_BEAD_SIZE_MODE,
+      pauseCtaTimeline: () => { try { getLumiUiController().pauseEntryTimeline(); } catch (error) { /* presentation only */ } },
+      resumeCtaTimeline: () => { try { getLumiUiController().resumeEntryTimeline(); } catch (error) { /* presentation only */ } }
+    });
+  }
+  return step3OnboardingController;
+}
+function renderLumiStep3Entry() {
+  const existing = document.querySelector('#stepView3 .lumi-entry');
+  if (lumiFeatureEnabled === false) {
+    existing?.remove();
+    return;
+  }
+  const target = document.querySelector('#stepView3 .canvas-container');
+  getLumiUiController().mountEntry(target);
+  const entry = target?.querySelector('.lumi-entry');
+  if (!entry) return;
+  entry.classList.add('lumi-center-entry');
+  entry.setAttribute('aria-label', 'ให้น้อง Lucky ช่วยเลือกกำไล');
+  const image = entry.querySelector('img');
+  if (image) image.src = '/assets/lucky/mascot/lucky_03.webp';
+}
 function ensureStep3WarningElement() {
   let warningEl = document.getElementById('step3NextWarning');
   if (warningEl) return warningEl;
@@ -3740,7 +4583,9 @@ function syncStep3NextValidationUI(validationState = getStep3ValidationState()) 
 }
 
 async function renderStepViews() {
-  if (State.currentStep === 4 && requiresLineOaFriendshipForOperationalStep4()) {
+  const { activeViewCommitted = false } = arguments[0] || {};
+  const requestedStep = State.currentStep;
+  if (State.currentStep === 4 && !step4AuthorizationInProgress && requiresLineOaFriendshipForOperationalStep4()) {
     const canEnterStep4 = await canEnterOperationalStep4();
     if (!canEnterStep4) {
       State.currentStep = 3;
@@ -3752,9 +4597,14 @@ async function renderStepViews() {
     stopBerylCatalogRotation();
   }
   if (State.currentStep >= 3) {
-    // Catalog-dependent designer and checkout work starts at Step 3; Step 1 and Step 2 do not need it.
-    await startCustomerCatalogWarmup();
-    legacyCharmCatalogCache = await getLegacyCharmCatalog();
+    // Performance: the Step 3 paint must never wait on the catalog backend (it can cold-start for
+    // several seconds on UAT). Paint from the already-warm in-memory catalog, fall back to the
+    // deployment's bundled static catalog, and refresh authoritative data in the background.
+    await ensureStep3CatalogCaches();
+    if (State.currentStep !== requestedStep) {
+      if (requestedStep === 3) DOM.stepViews[2]?.removeAttribute('aria-busy');
+      return;
+    }
     migrateSlotPlaceableCharmSelectionsIntoLoop();
     State.selectedStones = normalizeSelectedLoopItems(State.selectedStones);
     syncSelectedCharmState();
@@ -3763,14 +4613,7 @@ async function renderStepViews() {
     }
   }
 
-  DOM.stepViews.forEach((view, idx) => {
-    const stepNum = idx + 1;
-    if (stepNum === State.currentStep) {
-      view.classList.add('active');
-    } else {
-      view.classList.remove('active');
-    }
-  });
+  if (!activeViewCommitted) syncActiveStepView();
 
   // Render specific step data
   if (State.currentStep === 1) {
@@ -3779,6 +4622,7 @@ async function renderStepViews() {
     renderStep2();
   } else if (State.currentStep === 3) {
     renderStep3();
+    DOM.stepViews[2]?.removeAttribute('aria-busy');
   } else if (State.currentStep === 4) {
     await renderStep4();
     if (State.orderDetailLoadError) {
@@ -3802,6 +4646,7 @@ async function renderStepViews() {
 
   configureFooterNavigation();
   syncStep3StickyLayer();
+  if (State.currentStep === 3) getStep3OnboardingControllerInstance().maybeStart();
 }
 
 // Navigate to step
@@ -3817,6 +4662,8 @@ async function goToStep(step) {
     }
     const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: State.currentStep === 3 });
     if (!canEnterStep4) return false;
+    if (State.currentStep !== previousStep) return false;
+    step4AuthorizationInProgress = true;
   }
   if (State.currentStep === 3 && step !== 3) {
     dismissStep3CategoryHint();
@@ -3826,10 +4673,15 @@ async function goToStep(step) {
     resetStep3DesignState(`step3-back-to-${step}`);
   }
   State.currentStep = step;
-  if (previousStep === 2 && step === 3) {
-    await renderStep2ToStep3Atomically();
-  } else {
-    await renderApp();
+  if (previousStep === 2 && step === 3) markStep2ToStep3Timing('T2_current_step_changed');
+  try {
+    if (previousStep === 2 && step === 3) {
+      await renderStep2ToStep3Atomically();
+    } else {
+      await renderApp();
+    }
+  } finally {
+    if (step === 4) step4AuthorizationInProgress = false;
   }
   if (step === 3 && previousStep !== 3) refreshCustomerCatalogForStep3Entry();
   trackStepView(step);
@@ -3919,20 +4771,40 @@ function setupNavigationEvents() {
   });
   
   DOM.btnNext.addEventListener('click', async () => {
+    if (step2ToStep3TransitionInProgress) {
+      recordStep2Debug('NEXT_CLICK_IGNORED_TRANSITION_IN_PROGRESS');
+      return;
+    }
+    if (State.currentStep === 3 && step3ToStep4TransitionInProgress) return;
     if (State.currentStep === 4) {
       if (State.orderDetailMode || State.paymentCompletedView) return;
       await handleStripeCheckout();
     } else {
+      if (State.currentStep === 1) {
+        await attemptStep1AuthorizationAndContinue();
+        return;
+      }
       if (State.currentStep === 2) {
         step2Debug.nextHandlerCalls += STEP2_DEBUG_ENABLED ? 1 : 0;
+        markStep2ToStep3Timing('T0_next_click');
         recordStep2Debug('NEXT_CLICK');
         recordStep2Debug('BEFORE_VALIDATION');
         const step2ValidationPassed = hasExplicitBeadSizeSelection();
+        markStep2ToStep3Timing('T1_validation_complete');
         recordStep2Debug('AFTER_VALIDATION', { validationResult: step2ValidationPassed ? 'PASS' : 'FAIL' });
         if (!step2ValidationPassed) {
         showToast('กรุณาเลือกขนาดหินก่อน', 3000);
         return;
         }
+        step2ToStep3TransitionInProgress = true;
+        DOM.btnNext.disabled = true;
+        try {
+          await goToStep(3);
+        } finally {
+          step2ToStep3TransitionInProgress = false;
+          if (State.currentStep === 3) configureFooterNavigation();
+        }
+        return;
       }
       if (State.currentStep === 3) {
         ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
@@ -3941,18 +4813,26 @@ function setupNavigationEvents() {
           showToast('กรุณาใส่หินให้เต็มวงกำไล', 3000);
           return;
         }
-        const hasStock = await validateCurrentDesignStockWithLatestCatalog();
-        if (!hasStock) return;
-        const deferredAuth = await beginDeferredStep3AuthBoundary();
-        if (deferredAuth.handled) {
-          if (!deferredAuth.ok) {
-            showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
+        step3ToStep4TransitionInProgress = true;
+        DOM.btnNext.disabled = true;
+        try {
+          const deferredAuth = await beginDeferredStep3AuthBoundary();
+          if (State.currentStep !== 3) return;
+          if (deferredAuth.handled) {
+            if (!deferredAuth.ok) {
+              showToast('ไม่สามารถบันทึกแบบกำไลเพื่อเข้าสู่ระบบ LINE ได้ กรุณาลองอีกครั้ง', 3500);
+            }
+            return;
           }
-          return;
+          trackAnalyticsEvent('bracelet_completed', {
+            item_count: getSelectedStoneItems().length
+          });
+          await goToStep(4);
+        } finally {
+          step3ToStep4TransitionInProgress = false;
+          if (State.currentStep === 3) configureFooterNavigation();
         }
-        trackAnalyticsEvent('bracelet_completed', {
-          item_count: getSelectedStoneItems().length
-        });
+        return;
       }
       await goToStep(State.currentStep + 1);
     }
@@ -4141,6 +5021,7 @@ function setWristSize(size) {
   trackAnalyticsEvent('wrist_size_selected', {
     wrist_size: size
   });
+  trackUatEvent('wrist_size_selected', { wrist_size: size }, { stageKey: 'wrist_size' });
   syncWristSizeDisplay();
 
   // Save owner name
@@ -4272,6 +5153,7 @@ function renderStep1() {
   syncWristSizeDisplay();
   DOM.braceletOwnerName.value = State.ownerName;
   showWristPickerHint();
+  renderStep1AuthStatus();
 }
 
 function showWristPickerHint() {
@@ -4561,6 +5443,7 @@ function buildStoneCard({
   imageStyle = null,
   mediaLabel = '',
   badge = null,
+  soldOut = false,
   nameTh,
   nameEn,
   priceText,
@@ -4574,7 +5457,9 @@ function buildStoneCard({
   actionAriaLabel = ''
 }) {
   const card = document.createElement(rootTag);
-  card.className = `stone-card${isSelected ? ` ${selectedClassName}` : ''}`;
+  card.className = `stone-card${isSelected && !soldOut ? ` ${selectedClassName}` : ''}${soldOut ? ' stone-card--sold-out' : ''}`;
+  card.setAttribute('data-stock-state', soldOut ? 'sold_out' : 'in_stock');
+  if (soldOut) card.setAttribute('aria-disabled', 'true');
 
   if (rootTag === 'button') {
     card.type = 'button';
@@ -4613,6 +5498,10 @@ function buildStoneCard({
     img.src = withCatalogImageVersion(image);
     img.alt = imageAlt;
     img.className = imageClassName;
+    // Performance: catalog/card thumbnails are never required for the bracelet itself, so they are
+    // decoded off the critical path. The bracelet SVG images keep their existing eager loading.
+    img.loading = 'lazy';
+    img.decoding = 'async';
     if (imageStyle && typeof imageStyle === 'object') {
       Object.entries(imageStyle).forEach(([property, value]) => {
         img.style.setProperty(property, value);
@@ -4627,6 +5516,16 @@ function buildStoneCard({
   }
 
   card.appendChild(imgCont);
+
+  if (soldOut) {
+    const overlay = document.createElement('div');
+    overlay.className = 'sold-out-overlay';
+    const pill = document.createElement('span');
+    pill.className = 'sold-out-pill';
+    pill.textContent = 'SOLD OUT';
+    overlay.appendChild(pill);
+    imgCont.appendChild(overlay);
+  }
 
   const details = document.createElement('div');
   details.className = 'stone-details';
@@ -4651,22 +5550,28 @@ function buildStoneCard({
 
   if (onActionClick) {
     const actionBtn = document.createElement('button');
-    actionBtn.className = `stone-add-btn${isSelected ? ' selected' : ''}`;
+    actionBtn.className = `stone-add-btn${isSelected && !soldOut ? ' selected' : ''}`;
     actionBtn.type = 'button';
     actionBtn.innerHTML = actionText;
-    if (actionTitle) actionBtn.title = actionTitle;
-    if (actionAriaLabel) actionBtn.setAttribute('aria-label', actionAriaLabel);
-    actionBtn.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onActionClick();
-    });
+    actionBtn.disabled = Boolean(soldOut);
+    if (soldOut) {
+      actionBtn.setAttribute('aria-disabled', 'true');
+      actionBtn.title = 'Sold out';
+    } else {
+      if (actionTitle) actionBtn.title = actionTitle;
+      if (actionAriaLabel) actionBtn.setAttribute('aria-label', actionAriaLabel);
+      actionBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onActionClick();
+      });
+    }
     priceRow.appendChild(actionBtn);
   }
 
   details.appendChild(priceRow);
   card.appendChild(details);
 
-  if (onCardClick) {
+  if (onCardClick && !soldOut) {
     card.addEventListener('click', onCardClick);
   }
 
@@ -4674,9 +5579,9 @@ function buildStoneCard({
 }
 
 function getVisibleCharmCatalog() {
-  return legacyCharmCatalogCache.filter((charm) => (
+  return getCharmCatalogAuthority().filter((charm) => (
     charm &&
-    isCustomerCatalogItemAvailable(charm) &&
+    getCustomerCatalogDisplayState(charm) !== 'hidden' &&
     charm.image &&
     charm.image !== CHARM_PLACEHOLDER_IMAGE
   ));
@@ -4748,8 +5653,8 @@ function getSelectedCharmCatalogEntry() {
   return getSelectedCharmCatalogEntries()[0] || null;
 }
 
-function getSelectedAnchoredCharmCatalogEntries() {
-  const selectedIds = normalizeSelectedCharmIds(State.selectedCharmIds);
+function getSelectedAnchoredCharmCatalogEntries(selectedCharmIds = State.selectedCharmIds) {
+  const selectedIds = normalizeSelectedCharmIds(selectedCharmIds);
   if (selectedIds.length === 0) return [];
 
   const visibleCharms = applyCatalogLayoutOrder(getVisibleCharmCatalog(), 'charms');
@@ -5584,6 +6489,19 @@ function calculateLiveBraceletPricing() {
   return buildOrderPricingFromSummary(summary);
 }
 
+function calculateLumiRecommendationPrice(recommendation) {
+  const selected = recommendation?.selected;
+  if (!selected || !Array.isArray(selected.sequence) || !Array.isArray(selected.anchoredCharms)) return null;
+  const stoneComponents = selected.sequence.filter((component) => component.componentType === 'stone');
+  const charmComponents = [...selected.sequence, ...selected.anchoredCharms].filter((component) => component.componentType === 'loop_charm' || component.componentType === 'anchored_charm');
+  const spacerComponents = selected.sequence.filter((component) => component.componentType === 'spacer');
+  const stonesSubtotal = stoneComponents.reduce((total, component) => total + getStonePriceForSize(STONES.find((stone) => stone.id === component.materialId), component.sizeMm), 0);
+  const charmSubtotal = charmComponents.reduce((total, component) => total + Number(getCharmCatalogEntry(component.materialId)?.price || 0), 0);
+  const spacerSubtotal = spacerComponents.reduce((total, component) => total + Number(getSpacerCatalogEntry(component.materialId)?.price || 0), 0);
+  const summary = applyEffectiveDiscountToCheckoutSummary({ stonesSubtotal, charmSubtotal, spacerSubtotal, subtotal: stonesSubtotal + charmSubtotal + spacerSubtotal });
+  return Number.isFinite(summary.finalPrice) ? summary.finalPrice : null;
+}
+
 function buildOrderPricingFromSummary(summary) {
   return {
     stonesSubtotal: summary.stonesSubtotal,
@@ -5807,8 +6725,19 @@ function buildCheckoutSummary() {
   });
 }
 
+function isHangingSpacerComponent(component) {
+  return component?.type === 'spacer' && component?.presentation === 'hanging';
+}
+
+function getHangingSpacerOutwardOffsetPx(component, scaleMmToPx) {
+  const renderHeightMm = Number(component?.renderHeightMm ?? component?.renderSizeMm ?? component?.sizeMm);
+  const attachmentLoopMm = Number(component?.attachmentLoopMm);
+  if (!Number.isFinite(renderHeightMm) || !Number.isFinite(attachmentLoopMm)) return 0;
+  return Math.max(0, (renderHeightMm / 2) - attachmentLoopMm) * scaleMmToPx;
+}
+
 function getResolvedNodeRotationRad(node) {
-  if (node?.component?.type === 'charm') {
+  if (node?.component?.type === 'charm' || isHangingSpacerComponent(node?.component)) {
     const isOutwardFacingBeeHeart = node.component.charmType === 'bee_heart';
     // Most charm assets are authored upright and need a quarter-turn to lie
     // across the bracelet. Bee heart pendants should hang outward instead.
@@ -5988,7 +6917,7 @@ function appendCatalogEmptyState(container, message = 'Coming soon') {
 function renderCharmOptions() {
   if (!DOM.charmSectionMount || State.currentStep !== 3) return;
   if (!canUseCategoryForBeadSize('charms')) {
-    DOM.charmSectionMount.innerHTML = '';
+    DOM.charmSectionMount.querySelectorAll('.charm-component-section').forEach((node) => node.remove());
     return;
   }
 
@@ -5996,7 +6925,7 @@ function renderCharmOptions() {
   const selectedCharms = getSelectedCharmCatalogEntries();
   const selectedCharmIdSet = new Set(selectedCharms.map((charm) => charm.id));
   const thumbnailTargetRatio = getCharmCatalogThumbnailTargetRatio(visibleCharms);
-  DOM.charmSectionMount.innerHTML = '';
+  DOM.charmSectionMount.querySelectorAll('.charm-component-section').forEach((node) => node.remove());
 
   const section = document.createElement('section');
   section.className = 'component-section charm-component-section';
@@ -6014,6 +6943,7 @@ function renderCharmOptions() {
 
   visibleCharms.forEach((charm) => {
     const isSelected = selectedCharmIdSet.has(charm.id);
+    const soldOut = getCustomerCatalogDisplayState(charm) === 'sold_out';
     const charmMeta = getCharmDisplayMeta(charm);
     const charmImage = withCatalogImageVersion(charm.image, charm);
     if (charmImage) {
@@ -6031,6 +6961,7 @@ function renderCharmOptions() {
       nameEn: charmMeta.nameEn,
       priceText: formatDisplayPrice(charm.price),
       badge: getProductCardBadge('charms', charm.id),
+      soldOut,
       isSelected,
       onCardClick: () => selectCharm(charm.id),
       onInfoClick: () => openCharmInfoModal(charm),
@@ -6041,8 +6972,9 @@ function renderCharmOptions() {
   });
 
   section.appendChild(grid);
-  DOM.charmSectionMount.appendChild(section);
-  renderSpacerOptions();
+  const spacerSection = DOM.charmSectionMount.querySelector('.spacer-component-section');
+  if (spacerSection) DOM.charmSectionMount.insertBefore(section, spacerSection);
+  else DOM.charmSectionMount.appendChild(section);
 }
 
 function renderSpacerOptions() {
@@ -6061,13 +6993,14 @@ function renderSpacerOptions() {
   const grid = document.createElement('div');
   grid.className = 'stone-catalog-grid';
 
-  const visibleSpacers = applyCatalogLayoutOrder(spacerCatalogCache.filter(isCustomerCatalogItemAvailable), 'spacers');
+  const visibleSpacers = applyCatalogLayoutOrder(spacerCatalogCache.filter((spacer) => getCustomerCatalogDisplayState(spacer) !== 'hidden'), 'spacers');
   if (visibleSpacers.length === 0) {
     appendCatalogEmptyState(grid, `${CUSTOMER_COMPONENT_LABELS.spacer} coming soon`);
   }
 
   visibleSpacers.forEach((spacer) => {
     const quantity = spacerCounts[spacer.id] || 0;
+    const soldOut = getCustomerCatalogDisplayState(spacer) === 'sold_out';
     const spacerImage = withCatalogImageVersion(spacer.image, spacer);
     grid.appendChild(buildStoneCard({
       rootTag: 'div',
@@ -6082,6 +7015,7 @@ function renderSpacerOptions() {
       nameTh: spacer.nameTh,
       nameEn: spacer.nameEn,
       priceText: `${formatDisplayPrice(spacer.price)} • ${spacer.effectiveLengthMm}mm`,
+      soldOut,
       isSelected: quantity > 0,
       onCardClick: () => addSpacerToBracelet(spacer.id),
       onActionClick: () => addSpacerToBracelet(spacer.id),
@@ -6091,6 +7025,7 @@ function renderSpacerOptions() {
   });
 
   section.appendChild(grid);
+  DOM.charmSectionMount.querySelectorAll('.spacer-component-section').forEach((node) => node.remove());
   DOM.charmSectionMount.appendChild(section);
 }
 
@@ -6541,16 +7476,23 @@ function setActiveCatalogSection(section) {
     });
   }
   State.activeCatalogSection = section;
+  // Performance: build the opened category on first use instead of eagerly rendering all of them.
+  if (section === 'charms') renderCharmOptions();
+  else if (section === 'spacer') renderSpacerOptions();
   syncCatalogSectionFilter();
-  renderCatalogGrid();
+  if (section === 'stones') renderCatalogGrid();
 }
 
 function initCatalogFilters() {
   DOM.catalogFiltersContainer.innerHTML = '';
-  Object.entries(CATEGORIES).forEach(([key, nameObj]) => {
+  // Owner review 2026-10-08: the Step 3 stone tabs are the canonical Lucky six goals plus All,
+  // never the legacy wealth/love/calm/protection groups, so manual browsing uses the same taxonomy
+  // as the Lucky recommendation engine. Tab membership comes from lumi/knowledge/stone-goal-taxonomy.js.
+  const stoneGoalCategories = [STEP3_ALL_CATEGORY, ...STEP3_GOAL_CATEGORIES];
+  stoneGoalCategories.forEach(({ id: key, th: label }) => {
     const tab = document.createElement('button');
     tab.className = `filter-tab ${State.activeCategory === key ? 'active' : ''}`;
-    tab.textContent = nameObj.th; // Using Thai text primarily for brand feel
+    tab.textContent = label; // Using Thai text primarily for brand feel
     tab.setAttribute('data-category', key);
     
       tab.addEventListener('click', () => {
@@ -6577,18 +7519,21 @@ function renderCatalogGrid() {
   DOM.stoneCatalogGrid.innerHTML = '';
   const selectedStoneCounts = getSelectedStoneCountsById();
   
-  // Filter out of stock items
-  const availableStones = applyCatalogLayoutOrder(
-    STONES.filter((stone) => isCustomerCatalogItemAvailable(stone) && isStoneVisibleForCurrentSizeFilter(stone)),
+  // Include sold-out items in the catalog so their configured SOLD OUT card can render.
+  // Hidden items and inactive items are removed entirely.
+  const visibleStones = applyCatalogLayoutOrder(
+    STONES.filter((stone) => getCustomerCatalogDisplayState(stone) !== 'hidden' && isStoneVisibleForCurrentSizeFilter(stone)),
     'stones'
   );
   
   const filtered = State.activeCategory === 'all' 
-    ? availableStones 
-    : availableStones.filter(s => (s.categoryId || s.category) === State.activeCategory);
+    ? visibleStones 
+    : visibleStones.filter((s) => stoneMatchesGoalCategory(s, State.activeCategory));
     
   let berylCatalogPreview = null;
   filtered.forEach(stone => {
+    const displayState = getCustomerCatalogDisplayState(stone);
+    const soldOut = displayState === 'sold_out';
     const catalogCurrentSize = getCurrentBeadSizeMm();
     const hasExplicitPlacementSize = State.beadSize !== MIXED_BEAD_SIZE_MODE || stoneSupportsSize(stone, catalogCurrentSize);
     const catalogPrice = hasExplicitPlacementSize ? getStonePriceForSize(stone, catalogCurrentSize) : null;
@@ -6604,6 +7549,7 @@ function renderCatalogGrid() {
       nameEn: stone.name,
       priceText: catalogPrice === null ? 'Select a size' : formatDisplayPrice(catalogPrice),
       badge: getProductCardBadge('stones', stone.id, catalogCurrentSize),
+      soldOut,
       isSelected: selectedCount > 0,
       selectedClassName: 'stone-card-selected',
       onCardClick: () => addStoneToBracelet(stone.id),
@@ -6614,7 +7560,7 @@ function renderCatalogGrid() {
       actionAriaLabel: selectedCount > 0 ? `Add another stone. ${selectedCount} selected in bracelet.` : 'Add Stone'
     });
     DOM.stoneCatalogGrid.appendChild(card);
-    if (stone.id === BERYL_STONE_ID) {
+    if (stone.id === BERYL_STONE_ID && !soldOut) {
       berylCatalogPreview = createBerylCatalogPreview(card);
     }
   });
@@ -6922,15 +7868,17 @@ function removeStoneFromBracelet(index) {
   removeLoopItemFromBracelet(index);
 }
 
-function createBraceletConfig() {
+function createBraceletConfig(source = State) {
+  const wristSize = Number(source.wristSize);
+  const beadSize = String(source.beadSize);
   return {
-    wristSizeCm: State.wristSize,
+    wristSizeCm: wristSize,
     toleranceCm: TOLERANCE_CM,
-    braceletLengthMm: getBraceletLengthMm(),
-    beadSizeMode: State.beadSize,
-    placingSizeMm: State.beadSize === 'mixed' ? State.mixedPlacingSize : parseInt(State.beadSize),
-    activeSlotIndex: State.activeSlotIndex,
-    newlyAddedIds: State.newlyAddedIds || [],
+    braceletLengthMm: (wristSize + TOLERANCE_CM) * 10,
+    beadSizeMode: beadSize,
+    placingSizeMm: beadSize === 'mixed' ? Number(source.mixedPlacingSize) : parseInt(beadSize),
+    activeSlotIndex: source.activeSlotIndex ?? null,
+    newlyAddedIds: source.newlyAddedIds || [],
     svg: {
       centerX: 125,
       centerY: 125,
@@ -6939,9 +7887,9 @@ function createBraceletConfig() {
   };
 }
 
-function createBraceletComponentList() {
+function createBraceletComponentList(source = State) {
   let berylOccurrenceIndex = 0;
-  const loopComponents = State.selectedStones
+  const loopComponents = source.selectedStones
     .map((item, index) => {
       if (isEmptyLoopSlot(item)) {
         return {
@@ -6972,6 +7920,10 @@ function createBraceletComponentList() {
           displaySizeMm: spacer.displaySizeMm,
           effectiveLengthMm: spacer.effectiveLengthMm,
           renderSizeMm: spacer.renderSizeMm || spacer.displaySizeMm,
+          renderWidthMm: spacer.renderWidthMm || null,
+          renderHeightMm: spacer.renderHeightMm || null,
+          attachmentLoopMm: spacer.attachmentLoopMm || null,
+          presentation: spacer.presentation || 'inline',
           thicknessMm: spacer.thicknessMm || null,
           price: Number(spacer.price || 0),
           sizeMm: spacer.effectiveLengthMm,
@@ -7026,7 +7978,7 @@ function createBraceletComponentList() {
     })
     .filter(Boolean);
 
-  const selectedCharms = getSelectedAnchoredCharmCatalogEntries();
+  const selectedCharms = getSelectedAnchoredCharmCatalogEntries(source.selectedCharmIds);
   if (selectedCharms.length === 0) {
     return loopComponents;
   }
@@ -7067,7 +8019,7 @@ function createBraceletComponentList() {
   ];
 }
 
-function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
+function createResolvedBraceletLayout(braceletConfig, braceletComponentList, { includeEditorPlaceholders = true } = {}) {
   const capacityMetrics = createBraceletCapacityMetrics(braceletConfig, braceletComponentList);
   const loopComponents = capacityMetrics.loopComponents;
   const completionEligibility = getBraceletCompletionEligibility({
@@ -7087,9 +8039,9 @@ function createResolvedBraceletLayout(braceletConfig, braceletComponentList) {
   // cannot collapse the remaining components into a smaller ring.
   const visualUsedLengthMm = loopComponents.reduce((sum, component) => sum + Number(component.sizeMm || 0), 0);
   const visualSpaceLeftMm = Math.max(0, braceletConfig.braceletLengthMm - visualUsedLengthMm);
-  const trailingPlaceholderCount = completionEligibility.complete
-    ? 0
-    : Math.max(0, Math.floor(visualSpaceLeftMm / braceletConfig.placingSizeMm));
+  const trailingPlaceholderCount = includeEditorPlaceholders && !completionEligibility.complete
+    ? Math.max(0, Math.floor(visualSpaceLeftMm / braceletConfig.placingSizeMm))
+    : 0;
   const numPlaceholders = emptySlotCount + trailingPlaceholderCount;
 
   const loopItems = [
@@ -7336,6 +8288,78 @@ function createCurrentBraceletResolvedLayout() {
   return createResolvedBraceletLayout(braceletConfig, braceletComponentList);
 }
 
+function createLumiPreviewSelection(recommendation, context = {}) {
+  const selected = recommendation?.selected;
+  if (!selected || !Array.isArray(selected.sequence)) throw new Error('LUMI_PREVIEW_INVALID_RECOMMENDATION');
+  const selectedStones = selected.sequence.map((component, index) => {
+    const uniqueId = `lumi-preview-${index + 1}`;
+    if (component.componentType === 'spacer') return createSpacerSelectionItem(component.materialId, uniqueId);
+    if (component.componentType === 'loop_charm' || component.componentType === 'charm') return createCharmSelectionItem(component.materialId, uniqueId);
+    return createStoneSelectionItem(component.materialId, component.sizeMm, uniqueId);
+  }).filter(Boolean);
+  // Keep slot-placeable talismans in the loop so the normal Step 3 component
+  // builder creates a resolved render node; preserve true anchors separately.
+  const selectedCharmIds = [];
+  (selected.anchoredCharms || []).forEach((component) => {
+    const charm = getCharmCatalogEntry(component.materialId);
+    if (charm && isSlotPlaceableCharmType(charm.type)) {
+      const alreadyInLoop = selectedStones.some((item) => item.charmId === charm.id);
+      if (!alreadyInLoop) selectedStones.push(createCharmSelectionItem(charm.id, `lumi-preview-loop-${charm.id}`));
+      return;
+    }
+    if (component.materialId) selectedCharmIds.push(component.materialId);
+  });
+  return {
+    wristSize: Number(selected.wristSizeCm || context.wristSizeCm),
+    beadSize: String(selected.beadMode || context.beadMode),
+    mixedPlacingSize: Number(context.mixedPlacingSize || selected.selectedSizes?.primary?.selectedSizeMm || 6),
+    activeSlotIndex: null,
+    newlyAddedIds: [],
+    selectedStones,
+    selectedCharmIds
+  };
+}
+
+function createLumiPreviewResolvedLayout(recommendation, context = {}) {
+  const previewState = createLumiPreviewSelection(recommendation, context);
+  return createResolvedBraceletLayout(createBraceletConfig(previewState), createBraceletComponentList(previewState), { includeEditorPlaceholders: false });
+}
+
+function validateLumiPresentationCompleteness(recommendation, resolvedLayout) {
+  const nodes = Array.isArray(resolvedLayout?.nodes) ? resolvedLayout.nodes : [];
+  const emptySlots = nodes.filter((node) => !node.isPlaced).length;
+  const expectedRingComponents = Array.isArray(recommendation?.selected?.sequence) ? recommendation.selected.sequence.length : 0;
+  const populatedRingComponents = nodes.filter((node) => node.isPlaced && !(node.component?.type === 'charm' && isAnchoredCharmType(node.component?.charmType))).length;
+  return {
+    ringPositionCount: nodes.length,
+    populatedRingComponentCount: populatedRingComponents,
+    emptyRingPositionCount: emptySlots,
+    placeholderNodeCount: emptySlots,
+    addMarkerCount: 0,
+    valid: emptySlots === 0
+  };
+}
+
+function renderLumiRecommendationPreview({ container, recommendation, context = {} }) {
+  if (!container) throw new Error('LUMI_PREVIEW_CONTAINER_REQUIRED');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 250 250');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Lucky bracelet recommendation preview');
+  svg.classList.add('lumi-preview-svg');
+  container.replaceChildren(svg);
+  const resolvedLayout = createLumiPreviewResolvedLayout(recommendation, context);
+  const presentation = validateLumiPresentationCompleteness(recommendation, resolvedLayout);
+  if (!presentation.valid) throw new Error('LUMI_PREVIEW_INCOMPLETE_PRESENTATION');
+  renderBraceletCanvas(resolvedLayout, { svg, interactive: false, includeDebug: false, showEditorPlaceholders: false });
+  container.dataset.lumiRendererAuthority = 'renderBraceletCanvas';
+  container.dataset.lumiEmptySlotCount = String(presentation.emptyRingPositionCount);
+  container.dataset.lumiPlaceholderNodeCount = String(presentation.placeholderNodeCount);
+  container.dataset.lumiAddMarkerCount = String(presentation.addMarkerCount);
+  return resolvedLayout;
+}
+
+window.renderLumiRecommendationPreview = renderLumiRecommendationPreview;
 function getPlacedResolvedLayoutNodes(resolvedLayout, allowedComponentTypes = null) {
   return resolvedLayout.nodes.filter((node) => {
     if (!node.isPlaced) return false;
@@ -7382,9 +8406,9 @@ function projectResolvedLayoutToLinearMap(resolvedLayout, surfaceConfig) {
 }
 
 // Core Loop Rendering (Dynamic SVG circular path)
-function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout()) {
-  if (SLOT_FORENSICS_ENABLED) slotForensics.renderSequence += 1;
-  const svg = DOM.braceletSvg;
+function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayout(), { svg = DOM.braceletSvg, interactive = true, includeDebug = true, showEditorPlaceholders = interactive } = {}) {
+  if (!svg) return null;
+  if (SLOT_FORENSICS_ENABLED && includeDebug) slotForensics.renderSequence += 1;
   // Clear SVG first, keeping defs
   let defs = svg.querySelector('defs');
   if (defs) {
@@ -7432,16 +8456,19 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       const component = node.component;
       group.setAttribute("class", `bead-node placed ${node.isNewlyAdded ? 'newly-added' : ''}`);
 
-      if (component.type === 'charm') {
+      if (component.type === 'charm' || isHangingSpacerComponent(component)) {
+        const isHangingSpacer = isHangingSpacerComponent(component);
         const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, summary.scaleMmToPx);
-        const charmOutwardOffsetPx = getCharmOutwardOffsetPx(component, summary.scaleMmToPx);
+        const charmOutwardOffsetPx = isHangingSpacer
+          ? getHangingSpacerOutwardOffsetPx(component, summary.scaleMmToPx)
+          : getCharmOutwardOffsetPx(component, summary.scaleMmToPx);
         const charmCenterX = bx + (Math.cos(node.centerAngle) * charmOutwardOffsetPx);
         const charmCenterY = by + (Math.sin(node.centerAngle) * charmOutwardOffsetPx);
         const halfCharmWidth = charmFrameWidthPx / 2;
         const halfCharmHeight = charmFrameHeightPx / 2;
         const charmImageUrl = withCatalogImageVersion(component.image || '', component);
         const charmBounds = charmImageUrl ? charmVisibleBoundsCache.get(charmImageUrl) : null;
-        const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
+        const useCharmClip = !isHangingSpacer && component.edgeFitMode !== 'horizontal_fill';
         let clipId = '';
         if (useCharmClip) {
           clipId = `clip-${component.uniqueId}`;
@@ -7465,29 +8492,17 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         const rotationRad = getResolvedNodeRotationRad(node);
         const angleDeg = rotationRad * 180 / Math.PI;
         if (charmBounds) {
-          const placement = getCharmRenderPlacement(
-            component,
-            charmFrameWidthPx,
-            charmFrameHeightPx,
-            { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight },
-            charmBounds,
-            rotationRad,
-            node.centerAngle,
-          );
+          const placement = isHangingSpacer
+            ? getVisibleBoundsPlacement(charmFrameWidthPx, charmFrameHeightPx, null, charmBounds)
+            : getCharmRenderPlacement(component, charmFrameWidthPx, charmFrameHeightPx, { naturalWidth: charmBounds.sourceWidth, naturalHeight: charmBounds.sourceHeight }, charmBounds, rotationRad, node.centerAngle);
           charmImage.setAttribute("x", charmCenterX - halfCharmWidth + placement.x);
           charmImage.setAttribute("y", charmCenterY - halfCharmHeight + placement.y);
           charmImage.setAttribute("width", placement.width);
           charmImage.setAttribute("height", placement.height);
         } else {
-          const fallbackPlacement = getCharmRenderPlacement(
-            component,
-            charmFrameWidthPx,
-            charmFrameHeightPx,
-            null,
-            null,
-            rotationRad,
-            node.centerAngle
-          );
+          const fallbackPlacement = isHangingSpacer
+            ? { x: 0, y: 0, width: charmFrameWidthPx, height: charmFrameHeightPx }
+            : getCharmRenderPlacement(component, charmFrameWidthPx, charmFrameHeightPx, null, null, rotationRad, node.centerAngle);
           charmImage.setAttribute("x", charmCenterX - halfCharmWidth + fallbackPlacement.x);
           charmImage.setAttribute("y", charmCenterY - halfCharmHeight + fallbackPlacement.y);
           charmImage.setAttribute("width", fallbackPlacement.width);
@@ -7499,8 +8514,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         charmImage.setAttribute("transform", `rotate(${angleDeg}, ${charmCenterX}, ${charmCenterY})`);
         group.appendChild(charmImage);
-        group.addEventListener('click', async (event) => {
-          if (isSlotPlaceableCharmType(component.charmType)) {
+        if (interactive) group.addEventListener('click', async (event) => {
+          if (isHangingSpacer || isSlotPlaceableCharmType(component.charmType)) {
             removeLoopItemFromBracelet(node.sourceIndex, true, event, component.uniqueId);
           } else {
             await removeSelectedCharm(component.selectionIndex);
@@ -7567,7 +8582,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
           group.appendChild(img);
         }
 
-        group.addEventListener('click', (event) => removeLoopItemFromBracelet(node.sourceIndex, true, event, component.uniqueId));
+        if (interactive) group.addEventListener('click', (event) => removeLoopItemFromBracelet(node.sourceIndex, true, event, component.uniqueId));
       } else {
         const stoneId = component.stoneId;
         const stoneData = STONES.find(s => s.id === stoneId) || STONES[0];
@@ -7642,7 +8657,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
         }
         
         const currentIdx = node.sourceIndex;
-        group.addEventListener('click', (event) => removeLoopItemFromBracelet(currentIdx, true, event, component.uniqueId));
+        if (interactive) group.addEventListener('click', (event) => removeLoopItemFromBracelet(currentIdx, true, event, component.uniqueId));
       }
       
     } else {
@@ -7692,7 +8707,7 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
       }
       
       // Add active index slot choice
-      group.addEventListener('click', () => {
+      if (interactive) group.addEventListener('click', () => {
         State.activeSlotIndex = Number.isInteger(node.sourceIndex) ? node.sourceIndex : null;
         showToast("Select a stone or spacer from the catalog below to add!");
       });
@@ -7700,8 +8715,8 @@ function renderBraceletCanvas(resolvedLayout = createCurrentBraceletResolvedLayo
     
     svg.appendChild(group);
   });
-  renderSlotDebugTrace(resolvedLayout);
-
+  if (includeDebug) renderSlotDebugTrace(resolvedLayout);
+  return resolvedLayout;
 }
 
 function renderSlotDebugTrace(resolvedLayout) {
@@ -7980,6 +8995,29 @@ function recordStep2Debug(event, details = {}) {
   step2Debug.events.push(entry);
   window.__step2Debug = step2Debug;
   renderStep2DebugPanel(entry);
+}
+
+function markStep2ToStep3Timing(stage) {
+  if (!STEP2_DEBUG_ENABLED || typeof performance === 'undefined') return;
+  const now = performance.now();
+  if (stage === 'T0_next_click' || !step2Debug.timings) {
+    step2Debug.timings = { startedAt: now, marks: {} };
+  }
+  step2Debug.timings.marks[stage] = Math.round((now - step2Debug.timings.startedAt) * 10) / 10;
+  window.__step2ToStep3Timing = step2Debug.timings.marks;
+  if (stage === 'T6_images_settled') console.table(step2Debug.timings.marks);
+}
+
+function settleStep3ImagesForTiming() {
+  if (!STEP2_DEBUG_ENABLED) return;
+  const images = Array.from(document.querySelectorAll('#stepView3 img'));
+  Promise.all(images.map((image) => {
+    if (image.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', resolve, { once: true });
+    });
+  })).then(() => markStep2ToStep3Timing('T6_images_settled'));
 }
 
 function setupStep2DebugPanel() {
@@ -8414,14 +9452,41 @@ function renderStep3() {
   
   // Render SVG loop and catalog
   renderBraceletCanvas(resolvedLayout);
+  markStep2ToStep3Timing('T4_bracelet_render_complete');
   renderCatalogGrid();
-  renderCharmOptions();
+  renderActiveCharmSpacerSection();
+  markStep2ToStep3Timing('T5_catalog_cards_complete');
+  settleStep3ImagesForTiming();
   syncCatalogSectionFilter();
   syncStep3NextValidationUI(validationState);
   showStep3CategoryHint();
+  renderLumiStep3Entry();
   
   // Clear newly added IDs after rendering so they only animate on insertion
   State.newlyAddedIds = [];
+}
+
+// First-time onboarding owns the first Step 3 visit, so the legacy Step 3 tab-hint
+// sequence (which cycles the visible catalog section) and the legacy stone-info hint
+// (which auto-opens a modal) must not animate underneath the onboarding overlay.
+// Nothing is persisted here: the legacy hints still run on a later visit.
+function suspendStep3HintsForOnboarding() {
+  const step3View = document.getElementById('stepView3');
+  clearStep3CategoryHintTimers();
+  step3View?.classList.remove('step3-tab-hinting', 'step3-tab-hint-pending');
+  clearStep3CategoryHintTab();
+  clearStep3InfoHintTimers();
+  if (step3InfoHintModalOpen) {
+    step3InfoHintAutoClosing = true;
+    closeStoneInfoModal();
+    step3InfoHintAutoClosing = false;
+  }
+  step3View?.querySelectorAll('.step3-info-hint-card, .step3-info-hint-card-final').forEach((node) => node.classList.remove('step3-info-hint-card', 'step3-info-hint-card-final'));
+  step3View?.querySelectorAll('.step3-info-hint-button, .step3-info-hint-final').forEach((node) => node.classList.remove('step3-info-hint-button', 'step3-info-hint-final'));
+  step3View?.querySelectorAll('.step3-info-hint-callout').forEach((node) => node.remove());
+  step3InfoHintTarget = null;
+  step3CategoryHintPlayedThisPage = true;
+  step3InfoHintPlayedThisPage = true;
 }
 
 function showStep3CategoryHint() {
@@ -8633,7 +9698,7 @@ function renderOrderDetailErrorState(message) {
 }
 
 async function renderStep4() {
-  if (requiresLineOaFriendshipForOperationalStep4()) {
+  if (!step4AuthorizationInProgress && requiresLineOaFriendshipForOperationalStep4()) {
     const canEnterStep4 = await canEnterOperationalStep4();
     if (!canEnterStep4) {
       State.currentStep = 3;
@@ -9195,42 +10260,56 @@ async function handleStripeCheckout() {
     showToast("This order has already been created.");
     return;
   }
+  if (stripeCheckoutInProgress) return;
+
+  const checkoutButton = State.currentStep === 4 ? DOM.btnNext : DOM.btnPayWithStripe;
+  if (!checkoutButton) return;
+
+  const originalMarkup = checkoutButton.innerHTML;
+  const releaseCheckout = () => {
+    stripeCheckoutInProgress = false;
+    checkoutButton.disabled = false;
+    checkoutButton.removeAttribute('aria-busy');
+    checkoutButton.innerHTML = originalMarkup;
+  };
+  stripeCheckoutInProgress = true;
+  checkoutButton.disabled = true;
+  checkoutButton.setAttribute('aria-busy', 'true');
+  checkoutButton.textContent = '\u0e01\u0e33\u0e25\u0e31\u0e07\u0e1e\u0e32\u0e44\u0e1b\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19...';
 
   ensureCurrentDesignMatchesBeadSize({ showToastNotification: true });
 
   const fitEligibility = getCurrentCheckoutFitEligibility();
   if (!fitEligibility.eligible) {
     showToast(fitEligibility.reason);
+    releaseCheckout();
     return;
   }
 
   if (getSelectedStoneItems().length === 0) {
     showToast("Bracelet is empty!");
-    return;
-  }
-
-  const hasStock = await validateCurrentDesignStockWithLatestCatalog();
-  if (!hasStock) {
+    releaseCheckout();
     return;
   }
 
   const hasLineLogin = await requireLineLoginForCustomization();
   if (!hasLineLogin) {
+    releaseCheckout();
     return;
   }
 
   const canEnterStep4 = await canEnterOperationalStep4();
-  if (!canEnterStep4) return;
-
-  const shippingInfo = validateShippingInfo();
-  if (!shippingInfo) {
+  if (!canEnterStep4) {
+    releaseCheckout();
     return;
   }
 
-  const checkoutButton = State.currentStep === 4 ? DOM.btnNext : DOM.btnPayWithStripe;
-  if (!checkoutButton) return;
+  const shippingInfo = validateShippingInfo();
+  if (!shippingInfo) {
+    releaseCheckout();
+    return;
+  }
 
-  const originalMarkup = checkoutButton.innerHTML;
   checkoutButton.disabled = true;
   checkoutButton.textContent = 'กำลังพาไปชำระเงิน...';
   State.landingDismissed = true;
@@ -9238,6 +10317,9 @@ async function handleStripeCheckout() {
 
   try {
     await ensureBraceletPreviewImage();
+    const checkoutAttemptId = typeof window.crypto?.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : [Date.now(), Math.random().toString(36).slice(2), Math.random().toString(36).slice(2)].join('-');
     const orderPayload = buildCurrentOrderPayload({
       shippingInfo,
       recipientName: shippingInfo.recipientName,
@@ -9253,6 +10335,7 @@ async function handleStripeCheckout() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         origin: window.location.origin,
+        checkoutAttemptId,
         order: orderPayload
       })
     });
@@ -9281,8 +10364,7 @@ async function handleStripeCheckout() {
         .map((issue) => `${issue.name || issue.id} (${issue.requiredQty}/${issue.stockQty})`)
         .join(', ');
       showToast(`\u0E2A\u0E15\u0E47\u0E2D\u0E01\u0E44\u0E21\u0E48\u0E1E\u0E2D: ${issueText} \u0E01\u0E23\u0E38\u0E13\u0E32\u0E1B\u0E23\u0E31\u0E1A\u0E01\u0E33\u0E44\u0E25`);
-      checkoutButton.disabled = false;
-      checkoutButton.innerHTML = originalMarkup;
+      releaseCheckout();
       return;
     }
     trackAnalyticsEvent('payment_failed', {
@@ -9293,8 +10375,7 @@ async function handleStripeCheckout() {
       message: error?.message || String(error || ''),
       source: 'stripe_checkout'
     });
-    checkoutButton.disabled = false;
-    checkoutButton.innerHTML = originalMarkup;
+    releaseCheckout();
     showToast(error.message || "Stripe Checkout could not be started.");
   }
 }
@@ -9355,26 +10436,34 @@ function detectVisibleImageBounds(image) {
   const sourceHeight = image?.naturalHeight || image?.height || 0;
   if (!sourceWidth || !sourceHeight) return null;
 
+  // Performance: scan a small analysis canvas instead of the natural-resolution image. Charm and
+  // spacer sources are 1000px+ squares; the downscaled scan is far cheaper and the bounds are scaled
+  // back into source coordinates, so the rendered placement is unchanged.
+  const analysisScale = Math.max(sourceWidth, sourceHeight) > CHARM_BOUNDS_ANALYSIS_MAX_PX
+    ? CHARM_BOUNDS_ANALYSIS_MAX_PX / Math.max(sourceWidth, sourceHeight)
+    : 1;
+  const analysisWidth = Math.max(1, Math.round(sourceWidth * analysisScale));
+  const analysisHeight = Math.max(1, Math.round(sourceHeight * analysisScale));
   const canvas = document.createElement('canvas');
-  canvas.width = sourceWidth;
-  canvas.height = sourceHeight;
+  canvas.width = analysisWidth;
+  canvas.height = analysisHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
 
   try {
-    ctx.clearRect(0, 0, sourceWidth, sourceHeight);
-    ctx.drawImage(image, 0, 0, sourceWidth, sourceHeight);
-    const { data } = ctx.getImageData(0, 0, sourceWidth, sourceHeight);
+    ctx.clearRect(0, 0, analysisWidth, analysisHeight);
+    ctx.drawImage(image, 0, 0, analysisWidth, analysisHeight);
+    const { data } = ctx.getImageData(0, 0, analysisWidth, analysisHeight);
 
-    let minX = sourceWidth;
-    let minY = sourceHeight;
+    let minX = analysisWidth;
+    let minY = analysisHeight;
     let maxX = -1;
     let maxY = -1;
 
-    for (let y = 0; y < sourceHeight; y++) {
-      for (let x = 0; x < sourceWidth; x++) {
-        const alpha = data[(y * sourceWidth + x) * 4 + 3];
-        if (alpha > 8) {
+    for (let y = 0; y < analysisHeight; y++) {
+      for (let x = 0; x < analysisWidth; x++) {
+        const alpha = data[(y * analysisWidth + x) * 4 + 3];
+        if (alpha > CHARM_BOUNDS_ALPHA_THRESHOLD) {
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (x > maxX) maxX = x;
@@ -9387,7 +10476,14 @@ function detectVisibleImageBounds(image) {
       return normalizeImageBounds(null, sourceWidth, sourceHeight);
     }
 
-    return normalizeImageBounds({ minX, minY, maxX, maxY }, sourceWidth, sourceHeight);
+    const scaleX = sourceWidth / analysisWidth;
+    const scaleY = sourceHeight / analysisHeight;
+    return normalizeImageBounds({
+      minX: Math.max(0, Math.floor(minX * scaleX)),
+      minY: Math.max(0, Math.floor(minY * scaleY)),
+      maxX: Math.min(sourceWidth - 1, Math.max(0, Math.ceil((maxX + 1) * scaleX) - 1)),
+      maxY: Math.min(sourceHeight - 1, Math.max(0, Math.ceil((maxY + 1) * scaleY) - 1))
+    }, sourceWidth, sourceHeight);
   } catch (error) {
     console.warn('Failed to detect visible charm bounds.', error);
     return null;
@@ -9413,6 +10509,30 @@ function getVisibleImageBounds(image, cacheKey = '') {
   return detectedBounds;
 }
 
+// Performance: coalesce a burst of charm/spacer image-bound discoveries into ONE bracelet repaint.
+// Only the bracelet canvas is refreshed here - catalog grids and the selection are never rebuilt.
+const STEP3_BOUNDS_COALESCE_MS = 120;
+let step3BoundsRefreshPending = false;
+let step3BoundsRefreshScheduled = false;
+function scheduleStep3BoundsRefresh() {
+  if (State.currentStep !== 3 || State.orderDetailMode) return;
+  step3BoundsRefreshPending = true;
+  if (step3BoundsRefreshScheduled) return;
+  step3BoundsRefreshScheduled = true;
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      step3BoundsRefreshScheduled = false;
+      if (!step3BoundsRefreshPending) return;
+      step3BoundsRefreshPending = false;
+      if (State.currentStep !== 3 || State.orderDetailMode) return;
+      try {
+        renderBraceletCanvas(createCurrentBraceletResolvedLayout());
+      } catch (error) {
+        console.warn('Bracelet bounds refresh skipped.', error);
+      }
+    }, STEP3_BOUNDS_COALESCE_MS);
+  });
+}
 function scheduleCharmVisibleBoundsDetection(imageUrl) {
   if (!imageUrl) return Promise.resolve(null);
   if (charmVisibleBoundsCache.has(imageUrl)) {
@@ -9428,9 +10548,7 @@ function scheduleCharmVisibleBoundsDetection(imageUrl) {
     img.onload = async () => {
       const bounds = getVisibleImageBounds(img, imageUrl);
       resolve(bounds);
-      if (State.currentStep === 3) {
-        renderStep3();
-      }
+      scheduleStep3BoundsRefresh();
     };
     img.onerror = () => resolve(null);
     img.src = imageUrl;
@@ -9738,7 +10856,9 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     const imgObj = imageCache[imgUrl];
     const outwardOffsetPx = component.type === 'charm'
       ? getCharmOutwardOffsetPx(component, node.renderScalePxPerMm || 0)
-      : 0;
+      : (isHangingSpacerComponent(component)
+        ? getHangingSpacerOutwardOffsetPx(component, node.renderScalePxPerMm || 0)
+        : 0);
     const renderCenterX = bx + (Math.cos(node.centerAngle) * outwardOffsetPx);
     const renderCenterY = by + (Math.sin(node.centerAngle) * outwardOffsetPx);
 
@@ -9746,12 +10866,15 @@ async function generateImageExports(subtotal, discount, finalPrice, aggregatedSt
     ctx.translate(renderCenterX, renderCenterY);
     ctx.rotate(node.renderRotationRad); // Rotate to face outward
 
-    if (component.type === 'charm') {
+    if (component.type === 'charm' || isHangingSpacerComponent(component)) {
       if (imgObj) {
+        const isHangingSpacer = isHangingSpacerComponent(component);
         const { widthPx: charmFrameWidthPx, heightPx: charmFrameHeightPx } = getCharmRenderFrameDimensions(component, node.renderScalePxPerMm || 0);
         const charmBounds = getVisibleImageBounds(imgObj, imgUrl);
-        const placement = getCharmRenderPlacement(component, charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
-        const useCharmClip = component.edgeFitMode !== 'horizontal_fill';
+        const placement = isHangingSpacer
+          ? getVisibleBoundsPlacement(charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds)
+          : getCharmRenderPlacement(component, charmFrameWidthPx, charmFrameHeightPx, imgObj, charmBounds, node.renderRotationRad, node.centerAngle);
+        const useCharmClip = !isHangingSpacer && component.edgeFitMode !== 'horizontal_fill';
         ctx.save();
         if (useCharmClip) {
           ctx.beginPath();
@@ -10094,7 +11217,7 @@ function renderBraceletShowcaseFallback(previewKey = '') {
     ctx.translate(x, y);
     ctx.rotate(node.renderRotationRad || 0);
 
-    if (component.type === 'charm') {
+    if (component.type === 'charm' || isHangingSpacerComponent(component)) {
       const frame = getCharmRenderFrameDimensions(component, node.renderScalePxPerMm || 0);
       ctx.fillStyle = '#D7B56D';
       ctx.strokeStyle = '#8B6A2B';
@@ -10638,3 +11761,4 @@ function showCustomConfirm(message, title = "Confirm") {
     DOM.confirmModal.addEventListener('click', onBackdrop);
   });
 }
+
