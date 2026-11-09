@@ -26,10 +26,10 @@ body[data-active-step="2"] .app-container {
 
 body[data-active-step="2"] .app-container {
   background-image:
-    linear-gradient(180deg, rgba(248, 239, 255, 0.62) 0%, rgba(250, 244, 255, 0.78) 55%, rgba(247, 235, 252, 0.86) 100%),
+    linear-gradient(180deg, rgba(248, 239, 255, 0.42) 0%, rgba(250, 244, 255, 0.64) 55%, rgba(247, 235, 252, 0.74) 100%),
     url("/assets/hero/slide-01.webp");
   background-size: cover;
-  background-position: center top;
+  background-position: left top;
   background-repeat: no-repeat;
 }
 
@@ -137,13 +137,17 @@ body[data-active-step="2"] .app-content {
   padding: 0 20px calc(106px + var(--mobile-safe-bottom));
 }
 
+body[data-active-step="1"] .app-content {
+  max-width: 716px;
+}
+
 body[data-active-step="1"] .step-view.active,
 body[data-active-step="2"] .step-view.active {
   padding-top: 126px;
 }
 
 body[data-active-step="1"] .step-view.active {
-  padding-top: clamp(126px, 22vh, 430px);
+  padding-top: 180px;
 }
 
 body[data-active-step="2"] .step-view.active {
@@ -151,12 +155,31 @@ body[data-active-step="2"] .step-view.active {
 }
 
 @media (min-width: 700px) {
+  body[data-active-step="1"] .app-header,
+  body[data-active-step="2"] .app-header {
+    padding-top: 34px;
+  }
+
+  body[data-active-step="1"] .app-header .header-top,
+  body[data-active-step="2"] .app-header .header-top {
+    margin-bottom: 100px;
+  }
+
+  body[data-active-step="1"] .app-header .step-indicator-text,
+  body[data-active-step="2"] .app-header .step-indicator-text {
+    margin-top: 20px;
+  }
+
+  body[data-active-step="2"] #stepView2 .bead-size-copy {
+    column-gap: 12px;
+  }
+
   body[data-active-step="1"] .step-view.active {
-    padding-top: 399px;
+    padding-top: 325px;
   }
 
   body[data-active-step="2"] .step-view.active {
-    padding-top: 568px;
+    padding-top: 583px;
   }
 }
 
@@ -181,7 +204,13 @@ body[data-active-step="1"] #stepView1 .step1-measure-card {
 
 body[data-active-step="1"] #stepView1 .step1-heading-block {
   text-align: center;
-  margin: 0 0 20px;
+  margin: 0 0 69px;
+}
+
+@media (max-width: 699px) {
+  body[data-active-step="1"] #stepView1 .step1-heading-block {
+    margin-bottom: 25px;
+  }
 }
 
 body[data-active-step="1"] #stepView1 .step-title {
@@ -212,7 +241,7 @@ body[data-active-step="1"] #stepView1 .wrist-visual-card {
   padding: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 30px;
+  border-radius: clamp(28px, 7vw, 72px);
   background: rgba(255, 255, 255, 0.18);
   box-shadow: none;
 }
@@ -225,7 +254,7 @@ body[data-active-step="1"] #stepView1 .wrist-visual-card picture {
 body[data-active-step="1"] #stepView1 .wrist-measuring-tape-image {
   display: block;
   width: 100% !important;
-  height: clamp(150px, 25vw, 280px) !important;
+  height: clamp(150px, 25.5vw, 285px) !important;
   max-width: none;
   max-height: none;
   margin: 0;
@@ -381,6 +410,7 @@ body[data-active-step="2"] #stepView2 .bead-size-options {
 
 body[data-active-step="2"] #stepView2 .bead-size-card,
 body[data-active-step="2"] #stepView2 .bead-size-card-recommended {
+  overflow: visible;
   min-height: clamp(118px, 9vh, 140px);
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.72);
@@ -545,5 +575,17 @@ body[data-active-step="2"] #stepView2 .bead-size-recommendation {
   body[data-active-step="1"] .app-footer,
   body[data-active-step="2"] .app-footer {
     padding-inline: 28px;
+  }
+}
+
+@media (min-width: 700px) {
+  body[data-active-step="2"] #stepView2 .bead-size-copy {
+    column-gap: 168px;
+  }
+}
+
+@media (max-width: 380px) {
+  body[data-active-step="2"] .step-view.active {
+    padding-top: 184px;
   }
 }
