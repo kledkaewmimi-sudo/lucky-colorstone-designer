@@ -1,0 +1,549 @@
+/*
+ * Step 1 / Step 2 visual redesign — UAT-only presentation layer.
+ * Scoped to the active step so Step 3 / Step 4 and all customization logic
+ * remain untouched. Asset paths are root-relative; no hero files are modified.
+ */
+
+body[data-active-step="1"],
+body[data-active-step="2"] {
+  background: #f4e8fc;
+}
+
+body[data-active-step="1"] .uat-environment-banner,
+body[data-active-step="2"] .uat-environment-banner {
+  display: none !important;
+}
+
+body[data-active-step="1"] .app-container,
+body[data-active-step="2"] .app-container {
+  max-width: 100%;
+  background-color: #f4e8fc;
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.5), transparent 34%),
+    radial-gradient(circle at 94% 8%, rgba(234, 205, 245, 0.42), transparent 30%);
+  box-shadow: none;
+}
+
+body[data-active-step="2"] .app-container {
+  background-image:
+    linear-gradient(180deg, rgba(248, 239, 255, 0.62) 0%, rgba(250, 244, 255, 0.78) 55%, rgba(247, 235, 252, 0.86) 100%),
+    url("/assets/hero/slide-01.webp");
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+body[data-active-step="1"] .app-header,
+body[data-active-step="2"] .app-header {
+  background: transparent;
+  border-bottom: 0;
+  box-shadow: none;
+  padding: 14px 20px 8px;
+}
+
+body[data-active-step="1"] .header-top,
+body[data-active-step="2"] .header-top {
+  position: relative;
+  min-height: 30px;
+  margin-bottom: 12px;
+}
+
+body[data-active-step="1"] .brand-logo,
+body[data-active-step="2"] .brand-logo {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #43254c;
+  font-family: var(--font-brand-latin);
+  font-size: clamp(22px, 4.6vw, 34px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+body[data-active-step="1"] .home-btn,
+body[data-active-step="2"] .home-btn {
+  margin-left: auto;
+  color: #4e2b56;
+}
+
+body[data-active-step="1"] .stepper-container,
+body[data-active-step="2"] .stepper-container {
+  width: min(100%, 680px);
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+body[data-active-step="1"] .stepper-line,
+body[data-active-step="2"] .stepper-line {
+  left: 30px;
+  right: 30px;
+  height: 3px;
+  background: #dfd0ea;
+}
+
+body[data-active-step="1"] .stepper-line-progress,
+body[data-active-step="2"] .stepper-line-progress {
+  left: 30px;
+  height: 3px;
+  background: #8c5a97;
+  box-shadow: none;
+}
+
+body[data-active-step="1"] .step-node,
+body[data-active-step="2"] .step-node {
+  width: clamp(30px, 4vw, 42px);
+  height: clamp(30px, 4vw, 42px);
+  border: 1.5px solid #cbb8dc;
+  background: rgba(255, 255, 255, 0.7);
+  color: #6d4a76;
+  font-size: clamp(11px, 1.4vw, 15px);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+body[data-active-step="1"] .step-node.active,
+body[data-active-step="2"] .step-node.active {
+  border-color: #6e3c78;
+  background: #6e3c78;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(110, 60, 120, 0.18);
+}
+
+body[data-active-step="1"] .step-node.completed,
+body[data-active-step="2"] .step-node.completed {
+  border-color: #8c5a97;
+  background: #8c5a97;
+  color: #fff;
+}
+
+body[data-active-step="1"] .step-indicator-text,
+body[data-active-step="2"] .step-indicator-text {
+  color: #43254c;
+  font-family: var(--font-ui-thai);
+  font-size: clamp(11px, 1.55vw, 15px);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-top: 12px;
+}
+
+body[data-active-step="1"] .app-content,
+body[data-active-step="2"] .app-content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 20px calc(106px + var(--mobile-safe-bottom));
+}
+
+body[data-active-step="1"] .step-view.active,
+body[data-active-step="2"] .step-view.active {
+  padding-top: 126px;
+}
+
+body[data-active-step="1"] .step-view.active {
+  padding-top: clamp(126px, 22vh, 430px);
+}
+
+body[data-active-step="2"] .step-view.active {
+  padding-top: 219px;
+}
+
+@media (min-width: 700px) {
+  body[data-active-step="1"] .step-view.active {
+    padding-top: 399px;
+  }
+
+  body[data-active-step="2"] .step-view.active {
+    padding-top: 568px;
+  }
+}
+
+body[data-active-step="2"] .app-content {
+  max-width: 920px;
+}
+
+/* Step 1: large, centered wrist measurement composition. */
+body[data-active-step="1"] #stepView1 {
+  margin-top: 0;
+  color: #43254c;
+}
+
+body[data-active-step="1"] #stepView1 .step1-measure-card {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-active-step="1"] #stepView1 .step1-heading-block {
+  text-align: center;
+  margin: 0 0 20px;
+}
+
+body[data-active-step="1"] #stepView1 .step-title {
+  color: #43254c;
+  font-family: var(--font-ui-thai);
+  font-size: clamp(28px, 7.2vw, 48px);
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+}
+
+body[data-active-step="1"] #stepView1 .step-subtitle {
+  margin: 10px auto 0;
+  color: #74557d;
+  font-size: clamp(13px, 2.7vw, 18px);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+body[data-active-step="1"] #stepView1 .step1-auth-status {
+  margin: 0 auto 12px;
+  max-width: 560px;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-visual-card {
+  width: 100%;
+  margin: 0 0 18px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-visual-card picture {
+  display: block;
+  width: 100%;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-measuring-tape-image {
+  display: block;
+  width: 100% !important;
+  height: clamp(150px, 25vw, 280px) !important;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 30px;
+  background: #eadcf5;
+  object-fit: cover;
+  object-position: center center;
+  box-shadow: none;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-picker-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  justify-items: center;
+  gap: 2px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 8px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-picker-label {
+  color: #74557d;
+  font-size: clamp(12px, 1.8vw, 16px);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-wheel-control {
+  width: 40px;
+  height: 30px;
+  color: #6e3c78;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-wheel-window {
+  width: min(100%, 500px);
+  grid-template-rows: 22px 32px clamp(72px, 9vh, 110px) 32px 22px;
+  overflow: hidden;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-wheel-window::before,
+body[data-active-step="1"] #stepView1 .wrist-wheel-window::after {
+  display: none;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-wheel-value {
+  min-width: 96px;
+  min-height: 28px;
+  color: #9a7ba4;
+  font-size: clamp(16px, 2.1vw, 21px);
+  font-weight: 600;
+  opacity: 0.62;
+}
+
+body[data-active-step="1"] #stepView1 .wrist-wheel-value.is-far {
+  font-size: clamp(14px, 1.8vw, 18px);
+  opacity: 0.35;
+}
+
+body[data-active-step="1"] #stepView1 .selected-size-display-card {
+  width: min(74vw, 500px);
+  height: clamp(70px, 9vh, 110px);
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.78);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  box-shadow: 0 6px 20px rgba(98, 58, 112, 0.08);
+}
+
+body[data-active-step="1"] #stepView1 .display-size-value {
+  color: #43254c;
+  font-family: var(--font-ui-thai);
+  font-size: clamp(40px, 8vw, 72px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+body[data-active-step="1"] #stepView1 .display-size-unit {
+  color: #74557d;
+  font-size: clamp(16px, 2.5vw, 20px);
+  font-weight: 700;
+}
+
+/* Step 1 / Step 2 shared footer treatment. */
+body[data-active-step="1"] .app-footer,
+body[data-active-step="2"] .app-footer {
+  left: 50%;
+  width: 100%;
+  max-width: 1024px;
+  transform: translateX(-50%);
+  background: transparent;
+  border-top: 0;
+  box-shadow: none;
+  padding: 10px 20px calc(18px + var(--mobile-safe-bottom));
+  gap: 14px;
+}
+
+body[data-active-step="1"] .footer-btn,
+body[data-active-step="2"] .footer-btn {
+  min-height: 58px;
+  border-radius: 999px;
+  font-size: clamp(16px, 2.3vw, 20px);
+  font-weight: 700;
+}
+
+body[data-active-step="1"] .footer-btn.btn-back {
+  display: none !important;
+}
+
+body[data-active-step="1"] .footer-btn.btn-next {
+  flex: 1 1 100%;
+}
+
+body[data-active-step="2"] .footer-btn.btn-back {
+  flex: 0 0 32%;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  color: #5d3b66;
+}
+
+body[data-active-step="2"] .footer-btn.btn-next {
+  flex: 1 1 58%;
+}
+
+body[data-active-step="1"] .footer-btn.btn-next,
+body[data-active-step="2"] .footer-btn.btn-next {
+  border: 0 !important;
+  background: linear-gradient(135deg, #9b6aa7 0%, #77447f 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 20px rgba(103, 55, 113, 0.18);
+}
+
+body[data-active-step="1"] .footer-btn.btn-next:hover,
+body[data-active-step="2"] .footer-btn.btn-next:hover {
+  background: linear-gradient(135deg, #a875b3 0%, #6e3c78 100%) !important;
+}
+
+/* Step 2: airy cards over the low-contrast hero background. */
+body[data-active-step="2"] #stepView2 {
+  color: #43254c;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-options {
+  gap: 14px;
+  padding-block: 4px;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended {
+  min-height: clamp(118px, 9vh, 140px);
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 28px !important;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 24px rgba(81, 45, 96, 0.07);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card:hover {
+  border-color: rgba(142, 91, 159, 0.32);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card.active,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended.active {
+  border: 2px solid #8e5b9f;
+  background: rgba(255, 251, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(107, 59, 119, 0.12);
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-content,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended .bead-size-content {
+  grid-template-columns: 34px minmax(0, 1fr) clamp(92px, 8vw, 110px);
+  min-height: 90px;
+  gap: 12px;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-radio-col {
+  align-self: center;
+}
+
+body[data-active-step="2"] #stepView2 .radio-check {
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid #b9a1c4;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card.active .radio-check {
+  border: 2px solid #6e3c78;
+  box-shadow: 0 0 0 3px rgba(110, 60, 120, 0.1);
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card.active .radio-check::after {
+  width: 11px;
+  height: 11px;
+  background: #6e3c78;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-copy {
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-preview {
+  min-width: 52px;
+  align-items: center;
+  padding-top: 0;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-preview .bead-preview-circle {
+  background: radial-gradient(circle at 35% 30%, #d7b7ff 0%, #a272cf 58%, #79519f 100%);
+  box-shadow: inset -2px -2px 5px rgba(65, 30, 84, 0.18), 0 3px 7px rgba(94, 54, 112, 0.12);
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-label,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended .bead-size-label {
+  margin-bottom: 5px;
+  color: #43254c;
+  font-family: var(--font-brand-latin), var(--font-ui-thai);
+  font-size: clamp(22px, 3.8vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card.active .bead-size-label,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended.active .bead-size-label {
+  color: #5e3269;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-details h4,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended .bead-size-details h4 {
+  margin-top: 2px;
+  color: #6d4d76;
+  font-family: var(--font-ui-thai);
+  font-size: clamp(13px, 1.8vw, 17px);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-hand-panel,
+body[data-active-step="2"] #stepView2 .bead-size-card-recommended .bead-size-hand-panel {
+  width: clamp(92px, 8vw, 110px);
+  height: clamp(92px, 8vw, 110px);
+  border: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f0e5f7;
+  box-shadow: none;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-hand-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+body[data-active-step="2"] #stepView2 .bead-size-card.active .bead-size-details h4 {
+  color: #5e3269;
+}
+
+/* Keep the Step 2 support copy out of the reference composition. */
+body[data-active-step="2"] #stepView2 .bead-size-support-banner,
+body[data-active-step="2"] #stepView2 .bead-size-popular-badge,
+body[data-active-step="2"] #stepView2 .bead-size-featured-crown,
+body[data-active-step="2"] #stepView2 .bead-size-recommendation {
+  display: none !important;
+}
+
+@media (max-width: 360px) {
+  body[data-active-step="2"] #stepView2 .bead-size-card,
+  body[data-active-step="2"] #stepView2 .bead-size-card-recommended {
+    min-height: 104px;
+    padding: 11px;
+    border-radius: 24px !important;
+  }
+
+  body[data-active-step="2"] #stepView2 .bead-size-content,
+  body[data-active-step="2"] #stepView2 .bead-size-card-recommended .bead-size-content {
+    grid-template-columns: 28px minmax(0, 1fr) 76px;
+    min-height: 80px;
+    gap: 8px;
+  }
+
+  body[data-active-step="2"] #stepView2 .bead-size-copy {
+    grid-template-columns: 42px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  body[data-active-step="2"] #stepView2 .bead-size-hand-panel,
+  body[data-active-step="2"] #stepView2 .bead-size-card-recommended .bead-size-hand-panel {
+    width: 76px;
+    height: 76px;
+  }
+}
+
+@media (min-width: 768px) {
+  body[data-active-step="1"] .app-header,
+  body[data-active-step="2"] .app-header {
+    padding-inline: 28px;
+  }
+
+  body[data-active-step="1"] .app-content,
+  body[data-active-step="2"] .app-content {
+    padding-inline: 28px;
+  }
+
+  body[data-active-step="1"] .app-footer,
+  body[data-active-step="2"] .app-footer {
+    padding-inline: 28px;
+  }
+}

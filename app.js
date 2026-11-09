@@ -4369,6 +4369,7 @@ function syncActiveStepView() {
     const stepNum = idx + 1;
     view.classList.toggle('active', stepNum === State.currentStep);
   });
+  document.body.dataset.activeStep = String(State.currentStep);
 }
 
 // Stepper bar rendering logic
