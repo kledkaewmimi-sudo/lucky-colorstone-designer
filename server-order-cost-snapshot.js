@@ -1,4 +1,4 @@
-const DELIVERY_COST = 80;
+const DELIVERY_COST = 110;
 const COST_SOURCE = 'purchases_weighted_average_exact_variant';
 const BACKFILL_COST_SOURCE = 'purchases_all_time_weighted_average_exact_variant';
 
