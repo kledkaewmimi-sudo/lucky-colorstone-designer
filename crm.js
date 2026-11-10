@@ -4482,7 +4482,7 @@ function renderOrderCostSummary(order = {}) {
   return `<div class="order-cost-summary${isResolved ? '' : ' is-unavailable'}">
     ${isResolved ? (cost?.status === 'backfilled' ? '<div class="order-cost-source">Backfilled estimate</div>' : '') : '<div class="order-cost-unavailable">UNKNOWN / UNRESOLVED COST</div>'}
     <div><span>Material Cost</span><strong>${value(cost?.materialCost)}</strong></div>
-    <div><span>Delivery Cost</span><strong>${formatOrderCostMoney(cost?.deliveryCost ?? 80)}</strong></div>
+    <div><span>Delivery Cost</span><strong>${formatOrderCostMoney(cost?.deliveryCost ?? 110)}</strong></div>
     <div class="order-cost-total"><span>Total Cost</span><strong>${value(cost?.totalCost)}</strong></div>
     <div><span>Profit</span><strong>${value(cost?.profit)}</strong></div>
     <div><span>Margin</span><strong>${isResolved && Number.isFinite(Number(cost?.marginPercent)) ? `${Number(cost.marginPercent).toFixed(1)}%` : 'Unavailable'}</strong></div>
