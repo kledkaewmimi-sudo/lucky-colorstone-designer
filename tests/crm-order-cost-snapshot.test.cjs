@@ -27,6 +27,7 @@ test('resolves exact 4mm, 6mm, and 10mm stone costs independently', () => {
 });
 
 test('weighted average combines stone, charm, and spacer material costs', () => {
+  assert.equal(DELIVERY_COST, 110);
   const snapshot = createOrderCostSnapshot(order([
     { type: 'stone', stoneId: 'amethyst', size: 6, quantity: 10 },
     { type: 'charm', charmId: 'heart', quantity: 1 },
@@ -38,9 +39,9 @@ test('weighted average combines stone, charm, and spacer material costs', () => 
   ]);
   assert.equal(snapshot.materialCost, 49);
   assert.equal(snapshot.deliveryCost, DELIVERY_COST);
-  assert.equal(snapshot.totalCost, 129);
-  assert.equal(snapshot.profit, 329);
-  assert.equal(snapshot.marginPercent, (329 / 458) * 100);
+  assert.equal(snapshot.totalCost, 159);
+  assert.equal(snapshot.profit, 299);
+  assert.equal(snapshot.marginPercent, (299 / 458) * 100);
 });
 
 test('profit and margin use final paid total after discount', () => {
@@ -48,16 +49,16 @@ test('profit and margin use final paid total after discount', () => {
     { type: 'stone', stoneId: 'amethyst', size: 6, quantity: 10 }
   ], 458), [purchase('stone', 'amethyst', 100, 1260, 6)]);
   assert.equal(snapshot.materialCost, 126);
-  assert.equal(snapshot.totalCost, 206);
-  assert.equal(snapshot.profit, 252);
-  assert.equal(Number(snapshot.marginPercent.toFixed(1)), 55);
+  assert.equal(snapshot.totalCost, 236);
+  assert.equal(snapshot.profit, 222);
+  assert.equal(Number(snapshot.marginPercent.toFixed(1)), 48.5);
 });
 
 test('a genuine zero purchase cost is complete, while a missing exact variant is unavailable', () => {
   const zero = createOrderCostSnapshot(order([{ type: 'stone', stoneId: 'gift', size: 4, quantity: 3 }], 100), [purchase('stone', 'gift', 10, 0, 4)]);
   assert.equal(zero.status, 'complete');
   assert.equal(zero.materialCost, 0);
-  assert.equal(zero.totalCost, 80);
+  assert.equal(zero.totalCost, 110);
   const missing = createOrderCostSnapshot(order([{ type: 'stone', stoneId: 'amethyst', size: 10, quantity: 1 }]), [purchase('stone', 'amethyst', 100, 200, 4)]);
   assert.equal(missing.status, 'unavailable');
   assert.equal(missing.materialCost, null);
