@@ -3918,11 +3918,27 @@ async function readCharmsForApi() {
   );
 }
 
+const PURCHASE_SPACER_CHARM_IDS = new Set([
+  'phase27-gold-heart-pendant',
+  'phase27-gold-star-pendant'
+]);
+
+function findPurchaseCatalogItem(catalogs, itemType, catalogItemId) {
+  const direct = (catalogs?.[itemType] || []).find((entry) => entry.id === catalogItemId);
+  if (direct) return direct;
+  // These two catalog_charms are presented as ชาร์ม in the CRM. They remain
+  // spacer purchases in reporting, but the catalog record lives in charms.
+  if (itemType === 'spacer' && PURCHASE_SPACER_CHARM_IDS.has(catalogItemId)) {
+    return (catalogs?.charm || []).find((entry) => entry.id === catalogItemId) || null;
+  }
+  return null;
+}
+
 function normalizePurchaseEntry(input, catalogs) {
   const itemType = String(input?.itemType || input?.category || 'stone').trim().toLowerCase();
   const catalogItemId = String(input?.catalogItemId ?? input?.stoneId ?? '').trim() || null;
   const catalogByType = { stone: catalogs.stones, charm: catalogs.charms, spacer: catalogs.spacers };
-  const catalogItem = (catalogByType[itemType] || []).find((entry) => entry.id === catalogItemId);
+  const catalogItem = findPurchaseCatalogItem(catalogByType, itemType, catalogItemId);
   const itemName = String(input?.itemNameSnapshot ?? input?.itemName ?? '').trim();
   const sizeMm = input?.sizeMm == null || input?.sizeMm === '' ? null : Number(input.sizeMm);
   const quantity = Number(input?.quantity);
