@@ -4604,8 +4604,9 @@ function normalizeStockSize(value) {
 }
 
 function getStoneRequirementKey(id, size) {
-  const normalizedSize = normalizeStockSize(size);
-  return normalizedSize ? `${id}|${normalizedSize}` : String(id);
+  if (size === undefined || size === null || size === "") return String(id);
+  const numericSize = Number(size);
+  return Number.isFinite(numericSize) ? `${id}|${numericSize}` : `${id}|${String(size)}`;
 }
 
 function incrementRequiredCount(counts, type, id, quantity = 1, size = null) {
@@ -4689,20 +4690,26 @@ async function validateOrderStockOrThrow(order) {
     counts.forEach((requiredQty, requirementKey) => {
       const isStone = type === "stone";
       const [id, sizeRaw] = isStone ? String(requirementKey).split("|") : [String(requirementKey), null];
+      const hasSize = isStone && sizeRaw !== undefined && sizeRaw !== null && String(sizeRaw).trim() !== "";
       const size = isStone ? normalizeStockSize(sizeRaw) : null;
       const item = catalogs[type].get(id);
       const stockQty = isStone
         ? getCatalogSizeStockQty(item, size)
         : getCatalogPayloadStockQty(item);
       const available = isStone
-        ? isCatalogSizeAvailable(item, size)
+        ? (hasSize && size === null ? false : isCatalogSizeAvailable(item, size))
         : isCatalogItemAvailable(item);
       const name = `${getCatalogItemDisplayName(item, id)}${isStone && size ? ` ${size}mm` : ""}`;
+      const issueSize = isStone
+        ? (hasSize && size === null
+          ? (Number.isFinite(Number(sizeRaw)) ? Number(sizeRaw) : sizeRaw)
+          : size)
+        : null;
       if (!item || !available) {
         issues.push({
           type,
           id,
-          size,
+          size: issueSize,
           requiredQty,
           stockQty: stockQty ?? 0,
           name,
@@ -4714,7 +4721,7 @@ async function validateOrderStockOrThrow(order) {
         issues.push({
           type,
           id,
-          size,
+          size: issueSize,
           requiredQty,
           stockQty,
           name,
