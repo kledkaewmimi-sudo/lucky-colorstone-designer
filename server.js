@@ -2579,6 +2579,82 @@ function getCatalogPayloadStockQty(item) {
   return normalizeStockQty(item?.stockQty ?? item?.stock_qty ?? item?.availability?.stockQty ?? item?.availability?.stock_qty, null);
 }
 
+const STOCK_BY_SIZE_KEYS = Object.freeze([4, 6, 10]);
+
+function normalizeStockBySizePayload(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const normalized = {};
+  STOCK_BY_SIZE_KEYS.forEach((size) => {
+    const key = String(size);
+    const raw = value[key] ?? value[size];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+    const quantity = normalizeStockQty(raw.quantity ?? raw.stockQty ?? raw.stock_qty, null);
+    const hasInStock = raw.inStock !== undefined || raw.in_stock !== undefined;
+    if (quantity === null && !hasInStock) return;
+    normalized[key] = {
+      quantity: quantity === null ? 0 : quantity,
+      inStock: (raw.inStock ?? raw.in_stock) !== false && (quantity === null || quantity > 0)
+    };
+  });
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function getCatalogSizeInventoryEntry(item, size) {
+  const normalizedSize = Number(size);
+  if (!STOCK_BY_SIZE_KEYS.includes(normalizedSize)) return null;
+  const stockBySize = normalizeStockBySizePayload(
+    item?.stockBySize ?? item?.stock_by_size ?? item?.availability?.stockBySize ?? item?.availability?.stock_by_size
+  );
+  return stockBySize?.[String(normalizedSize)] || null;
+}
+
+function getCatalogSizeStockQty(item, size) {
+  const entry = getCatalogSizeInventoryEntry(item, size);
+  return entry ? entry.quantity : getCatalogPayloadStockQty(item);
+}
+
+function isCatalogSizeAvailable(item, size) {
+  if (!item || item.isActive === false || item.availability?.isActive === false) return false;
+  const entry = getCatalogSizeInventoryEntry(item, size);
+  if (entry) {
+    return entry.inStock !== false && entry.quantity !== null && entry.quantity > 0;
+  }
+  return isCatalogItemAvailable(item);
+}
+
+function validateCatalogStockBySize(value) {
+  if (value === undefined || value === null) return;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    const error = new Error("stockBySize must be an object keyed by 4, 6, or 10.");
+    error.statusCode = 400;
+    throw error;
+  }
+  Object.entries(value).forEach(([key, entry]) => {
+    const size = Number(key);
+    if (!STOCK_BY_SIZE_KEYS.includes(size)) {
+      const error = new Error(`stockBySize contains an unsupported size: ${key}.`);
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      const error = new Error(`stockBySize.${key} must be an object.`);
+      error.statusCode = 400;
+      throw error;
+    }
+    const quantity = entry.quantity ?? entry.stockQty ?? entry.stock_qty;
+    if (quantity === undefined || quantity === null || quantity === "" || !Number.isInteger(Number(quantity)) || Number(quantity) < 0) {
+      const error = new Error(`stockBySize.${key}.quantity must be a non-negative integer.`);
+      error.statusCode = 400;
+      throw error;
+    }
+    if (entry.inStock !== undefined && typeof entry.inStock !== "boolean") {
+      const error = new Error(`stockBySize.${key}.inStock must be a boolean.`);
+      error.statusCode = 400;
+      throw error;
+    }
+  });
+}
+
 function isCatalogItemAvailable(item) {
   if (!item || item.isActive === false || item.inStock === false) return false;
   if (item.availability?.isActive === false || item.availability?.inStock === false) return false;
@@ -2611,14 +2687,31 @@ function normalizeCatalogAvailabilityPayload(item) {
     : null;
   const flatInStock = item?.inStock === undefined ? null : item.inStock !== false;
   const flatIsActive = item?.isActive === undefined ? null : item.isActive !== false;
-  const inStock = (nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0);
+  const stockBySize = normalizeStockBySizePayload(
+    item?.stockBySize ?? item?.stock_by_size ?? item?.availability?.stockBySize ?? item?.availability?.stock_by_size
+  );
+  const inStock = stockBySize
+    ? Object.values(stockBySize).some((entry) => entry.inStock !== false && Number(entry.quantity) > 0)
+    : ((nestedInStock ?? flatInStock ?? true) && (stockQty === null || stockQty > 0));
   const isActive = nestedIsActive ?? flatIsActive ?? true;
-  const next = { ...item, stockQty, stock_qty: stockQty, inStock, isActive };
+  const next = {
+    ...item,
+    stockQty,
+    stock_qty: stockQty,
+    stockBySize,
+    stock_by_size: stockBySize,
+    inventoryMode: stockBySize ? "per_size" : "legacy_shared",
+    inStock,
+    isActive
+  };
   if (item?.availability && typeof item.availability === "object") {
     next.availability = {
       ...item.availability,
       stockQty,
       stock_qty: stockQty,
+      stockBySize,
+      stock_by_size: stockBySize,
+      inventoryMode: stockBySize ? "per_size" : "legacy_shared",
       inStock,
       isActive
     };
@@ -3901,12 +3994,13 @@ function readJsonSettings() {
 }
 
 async function readStonesForApi() {
-  return readSupabasePayloadTable(
+  const stones = await readSupabasePayloadTable(
     "catalog_stones",
     "/api/stones",
     () => readJsonArray("stones"),
     { order: "display_order.asc,id.asc" }
   );
+  return (Array.isArray(stones) ? stones : []).map((stone) => normalizeCatalogAvailabilityPayload(stone));
 }
 
 async function readCharmsForApi() {
@@ -4488,12 +4582,23 @@ function getCatalogItemDisplayName(item, fallbackId) {
   ).trim();
 }
 
-function incrementRequiredCount(counts, type, id, quantity = 1) {
+function normalizeStockSize(value) {
+  const size = Number(value);
+  return [4, 6, 10].includes(size) ? size : null;
+}
+
+function getStoneRequirementKey(id, size) {
+  const normalizedSize = normalizeStockSize(size);
+  return normalizedSize ? `${id}|${normalizedSize}` : String(id);
+}
+
+function incrementRequiredCount(counts, type, id, quantity = 1, size = null) {
   const normalizedType = String(type || "").trim().toLowerCase();
   const normalizedId = String(id || "").trim();
   const amount = Math.max(1, toInteger(quantity, 1));
   if (!normalizedId || !["stone", "charm", "spacer"].includes(normalizedType)) return;
-  counts[normalizedType].set(normalizedId, (counts[normalizedType].get(normalizedId) || 0) + amount);
+  const key = normalizedType === "stone" ? getStoneRequirementKey(normalizedId, size) : normalizedId;
+  counts[normalizedType].set(key, (counts[normalizedType].get(key) || 0) + amount);
 }
 
 function buildOrderStockRequirements(order) {
@@ -4507,7 +4612,10 @@ function buildOrderStockRequirements(order) {
         : type === "charm"
           ? item?.charmId || item?.id
           : item?.spacerId || item?.id;
-      incrementRequiredCount(counts, type, id, item?.quantity ?? item?.count ?? 1);
+      const size = type === "stone"
+        ? item?.size ?? item?.sizeMm ?? item?.selectionGroupMm ?? item?.beadSize
+        : null;
+      incrementRequiredCount(counts, type, id, item?.quantity ?? item?.count ?? 1, size);
     });
     return counts;
   }
@@ -4519,11 +4627,15 @@ function buildOrderStockRequirements(order) {
       : type === "charm"
         ? item?.charmId || item?.id
         : item?.spacerId || item?.id;
-    incrementRequiredCount(counts, type, id, item?.quantity ?? item?.count ?? 1);
+    const size = type === "stone"
+      ? item?.size ?? item?.sizeMm ?? item?.z ?? item?.beadSize
+      : null;
+    incrementRequiredCount(counts, type, id, item?.quantity ?? item?.count ?? 1, size);
   });
 
   (Array.isArray(order?.beads) ? order.beads : []).forEach((bead) => {
-    incrementRequiredCount(counts, "stone", bead?.stoneId || bead?.id, 1);
+    const size = bead?.size ?? bead?.sizeMm ?? bead?.z ?? order?.beadSize;
+    incrementRequiredCount(counts, "stone", bead?.stoneId || bead?.id, 1, size);
   });
   (Array.isArray(order?.charms) ? order.charms : []).forEach((charm) => {
     incrementRequiredCount(counts, "charm", charm?.id || charm?.charmId, 1);
@@ -4558,16 +4670,26 @@ async function validateOrderStockOrThrow(order) {
       return;
     }
 
-    counts.forEach((requiredQty, id) => {
+    counts.forEach((requiredQty, requirementKey) => {
+      const isStone = type === "stone";
+      const [id, sizeRaw] = isStone ? String(requirementKey).split("|") : [String(requirementKey), null];
+      const size = isStone ? normalizeStockSize(sizeRaw) : null;
       const item = catalogs[type].get(id);
-      const stockQty = getCatalogPayloadStockQty(item);
-      if (!item || !isCatalogItemAvailable(item)) {
+      const stockQty = isStone
+        ? getCatalogSizeStockQty(item, size)
+        : getCatalogPayloadStockQty(item);
+      const available = isStone
+        ? isCatalogSizeAvailable(item, size)
+        : isCatalogItemAvailable(item);
+      const name = `${getCatalogItemDisplayName(item, id)}${isStone && size ? ` ${size}mm` : ""}`;
+      if (!item || !available) {
         issues.push({
           type,
           id,
+          size,
           requiredQty,
           stockQty: stockQty ?? 0,
-          name: getCatalogItemDisplayName(item, id),
+          name,
           reason: "unavailable"
         });
         return;
@@ -4576,9 +4698,10 @@ async function validateOrderStockOrThrow(order) {
         issues.push({
           type,
           id,
+          size,
           requiredQty,
           stockQty,
-          name: getCatalogItemDisplayName(item, id),
+          name,
           reason: "insufficient"
         });
       }
@@ -4625,10 +4748,31 @@ async function deductStockForOrder(order) {
   for (const [type, counts] of Object.entries(requirements)) {
     const config = tableByType[type];
     if (!config || counts.size === 0) continue;
-    for (const [id, requiredQty] of counts) {
+    for (const [requirementKey, requiredQty] of counts) {
+      const isStone = type === "stone";
+      const [id, sizeRaw] = isStone ? String(requirementKey).split("|") : [String(requirementKey), null];
+      const size = isStone ? normalizeStockSize(sizeRaw) : null;
       const currentPayload = await getSupabaseRecordById(config.table, id);
       if (!currentPayload) {
         console.warn(`[stock] ${type} ${id} missing during deduction for ${getOrderId(order)}.`);
+        continue;
+      }
+      const sizeEntry = isStone && size ? getCatalogSizeInventoryEntry(currentPayload, size) : null;
+      if (sizeEntry) {
+        const stockBySize = normalizeStockBySizePayload(
+          currentPayload.stockBySize ?? currentPayload.stock_by_size ?? currentPayload.availability?.stockBySize
+        ) || {};
+        const nextQty = Math.max(0, Number(sizeEntry.quantity || 0) - requiredQty);
+        stockBySize[String(size)] = {
+          quantity: nextQty,
+          inStock: sizeEntry.inStock !== false && nextQty > 0
+        };
+        const nextPayload = normalizeCatalogAvailabilityPayload({
+          ...currentPayload,
+          stockBySize,
+          stock_by_size: stockBySize
+        });
+        await upsertSupabaseRow(config.table, config.buildRow(nextPayload));
         continue;
       }
       const currentQty = getCatalogPayloadStockQty(currentPayload);
@@ -5422,6 +5566,12 @@ async function handleApiRequest(req, res, urlObj) {
       validateManualStoneCosts(bodyObj);
     } catch (error) {
       sendJson(res, 400, { error: error.message });
+      return true;
+    }
+    try {
+      validateCatalogStockBySize(bodyObj?.stockBySize ?? bodyObj?.stock_by_size);
+    } catch (error) {
+      sendJson(res, error.statusCode || 400, { error: error.message });
       return true;
     }
 
