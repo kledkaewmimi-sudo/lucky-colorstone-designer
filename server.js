@@ -2613,8 +2613,24 @@ function getCatalogSizeStockQty(item, size) {
   return entry ? entry.quantity : getCatalogPayloadStockQty(item);
 }
 
+function getCatalogSupportedSizes(item) {
+  const sizes = Array.isArray(item?.sizes)
+    ? item.sizes
+    : Array.isArray(item?.availability?.sizes)
+      ? item.availability.sizes
+      : null;
+  return sizes ? sizes.map((value) => Number(value)).filter((value) => Number.isFinite(value)) : null;
+}
+
+function isCatalogSizeSupported(item, size) {
+  const normalizedSize = Number(size);
+  const supportedSizes = getCatalogSupportedSizes(item);
+  return !supportedSizes || supportedSizes.length === 0 || supportedSizes.includes(normalizedSize);
+}
+
 function isCatalogSizeAvailable(item, size) {
   if (!item || item.isActive === false || item.availability?.isActive === false) return false;
+  if (size !== null && size !== undefined && !isCatalogSizeSupported(item, size)) return false;
   const entry = getCatalogSizeInventoryEntry(item, size);
   if (entry) {
     return entry.inStock !== false && entry.quantity !== null && entry.quantity > 0;
