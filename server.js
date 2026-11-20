@@ -5700,17 +5700,22 @@ async function handleApiRequest(req, res, urlObj) {
       return true;
     }
     res.setHeader("Cache-Control", "no-store");
+    const includeDelivery = urlObj.searchParams.get("includeDelivery") !== "0";
     const [followersResult, deliveryResult] = await Promise.allSettled([
       fetchLineOaInsight("/v2/bot/insight/followers", { date }),
-      fetchLineOaInsight("/v2/bot/insight/message/delivery", { date })
+      includeDelivery
+        ? fetchLineOaInsight("/v2/bot/insight/message/delivery", { date })
+        : Promise.resolve(null)
     ]);
     const followers = followersResult.status === "fulfilled"
       ? sanitizeLineFollowersInsight(followersResult.value)
       : { status: "error", http_status: Number(followersResult.reason?.lineStatus || 0) || null };
-    const delivery = deliveryResult.status === "fulfilled"
-      ? sanitizeLineDeliveryInsight(deliveryResult.value)
-      : { status: "error", http_status: Number(deliveryResult.reason?.lineStatus || 0) || null };
-    if (followersResult.status === "rejected" && deliveryResult.status === "rejected") {
+    const delivery = !includeDelivery
+      ? { status: "not_requested" }
+      : deliveryResult.status === "fulfilled"
+        ? sanitizeLineDeliveryInsight(deliveryResult.value)
+        : { status: "error", http_status: Number(deliveryResult.reason?.lineStatus || 0) || null };
+    if (followersResult.status === "rejected" && includeDelivery && deliveryResult.status === "rejected") {
       sendJson(res, 502, { date, followers, delivery });
       return true;
     }
