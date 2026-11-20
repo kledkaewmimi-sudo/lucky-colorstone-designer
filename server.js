@@ -748,6 +748,125 @@ function getLineChannelSecret() {
   return getEnvValue("LINE_CHANNEL_SECRET");
 }
 
+const LINE_OA_DAILY_DELIVERY_FIELDS = Object.freeze([
+  "broadcast",
+  "targeting",
+  "stepMessage",
+  "autoResponse",
+  "welcomeResponse",
+  "chat",
+  "apiBroadcast",
+  "apiPush",
+  "apiMulticast",
+  "apiNarrowcast",
+  "apiReply",
+  "ccAutoReply",
+  "ccManualReply",
+  "pnpNoticeMessage",
+  "thirdPartyChatTool"
+]);
+
+function isInternalLineAnalyticsRequest(req) {
+  const expected = getEnvValue("SUPABASE_SERVICE_ROLE_KEY");
+  const authorization = String(req?.headers?.authorization || "").trim();
+  return Boolean(expected) && authorization === `Bearer ${expected}`;
+}
+
+async function fetchLineOaInsight(pathname, params = {}) {
+  const accessToken = getLineChannelAccessToken();
+  if (!accessToken) {
+    const error = new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
+    error.statusCode = 503;
+    throw error;
+  }
+  const url = new URL(`https://api.line.me${pathname}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  });
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(10000)
+  });
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (!response.ok) {
+    const error = new Error(`LINE Insight API returned HTTP ${response.status}.`);
+    error.statusCode = 502;
+    error.lineStatus = response.status;
+    throw error;
+  }
+  return body && typeof body === "object" ? body : {};
+}
+
+function pickNonNegativeInteger(source, key) {
+  const value = Number(source?.[key]);
+  return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : null;
+}
+
+function sanitizeLineFollowersInsight(body) {
+  if (!body || typeof body !== "object") return { status: "unknown" };
+  const status = String(body.status || "unknown").trim().toLowerCase();
+  return {
+    status,
+    followers: pickNonNegativeInteger(body, "followers"),
+    targetedReaches: pickNonNegativeInteger(body, "targetedReaches"),
+    blocks: pickNonNegativeInteger(body, "blocks")
+  };
+}
+
+function sanitizeLineDeliveryInsight(body) {
+  if (!body || typeof body !== "object") return { status: "unknown" };
+  const status = String(body.status || "unknown").trim().toLowerCase();
+  const delivery = { status };
+  LINE_OA_DAILY_DELIVERY_FIELDS.forEach((key) => {
+    const value = pickNonNegativeInteger(body, key);
+    if (value !== null) delivery[key] = value;
+  });
+  return delivery;
+}
+
+function sanitizeLineMessageEvent(body) {
+  if (!body || typeof body !== "object") return {};
+  const overview = body.overview && typeof body.overview === "object" ? body.overview : {};
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const clicks = Array.isArray(body.clicks) ? body.clicks : [];
+  return {
+    overview: {
+      requestId: String(overview.requestId || "").trim(),
+      timestamp: pickNonNegativeInteger(overview, "timestamp"),
+      delivered: pickNonNegativeInteger(overview, "delivered"),
+      uniqueImpression: pickNonNegativeInteger(overview, "uniqueImpression"),
+      uniqueClick: pickNonNegativeInteger(overview, "uniqueClick"),
+      uniqueMediaPlayed: pickNonNegativeInteger(overview, "uniqueMediaPlayed"),
+      uniqueMediaPlayed100Percent: pickNonNegativeInteger(overview, "uniqueMediaPlayed100Percent")
+    },
+    messages: messages.map((message) => ({
+      seq: pickNonNegativeInteger(message, "seq"),
+      impression: pickNonNegativeInteger(message, "impression"),
+      mediaPlayed: pickNonNegativeInteger(message, "mediaPlayed"),
+      mediaPlayed25Percent: pickNonNegativeInteger(message, "mediaPlayed25Percent"),
+      mediaPlayed50Percent: pickNonNegativeInteger(message, "mediaPlayed50Percent"),
+      mediaPlayed75Percent: pickNonNegativeInteger(message, "mediaPlayed75Percent"),
+      mediaPlayed100Percent: pickNonNegativeInteger(message, "mediaPlayed100Percent"),
+      uniqueMediaPlayed: pickNonNegativeInteger(message, "uniqueMediaPlayed"),
+      uniqueMediaPlayed25Percent: pickNonNegativeInteger(message, "uniqueMediaPlayed25Percent"),
+      uniqueMediaPlayed50Percent: pickNonNegativeInteger(message, "uniqueMediaPlayed50Percent"),
+      uniqueMediaPlayed75Percent: pickNonNegativeInteger(message, "uniqueMediaPlayed75Percent"),
+      uniqueMediaPlayed100Percent: pickNonNegativeInteger(message, "uniqueMediaPlayed100Percent")
+    })).filter((message) => message.seq !== null),
+    clicks: clicks.map((click) => ({
+      seq: pickNonNegativeInteger(click, "seq"),
+      click: pickNonNegativeInteger(click, "click"),
+      uniqueClick: pickNonNegativeInteger(click, "uniqueClick"),
+      uniqueClickOfRequest: pickNonNegativeInteger(click, "uniqueClickOfRequest")
+    })).filter((click) => click.seq !== null)
+  };
+}
+
 let lineOaAddFriendUrlCache = { value: "", expiresAt: 0 };
 
 async function getConfiguredLineOaAddFriendUrl() {
@@ -5567,6 +5686,55 @@ async function handleApiRequest(req, res, urlObj) {
     const rows = await supabaseRequest('stone_purchase_entries', { method: 'DELETE', params: { id: `eq.${id}` }, prefer: 'return=representation' });
     if (!Array.isArray(rows) || !rows[0]) { sendJson(res, 404, { error: 'Purchase entry not found.' }); return true; }
     sendJson(res, 200, { success: true });
+    return true;
+  }
+
+  if (pathname === "/api/internal/line-oa/daily" && method === "GET") {
+    if (!isInternalLineAnalyticsRequest(req)) {
+      sendJson(res, 403, { error: "Forbidden" });
+      return true;
+    }
+    const date = String(urlObj.searchParams.get("date") || "").trim();
+    if (!/^\d{8}$/.test(date)) {
+      sendJson(res, 400, { error: "date must be yyyyMMdd" });
+      return true;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    const [followersResult, deliveryResult] = await Promise.allSettled([
+      fetchLineOaInsight("/v2/bot/insight/followers", { date }),
+      fetchLineOaInsight("/v2/bot/insight/message/delivery", { date })
+    ]);
+    const followers = followersResult.status === "fulfilled"
+      ? sanitizeLineFollowersInsight(followersResult.value)
+      : { status: "error", http_status: Number(followersResult.reason?.lineStatus || 0) || null };
+    const delivery = deliveryResult.status === "fulfilled"
+      ? sanitizeLineDeliveryInsight(deliveryResult.value)
+      : { status: "error", http_status: Number(deliveryResult.reason?.lineStatus || 0) || null };
+    if (followersResult.status === "rejected" && deliveryResult.status === "rejected") {
+      sendJson(res, 502, { date, followers, delivery });
+      return true;
+    }
+    sendJson(res, 200, { date, followers, delivery });
+    return true;
+  }
+
+  if (pathname === "/api/internal/line-oa/broadcast" && method === "GET") {
+    if (!isInternalLineAnalyticsRequest(req)) {
+      sendJson(res, 403, { error: "Forbidden" });
+      return true;
+    }
+    const requestId = String(urlObj.searchParams.get("requestId") || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(requestId)) {
+      sendJson(res, 400, { error: "requestId is invalid" });
+      return true;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const event = await fetchLineOaInsight("/v2/bot/insight/message/event", { requestId });
+      sendJson(res, 200, { requestId, event: sanitizeLineMessageEvent(event) });
+    } catch (error) {
+      sendJson(res, 502, { requestId, error: "LINE Insight API request failed" });
+    }
     return true;
   }
 
