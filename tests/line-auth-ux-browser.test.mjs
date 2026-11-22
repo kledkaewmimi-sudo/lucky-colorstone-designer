@@ -335,7 +335,7 @@ test('Step 1 boundary exposes one explicit LINE Login action and no auth entry',
   const browser = await chromium.launch({ headless: true });
   let context;
   try {
-    const pageSetup = await createPage(browser, server.origin);
+    const pageSetup = await createPage(browser, server.origin, { url: `${server.origin}/?explicit_login=1` });
     context = pageSetup.context;
     const { page, pageErrors } = pageSetup;
     await page.evaluate(() => document.querySelector('#btnLandingLogin').click());

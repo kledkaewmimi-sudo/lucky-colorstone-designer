@@ -494,11 +494,13 @@ async function handleAuthEntryRequest(req, res, pathname) {
 
   if (pathname === '/api/line-id-token/verify') {
     if (!isValidIdTokenShape(body.idToken)) {
-      sendAuthEntryJson(res, 400, { verified: false });
+      sendAuthEntryJson(res, 400, { verified: false, reason: 'invalid_token_format' });
       return true;
     }
     const result = await verifyUatLineIdToken(body.idToken, { clientId: expectedChannelId });
-    sendAuthEntryJson(res, result.verified ? 200 : 401, result.verified ? { verified: true } : { verified: false });
+    sendAuthEntryJson(res, result.verified ? 200 : 401, result.verified
+      ? { verified: true }
+      : { verified: false, reason: result.reason || 'verification_rejected' });
     return true;
   }
 

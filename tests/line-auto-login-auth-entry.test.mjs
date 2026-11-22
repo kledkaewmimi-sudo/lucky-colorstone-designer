@@ -23,6 +23,8 @@ test('auth entry is restricted to UAT mobile external browser and boundary resum
   assert.match(app, /function canUseAutoAuthEntryForCustomization\(\)/);
   assert.match(app, /loginResumeStep === 2 && canUseAutoAuthEntryForCustomization\(\)/);
   assert.match(app, /isLikelyMobileBrowser\(\)/);
+  assert.match(app, /AUTO_LOGIN_AT_BOUNDARY/);
+  assert.match(app, /detectBrowserContext\(window\.navigator\.userAgent \|\| ''\)\.isInstagram/);
   assert.doesNotMatch(app, /startAutoAuthEntryForCustomization\([^)]*landing/i);
 });
 

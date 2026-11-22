@@ -2700,14 +2700,17 @@ function hasPendingAutoAuthEntry() {
 }
 
 function canUseAutoAuthEntryForCustomization() {
-  // Stable UAT recovery: the owner selected production-style Explicit Login.
-  // The experimental auth-entry auto path is retained only as dormant server
-  // infrastructure and is not reachable from the customer boundary.
-  const STABLE_EXPLICIT_LOGIN_ONLY = true;
-  if (STABLE_EXPLICIT_LOGIN_ONLY) return false;
+  // Owner re-enabled automatic login at the Step 1 boundary for the external
+  // browser flow. Instagram's in-app WebView and LINE's own in-client browser
+  // keep the explicit/identity path; only the escaped external browser auto
+  // starts the dedicated auth-entry flow.
+  const AUTO_LOGIN_AT_BOUNDARY = true;
+  if (!AUTO_LOGIN_AT_BOUNDARY) return false;
+  if (new URLSearchParams(window.location.search || '').get('explicit_login') === '1') return false;
   return IS_UAT_MODE
     && requiresLineLoginForCustomization()
     && !isLiffInClient()
+    && !detectBrowserContext(window.navigator.userAgent || '').isInstagram
     && isLikelyMobileBrowser()
     && !isLineIdentityAvailable()
     && !getRequestedOrderId();
@@ -3489,7 +3492,10 @@ async function verifyExplicitLineIdentity() {
     const idToken = typeof liff !== 'undefined' && typeof liff.getIDToken === 'function'
       ? await withTimeout(liff.getIDToken(), 5000, 'LINE ID token')
       : '';
-    if (!idToken) return false;
+    if (!idToken) {
+      trackUatEvent('line_auth_failed', { reason: 'id_token_missing' }, { stageKey: `line_auth_${Date.now()}` });
+      return false;
+    }
     const response = await fetch('/api/line-id-token/verify', {
       method: 'POST',
       headers: {
@@ -3499,6 +3505,13 @@ async function verifyExplicitLineIdentity() {
       body: JSON.stringify({ idToken })
     });
     const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      trackUatEvent('line_auth_failed', {
+        reason: 'id_token_verification_failed',
+        verify_status: response.status,
+        verify_reason: String(result?.reason || 'verification_rejected').slice(0, 64)
+      }, { stageKey: `line_auth_${Date.now()}` });
+    }
     return response.ok && result?.verified === true;
   } catch {
     return false;
