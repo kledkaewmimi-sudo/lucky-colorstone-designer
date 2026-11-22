@@ -42,6 +42,39 @@
     }());
   </script>
 
+  <script>
+    // Instagram iOS honours a declarative navigation to its private
+    // extbrowser scheme more reliably than a scripted assignment after load.
+    // This is an undocumented, best-effort escape: the visible fallback in
+    // app.js is always the safety net when Instagram blocks it.
+    (function () {
+      try {
+        const ua = navigator.userAgent || '';
+        if (!/Instagram/i.test(ua) || /Line\//i.test(ua) || !/(iPhone|iPad|iPod)/i.test(ua)) return;
+        if (window.location.pathname !== '/') return;
+        const params = new URLSearchParams(window.location.search || '');
+        if (params.has('handoff') || params.has('liff.state') || params.has('orderId')) return;
+        if (sessionStorage.getItem('lucky_uat_instagram_external_prompt_continue') === '1') return;
+        if (sessionStorage.getItem('lucky_uat_instagram_auto_escape_attempted') === '1') return;
+
+        const safe = new URLSearchParams();
+        const campaignKey = /^(utm_[a-z0-9_]+|fbclid|gclid|gbraid|wbraid|ref)$/i;
+        for (const [key, value] of params) {
+          if (campaignKey.test(key)) safe.append(key, value);
+        }
+        const destination = `${window.location.origin}${window.location.pathname}${safe.toString() ? `?${safe.toString()}` : ''}`;
+        const escapeUrl = `instagram://extbrowser/?url=${encodeURIComponent(destination)}`;
+        sessionStorage.setItem('lucky_uat_instagram_auto_escape_attempted', '1');
+        const meta = document.createElement('meta');
+        meta.httpEquiv = 'refresh';
+        meta.content = `0;url=${escapeUrl}`;
+        document.head.appendChild(meta);
+      } catch {
+        // The app-level fallback remains available if storage or parsing fails.
+      }
+    }());
+  </script>
+
   <!-- UAT intentionally omits the production Meta Pixel. It uses its own LIFF app. -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
