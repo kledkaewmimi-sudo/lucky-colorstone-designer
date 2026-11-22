@@ -226,12 +226,12 @@ test('an authenticated callback consumes once and restores the original Step 2 d
   }
 });
 
-test('landing and Step 1 stay unauthenticated; rapid Next taps create one handoff/login', async () => {
+test('landing and Step 1 stay unauthenticated; explicit fallback creates one handoff/login', async () => {
   const server = await startFixtureServer();
   const browser = await chromium.launch({ headless: true });
   let context;
   try {
-    const pageSetup = await createPage(browser, server.origin);
+    const pageSetup = await createPage(browser, server.origin, { url: `${server.origin}/?explicit_login=1` });
     context = pageSetup.context;
     const { page, pageErrors } = pageSetup;
 

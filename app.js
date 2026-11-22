@@ -4032,19 +4032,24 @@ async function ensureStep1LineAuthorization() {
 async function attemptStep1AuthorizationAndContinue({ explicitLogin = false } = {}) {
   if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
 
-  // Stable production-style explicit login: Next only reveals the single LINE
-  // Login action. The customer explicitly taps that action before any redirect.
+  // Stable production-style explicit login remains the fallback. For an
+  // external browser that reached the Step 1 boundary without an identity,
+  // start the existing auto auth-entry flow on Next instead of forcing a
+  // website Login button. Instagram/WebView contexts still use the explicit
+  // prompt because canUseAutoAuthEntryForCustomization() is false there.
   if (!explicitLogin && requiresLineLoginForCustomization() && !isLineIdentityAvailable()) {
-    setStep1AuthStatus('required');
-    DOM.btnNext.disabled = false;
-    configureFooterNavigation();
-    renderStep1AuthStatus();
-    trackUatEvent('line_auth_boundary_reached', {
-      method: 'explicit_login_prompt',
-      entry_step: 1,
-      resume_step: 2
-    }, { stageKey: `line_auth_boundary_${Date.now()}` });
-    return false;
+    if (!canUseAutoAuthEntryForCustomization()) {
+      setStep1AuthStatus('required');
+      DOM.btnNext.disabled = false;
+      configureFooterNavigation();
+      renderStep1AuthStatus();
+      trackUatEvent('line_auth_boundary_reached', {
+        method: 'explicit_login_prompt',
+        entry_step: 1,
+        resume_step: 2
+      }, { stageKey: `line_auth_boundary_${Date.now()}` });
+      return false;
+    }
   }
 
   step1ToStep2AuthInProgress = true;
