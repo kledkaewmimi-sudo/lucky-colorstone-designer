@@ -425,7 +425,7 @@ test('delayed LIFF initialization survives the LINE Continue confirmation window
   }
 });
 
-test('Instagram automatically attempts an external launch and then shows a fallback; direct Chrome does not', async () => {
+test('Instagram auto-attempts escape without any custom recovery UI; direct Chrome bypasses', async () => {
   const server = await startFixtureServer();
   const browser = await chromium.launch({ headless: true });
   let instagramContext;
@@ -434,30 +434,19 @@ test('Instagram automatically attempts an external launch and then shows a fallb
     const instagramUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.0.0 Mobile Safari/537.36 Instagram 320.0.0.0.0';
     const instagram = await createPage(browser, server.origin, { userAgent: instagramUa });
     instagramContext = instagram.context;
-    const overlay = instagram.page.locator('#instagramBrowserTransition');
-    await overlay.waitFor({ state: 'visible', timeout: 5000 });
-    assert.equal(await instagram.page.locator('#instagramBrowserTransitionTitle').textContent(), 'เปิดเว็บไซต์ด้วยตนเอง');
-    assert.equal(await instagram.page.locator('#btnInstagramOpenExternal').count(), 0);
-    assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Open in browser|เปิดในเบราว์เซอร์/);
-    assert.equal(await instagram.page.locator('#btnInstagramRetry').isVisible(), true);
-    assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
+    await instagram.page.waitForTimeout(500);
+    assert.equal(await instagram.page.locator('#instagramBrowserTransition').count(), 0);
     assert.equal(await instagram.page.evaluate(() => sessionStorage.getItem('lucky_uat_instagram_auto_escape_attempted')), '1');
-    await instagram.page.locator('#btnInstagramRetry').click();
-    await instagram.page.waitForTimeout(1900);
-    assert.equal(await overlay.isVisible(), true);
     assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
-
-    await instagram.page.locator('#btnInstagramContinue').click();
-    await overlay.waitFor({ state: 'hidden' });
-    assert.equal(await instagram.page.locator('#btnLandingLogin').isVisible(), true);
     await instagramContext.close();
     instagramContext = null;
 
     const chromeUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
     const chrome = await createPage(browser, server.origin, { userAgent: chromeUa });
     chromeContext = chrome.context;
-    await chrome.page.waitForTimeout(2200);
-    assert.equal(await chrome.page.locator('#instagramBrowserTransition').isVisible(), false);
+    await chrome.page.waitForTimeout(500);
+    assert.equal(await chrome.page.locator('#instagramBrowserTransition').count(), 0);
+    assert.equal(await chrome.page.evaluate(() => sessionStorage.getItem('lucky_uat_instagram_auto_escape_attempted')), null);
     assert.equal(chrome.pageErrors.length, 0, JSON.stringify(chrome.pageErrors));
   } finally {
     await instagramContext?.close();
@@ -467,7 +456,7 @@ test('Instagram automatically attempts an external launch and then shows a fallb
   }
 });
 
-test('Instagram iOS automatically attempts the Instagram external-browser scheme and falls back to Safari instructions; Safari and LINE bypass', async () => {
+test('Instagram iOS keeps its meta escape but renders no recovery card; Safari and LINE bypass', async () => {
   const server = await startFixtureServer();
   const browser = await chromium.launch({ headless: true });
   let instagramContext;
@@ -477,12 +466,9 @@ test('Instagram iOS automatically attempts the Instagram external-browser scheme
     const iosInstagramUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 320.0.0.0.0';
     const instagram = await createPage(browser, server.origin, { userAgent: iosInstagramUa });
     instagramContext = instagram.context;
-    await instagram.page.locator('#instagramBrowserTransition').waitFor({ state: 'visible', timeout: 5000 });
-    assert.equal(await instagram.page.locator('#btnInstagramOpenExternal').count(), 0);
-    assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Safari/);
+    await instagram.page.waitForTimeout(500);
+    assert.equal(await instagram.page.locator('#instagramBrowserTransition').count(), 0);
     assert.match(await instagram.page.evaluate(() => document.querySelector('meta[http-equiv="refresh"]')?.content || ''), /^0;url=instagram:\/\/extbrowser\/\?url=https?%3A%2F%2F/);
-    assert.equal(await instagram.page.locator('#btnInstagramRetry').isVisible(), true);
-    assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
     assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
     await instagramContext.close();
     instagramContext = null;
@@ -490,12 +476,12 @@ test('Instagram iOS automatically attempts the Instagram external-browser scheme
     const safariUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
     const safari = await createPage(browser, server.origin, { userAgent: safariUa });
     safariContext = safari.context;
-    assert.equal(await safari.page.locator('#instagramBrowserTransition').isVisible(), false);
+    assert.equal(await safari.page.locator('#instagramBrowserTransition').count(), 0);
 
     const lineUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 Line/15.0.0';
     const line = await createPage(browser, server.origin, { userAgent: lineUa });
     lineContext = line.context;
-    assert.equal(await line.page.locator('#instagramBrowserTransition').isVisible(), false);
+    assert.equal(await line.page.locator('#instagramBrowserTransition').count(), 0);
   } finally {
     await instagramContext?.close();
     await safariContext?.close();
@@ -504,4 +490,3 @@ test('Instagram iOS automatically attempts the Instagram external-browser scheme
     await server.close();
   }
 });
-
