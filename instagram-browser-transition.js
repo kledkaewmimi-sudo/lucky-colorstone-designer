@@ -28,9 +28,6 @@ export function buildAndroidChromeIntent(targetUrl) {
   return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
 }
 
-export function buildIosSafariAttempt(targetUrl) {
-  // Prototype only. Apple does not document x-safari-https as a supported
-  // way to force Safari from an arbitrary WebView; callers must always show
-  // the manual fallback when this does not cause a navigation.
-  return `x-safari-${targetUrl}`;
+export function buildInstagramExternalBrowserUrl(targetUrl) {
+  return `instagram://extbrowser/?url=${encodeURIComponent(targetUrl)}`;
 }

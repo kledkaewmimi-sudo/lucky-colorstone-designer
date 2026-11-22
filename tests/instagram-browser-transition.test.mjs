@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildAndroidChromeIntent,
   buildExternalDestination,
-  buildIosSafariAttempt,
+  buildInstagramExternalBrowserUrl,
   detectBrowserContext
 } from '../instagram-browser-transition.js';
 
@@ -49,9 +49,9 @@ test('Android intent targets Chrome and includes a safe fallback URL', () => {
   assert.match(decodeURIComponent(intent), /https:\/\/uat\.customize\.luckycolorstone\.com\//);
 });
 
-test('iOS Safari attempt is a prototype prefix, not a guaranteed scheme', () => {
-  assert.equal(
-    buildIosSafariAttempt('https://uat.customize.luckycolorstone.com/?utm_source=instagram'),
-    'x-safari-https://uat.customize.luckycolorstone.com/?utm_source=instagram'
-  );
+test('iOS automatic escape uses the Instagram external-browser URL with an encoded destination', () => {
+  const target = 'https://uat.customize.luckycolorstone.com/?utm_source=instagram';
+  const escapeUrl = buildInstagramExternalBrowserUrl(target);
+  assert.equal(escapeUrl, `instagram://extbrowser/?url=${encodeURIComponent(target)}`);
+  assert.match(escapeUrl, /^instagram:\/\/extbrowser\/\?url=https%3A%2F%2Fuat\.customize\.luckycolorstone\.com%2F/);
 });

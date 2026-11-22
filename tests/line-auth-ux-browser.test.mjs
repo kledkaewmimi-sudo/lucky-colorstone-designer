@@ -425,7 +425,7 @@ test('delayed LIFF initialization survives the LINE Continue confirmation window
   }
 });
 
-test('Instagram gets an optional browser transition; direct Chrome does not', async () => {
+test('Instagram automatically attempts an external launch and then shows a fallback; direct Chrome does not', async () => {
   const server = await startFixtureServer();
   const browser = await chromium.launch({ headless: true });
   let instagramContext;
@@ -435,8 +435,10 @@ test('Instagram gets an optional browser transition; direct Chrome does not', as
     const instagram = await createPage(browser, server.origin, { userAgent: instagramUa });
     instagramContext = instagram.context;
     const overlay = instagram.page.locator('#instagramBrowserTransition');
-    await overlay.waitFor({ state: 'visible' });
-    assert.equal(await instagram.page.locator('#instagramBrowserTransitionTitle').textContent(), 'เปิดใน Chrome หรือ Safari');
+    await overlay.waitFor({ state: 'visible', timeout: 5000 });
+    assert.equal(await instagram.page.locator('#instagramBrowserTransitionTitle').textContent(), 'เปิดเว็บไซต์ด้วยตนเอง');
+    assert.equal(await instagram.page.locator('#btnInstagramOpenExternal').count(), 0);
+    assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Open in browser|เปิดในเบราว์เซอร์/);
     assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
     assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
 
@@ -449,6 +451,7 @@ test('Instagram gets an optional browser transition; direct Chrome does not', as
     const chromeUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
     const chrome = await createPage(browser, server.origin, { userAgent: chromeUa });
     chromeContext = chrome.context;
+    await chrome.page.waitForTimeout(2200);
     assert.equal(await chrome.page.locator('#instagramBrowserTransition').isVisible(), false);
     assert.equal(chrome.pageErrors.length, 0, JSON.stringify(chrome.pageErrors));
   } finally {
@@ -459,7 +462,7 @@ test('Instagram gets an optional browser transition; direct Chrome does not', as
   }
 });
 
-test('Instagram iOS offers a manual Safari fallback; Safari and LINE bypass the prompt', async () => {
+test('Instagram iOS automatically attempts the Instagram external-browser scheme and falls back to Safari instructions; Safari and LINE bypass', async () => {
   const server = await startFixtureServer();
   const browser = await chromium.launch({ headless: true });
   let instagramContext;
@@ -469,8 +472,8 @@ test('Instagram iOS offers a manual Safari fallback; Safari and LINE bypass the 
     const iosInstagramUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 320.0.0.0.0';
     const instagram = await createPage(browser, server.origin, { userAgent: iosInstagramUa });
     instagramContext = instagram.context;
-    await instagram.page.locator('#btnInstagramOpenExternal').click();
-    await instagram.page.locator('#instagramTransitionFallback').waitFor({ state: 'visible', timeout: 5000 });
+    await instagram.page.locator('#instagramBrowserTransition').waitFor({ state: 'visible', timeout: 5000 });
+    assert.equal(await instagram.page.locator('#btnInstagramOpenExternal').count(), 0);
     assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Safari/);
     assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
     assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
