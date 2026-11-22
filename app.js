@@ -2547,6 +2547,11 @@ function hasPendingAutoAuthEntry() {
 }
 
 function canUseAutoAuthEntryForCustomization() {
+  // Stable UAT recovery: the owner selected production-style Explicit Login.
+  // The experimental auth-entry auto path is retained only as dormant server
+  // infrastructure and is not reachable from the customer boundary.
+  const STABLE_EXPLICIT_LOGIN_ONLY = true;
+  if (STABLE_EXPLICIT_LOGIN_ONLY) return false;
   return IS_UAT_MODE
     && requiresLineLoginForCustomization()
     && !isLiffInClient()
@@ -3326,12 +3331,46 @@ async function primeUatJourneyFromHandoff(token) {
   }
 }
 
+async function verifyExplicitLineIdentity() {
+  try {
+    const idToken = typeof liff !== 'undefined' && typeof liff.getIDToken === 'function'
+      ? await withTimeout(liff.getIDToken(), 5000, 'LINE ID token')
+      : '';
+    if (!idToken) return false;
+    const response = await fetch('/api/line-id-token/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-UAT-Auth-Entry': AUTO_AUTH_ENTRY_HEADER
+      },
+      body: JSON.stringify({ idToken })
+    });
+    const result = await response.json().catch(() => null);
+    return response.ok && result?.verified === true;
+  } catch {
+    return false;
+  }
+}
+
 async function handleInitialHandoffCallback(token) {
   trackUatEvent('designer_returned', { entry_surface: getUatEntrySurface() });
   if (!isLineIdentityAvailable()) {
     const failureReason = lineIdentityFailureCode || 'LINE_AUTH_CANCELLED';
     lineIdentityFailureCode = failureReason;
     trackUatEvent('line_auth_cancelled', { reason: failureReason });
+    clearCustomizationLoginIntent();
+    clearInitialHandoffQueryParam();
+    State.currentStep = 1;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    setStep1AuthStatus('failed');
+    return false;
+  }
+
+  if (!(await verifyExplicitLineIdentity())) {
+    lineIdentityFailureCode = 'LINE_ID_TOKEN_REJECTED';
+    trackUatEvent('line_auth_failed', { reason: 'id_token_verification_failed' }, { stageKey: `line_auth_${Date.now()}` });
     clearCustomizationLoginIntent();
     clearInitialHandoffQueryParam();
     State.currentStep = 1;
@@ -3824,8 +3863,24 @@ async function ensureStep1LineAuthorization() {
   );
 }
 
-async function attemptStep1AuthorizationAndContinue() {
+async function attemptStep1AuthorizationAndContinue({ explicitLogin = false } = {}) {
   if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
+
+  // Stable production-style explicit login: Next only reveals the single LINE
+  // Login action. The customer explicitly taps that action before any redirect.
+  if (!explicitLogin && requiresLineLoginForCustomization() && !isLineIdentityAvailable()) {
+    setStep1AuthStatus('required');
+    DOM.btnNext.disabled = false;
+    configureFooterNavigation();
+    renderStep1AuthStatus();
+    trackUatEvent('line_auth_boundary_reached', {
+      method: 'explicit_login_prompt',
+      entry_step: 1,
+      resume_step: 2
+    }, { stageKey: `line_auth_boundary_${Date.now()}` });
+    return false;
+  }
+
   step1ToStep2AuthInProgress = true;
   DOM.btnNext.disabled = true;
   trackUatEvent('line_auth_boundary_reached', {
@@ -3864,7 +3919,7 @@ function setupProgressiveStep1AuthEvents() {
   if (!DOM.btnStep1LineConnect || DOM.btnStep1LineConnect.dataset.authHandlerReady === 'true') return;
   DOM.btnStep1LineConnect.dataset.authHandlerReady = 'true';
   DOM.btnStep1LineConnect.addEventListener('click', () => {
-    void attemptStep1AuthorizationAndContinue();
+    void attemptStep1AuthorizationAndContinue({ explicitLogin: true });
   });
 }
 

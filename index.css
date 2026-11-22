@@ -87,6 +87,12 @@
   pointer-events: none;
 }
 
+/* Keep the UAT environment marker out of the restored Step 1/Step 2 UI. */
+body[data-active-step="1"] .uat-environment-banner,
+body[data-active-step="2"] .uat-environment-banner {
+  display: none !important;
+}
+
 /* UAT query-gated runtime diagnostic surface; no markup is created outside UAT debug mode. */
 .step3-sticky-debug-overlay {
   position: fixed;
