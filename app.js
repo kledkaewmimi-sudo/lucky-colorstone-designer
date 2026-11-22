@@ -503,6 +503,7 @@ let step1AuthState = 'idle';
 let step1AuthMessage = '';
 let liffLoginNavigationTimer = null;
 const LINE_LOGIN_NAVIGATION_TIMEOUT_MS = 15000;
+const LIFF_INIT_TIMEOUT_MS = 30000;
 let customerCatalogStartupPromise = null;
 let customerCatalogRefreshPromise = null;
 let customerCatalogRefreshEventsBound = false;
@@ -3709,7 +3710,7 @@ async function initLIFF() {
     console.log("LIFF init start");
     lineDebugTrace('LIFF_INIT_START', { captureState: true });
     trackUatEvent('liff_init_started', {}, { stageKey: 'liff_init' });
-    await withTimeout(liff.init({ liffId: LIFF_ID }), 6000, "LIFF init");
+    await withTimeout(liff.init({ liffId: LIFF_ID }), LIFF_INIT_TIMEOUT_MS, "LIFF init");
     console.log("LIFF init complete");
     State.liffInitialized = true;
     trackUatEvent('liff_init_success', {}, { stageKey: 'liff_init' });
@@ -3721,14 +3722,15 @@ async function initLIFF() {
       await syncLineProfileFromLiff();
     }
   } catch (err) {
+    const initTimedOut = /timed out after/i.test(String(err?.message || err));
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
-    lineIdentityFailureCode = lineIdentityFailureCode || 'LIFF_INIT_FAILED';
+    lineIdentityFailureCode = initTimedOut ? 'LIFF_INIT_TIMEOUT' : (lineIdentityFailureCode || 'LIFF_INIT_FAILED');
     lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(err?.message || err, 180) } });
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
       });
-    trackUatEvent('liff_init_failed', { reason: 'liff_init_failed' }, { stageKey: 'liff_init' });
+    trackUatEvent('liff_init_failed', { reason: initTimedOut ? 'liff_init_timeout' : 'liff_init_failed' }, { stageKey: 'liff_init' });
   } finally {
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
   }
