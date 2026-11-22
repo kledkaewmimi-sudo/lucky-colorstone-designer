@@ -439,8 +439,12 @@ test('Instagram automatically attempts an external launch and then shows a fallb
     assert.equal(await instagram.page.locator('#instagramBrowserTransitionTitle').textContent(), 'เปิดเว็บไซต์ด้วยตนเอง');
     assert.equal(await instagram.page.locator('#btnInstagramOpenExternal').count(), 0);
     assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Open in browser|เปิดในเบราว์เซอร์/);
+    assert.equal(await instagram.page.locator('#btnInstagramRetry').isVisible(), true);
     assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
     assert.equal(await instagram.page.evaluate(() => sessionStorage.getItem('lucky_uat_instagram_auto_escape_attempted')), '1');
+    await instagram.page.locator('#btnInstagramRetry').click();
+    await instagram.page.waitForTimeout(1900);
+    assert.equal(await overlay.isVisible(), true);
     assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
 
     await instagram.page.locator('#btnInstagramContinue').click();
@@ -477,6 +481,7 @@ test('Instagram iOS automatically attempts the Instagram external-browser scheme
     assert.equal(await instagram.page.locator('#btnInstagramOpenExternal').count(), 0);
     assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Safari/);
     assert.match(await instagram.page.evaluate(() => document.querySelector('meta[http-equiv="refresh"]')?.content || ''), /^0;url=instagram:\/\/extbrowser\/\?url=https?%3A%2F%2F/);
+    assert.equal(await instagram.page.locator('#btnInstagramRetry').isVisible(), true);
     assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
     assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
     await instagramContext.close();

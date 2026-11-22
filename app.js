@@ -1522,20 +1522,36 @@ function hideInstagramBrowserTransition() {
 
 function bindInstagramTransitionControls(context) {
   const continueButton = document.getElementById('btnInstagramContinue');
-  if (!continueButton || continueButton.dataset.bound === '1') return;
-  continueButton.dataset.bound = '1';
-  continueButton.addEventListener('click', () => {
-    try {
-      sessionStorage.setItem(INSTAGRAM_TRANSITION_DISMISSED_KEY, '1');
-    } catch {
-      // Continue must remain usable even when storage is unavailable.
-    }
-    trackUatEvent('external_browser_continue_in_instagram', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_continue' });
-    hideInstagramBrowserTransition();
-  });
+  if (continueButton && continueButton.dataset.bound !== '1') {
+    continueButton.dataset.bound = '1';
+    continueButton.addEventListener('click', () => {
+      try {
+        sessionStorage.setItem(INSTAGRAM_TRANSITION_DISMISSED_KEY, '1');
+      } catch {
+        // Continue must remain usable even when storage is unavailable.
+      }
+      trackUatEvent('external_browser_continue_in_instagram', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_continue' });
+      hideInstagramBrowserTransition();
+    });
+  }
+  const retryButton = document.getElementById('btnInstagramRetry');
+  if (retryButton && retryButton.dataset.bound !== '1') {
+    retryButton.dataset.bound = '1';
+    retryButton.addEventListener('click', () => {
+      attemptInstagramExternalBrowser(context, { retry: true });
+    });
+  }
 }
 
-function attemptInstagramExternalBrowser(context) {
+function scheduleInstagramFallback(context, delayMs = 1600) {
+  if (instagramLaunchFallbackTimer) window.clearTimeout(instagramLaunchFallbackTimer);
+  instagramLaunchFallbackTimer = window.setTimeout(() => {
+    instagramLaunchFallbackTimer = null;
+    if (document.visibilityState !== 'hidden') showInstagramTransitionFallback(context);
+  }, delayMs);
+}
+
+function attemptInstagramExternalBrowser(context, { retry = false } = {}) {
   const targetUrl = getInstagramTransitionDestination();
   if (!targetUrl) {
     showInstagramTransitionFallback(context);
@@ -1547,7 +1563,7 @@ function attemptInstagramExternalBrowser(context) {
   } catch {
     // If storage is blocked, the in-page timer still prevents repeated attempts.
   }
-  trackUatEvent('external_browser_launch_attempted', { platform: context.platform, browser: 'instagram', automatic: true }, { stageKey: 'instagram_external_auto_launch' });
+  trackUatEvent('external_browser_launch_attempted', { platform: context.platform, browser: 'instagram', automatic: !retry, retry }, { stageKey: retry ? 'instagram_external_retry' : 'instagram_external_auto_launch' });
 
   if (context.platform === 'android') {
     window.location.href = buildAndroidChromeIntent(targetUrl);
@@ -1560,11 +1576,7 @@ function attemptInstagramExternalBrowser(context) {
     return;
   }
 
-  if (instagramLaunchFallbackTimer) window.clearTimeout(instagramLaunchFallbackTimer);
-  instagramLaunchFallbackTimer = window.setTimeout(() => {
-    instagramLaunchFallbackTimer = null;
-    if (document.visibilityState !== 'hidden') showInstagramTransitionFallback(context);
-  }, 1600);
+  scheduleInstagramFallback(context, 1600);
 }
 
 function setupInstagramBrowserTransition() {
@@ -1589,7 +1601,9 @@ function setupInstagramBrowserTransition() {
   trackUatEvent('instagram_browser_detected', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_auto_prompt' });
 
   if (alreadyAttempted) {
-    showInstagramTransitionFallback(context);
+    // The iOS inline meta attempt runs before app.js. Give Instagram/OS a
+    // short window to take over before showing the fallback.
+    scheduleInstagramFallback(context, 1200);
     return true;
   }
 
