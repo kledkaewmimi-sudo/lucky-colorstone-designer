@@ -458,3 +458,39 @@ test('Instagram gets an optional browser transition; direct Chrome does not', as
     await server.close();
   }
 });
+
+test('Instagram iOS offers a manual Safari fallback; Safari and LINE bypass the prompt', async () => {
+  const server = await startFixtureServer();
+  const browser = await chromium.launch({ headless: true });
+  let instagramContext;
+  let safariContext;
+  let lineContext;
+  try {
+    const iosInstagramUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 320.0.0.0.0';
+    const instagram = await createPage(browser, server.origin, { userAgent: iosInstagramUa });
+    instagramContext = instagram.context;
+    await instagram.page.locator('#btnInstagramOpenExternal').click();
+    await instagram.page.locator('#instagramTransitionFallback').waitFor({ state: 'visible', timeout: 5000 });
+    assert.match(await instagram.page.locator('#instagramTransitionInstructions').textContent(), /Safari/);
+    assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
+    assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
+    await instagramContext.close();
+    instagramContext = null;
+
+    const safariUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+    const safari = await createPage(browser, server.origin, { userAgent: safariUa });
+    safariContext = safari.context;
+    assert.equal(await safari.page.locator('#instagramBrowserTransition').isVisible(), false);
+
+    const lineUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 Line/15.0.0';
+    const line = await createPage(browser, server.origin, { userAgent: lineUa });
+    lineContext = line.context;
+    assert.equal(await line.page.locator('#instagramBrowserTransition').isVisible(), false);
+  } finally {
+    await instagramContext?.close();
+    await safariContext?.close();
+    await lineContext?.close();
+    await browser.close();
+    await server.close();
+  }
+});
