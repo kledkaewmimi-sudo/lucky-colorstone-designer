@@ -25,6 +25,7 @@ import { createLumiUi } from './lumi/ui/lumi-ui.js';
 import { createLumiAnalytics } from './lumi/analytics/lumi-analytics.js';
 import { STEP3_ALL_CATEGORY, STEP3_GOAL_CATEGORIES, stoneMatchesGoalCategory } from './lumi/knowledge/stone-goal-taxonomy.js';
 import { isDiscontinuedMaterial } from './lumi/knowledge/discontinued-materials.js';
+import { detectBrowserContext, buildExternalDestination, buildAndroidChromeIntent, buildIosSafariAttempt } from './instagram-browser-transition.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -1481,6 +1482,107 @@ function setupLineDebugRuntimeListeners() {
 
 lineDebugTrace('BOOT', { captureState: true });
 
+const INSTAGRAM_TRANSITION_DISMISSED_KEY = 'lucky_uat_instagram_external_prompt_continue';
+let instagramLaunchFallbackTimer = null;
+
+function getInstagramTransitionDestination() {
+  return buildExternalDestination({
+    origin: window.location.origin,
+    pathname: window.location.pathname || '/',
+    search: window.location.search || ''
+  });
+}
+
+function showInstagramTransitionFallback(context) {
+  const fallback = document.getElementById('instagramTransitionFallback');
+  const instructions = document.getElementById('instagramTransitionInstructions');
+  if (!fallback || !instructions) return;
+  instructions.textContent = context.platform === 'ios'
+    ? 'แตะไอคอนแชร์ แล้วเลือก “เปิดใน Safari” จากนั้นกลับมาที่เว็บไซต์นี้ใน Safari'
+    : 'เปิดเมนู ⋮ ที่มุมขวาบน แล้วเลือก “เปิดในเบราว์เซอร์” หรือ “Open in browser” จากนั้นกลับมาที่เว็บไซต์นี้ใน Chrome';
+  fallback.hidden = false;
+  trackUatEvent('external_browser_manual_fallback_shown', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_fallback' });
+}
+
+function hideInstagramBrowserTransition() {
+  const overlay = document.getElementById('instagramBrowserTransition');
+  if (!overlay) return;
+  overlay.hidden = true;
+  document.body.classList.remove('instagram-browser-transition-active');
+  if (instagramLaunchFallbackTimer) {
+    window.clearTimeout(instagramLaunchFallbackTimer);
+    instagramLaunchFallbackTimer = null;
+  }
+}
+
+function attemptInstagramExternalBrowser(context) {
+  const targetUrl = getInstagramTransitionDestination();
+  trackUatEvent('external_browser_launch_clicked', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_launch' });
+  if (!targetUrl) {
+    showInstagramTransitionFallback(context);
+    return;
+  }
+
+  if (context.platform === 'android') {
+    trackUatEvent('external_browser_launch_attempted', { platform: 'android', browser: 'instagram' }, { stageKey: 'instagram_external_launch' });
+    window.location.href = buildAndroidChromeIntent(targetUrl);
+  } else if (context.platform === 'ios') {
+    trackUatEvent('external_browser_launch_attempted', { platform: 'ios', browser: 'instagram' }, { stageKey: 'instagram_external_launch' });
+    // Best-effort prototype only. There is no guaranteed Safari launch API in
+    // an arbitrary WebView; the manual fallback is always available.
+    window.location.href = buildIosSafariAttempt(targetUrl);
+  } else {
+    showInstagramTransitionFallback(context);
+    return;
+  }
+
+  if (instagramLaunchFallbackTimer) window.clearTimeout(instagramLaunchFallbackTimer);
+  instagramLaunchFallbackTimer = window.setTimeout(() => {
+    instagramLaunchFallbackTimer = null;
+    showInstagramTransitionFallback(context);
+  }, 1400);
+}
+
+function setupInstagramBrowserTransition() {
+  const context = detectBrowserContext(window.navigator.userAgent || '');
+  if (!context.isInstagram || context.isLine) return false;
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.has('handoff') || params.has('liff.state') || params.has('orderId')) return false;
+  if (window.location.pathname !== '/') return false;
+  try {
+    if (sessionStorage.getItem(INSTAGRAM_TRANSITION_DISMISSED_KEY) === '1') return false;
+  } catch {
+    // Storage may be blocked; showing the optional prompt is still safe.
+  }
+
+  const overlay = document.getElementById('instagramBrowserTransition');
+  if (!overlay) return false;
+  overlay.hidden = false;
+  document.body.classList.add('instagram-browser-transition-active');
+  trackUatEvent('instagram_browser_detected', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_prompt' });
+
+  const openButton = document.getElementById('btnInstagramOpenExternal');
+  const continueButton = document.getElementById('btnInstagramContinue');
+  if (openButton && openButton.dataset.bound !== '1') {
+    openButton.dataset.bound = '1';
+    openButton.addEventListener('click', () => attemptInstagramExternalBrowser(context));
+  }
+  if (continueButton && continueButton.dataset.bound !== '1') {
+    continueButton.dataset.bound = '1';
+    continueButton.addEventListener('click', () => {
+      try {
+        sessionStorage.setItem(INSTAGRAM_TRANSITION_DISMISSED_KEY, '1');
+      } catch {
+        // Continue must remain usable even when storage is unavailable.
+      }
+      trackUatEvent('external_browser_continue_in_instagram', { platform: context.platform, browser: 'instagram' }, { stageKey: 'instagram_external_continue' });
+      hideInstagramBrowserTransition();
+    });
+  }
+  window.addEventListener('pagehide', hideInstagramBrowserTransition, { once: true });
+  return true;
+}
+
 // ==========================================
 // 4. Initialisation
 // ==========================================
@@ -1490,6 +1592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupStep2DebugPanel();
   setupLineDebugPanel();
   setupLineDebugRuntimeListeners();
+  setupInstagramBrowserTransition();
   lineDebugTrace('DOM_READY', { captureState: true });
   // The document-head marker prevents a first-paint landing flash while the QA
   // status request below is still resolving. Confirm the real callback state

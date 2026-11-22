@@ -2308,7 +2308,10 @@ const UAT_ANALYTICS_EVENT_NAMES = new Set([
   'line_auth_started', 'liff_init_started', 'liff_init_success', 'liff_init_failed',
   'line_auth_success', 'line_auth_failed', 'line_auth_cancelled',
   'designer_returned', 'state_restore_started', 'state_restore_success',
-  'state_restore_failed', 'step_2_view'
+  'state_restore_failed', 'step_2_view',
+  'instagram_browser_detected', 'external_browser_launch_clicked',
+  'external_browser_launch_attempted', 'external_browser_manual_fallback_shown',
+  'external_browser_continue_in_instagram'
 ]);
 const UAT_ANALYTICS_FORBIDDEN_KEYS = new Set([
   'lineuserid', 'line_user_id', 'userid', 'displayname', 'name', 'ownername',

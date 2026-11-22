@@ -93,6 +93,96 @@ body[data-active-step="2"] .uat-environment-banner {
   display: none !important;
 }
 
+body.instagram-browser-transition-active {
+  overflow: hidden;
+}
+
+.instagram-browser-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(30, 22, 27, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.instagram-browser-transition[hidden] {
+  display: none;
+}
+
+.instagram-browser-transition__card {
+  width: min(100%, 360px);
+  padding: 28px 24px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 24px;
+  background: #fffaf4;
+  box-shadow: 0 24px 70px rgba(27, 17, 22, 0.28);
+  text-align: center;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #33242b;
+}
+
+.instagram-browser-transition__eyebrow {
+  display: block;
+  margin-bottom: 10px;
+  color: #9b6a4d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.instagram-browser-transition__card h2 {
+  margin: 0 0 10px;
+  font-size: 23px;
+  line-height: 1.25;
+}
+
+.instagram-browser-transition__lead {
+  margin: 0 0 22px;
+  color: #6f5a61;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.instagram-browser-transition__primary,
+.instagram-browser-transition__secondary {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.instagram-browser-transition__primary {
+  border: 0;
+  background: #6d2638;
+  color: #fffaf4;
+}
+
+.instagram-browser-transition__secondary {
+  margin-top: 10px;
+  border: 1px solid #d8c8c0;
+  background: transparent;
+  color: #5d414b;
+}
+
+.instagram-browser-transition__fallback {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eaded8;
+  color: #5d414b;
+  font-size: 13px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.instagram-browser-transition__fallback p {
+  margin: 0;
+}
+
 /* UAT query-gated runtime diagnostic surface; no markup is created outside UAT debug mode. */
 .step3-sticky-debug-overlay {
   position: fixed;

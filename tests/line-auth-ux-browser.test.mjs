@@ -147,9 +147,9 @@ async function startFixtureServer({ handoffStatus = 201, authEntryStatus = 503 }
   };
 }
 
-async function createPage(browser, origin, { loggedIn = false, url = origin, waitForLanding = true, pendingAuthSession = null, initDelayMs = 0 } = {}) {
+async function createPage(browser, origin, { loggedIn = false, url = origin, waitForLanding = true, pendingAuthSession = null, initDelayMs = 0, userAgent = MOBILE_UA } = {}) {
   const context = await browser.newContext({
-    userAgent: MOBILE_UA,
+    userAgent,
     viewport: { width: 390, height: 844 },
     isMobile: true,
     serviceWorkers: 'block'
@@ -420,6 +420,40 @@ test('delayed LIFF initialization survives the LINE Continue confirmation window
     assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
   } finally {
     await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Instagram gets an optional browser transition; direct Chrome does not', async () => {
+  const server = await startFixtureServer();
+  const browser = await chromium.launch({ headless: true });
+  let instagramContext;
+  let chromeContext;
+  try {
+    const instagramUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.0.0 Mobile Safari/537.36 Instagram 320.0.0.0.0';
+    const instagram = await createPage(browser, server.origin, { userAgent: instagramUa });
+    instagramContext = instagram.context;
+    const overlay = instagram.page.locator('#instagramBrowserTransition');
+    await overlay.waitFor({ state: 'visible' });
+    assert.equal(await instagram.page.locator('#instagramBrowserTransitionTitle').textContent(), 'เปิดใน Chrome หรือ Safari');
+    assert.equal(await instagram.page.locator('#btnInstagramContinue').isVisible(), true);
+    assert.equal(instagram.pageErrors.length, 0, JSON.stringify(instagram.pageErrors));
+
+    await instagram.page.locator('#btnInstagramContinue').click();
+    await overlay.waitFor({ state: 'hidden' });
+    assert.equal(await instagram.page.locator('#btnLandingLogin').isVisible(), true);
+    await instagramContext.close();
+    instagramContext = null;
+
+    const chromeUa = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
+    const chrome = await createPage(browser, server.origin, { userAgent: chromeUa });
+    chromeContext = chrome.context;
+    assert.equal(await chrome.page.locator('#instagramBrowserTransition').isVisible(), false);
+    assert.equal(chrome.pageErrors.length, 0, JSON.stringify(chrome.pageErrors));
+  } finally {
+    await instagramContext?.close();
+    await chromeContext?.close();
     await browser.close();
     await server.close();
   }
