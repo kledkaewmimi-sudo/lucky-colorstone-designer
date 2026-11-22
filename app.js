@@ -42,6 +42,11 @@ const CHECKOUT_SUMMARY_STORAGE_KEY = 'lucky_colorstone_checkout_summary';
 const STRIPE_ORDER_PAYLOAD_STORAGE_KEY = 'lucky_colorstone_stripe_order_payload';
 const CUSTOMIZATION_STATE_STORAGE_KEY = 'lucky_colorstone_state';
 const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent';
+const AUTO_AUTH_ENTRY_TAB_KEY = 'lucky_uat_line_auth_entry_tab';
+const AUTO_AUTH_ENTRY_SESSION_KEY = 'lucky_uat_line_auth_entry_session';
+const AUTO_AUTH_ENTRY_PENDING_KEY = 'lucky_uat_line_auth_entry_pending';
+const AUTO_AUTH_ENTRY_PATH = '/line-auth-entry';
+const AUTO_AUTH_ENTRY_HEADER = '1';
 const LINE_OA_FRIENDSHIP_RESUME_KEY = 'lucky_colorstone_line_oa_friendship_resume';
 const LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY = 'lucky_colorstone_line_oa_friendship_resume_fallback';
 const LINE_OA_FRIENDSHIP_RESUME_TTL_MS = 20 * 60 * 1000;
@@ -104,7 +109,14 @@ let liffConfigurationReason = 'UAT_LIFF_CONFIG_MISSING';
 let lineIdentityFailureCode = '';
 const STEP2_SUPPORT_ROTATION_MS = 3000;
 const ANALYTICS_HEARTBEAT_MS = 60000;
-const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเข้าสู่ระบบ LINE ได้ กรุณาลองใหม่อีกครั้ง';
+const LINE_CONNECT_RETRY_MESSAGE = 'ไม่สามารถเชื่อมต่อกับ LINE ได้ กรุณาลองอีกครั้ง';
+const LINE_LOGIN_PROGRESS_MESSAGE = 'กำลังเชื่อมต่อกับ LINE...';
+const LINE_LOGIN_REDIRECT_MESSAGE = 'กำลังนำคุณไปยัง LINE เพื่อยืนยันตัวตน กรุณารอสักครู่';
+const LINE_LOGIN_SUCCESS_MESSAGE = 'เข้าสู่ระบบสำเร็จ กำลังกลับไปยังขั้นตอนการออกแบบของคุณ';
+const LINE_AUTH_CANCELLED_MESSAGE = 'การเข้าสู่ระบบ LINE ถูกยกเลิก กรุณาลองอีกครั้ง';
+const LINE_AUTH_PROFILE_MESSAGE = 'ไม่สามารถดึงข้อมูล LINE ได้ กรุณาลองอีกครั้ง';
+const LINE_AUTH_HANDOFF_MESSAGE = 'ไม่สามารถบันทึกการออกแบบของคุณได้ กรุณาลองอีกครั้ง';
+const LINE_AUTH_SESSION_MESSAGE = 'เซสชันการเชื่อมต่อหมดอายุ กรุณาลองอีกครั้ง';
 const STARTUP_PERFORMANCE_DEBUG = urlParams.has('startupDebug');
 const INSPIRATION_SAMPLE_IMAGES = Object.freeze([
   '/assets/sample/sp1.jpg',
@@ -457,6 +469,8 @@ let step3ToStep4TransitionInProgress = false;
 let step4AuthorizationInProgress = false;
 let stripeCheckoutInProgress = false;
 let liffLoginInProgress = false;
+let autoAuthEntryFallbackHandoff = null;
+let autoAuthEntryFailure = '';
 let landingStartInProgress = false;
 let landingConnectPromptVisible = false;
 const LANDING_CTA_IDLE_TEXT = 'เริ่มออกแบบเลย';
@@ -486,6 +500,9 @@ let lineBootstrapPromise = null;
 let progressiveLineVerificationPromise = null;
 let step1ToStep2AuthInProgress = false;
 let step1AuthState = 'idle';
+let step1AuthMessage = '';
+let liffLoginNavigationTimer = null;
+const LINE_LOGIN_NAVIGATION_TIMEOUT_MS = 15000;
 let customerCatalogStartupPromise = null;
 let customerCatalogRefreshPromise = null;
 let customerCatalogRefreshEventsBound = false;
@@ -1482,11 +1499,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
   const initialHandoffToken = getInitialHandoffToken(window.location.search);
   const shouldResumeInitialHandoff = !returnParams.has('orderId') && Boolean(initialHandoffToken);
+  const autoAuthEntryPending = !returnParams.has('orderId') && hasPendingAutoAuthEntry();
+  const shouldResumeAutoAuthEntry = autoAuthEntryPending;
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
     && isInitialLineIdentityCallback(window.location.search);
   // The head marker covers first paint. Confirm the initial identity callback
   // before any async startup work so it remains hidden through LIFF/profile sync.
-  if (shouldResumeInitialIdentityCallback || shouldResumeInitialHandoff) {
+  if (shouldResumeInitialIdentityCallback || shouldResumeInitialHandoff || shouldResumeAutoAuthEntry) {
     setCallbackBootstrapHold(true);
   }
   await initializeDeferredLoginQaSession();
@@ -1506,10 +1525,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     && hasLineOaFriendshipResumePending();
   const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
     || shouldResumeInitialHandoff
+    || shouldResumeAutoAuthEntry
     || shouldHoldForDeferredCallback
     || shouldHoldForFriendshipResume;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
-    && (shouldResumeInitialIdentityCallback || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
+    && (shouldResumeInitialIdentityCallback || shouldResumeAutoAuthEntry || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
   progressiveStartupEligible = shouldStartFreshCustomization
     && !shouldHoldForCallbackBootstrap
@@ -1610,7 +1630,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await startLineBootstrap();
   clearOAuthQueryParams();
   let restored = null;
-  if (shouldResumeInitialHandoff) {
+  if (shouldResumeAutoAuthEntry) {
+    restored = await handleAutoAuthEntryReturn();
+  } else if (shouldResumeInitialHandoff) {
     const handled = await handleInitialHandoffCallback(initialHandoffToken);
     if (!handled) {
       restored = { ok: false, reason: 'initial_handoff_restore_failed' };
@@ -1623,7 +1645,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearInitialLineIdentityCallbackMarker();
     } else {
       console.warn('[uat-line-identity]', { reason: lineIdentityFailureCode || 'INITIAL_IDENTITY_UNAVAILABLE' });
-      showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${lineIdentityFailureCode || 'F05E3'})`);
+      showToast(getLineAuthFailureMessage());
     }
   } else if (shouldHoldForDeferredCallback) {
     restored = await restoreDeferredLineCallbackBeforeReset(startupRawCustomizationIntent);
@@ -2474,6 +2496,204 @@ function getLiffEntryUrl() {
   return LIFF_ID ? `https://liff.line.me/${LIFF_ID}` : '';
 }
 
+function createClientOpaqueId() {
+  const bytes = new Uint8Array(32);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  }
+  let binary = '';
+  bytes.forEach((value) => { binary += String.fromCharCode(value); });
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function readAutoAuthEntryState() {
+  try {
+    const raw = sessionStorage.getItem(AUTO_AUTH_ENTRY_PENDING_KEY);
+    const state = raw ? JSON.parse(raw) : null;
+    if (!state || state.version !== 1) return null;
+    if (!/^[A-Za-z0-9_-]{43}$/.test(String(state.tabSessionId || ''))) return null;
+    if (!/^[A-Za-z0-9_-]{43}$/.test(String(state.sessionId || ''))) return null;
+    if (!Number.isFinite(Number(state.expiresAt)) || Number(state.expiresAt) <= Date.now()) return null;
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function writeAutoAuthEntryState(state) {
+  try {
+    sessionStorage.setItem(AUTO_AUTH_ENTRY_PENDING_KEY, JSON.stringify(state));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearAutoAuthEntryState() {
+  try {
+    sessionStorage.removeItem(AUTO_AUTH_ENTRY_PENDING_KEY);
+    sessionStorage.removeItem(AUTO_AUTH_ENTRY_TAB_KEY);
+    sessionStorage.removeItem(AUTO_AUTH_ENTRY_SESSION_KEY);
+  } catch {
+    // A blocked storage context must not become a customer-visible crash.
+  }
+}
+
+function hasPendingAutoAuthEntry() {
+  return Boolean(IS_UAT_MODE && readAutoAuthEntryState());
+}
+
+function canUseAutoAuthEntryForCustomization() {
+  return IS_UAT_MODE
+    && requiresLineLoginForCustomization()
+    && !isLiffInClient()
+    && isLikelyMobileBrowser()
+    && !isLineIdentityAvailable()
+    && !getRequestedOrderId();
+}
+
+async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } = {}) {
+  if (!canUseAutoAuthEntryForCustomization()) return false;
+  if (liffLoginInProgress) return false;
+
+  autoAuthEntryFailure = '';
+  autoAuthEntryFallbackHandoff = null;
+  // Reserve before awaiting handoff creation; rapid taps must not create two
+  // pending sessions or two LINE entry navigations.
+  liffLoginInProgress = true;
+  const loader = DOM.liffLoadingOverlay;
+  trackAnalyticsEvent('line_auth_started', { method: 'auth_entry' });
+  trackUatEvent('line_auth_started', { method: 'auth_entry', resume_step: 2 }, { stageKey: `line_auth_${Date.now()}` });
+
+  let initialHandoff = null;
+  try {
+    initialHandoff = await createInitialStateHandoff();
+    if (!initialHandoff?.token) {
+      autoAuthEntryFailure = 'handoff_create';
+      return failInitialHandoffStart({ keepStep1Visible });
+    }
+    trackUatEvent('line_handoff_created', { target_step: 2 }, { stageKey: 'handoff_create' });
+
+    const tabSessionId = createClientOpaqueId();
+    const pending = {
+      version: 1,
+      tabSessionId,
+      sessionId: '',
+      expiresAt: Date.now() + 10 * 60 * 1000
+    };
+    if (!writeAutoAuthEntryState(pending)) return failInitialHandoffStart({ keepStep1Visible });
+
+    saveState();
+    setLandingButtonState('line', 'กำลังเปิด...');
+    showLineLoginProgress();
+    const response = await fetch('/api/line-auth-entry', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-UAT-Auth-Entry': AUTO_AUTH_ENTRY_HEADER
+      },
+      body: JSON.stringify({ handoffToken: initialHandoff.token, tabSessionId })
+    });
+    const result = await response.json().catch(() => null);
+    const sessionId = String(result?.sessionId || '').trim();
+    if (!response.ok || !/^[A-Za-z0-9_-]{43}$/.test(sessionId)) {
+      clearAutoAuthEntryState();
+      liffLoginInProgress = false;
+      clearLiffLoginNavigationTimer();
+      if (loader) loader.style.display = 'none';
+      autoAuthEntryFailure = 'session';
+      autoAuthEntryFallbackHandoff = initialHandoff;
+      trackUatEvent('line_auth_failed', { reason: 'auth_entry_session_failed' }, { stageKey: `line_auth_${Date.now()}` });
+      return false;
+    }
+
+    pending.sessionId = sessionId;
+    if (result?.expiresAt && Number.isFinite(Date.parse(result.expiresAt))) {
+      pending.expiresAt = Date.parse(result.expiresAt);
+    }
+    writeAutoAuthEntryState(pending);
+    rememberCustomizationLoginIntent({ targetStep: 2, journeyId: initialHandoff.journeyId || '' });
+    armLiffLoginNavigationTimer({ keepStep1Visible });
+    window.location.assign(AUTO_AUTH_ENTRY_PATH);
+    return true;
+  } catch {
+    clearAutoAuthEntryState();
+    liffLoginInProgress = false;
+    clearLiffLoginNavigationTimer();
+    if (loader) loader.style.display = 'none';
+    if (initialHandoff?.token) {
+      autoAuthEntryFailure = 'session';
+      autoAuthEntryFallbackHandoff = initialHandoff;
+    } else {
+      autoAuthEntryFailure = 'handoff_create';
+    }
+    trackUatEvent('line_auth_failed', { reason: 'auth_entry_start_failed' }, { stageKey: `line_auth_${Date.now()}` });
+    return false;
+  }
+}
+
+function failAutoAuthEntryReturn(reason = 'auth_entry_restore_failed') {
+  clearAutoAuthEntryState();
+  lineIdentityFailureCode = reason;
+  State.currentStep = 1;
+  State.landingDismissed = true;
+  persistLandingDismissed();
+  syncShellVisibility();
+  setStep1AuthStatus('failed');
+  trackUatEvent('state_restore_failed', { reason }, { stageKey: 'state_restore' });
+  return false;
+}
+
+async function handleAutoAuthEntryReturn() {
+  const pending = readAutoAuthEntryState();
+  if (!pending) return { ok: false, reason: 'missing_auth_entry_session' };
+  if (!isLineIdentityAvailable()) {
+    return { ok: false, reason: failAutoAuthEntryReturn(lineIdentityFailureCode || 'LINE_AUTH_CANCELLED') || 'identity_unavailable' };
+  }
+
+  try {
+    const idToken = typeof liff !== 'undefined' && typeof liff.getIDToken === 'function'
+      ? await withTimeout(liff.getIDToken(), 5000, 'LINE ID token')
+      : '';
+    if (!idToken) return { ok: false, reason: failAutoAuthEntryReturn('ID_TOKEN_UNAVAILABLE') || 'id_token_unavailable' };
+
+    trackUatEvent('state_restore_started', { method: 'auth_entry' });
+    const response = await fetch('/api/line-auth-consume', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-UAT-Auth-Entry': AUTO_AUTH_ENTRY_HEADER
+      },
+      body: JSON.stringify({
+        idToken,
+        sessionId: pending.sessionId,
+        tabSessionId: pending.tabSessionId
+      })
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.ok !== true || !applyInitialHandoffSnapshot(result.snapshot)) {
+      return { ok: false, reason: failAutoAuthEntryReturn(result?.reason || 'auth_entry_restore_failed') || 'restore_failed' };
+    }
+
+    clearAutoAuthEntryState();
+    if (result.journeyId) uatJourneyId = result.journeyId;
+    clearCustomizationLoginIntent();
+    rememberCustomizationLoginIntent({ targetStep: 2, journeyId: result.journeyId || '' });
+    customizationResumeInProgress = true;
+    State.currentStep = 1;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    setStep1AuthStatus('verified');
+    trackUatEvent('state_restore_success', { restored_step: 1, method: 'auth_entry' }, { stageKey: 'state_restore' });
+    return { ok: true, snapshot: result.snapshot, targetStep: 2, journeyId: result.journeyId || '' };
+  } catch {
+    return { ok: false, reason: failAutoAuthEntryReturn('auth_entry_restore_unavailable') || 'restore_unavailable' };
+  }
+}
+
 function isLikelyMobileBrowser() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || '');
 }
@@ -2523,6 +2743,75 @@ function reportInitialLineAuthDiagnostic(result = {}) {
     loginInvocation: result.invocation || 'NOT_AVAILABLE',
     lineIdentityFailureCode: result.reason || lineIdentityFailureCode || ''
   });
+}
+
+function getLineAuthFailureMessage(reason = lineIdentityFailureCode) {
+  const code = String(reason || '').trim().toUpperCase();
+  if (!code) return LINE_CONNECT_RETRY_MESSAGE;
+  if (code.includes('HANDOFF_CREATE') || code.includes('HANDOFF_SAVE')) return LINE_AUTH_HANDOFF_MESSAGE;
+  if (code.includes('NOT_FOUND') || code.includes('EXPIRED') || code.includes('INVALID_SNAPSHOT') || code.includes('RESTORE_FAILED')) {
+    return LINE_AUTH_SESSION_MESSAGE;
+  }
+  if (code.includes('NOT_LOGGED_IN') || code.includes('CANCEL')) return LINE_AUTH_CANCELLED_MESSAGE;
+  if (code.includes('F05E3A') || code.includes('F05E3B') || code.includes('F05E3C') || code.includes('PROFILE')) {
+    return LINE_AUTH_PROFILE_MESSAGE;
+  }
+  return LINE_CONNECT_RETRY_MESSAGE;
+}
+
+function showLineLoginProgress() {
+  setLiffTransitionState({
+    title: LINE_LOGIN_PROGRESS_MESSAGE,
+    body: LINE_LOGIN_REDIRECT_MESSAGE
+  });
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'flex';
+}
+
+function clearLiffLoginNavigationTimer() {
+  if (liffLoginNavigationTimer) {
+    window.clearTimeout(liffLoginNavigationTimer);
+    liffLoginNavigationTimer = null;
+  }
+}
+
+function armLiffLoginNavigationTimer({ keepStep1Visible = false } = {}) {
+  clearLiffLoginNavigationTimer();
+  liffLoginNavigationTimer = window.setTimeout(() => {
+    liffLoginNavigationTimer = null;
+    if (!liffLoginInProgress) return;
+    // liff.login() normally navigates immediately. If this document is still
+    // alive after the bounded window, release the guard so the customer can
+    // retry instead of being left on a permanent "connecting" overlay.
+    liffLoginInProgress = false;
+    lineIdentityFailureCode = 'LINE_LOGIN_TIMEOUT';
+    if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+    if (State.currentStep === 1) {
+      DOM.btnNext.disabled = false;
+      configureFooterNavigation();
+    }
+    trackUatEvent('line_auth_failed', { reason: 'login_navigation_timeout' }, { stageKey: `line_auth_${Date.now()}` });
+    if (keepStep1Visible) {
+      setStep1AuthStatus('failed');
+    } else {
+      resetLandingStartAfterFailure(getLineAuthFailureMessage('LINE_LOGIN_TIMEOUT'));
+    }
+  }, LINE_LOGIN_NAVIGATION_TIMEOUT_MS);
+}
+
+function failInitialHandoffStart({ keepStep1Visible = false } = {}) {
+  liffLoginInProgress = false;
+  clearLiffLoginNavigationTimer();
+  clearCustomizationLoginIntent();
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+  lineIdentityFailureCode = 'HANDOFF_CREATE_FAILED';
+  trackUatEvent('state_restore_failed', { reason: 'handoff_create_failed' }, { stageKey: 'handoff_create' });
+  trackUatEvent('line_auth_failed', { reason: 'handoff_create_failed' }, { stageKey: `line_auth_${Date.now()}` });
+  if (keepStep1Visible) {
+    setStep1AuthStatus('failed');
+  } else {
+    resetLandingStartAfterFailure(getLineAuthFailureMessage('HANDOFF_CREATE_FAILED'));
+  }
+  return false;
 }
 
 function syncLineProfileFromLiff() {
@@ -2896,6 +3185,7 @@ async function completeCustomizationStartResume() {
     if (resumeStep === 2) {
       setStep1AuthStatus('verified');
       await goToStep(2);
+      showToast(LINE_LOGIN_SUCCESS_MESSAGE, 2600);
     }
     return;
   }
@@ -2905,6 +3195,7 @@ async function completeCustomizationStartResume() {
     saveState();
     if (loader) loader.style.display = 'none';
     customizationResumeInProgress = false;
+    lineIdentityFailureCode = lineIdentityFailureCode || 'LINE_AUTH_CANCELLED';
     setStep1AuthStatus('failed');
     trackUatEvent('line_auth_cancelled', { reason: 'identity_unavailable' }, { stageKey: 'auth_cancelled' });
     return;
@@ -3037,7 +3328,9 @@ async function primeUatJourneyFromHandoff(token) {
 async function handleInitialHandoffCallback(token) {
   trackUatEvent('designer_returned', { entry_surface: getUatEntrySurface() });
   if (!isLineIdentityAvailable()) {
-    trackUatEvent('line_auth_cancelled', { reason: lineIdentityFailureCode || 'F05E3' });
+    const failureReason = lineIdentityFailureCode || 'LINE_AUTH_CANCELLED';
+    lineIdentityFailureCode = failureReason;
+    trackUatEvent('line_auth_cancelled', { reason: failureReason });
     clearCustomizationLoginIntent();
     clearInitialHandoffQueryParam();
     State.currentStep = 1;
@@ -3051,7 +3344,9 @@ async function handleInitialHandoffCallback(token) {
   trackUatEvent('state_restore_started');
   const restored = await consumeDeferredLineAuthHandoff(token);
   if (!restored?.ok || Number(restored.targetStep) !== 2 || !applyInitialHandoffSnapshot(restored.snapshot)) {
-    trackUatEvent('state_restore_failed', { reason: restored?.reason || 'invalid_snapshot' });
+    const restoreReason = restored?.reason || 'invalid_snapshot';
+    lineIdentityFailureCode = restoreReason;
+    trackUatEvent('state_restore_failed', { reason: restoreReason });
     clearCustomizationLoginIntent();
     clearInitialHandoffQueryParam();
     State.currentStep = 1;
@@ -3086,15 +3381,20 @@ async function startLiffLoginForCustomization({
     return false;
   }
 
+  // Reserve the single-flight slot before awaiting the handoff request. Without
+  // this, two rapid taps can both pass the guard and create two handoffs.
+  liffLoginInProgress = true;
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started');
   trackUatEvent('line_auth_started', { method: 'liff_login', resume_step: resumeStep }, { stageKey: `line_auth_${Date.now()}` });
-  let initialHandoff = null;
-  if (IS_UAT_MODE && resumeStep === 2) {
+  let initialHandoff = autoAuthEntryFallbackHandoff;
+  autoAuthEntryFallbackHandoff = null;
+  if (!initialHandoff && IS_UAT_MODE && resumeStep === 2) {
     initialHandoff = await createInitialStateHandoff().catch(() => null);
     if (!initialHandoff?.token) {
-      trackUatEvent('state_restore_failed', { reason: 'handoff_create_failed' }, { stageKey: 'handoff_create' });
+      return failInitialHandoffStart({ keepStep1Visible });
     }
+    trackUatEvent('line_handoff_created', { target_step: 2 }, { stageKey: 'handoff_create' });
   }
   const persistInitialIntent = () => {
     try {
@@ -3111,9 +3411,7 @@ async function startLiffLoginForCustomization({
   };
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
-  setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
-  if (loader) loader.style.display = 'flex';
-  liffLoginInProgress = true;
+  showLineLoginProgress();
   console.log("LIFF customization login start");
   lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_LOGIN', handoff: Boolean(initialHandoff?.token) } });
 
@@ -3137,6 +3435,7 @@ async function startLiffLoginForCustomization({
   });
   if (!loginResult.started) {
     liffLoginInProgress = false;
+    clearLiffLoginNavigationTimer();
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     lineIdentityFailureCode = loginResult.reason;
@@ -3147,9 +3446,10 @@ async function startLiffLoginForCustomization({
     });
     trackUatEvent('line_auth_failed', { reason: loginResult.reason || 'login_start_failed' }, { stageKey: `line_auth_${Date.now()}` });
     if (keepStep1Visible) setStep1AuthStatus('failed');
-    else resetLandingStartAfterFailure();
+    else resetLandingStartAfterFailure(getLineAuthFailureMessage(loginResult.reason));
     return false;
   }
+  armLiffLoginNavigationTimer({ keepStep1Visible });
   return returnStartStatus ? true : false;
 }
 
@@ -3162,12 +3462,19 @@ async function openLineConnectEntryForCustomization({
   if (getRequestedOrderId()) return returnStartStatus ? false : true;
   if (liffLoginInProgress) return false;
 
+  // Reserve the single-flight slot before awaiting the handoff request.
+  liffLoginInProgress = true;
   const loader = DOM.liffLoadingOverlay;
   trackAnalyticsEvent('line_auth_started', { method: 'entry_url' });
   trackUatEvent('line_auth_started', { method: 'liff_entry', resume_step: resumeStep }, { stageKey: `line_auth_${Date.now()}` });
-  let initialHandoff = null;
-  if (IS_UAT_MODE && resumeStep === 2) {
+  let initialHandoff = autoAuthEntryFallbackHandoff;
+  autoAuthEntryFallbackHandoff = null;
+  if (!initialHandoff && IS_UAT_MODE && resumeStep === 2) {
     initialHandoff = await createInitialStateHandoff().catch(() => null);
+    if (!initialHandoff?.token) {
+      return failInitialHandoffStart({ keepStep1Visible });
+    }
+    trackUatEvent('line_handoff_created', { target_step: 2 }, { stageKey: 'handoff_create' });
   }
   const persistInitialIntent = () => {
     try {
@@ -3184,9 +3491,7 @@ async function openLineConnectEntryForCustomization({
   };
   saveState();
   setLandingButtonState('line', 'กำลังเปิด...');
-  setLiffLoadingMessage('กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ');
-  if (loader) loader.style.display = 'flex';
-  liffLoginInProgress = true;
+  showLineLoginProgress();
   lineDebugTrace('AUTH_ADAPTER_ENTER', { captureState: true, details: { method: 'LIFF_ENTRY', handoff: Boolean(initialHandoff?.token) } });
 
   const entryResult = invokeInitialLineAuthentication({
@@ -3199,6 +3504,7 @@ async function openLineConnectEntryForCustomization({
   });
   if (!entryResult.started) {
     liffLoginInProgress = false;
+    clearLiffLoginNavigationTimer();
     clearCustomizationLoginIntent();
     if (loader) loader.style.display = 'none';
     lineIdentityFailureCode = entryResult.reason;
@@ -3210,9 +3516,10 @@ async function openLineConnectEntryForCustomization({
     });
     trackUatEvent('line_auth_failed', { reason: entryResult.reason || 'entry_start_failed' }, { stageKey: `line_auth_${Date.now()}` });
     if (keepStep1Visible) setStep1AuthStatus('failed');
-    else resetLandingStartAfterFailure();
+    else resetLandingStartAfterFailure(getLineAuthFailureMessage(entryResult.reason));
     return false;
   }
+  armLiffLoginNavigationTimer({ keepStep1Visible });
   return returnStartStatus ? true : false;
 }
 
@@ -3231,6 +3538,13 @@ async function requireLineLoginForCustomization(options = {}) {
       reason: lineIdentityFailureCode || 'F05E3'
     }),
     startLogin: async () => {
+      if (loginResumeStep === 2 && canUseAutoAuthEntryForCustomization()) {
+        const started = await startAutoAuthEntryForCustomization({ keepStep1Visible: true });
+        if (started) return { started: true };
+        if (autoAuthEntryFailure === 'handoff_create') return { started: false };
+        // A failed auth-entry setup must fall through to the existing explicit
+        // LINE flow rather than trapping the customer at the boundary.
+      }
       if (canUseLiffLoginFromCurrentBrowser()) {
         showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
         return {
@@ -3255,7 +3569,7 @@ async function requireLineLoginForCustomization(options = {}) {
   });
   if (identity.ok) return true;
   if (identity.state === 'profile_sync_failed') {
-    showToast(`${LINE_CONNECT_RETRY_MESSAGE} (${identity.reason})`);
+    showToast(getLineAuthFailureMessage(identity.reason));
   }
   return false;
 }
@@ -3375,6 +3689,7 @@ async function initLIFF() {
   const loader = document.getElementById('liffLoadingOverlay');
   if (!LIFF_ID) {
     State.liffInitialized = false;
+    lineIdentityFailureCode = 'LIFF_INIT_FAILED';
     lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(liffConfigurationReason || 'LIFF_ID_MISSING', 80) } });
     console.warn('[uat-liff]', { reason: liffConfigurationReason || 'UAT_LIFF_CONFIG_MISSING' });
     setLiffLoadingMessage('UAT LINE configuration is missing.');
@@ -3383,6 +3698,7 @@ async function initLIFF() {
   }
   if (typeof liff === 'undefined') {
     State.liffInitialized = false;
+    lineIdentityFailureCode = 'LIFF_INIT_FAILED';
     lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: 'LIFF_SDK_UNAVAILABLE' } });
     if (loader && !customizationResumeInProgress && !startupOrderReturnInProgress) loader.style.display = 'none';
     console.warn("LIFF SDK is unavailable. Continuing without LINE profile.");
@@ -3407,6 +3723,7 @@ async function initLIFF() {
   } catch (err) {
     console.warn("LIFF initialization failed or timed out. Continuing without LINE profile.", err);
     State.liffInitialized = false;
+    lineIdentityFailureCode = lineIdentityFailureCode || 'LIFF_INIT_FAILED';
     lineDebugTrace('LIFF_INIT_FAIL', { captureState: true, details: { reason: sanitizeLineDebugText(err?.message || err, 180) } });
     trackAnalyticsEvent('line_auth_unavailable', {
         message: err?.message || String(err || '')
@@ -3434,20 +3751,21 @@ function renderStep1AuthStatus() {
   container.hidden = false;
   container.dataset.state = step1AuthState;
   if (step1AuthState === 'verifying') {
-    text.textContent = 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ';
+    text.textContent = LINE_LOGIN_PROGRESS_MESSAGE;
     action.hidden = true;
     return;
   }
 
   text.textContent = step1AuthState === 'failed'
-    ? LINE_CONNECT_RETRY_MESSAGE
+    ? (step1AuthMessage || getLineAuthFailureMessage())
     : 'เข้าสู่ระบบด้วย LINE';
   action.textContent = 'เข้าสู่ระบบด้วย LINE';
   action.hidden = false;
 }
 
-function setStep1AuthStatus(state) {
+function setStep1AuthStatus(state, message = '') {
   step1AuthState = state;
+  step1AuthMessage = state === 'failed' ? (message || getLineAuthFailureMessage()) : '';
   renderStep1AuthStatus();
 }
 
@@ -3508,6 +3826,11 @@ async function attemptStep1AuthorizationAndContinue() {
   if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
   step1ToStep2AuthInProgress = true;
   DOM.btnNext.disabled = true;
+  trackUatEvent('line_auth_boundary_reached', {
+    method: canUseLiffLoginFromCurrentBrowser() ? 'liff_login' : 'liff_entry',
+    entry_step: 1,
+    resume_step: 2
+  }, { stageKey: `line_auth_boundary_${Date.now()}` });
   setStep1AuthStatus('verifying');
   try {
     const authorized = await ensureStep1LineAuthorization();
@@ -3522,12 +3845,13 @@ async function attemptStep1AuthorizationAndContinue() {
     lineDebugTrace('STEP1_LINE_AUTH_FAILED', {
       details: { error: sanitizeLineDebugText(error?.message || error, 180) }
     });
+    lineIdentityFailureCode = lineIdentityFailureCode || 'LINE_AUTH_TIMEOUT';
     setStep1AuthStatus('failed');
     return false;
   } finally {
     step1ToStep2AuthInProgress = false;
     if (State.currentStep === 1) {
-      DOM.btnNext.disabled = false;
+      if (!liffLoginInProgress) DOM.btnNext.disabled = false;
       configureFooterNavigation();
       renderStep1AuthStatus();
     }

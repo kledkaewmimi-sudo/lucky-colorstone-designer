@@ -102,6 +102,13 @@ function isUatSupabaseApiRequest(method, pathname) {
   if (isUatFixtureApiRequest(method, pathname)) return true;
   if (method === 'GET' && pathname === '/api/line-oa-add-friend') return true;
   if (method === 'POST' && pathname === '/api/auth-handoffs') return true;
+  if (method === 'POST' && [
+    '/api/line-id-token/verify',
+    '/api/auth-entry/sessions',
+    '/api/auth-entry/sessions/consume',
+    '/api/line-auth-entry',
+    '/api/line-auth-consume'
+  ].includes(pathname)) return true;
   if (method === 'POST' && pathname === '/api/uat/analytics/event') return true;
   if (method === 'POST' && pathname === '/api/lucky/birthday') return true;
   if (method === 'GET' && /^\/api\/auth-handoffs\/[A-Za-z0-9_-]{43}$/.test(pathname)) return true;

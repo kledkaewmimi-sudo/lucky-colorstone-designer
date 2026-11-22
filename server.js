@@ -13,6 +13,7 @@ const { readOrderPayloads, saveOrderPayload } = require('./server-order-persiste
 const { buildMetaPurchaseEvent, getMetaPurchaseEventId, summarizeMetaCapiSuccessBody } = require('./meta-capi-purchase.js');
 const { HANDOFF_TTL_MS, INITIAL_HANDOFF_TTL_MS, TOKEN_PATTERN: HANDOFF_TOKEN_PATTERN, createHandoffToken, normalizeHandoffPayload } = require('./line-auth-handoff.js');
 const { UAT_ALLOWED_ORIGIN, isExactUatOriginRequest, isAllowedUatHandoffReadRequest } = require('./uat-origin-policy.js');
+const { getUatLineChannelId, isValidIdTokenShape, verifyUatLineIdToken } = require('./line-id-token-verifier.js');
 const { redactSensitiveUrl } = require('./uat-log-redaction.js');
 const {
   DEFERRED_LOGIN_QA_TTL_MS,
@@ -200,6 +201,12 @@ function sendText(res, statusCode, text) {
 
 const DEFERRED_LOGIN_QA_COOKIE = '__Host-lucky-deferred-login-qa';
 const DEFERRED_LOGIN_QA_PROBE_COOKIE = 'lucky_deferred_login_qa_probe';
+const AUTH_ENTRY_COOKIE = '__Host-uat-line-auth-browser';
+const AUTH_ENTRY_BODY_LIMIT_BYTES = 8 * 1024;
+const AUTH_ENTRY_SESSION_TTL_SECONDS = 600;
+const AUTH_ENTRY_RATE_WINDOW_MS = 60 * 1000;
+const AUTH_ENTRY_RATE_MAX = 60;
+const authEntryRateBuckets = new Map();
 
 function getRequestCookie(req, name) {
   const target = `${name}=`;
@@ -287,6 +294,323 @@ async function parseJsonBody(req) {
   if (!trimmedBody) return null;
   return JSON.parse(trimmedBody);
 }
+
+function isAuthEntryRoute(pathname) {
+  return pathname === '/api/line-id-token/verify'
+    || pathname === '/api/auth-entry/sessions'
+    || pathname === '/api/auth-entry/sessions/consume';
+}
+
+function isAuthEntryRateLimited(req) {
+  const key = String(req.socket?.remoteAddress || 'unknown');
+  const now = Date.now();
+  const current = authEntryRateBuckets.get(key);
+  if (!current || current.resetAt <= now) {
+    authEntryRateBuckets.set(key, { count: 1, resetAt: now + AUTH_ENTRY_RATE_WINDOW_MS });
+    return false;
+  }
+  if (current.count >= AUTH_ENTRY_RATE_MAX) return true;
+  current.count += 1;
+  return false;
+}
+
+async function readLimitedBodyBuffer(req, maxBytes) {
+  return await new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        fail(Object.assign(new Error('Request body too large.'), { code: 'BODY_TOO_LARGE' }));
+        req.resume();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks));
+    });
+    req.on('error', fail);
+  });
+}
+
+async function readAuthEntryBody(req) {
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (Number.isFinite(contentLength) && contentLength > AUTH_ENTRY_BODY_LIMIT_BYTES) {
+    const error = new Error('Request body too large.');
+    error.code = 'BODY_TOO_LARGE';
+    throw error;
+  }
+  const buffer = await readLimitedBodyBuffer(req, AUTH_ENTRY_BODY_LIMIT_BYTES);
+  if (!buffer.length) return null;
+  try {
+    return JSON.parse(normalizeJsonText(buffer.toString('utf8'), ''));
+  } catch {
+    const error = new Error('Invalid JSON.');
+    error.code = 'INVALID_JSON';
+    throw error;
+  }
+}
+
+function sendAuthEntryJson(res, statusCode, data) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  sendJson(res, statusCode, data);
+}
+
+async function createUatAuthEntrySession({ handoffToken, browserId, tabSessionId }) {
+  if (!isSupabaseConfigured()) return null;
+  const sessionId = createHandoffToken();
+  const rows = await supabaseRpc('create_uat_line_auth_entry_session', {
+    p_session_id: sessionId,
+    p_browser_id: browserId,
+    p_tab_session_id: tabSessionId,
+    p_handoff_token: handoffToken,
+    p_ttl_seconds: AUTH_ENTRY_SESSION_TTL_SECONDS
+  });
+  const session = Array.isArray(rows) ? rows[0] : null;
+  if (!session?.session_id || !session?.expires_at) return null;
+  return { sessionId: session.session_id, expiresAt: session.expires_at };
+}
+
+async function consumeUatAuthEntrySession({ sessionId, browserId, tabSessionId }) {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const rows = await supabaseRpc('consume_uat_line_auth_entry_session', {
+      p_session_id: sessionId,
+      p_browser_id: browserId,
+      p_tab_session_id: tabSessionId
+    });
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return row?.payload && typeof row.payload === 'object' ? row.payload : null;
+  } catch {
+    return null;
+  }
+}
+
+async function handleAuthEntryRequest(req, res, pathname) {
+  if (isAuthEntryRateLimited(req)) {
+    sendAuthEntryJson(res, 429, { error: 'Too many requests.' });
+    return true;
+  }
+
+  if (!isAllowedUatOriginRequest(req)) {
+    sendAuthEntryJson(res, 403, { error: 'UAT origin required.' });
+    return true;
+  }
+
+  if (String(req.headers['x-uat-auth-entry'] || '') !== '1') {
+    sendAuthEntryJson(res, 403, { error: 'Request not permitted.' });
+    return true;
+  }
+
+  if (req.method !== 'POST') {
+    sendAuthEntryJson(res, 405, { error: 'Method not allowed.' });
+    return true;
+  }
+
+  let body;
+  try {
+    body = await readAuthEntryBody(req);
+  } catch (error) {
+    const status = error?.code === 'BODY_TOO_LARGE' ? 413 : 400;
+    sendAuthEntryJson(res, status, { error: status === 413 ? 'Request too large.' : 'Invalid request.' });
+    return true;
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    sendAuthEntryJson(res, 400, { error: 'Invalid request.' });
+    return true;
+  }
+
+  const expectedChannelId = getUatLineChannelId();
+  if (!expectedChannelId) {
+    sendAuthEntryJson(res, 503, { error: 'Verification unavailable.' });
+    return true;
+  }
+
+  if (pathname === '/api/line-id-token/verify') {
+    if (!isValidIdTokenShape(body.idToken)) {
+      sendAuthEntryJson(res, 400, { verified: false });
+      return true;
+    }
+    const result = await verifyUatLineIdToken(body.idToken, { clientId: expectedChannelId });
+    sendAuthEntryJson(res, result.verified ? 200 : 401, result.verified ? { verified: true } : { verified: false });
+    return true;
+  }
+
+  if (pathname === '/api/auth-entry/sessions') {
+    const handoffToken = String(body.handoffToken || '').trim();
+    const browserId = String(body.browserId || '').trim();
+    const tabSessionId = String(body.tabSessionId || '').trim();
+    if (!HANDOFF_TOKEN_PATTERN.test(handoffToken)
+      || !HANDOFF_TOKEN_PATTERN.test(browserId)
+      || !HANDOFF_TOKEN_PATTERN.test(tabSessionId)) {
+      sendAuthEntryJson(res, 400, { error: 'Invalid request.' });
+      return true;
+    }
+    try {
+      const result = await createUatAuthEntrySession({ handoffToken, browserId, tabSessionId });
+      if (!result) {
+        sendAuthEntryJson(res, 409, { error: 'Session unavailable.' });
+        return true;
+      }
+      sendAuthEntryJson(res, 201, result);
+    } catch {
+      sendAuthEntryJson(res, 503, { error: 'Session storage unavailable.' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/auth-entry/sessions/consume') {
+    const idToken = String(body.idToken || '');
+    const sessionId = String(body.sessionId || '').trim();
+    const browserId = String(body.browserId || '').trim();
+    const tabSessionId = String(body.tabSessionId || '').trim();
+    if (!isValidIdTokenShape(idToken)
+      || !HANDOFF_TOKEN_PATTERN.test(sessionId)
+      || !HANDOFF_TOKEN_PATTERN.test(browserId)
+      || !HANDOFF_TOKEN_PATTERN.test(tabSessionId)) {
+      sendAuthEntryJson(res, 400, { error: 'Invalid request.' });
+      return true;
+    }
+
+    const verification = await verifyUatLineIdToken(idToken, { clientId: expectedChannelId });
+    if (!verification.verified) {
+      sendAuthEntryJson(res, 401, { ok: false });
+      return true;
+    }
+
+    const payload = await consumeUatAuthEntrySession({ sessionId, browserId, tabSessionId });
+    if (!payload?.designSnapshot || Number(payload.targetStep) !== 2) {
+      sendAuthEntryJson(res, 404, { ok: false });
+      return true;
+    }
+
+    sendAuthEntryJson(res, 200, {
+      ok: true,
+      targetStep: 2,
+      snapshot: payload.designSnapshot,
+      journeyId: payload.journeyId || '',
+      analyticsContinuity: payload.analyticsContinuity || null
+    });
+    return true;
+  }
+
+  sendAuthEntryJson(res, 404, { error: 'Not found.' });
+  return true;
+}
+
+function setAuthEntryBrowserCookie(res, browserId) {
+  res.setHeader('Set-Cookie', `${AUTH_ENTRY_COOKIE}=${browserId}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
+}
+
+async function handleBrowserAuthEntryRequest(req, res, pathname) {
+  if (isAuthEntryRateLimited(req)) {
+    sendAuthEntryJson(res, 429, { error: 'Too many requests.' });
+    return true;
+  }
+  if (!isAllowedUatOriginRequest(req)) {
+    sendAuthEntryJson(res, 403, { error: 'UAT origin required.' });
+    return true;
+  }
+  if (String(req.headers['x-uat-auth-entry'] || '') !== '1') {
+    sendAuthEntryJson(res, 403, { error: 'Request not permitted.' });
+    return true;
+  }
+  if (req.method !== 'POST') {
+    sendAuthEntryJson(res, 405, { error: 'Method not allowed.' });
+    return true;
+  }
+
+  let body;
+  try {
+    body = await readAuthEntryBody(req);
+  } catch (error) {
+    const status = error?.code === 'BODY_TOO_LARGE' ? 413 : 400;
+    sendAuthEntryJson(res, status, { error: status === 413 ? 'Request too large.' : 'Invalid request.' });
+    return true;
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    sendAuthEntryJson(res, 400, { error: 'Invalid request.' });
+    return true;
+  }
+
+  const expectedChannelId = getUatLineChannelId();
+  if (!expectedChannelId) {
+    sendAuthEntryJson(res, 503, { error: 'Verification unavailable.' });
+    return true;
+  }
+
+  if (pathname === '/api/line-auth-entry') {
+    const handoffToken = String(body.handoffToken || '').trim();
+    const tabSessionId = String(body.tabSessionId || '').trim();
+    if (!HANDOFF_TOKEN_PATTERN.test(handoffToken) || !HANDOFF_TOKEN_PATTERN.test(tabSessionId)) {
+      sendAuthEntryJson(res, 400, { error: 'Invalid request.' });
+      return true;
+    }
+    let browserId = getRequestCookie(req, AUTH_ENTRY_COOKIE);
+    if (!HANDOFF_TOKEN_PATTERN.test(browserId)) browserId = createHandoffToken();
+    setAuthEntryBrowserCookie(res, browserId);
+    try {
+      const result = await createUatAuthEntrySession({ handoffToken, browserId, tabSessionId });
+      if (!result) {
+        sendAuthEntryJson(res, 409, { error: 'Session unavailable.' });
+        return true;
+      }
+      sendAuthEntryJson(res, 201, result);
+    } catch {
+      sendAuthEntryJson(res, 503, { error: 'Session storage unavailable.' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/line-auth-consume') {
+    const idToken = String(body.idToken || '');
+    const sessionId = String(body.sessionId || '').trim();
+    const tabSessionId = String(body.tabSessionId || '').trim();
+    const browserId = getRequestCookie(req, AUTH_ENTRY_COOKIE);
+    if (!isValidIdTokenShape(idToken)
+      || !HANDOFF_TOKEN_PATTERN.test(sessionId)
+      || !HANDOFF_TOKEN_PATTERN.test(tabSessionId)
+      || !HANDOFF_TOKEN_PATTERN.test(browserId)) {
+      sendAuthEntryJson(res, 400, { ok: false });
+      return true;
+    }
+
+    const verification = await verifyUatLineIdToken(idToken, { clientId: expectedChannelId });
+    if (!verification.verified) {
+      sendAuthEntryJson(res, 401, { ok: false });
+      return true;
+    }
+
+    const payload = await consumeUatAuthEntrySession({ sessionId, browserId, tabSessionId });
+    if (!payload?.designSnapshot || Number(payload.targetStep) !== 2) {
+      sendAuthEntryJson(res, 404, { ok: false });
+      return true;
+    }
+    sendAuthEntryJson(res, 200, {
+      ok: true,
+      targetStep: 2,
+      snapshot: payload.designSnapshot,
+      journeyId: payload.journeyId || '',
+      analyticsContinuity: payload.analyticsContinuity || null
+    });
+    return true;
+  }
+
+  sendAuthEntryJson(res, 404, { error: 'Not found.' });
+  return true;
+}
+
 
 function nextRandomOrderId() {
   return `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -3593,6 +3917,14 @@ async function handleApiRequest(req, res, urlObj) {
       error: 'UAT fixture backend allows only catalog/settings fixture routes.'
     });
     return true;
+  }
+
+  if (pathname === '/api/line-auth-entry' || pathname === '/api/line-auth-consume') {
+    return await handleBrowserAuthEntryRequest(req, res, pathname);
+  }
+
+  if (isAuthEntryRoute(pathname)) {
+    return await handleAuthEntryRequest(req, res, pathname);
   }
 
   if (pathname === "/api/line/webhook" && method === "POST") {

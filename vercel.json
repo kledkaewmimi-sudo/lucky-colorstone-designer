@@ -17,6 +17,14 @@
       "dest": "/api/liff-config.js"
     },
     {
+      "src": "/api/line-auth-entry",
+      "dest": "/api/line-auth-entry.js"
+    },
+    {
+      "src": "/api/line-auth-consume",
+      "dest": "/api/line-auth-consume.js"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "https://lucky-colorstone-uat.onrender.com/api/$1"
     },
