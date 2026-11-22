@@ -301,6 +301,61 @@ function isAuthEntryRoute(pathname) {
     || pathname === '/api/auth-entry/sessions/consume';
 }
 
+const INSTAGRAM_ANDROID_ESCAPE_ROUTES = new Set([
+  '/ig-android-escape',
+  '/ig-android-chrome-escape'
+]);
+const INSTAGRAM_ESCAPE_CAMPAIGN_KEY = /^(utm_[a-z0-9_]+|fbclid|gclid|gbraid|wbraid|ref)$/i;
+
+function readInstagramEscapeDestination(search) {
+  const destination = new URL('/', UAT_ALLOWED_ORIGIN);
+  const safeParams = new URLSearchParams();
+  for (const [key, value] of new URLSearchParams(search || '')) {
+    if (INSTAGRAM_ESCAPE_CAMPAIGN_KEY.test(key)) safeParams.append(key, value);
+  }
+  destination.search = safeParams.toString();
+  return destination.toString();
+}
+
+function buildAndroidChromeIntentUrl(targetUrl) {
+  const url = new URL(targetUrl);
+  return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url.toString())};end`;
+}
+
+function buildGoogleChromeNavigateUrl(targetUrl) {
+  return `googlechrome://navigate?url=${encodeURIComponent(targetUrl)}`;
+}
+
+function isInstagramAndroidUserAgent(req) {
+  const userAgent = String(req?.headers?.['user-agent'] || '');
+  return /Instagram/i.test(userAgent) && /Android/i.test(userAgent);
+}
+
+function handleInstagramAndroidEscape(req, res, urlObj) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    sendJson(res, 405, { error: 'Method Not Allowed' });
+    return true;
+  }
+  if (!isInstagramAndroidUserAgent(req)) {
+    sendJson(res, 400, { error: 'Instagram Android user agent required' });
+    return true;
+  }
+
+  const destination = readInstagramEscapeDestination(urlObj.search);
+  const location = urlObj.pathname === '/ig-android-chrome-escape'
+    ? buildGoogleChromeNavigateUrl(destination)
+    : buildAndroidChromeIntentUrl(destination);
+
+  res.writeHead(302, {
+    Location: location,
+    'Cache-Control': 'no-store, max-age=0',
+    'Referrer-Policy': 'no-referrer'
+  });
+  res.end();
+  return true;
+}
+
 function isAuthEntryRateLimited(req) {
   const key = String(req.socket?.remoteAddress || 'unknown');
   const now = Date.now();
@@ -4971,6 +5026,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+    if (INSTAGRAM_ANDROID_ESCAPE_ROUTES.has(urlObj.pathname)) {
+      handleInstagramAndroidEscape(req, res, urlObj);
+      return;
+    }
 
     if (urlObj.pathname.startsWith("/api/")) {
       try {

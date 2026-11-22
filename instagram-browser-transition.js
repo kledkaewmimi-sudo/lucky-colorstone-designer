@@ -28,6 +28,10 @@ export function buildAndroidChromeIntent(targetUrl) {
   return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
 }
 
+export function buildGoogleChromeUrl(targetUrl) {
+  return `googlechrome://navigate?url=${encodeURIComponent(targetUrl)}`;
+}
+
 export function buildInstagramExternalBrowserUrl(targetUrl) {
   return `instagram://extbrowser/?url=${encodeURIComponent(targetUrl)}`;
 }

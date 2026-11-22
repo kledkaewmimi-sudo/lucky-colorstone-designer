@@ -25,7 +25,7 @@ import { createLumiUi } from './lumi/ui/lumi-ui.js';
 import { createLumiAnalytics } from './lumi/analytics/lumi-analytics.js';
 import { STEP3_ALL_CATEGORY, STEP3_GOAL_CATEGORIES, stoneMatchesGoalCategory } from './lumi/knowledge/stone-goal-taxonomy.js';
 import { isDiscontinuedMaterial } from './lumi/knowledge/discontinued-materials.js';
-import { detectBrowserContext, buildExternalDestination, buildAndroidChromeIntent, buildInstagramExternalBrowserUrl } from './instagram-browser-transition.js';
+import { detectBrowserContext, buildExternalDestination, buildAndroidChromeIntent, buildGoogleChromeUrl, buildInstagramExternalBrowserUrl } from './instagram-browser-transition.js';
 
 // These photo assets already include their own natural edge treatment. Drawing the
 // generic SVG color stroke over them creates a visible halo in the bracelet ring.
@@ -1551,6 +1551,18 @@ function scheduleInstagramFallback(context, delayMs = 1600) {
   }, delayMs);
 }
 
+function getAndroidEscapeExperiment() {
+  const value = new URLSearchParams(window.location.search || '').get('android_escape');
+  return ['js-intent', '302-intent', '302-googlechrome', 'js-googlechrome'].includes(value)
+    ? value
+    : 'js-intent';
+}
+
+function buildAndroidEscapeEndpoint(path, targetUrl) {
+  const campaignSearch = new URL(targetUrl).search || '';
+  return `${path}${campaignSearch}`;
+}
+
 function attemptInstagramExternalBrowser(context, { retry = false } = {}) {
   const targetUrl = getInstagramTransitionDestination();
   if (!targetUrl) {
@@ -1563,10 +1575,19 @@ function attemptInstagramExternalBrowser(context, { retry = false } = {}) {
   } catch {
     // If storage is blocked, the in-page timer still prevents repeated attempts.
   }
-  trackUatEvent('external_browser_launch_attempted', { platform: context.platform, browser: 'instagram', automatic: !retry, retry }, { stageKey: retry ? 'instagram_external_retry' : 'instagram_external_auto_launch' });
+  const androidExperiment = context.platform === 'android' ? getAndroidEscapeExperiment() : null;
+  trackUatEvent('external_browser_launch_attempted', { platform: context.platform, browser: 'instagram', automatic: !retry, retry, androidExperiment }, { stageKey: retry ? 'instagram_external_retry' : 'instagram_external_auto_launch' });
 
   if (context.platform === 'android') {
-    window.location.href = buildAndroidChromeIntent(targetUrl);
+    if (androidExperiment === '302-intent') {
+      window.location.href = buildAndroidEscapeEndpoint('/ig-android-escape', targetUrl);
+    } else if (androidExperiment === '302-googlechrome') {
+      window.location.href = buildAndroidEscapeEndpoint('/ig-android-chrome-escape', targetUrl);
+    } else if (androidExperiment === 'js-googlechrome') {
+      window.location.href = buildGoogleChromeUrl(targetUrl);
+    } else {
+      window.location.href = buildAndroidChromeIntent(targetUrl);
+    }
   } else if (context.platform === 'ios') {
     // Best-effort Instagram-specific scheme. This is not an officially
     // supported Apple API and must never be described as guaranteed.

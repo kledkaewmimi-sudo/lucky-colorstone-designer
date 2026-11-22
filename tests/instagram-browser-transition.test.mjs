@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildAndroidChromeIntent,
   buildExternalDestination,
+  buildGoogleChromeUrl,
   buildInstagramExternalBrowserUrl,
   detectBrowserContext
 } from '../instagram-browser-transition.js';
@@ -54,4 +55,11 @@ test('iOS automatic escape uses the Instagram external-browser URL with an encod
   const escapeUrl = buildInstagramExternalBrowserUrl(target);
   assert.equal(escapeUrl, `instagram://extbrowser/?url=${encodeURIComponent(target)}`);
   assert.match(escapeUrl, /^instagram:\/\/extbrowser\/\?url=https%3A%2F%2Fuat\.customize\.luckycolorstone\.com%2F/);
+});
+
+test('Google Chrome deep link preserves the encoded UAT destination', () => {
+  const target = 'https://uat.customize.luckycolorstone.com/?utm_source=instagram&utm_campaign=experiment';
+  const chromeUrl = buildGoogleChromeUrl(target);
+  assert.equal(chromeUrl, `googlechrome://navigate?url=${encodeURIComponent(target)}`);
+  assert.match(chromeUrl, /^googlechrome:\/\/navigate\?url=https%3A%2F%2Fuat\.customize\.luckycolorstone\.com%2F/);
 });

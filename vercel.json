@@ -29,6 +29,14 @@
       "dest": "/api/line-auth-consume.js"
     },
     {
+      "src": "/ig-android-escape",
+      "dest": "https://lucky-colorstone-uat.onrender.com/ig-android-escape"
+    },
+    {
+      "src": "/ig-android-chrome-escape",
+      "dest": "https://lucky-colorstone-uat.onrender.com/ig-android-chrome-escape"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "https://lucky-colorstone-uat.onrender.com/api/$1"
     },
