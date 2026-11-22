@@ -504,3 +504,4 @@ test('Instagram iOS automatically attempts the Instagram external-browser scheme
     await server.close();
   }
 });
+
