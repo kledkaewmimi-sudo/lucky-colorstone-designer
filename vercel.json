@@ -17,6 +17,10 @@
       "dest": "/api/liff-config.js"
     },
     {
+      "src": "/line-auth-entry",
+      "dest": "/line-auth-entry.html"
+    },
+    {
       "src": "/api/line-auth-entry",
       "dest": "/api/line-auth-entry.js"
     },
