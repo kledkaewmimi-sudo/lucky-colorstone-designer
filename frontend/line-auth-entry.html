@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="referrer" content="same-origin">
+  <title>LINE Login — Lucky Colorstone</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f7f1e8;
+      color: #2d251f;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(88vw, 360px);
+      padding: 32px 24px;
+      border-radius: 24px;
+      background: #fffdf9;
+      box-shadow: 0 18px 50px rgba(80, 55, 35, 0.12);
+      text-align: center;
+    }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      margin: 0 auto 18px;
+      border: 3px solid #eadfd2;
+      border-top-color: #06c755;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p { margin: 0 0 20px; color: #6f6258; line-height: 1.55; }
+    a { color: #2d251f; font-weight: 600; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  </style>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+  <main>
+    <div class="spinner" aria-hidden="true"></div>
+    <h1>กำลังเชื่อมต่อ LINE</h1>
+    <p id="status">กรุณารอสักครู่ ระบบกำลังพาคุณกลับไปยังแบบกำไลของคุณ</p>
+    <a id="fallback" href="/" hidden>กลับไปหน้าออกแบบ</a>
+  </main>
+  <script type="module" src="/line-auth-entry.js"></script>
+</body>
+</html>

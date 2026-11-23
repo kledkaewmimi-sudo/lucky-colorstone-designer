@@ -1,0 +1,41 @@
+{
+  "buildCommand": "",
+  "framework": null,
+  "routes": [
+    {
+      "src": "^/$",
+      "has": [
+        {
+          "type": "host",
+          "value": "customize.luckycolorstone.com"
+        }
+      ],
+      "dest": "/index.html"
+    },
+    {
+      "src": "^/$",
+      "has": [
+        {
+          "type": "host",
+          "value": "crm.luckycolorstone.com"
+        }
+      ],
+      "dest": "/crm.html"
+    },
+    {
+      "src": "/line-auth-entry",
+      "dest": "/line-auth-entry.html"
+    },
+    {
+      "src": "/api/liff-config",
+      "dest": "/api/liff-config.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "https://lucky-colorstone-designer.onrender.com/api/$1"
+    },
+    {
+      "handle": "filesystem"
+    }
+  ]
+}

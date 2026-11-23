@@ -1,0 +1,44 @@
+.planner-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 15px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  background: #f3e8fb;
+  color: #4f3260;
+  box-shadow: 0 8px 20px rgba(92, 58, 109, 0.08);
+  font-family: var(--font-ui-thai), sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.planner-banner[hidden] {
+  display: none !important;
+}
+
+.planner-banner__spark {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.planner-banner__text {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .planner-banner {
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 13px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+}

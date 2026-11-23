@@ -1,0 +1,324 @@
+-- Lucky Colorstone Supabase schema
+-- JSONB-first tables preserve the current app payload shapes while allowing
+-- selected fields to be indexed for common CRM/customer queries.
+
+create extension if not exists pgcrypto;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create table if not exists public.catalog_stones (
+  id text primary key,
+  payload jsonb not null,
+  category_id text,
+  display_order int default 0,
+  in_stock boolean default true,
+  is_active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.catalog_charms (
+  id text primary key,
+  payload jsonb not null,
+  category_id text,
+  display_order int default 0,
+  in_stock boolean default true,
+  is_active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.catalog_spacers (
+  id text primary key,
+  payload jsonb not null,
+  display_order int default 0,
+  in_stock boolean default true,
+  is_active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.catalog_categories (
+  id text primary key,
+  entity_type text not null,
+  slug text,
+  name_en text,
+  name_th text,
+  display_order int default 0,
+  is_active boolean default true,
+  payload jsonb not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.catalog_layout_order (
+  key text primary key default 'default',
+  value jsonb not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.orders (
+  id text primary key,
+  status text,
+  customer_name text,
+  line_user_id text,
+  stripe_checkout_session_id text unique,
+  stripe_payment_status text,
+  net_price numeric,
+  final_price numeric,
+  total_price numeric,
+  payload jsonb not null,
+  date timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.stone_purchase_entries (
+  id uuid primary key default gen_random_uuid(),
+  purchased_at date not null default current_date,
+  stone_id text not null references public.catalog_stones(id),
+  stone_name_snapshot text not null,
+  size_mm int not null check (size_mm in (4, 6, 10)),
+  quantity int not null check (quantity > 0),
+  total_cost numeric(12,2) not null check (total_cost >= 0),
+  unit_cost numeric(12,4) not null check (unit_cost >= 0),
+  supplier text,
+  note text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Safe additive migration: retain every historical stone purchase while allowing
+-- Purchases to record stones, charms, spacers, and free-text operational supplies.
+-- catalog_item_id is deliberately polymorphic; do not add a single-table foreign key.
+alter table public.stone_purchase_entries add column if not exists item_type text default 'stone';
+alter table public.stone_purchase_entries add column if not exists catalog_item_id text;
+alter table public.stone_purchase_entries add column if not exists item_name_snapshot text;
+alter table public.stone_purchase_entries alter column stone_id drop not null;
+alter table public.stone_purchase_entries alter column stone_name_snapshot drop not null;
+alter table public.stone_purchase_entries alter column size_mm drop not null;
+update public.stone_purchase_entries
+set item_type = coalesce(item_type, 'stone'),
+    catalog_item_id = coalesce(catalog_item_id, stone_id),
+    item_name_snapshot = coalesce(item_name_snapshot, stone_name_snapshot)
+where item_type is null or catalog_item_id is null or item_name_snapshot is null;
+alter table public.stone_purchase_entries alter column item_type set not null;
+alter table public.stone_purchase_entries alter column item_name_snapshot set not null;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_item_type_check') then
+    alter table public.stone_purchase_entries add constraint stone_purchase_entries_item_type_check check (item_type in ('stone', 'charm', 'spacer', 'other'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_item_reference_check') then
+    alter table public.stone_purchase_entries add constraint stone_purchase_entries_item_reference_check check ((item_type = 'other' and catalog_item_id is null) or (item_type <> 'other' and catalog_item_id is not null));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'stone_purchase_entries_item_size_check') then
+    alter table public.stone_purchase_entries add constraint stone_purchase_entries_item_size_check check ((item_type = 'stone' and size_mm in (4, 6, 10)) or (item_type <> 'stone' and size_mm is null));
+  end if;
+end;
+$$;
+
+create table if not exists public.analytics_sessions (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null unique,
+  visitor_id text,
+  line_user_id text,
+  first_source text,
+  first_medium text,
+  first_campaign text,
+  referrer text,
+  landing_url text,
+  platform_guess text,
+  started_at timestamptz default now(),
+  last_seen_at timestamptz default now(),
+  current_step int,
+  order_id text,
+  converted boolean default false,
+  revenue numeric default 0,
+  user_agent text
+);
+
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  event_name text not null,
+  step int,
+  properties jsonb default '{}'::jsonb,
+  url text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.analytics_errors (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  error_type text,
+  message text,
+  stack text,
+  source text,
+  step int,
+  url text,
+  properties jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+-- Catalog lookup and ordering indexes.
+create index if not exists idx_catalog_stones_category_order
+  on public.catalog_stones (category_id, display_order);
+create index if not exists idx_catalog_stones_active_stock
+  on public.catalog_stones (is_active, in_stock);
+create index if not exists idx_catalog_stones_payload_gin
+  on public.catalog_stones using gin (payload);
+
+create index if not exists idx_catalog_charms_category_order
+  on public.catalog_charms (category_id, display_order);
+create index if not exists idx_catalog_charms_active_stock
+  on public.catalog_charms (is_active, in_stock);
+create index if not exists idx_catalog_charms_payload_gin
+  on public.catalog_charms using gin (payload);
+
+create index if not exists idx_catalog_spacers_order
+  on public.catalog_spacers (display_order);
+create index if not exists idx_catalog_spacers_active_stock
+  on public.catalog_spacers (is_active, in_stock);
+create index if not exists idx_catalog_spacers_payload_gin
+  on public.catalog_spacers using gin (payload);
+
+create index if not exists idx_catalog_categories_type_order
+  on public.catalog_categories (entity_type, display_order);
+create index if not exists idx_catalog_categories_active
+  on public.catalog_categories (is_active);
+create index if not exists idx_catalog_categories_payload_gin
+  on public.catalog_categories using gin (payload);
+
+-- Order lookup indexes for CRM, Stripe idempotency, LINE user lookup, and recent orders.
+create index if not exists idx_orders_status_date
+  on public.orders (status, date desc);
+create index if not exists idx_orders_line_user_id
+  on public.orders (line_user_id);
+create index if not exists idx_orders_created_at
+  on public.orders (created_at desc);
+create index if not exists idx_orders_payload_gin
+  on public.orders using gin (payload);
+create index if not exists idx_stone_purchase_entries_date
+  on public.stone_purchase_entries (purchased_at desc, created_at desc);
+create index if not exists idx_stone_purchase_entries_stone_size
+  on public.stone_purchase_entries (stone_id, size_mm);
+create index if not exists idx_stone_purchase_entries_type_date
+  on public.stone_purchase_entries (item_type, purchased_at desc);
+create index if not exists idx_stone_purchase_entries_catalog_item
+  on public.stone_purchase_entries (catalog_item_id, size_mm);
+
+-- Analytics indexes for CRM source, funnel, conversion, timing, and error summaries.
+create index if not exists idx_analytics_sessions_last_seen
+  on public.analytics_sessions (last_seen_at desc);
+create index if not exists idx_analytics_sessions_source
+  on public.analytics_sessions (first_source);
+create index if not exists idx_analytics_sessions_visitor_id_started_at
+  on public.analytics_sessions (visitor_id, started_at desc)
+  where visitor_id is not null;
+create index if not exists idx_analytics_sessions_converted
+  on public.analytics_sessions (converted, order_id);
+create index if not exists idx_analytics_events_name_created
+  on public.analytics_events (event_name, created_at desc);
+create index if not exists idx_analytics_events_session
+  on public.analytics_events (session_id);
+create index if not exists idx_analytics_events_properties_gin
+  on public.analytics_events using gin (properties);
+create index if not exists idx_analytics_errors_created
+  on public.analytics_errors (created_at desc);
+create index if not exists idx_analytics_errors_session
+  on public.analytics_errors (session_id);
+create index if not exists idx_analytics_errors_properties_gin
+  on public.analytics_errors using gin (properties);
+
+-- Settings tables are small, but payload/value GIN indexes help future JSON filters.
+create index if not exists idx_app_settings_value_gin
+  on public.app_settings using gin (value);
+create index if not exists idx_catalog_layout_order_value_gin
+  on public.catalog_layout_order using gin (value);
+
+-- Keep updated_at current on every mutation.
+drop trigger if exists set_catalog_stones_updated_at on public.catalog_stones;
+create trigger set_catalog_stones_updated_at
+before update on public.catalog_stones
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_catalog_charms_updated_at on public.catalog_charms;
+create trigger set_catalog_charms_updated_at
+before update on public.catalog_charms
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_catalog_spacers_updated_at on public.catalog_spacers;
+create trigger set_catalog_spacers_updated_at
+before update on public.catalog_spacers
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_catalog_categories_updated_at on public.catalog_categories;
+create trigger set_catalog_categories_updated_at
+before update on public.catalog_categories
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_app_settings_updated_at on public.app_settings;
+create trigger set_app_settings_updated_at
+before update on public.app_settings
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_catalog_layout_order_updated_at on public.catalog_layout_order;
+create trigger set_catalog_layout_order_updated_at
+before update on public.catalog_layout_order
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_orders_updated_at on public.orders;
+create trigger set_orders_updated_at
+before update on public.orders
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_stone_purchase_entries_updated_at on public.stone_purchase_entries;
+create trigger set_stone_purchase_entries_updated_at
+before update on public.stone_purchase_entries
+for each row execute function public.set_updated_at();
+
+-- Enable RLS now. Do not add public policies yet: the backend should access
+-- these tables with the Supabase service_role key in a trusted server runtime.
+alter table public.catalog_stones enable row level security;
+alter table public.catalog_charms enable row level security;
+alter table public.catalog_spacers enable row level security;
+alter table public.catalog_categories enable row level security;
+alter table public.app_settings enable row level security;
+alter table public.catalog_layout_order enable row level security;
+alter table public.orders enable row level security;
+alter table public.stone_purchase_entries enable row level security;
+alter table public.analytics_sessions enable row level security;
+alter table public.analytics_events enable row level security;
+alter table public.analytics_errors enable row level security;
+
+comment on table public.catalog_stones is 'Stone catalog records. payload preserves the current JSON shape used by the customer app and CRM.';
+comment on table public.catalog_charms is 'Charm catalog records. payload preserves business fields and render tuning for later backend migration.';
+comment on table public.catalog_spacers is 'Spacer catalog records prepared for future CRM-backed spacer management.';
+comment on table public.catalog_categories is 'Managed catalog category records for stones, charms, and future catalog entity types.';
+comment on table public.app_settings is 'Application settings stored as JSONB key/value records.';
+comment on table public.catalog_layout_order is 'Catalog layout ordering for CRM/customer display surfaces.';
+comment on table public.orders is 'Customer order records. payload preserves the full current order object for compatibility.';
+comment on table public.stone_purchase_entries is 'Historical and current supplier purchase cost entries for stones, charms, spacers, and supplies. catalog_item_id is a logical polymorphic reference. Does not adjust inventory stock or selling prices.';
+comment on table public.analytics_sessions is 'First-party anonymous customer analytics sessions with attribution and conversion linkage.';
+comment on table public.analytics_events is 'First-party customer journey events for source, funnel, timing, and order analytics.';
+comment on table public.analytics_errors is 'Captured frontend/API/image analytics errors for launch monitoring.';
+
+comment on column public.orders.stripe_checkout_session_id is 'Unique Stripe Checkout session id used for idempotent order creation.';
+comment on column public.orders.payload is 'Full order payload from the existing JSON-backed API contract.';

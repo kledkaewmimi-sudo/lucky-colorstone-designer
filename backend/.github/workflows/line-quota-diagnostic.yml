@@ -1,0 +1,56 @@
+name: LINE Messaging API quota diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quota:
+    name: Read LINE monthly message quota
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+    steps:
+      - name: Query read-only quota endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const token = String(process.env.LINE_CHANNEL_ACCESS_TOKEN || '').trim();
+          if (!token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not configured.');
+          const base = 'https://api.line.me/v2/bot/message';
+          const redact = (value) => String(value ?? '')
+            .replace(/authorization\s*:\s*bearer\s+[^\s"']+/gi, 'Authorization: Bearer [redacted]')
+            .replace(/access_token=[^&\s"']+/gi, 'access_token=[redacted]');
+          async function get(path) {
+            const response = await fetch(`${base}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+            let body = {};
+            try { body = await response.json(); } catch {}
+            if (!response.ok) {
+              console.log(`${path} HTTP status: ${response.status}`);
+              console.log(`${path} error: ${redact(body.message || 'request failed')}`);
+              process.exitCode = 1;
+              return null;
+            }
+            return { status: response.status, body };
+          }
+          const quota = await get('/quota');
+          const consumption = await get('/quota/consumption');
+          if (!quota || !consumption) process.exit(1);
+          const quotaValue = quota.body.type === 'limited' ? quota.body.value : quota.body.type || quota.body.value || 'UNKNOWN';
+          const used = Number(consumption.body.totalUsage);
+          const numericQuota = Number(quotaValue);
+          const remaining = Number.isFinite(numericQuota) && Number.isFinite(used) ? numericQuota - used : null;
+          const percentage = Number.isFinite(numericQuota) && numericQuota > 0 && Number.isFinite(used) ? ((used / numericQuota) * 100).toFixed(2) : 'UNKNOWN';
+          const exhausted = remaining === null ? 'UNKNOWN' : remaining <= 0 ? 'YES' : 'NO';
+          console.log(`quota API HTTP status: ${quota.status}`);
+          console.log(`consumption API HTTP status: ${consumption.status}`);
+          console.log(`monthly quota: ${quotaValue}`);
+          console.log(`used: ${Number.isFinite(used) ? used : 'UNKNOWN'}`);
+          console.log(`remaining: ${remaining ?? 'UNKNOWN'}`);
+          console.log(`usage percentage: ${percentage}`);
+          console.log(`quota exhausted: ${exhausted}`);
+          NODE
