@@ -11,7 +11,7 @@ The candidate is frozen and locally verified. It is **not yet deployable to the 
 ## 1. Freeze verification
 
 ```text
-git HEAD:                 0f38265
+runtime freeze commit:    c068cbd (Phase 7 docs commit follows without runtime changes)
 git status:               clean
 candidate manifest:       5b55d61cc7156e57e8a08056737f54aef9ef79c8133960d3b26f23bf082fae02
 frontend files:           329 (327 baseline + 2 auth-entry files)
