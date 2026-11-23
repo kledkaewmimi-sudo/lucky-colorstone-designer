@@ -1,0 +1,15 @@
+Phase 7 candidate freeze verification
+date: 2026-11-23 Asia/Bangkok
+candidate: D:/Projects/lucky-colorstone-line-login-rc-20261123
+git_head: 0f38265
+manifest_sha256: 5b55d61cc7156e57e8a08056737f54aef9ef79c8133960d3b26f23bf082fae02
+frontend_files: 329
+backend_files: 506
+missing: 0
+mismatches: 0
+intentional_frontend_changed: app.js, vercel.json
+intentional_frontend_added: line-auth-entry.html, line-auth-entry.js
+intentional_backend_changed: server.js
+intentional_backend_added: production-line-auth-entry.js
+tests: 34 passed / 0 failed / 0 skipped (Phase 6 local log)
+production_uat_changes: none
