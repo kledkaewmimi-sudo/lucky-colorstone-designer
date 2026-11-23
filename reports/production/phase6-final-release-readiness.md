@@ -132,7 +132,7 @@ frontend/line-auth-entry.js                              595f372c801d848a53dfd4a
 backend/server.js                                        12fdc0ed9a343ce133e06e8ff2d891c59e5dfcaf7510a2a40afd0fffcba921e0
 backend/production-line-auth-entry.js                    90508e49f043d48daa88be342cdcc69f68495864fef0b3c393dca502872f15a6
 supabase/production/2026-11-23-line-auth-entry-sessions.sql 1044cbd886a69cc810ace891f270b0a4bbf2ab63d4126dca948a1f41744b53a1
-minimal-candidate-manifest.json                          0fc6ebf3532902da20d56fa17a4bd855e0d43f63118b96b2b5dbc5404d5190a5
+minimal-candidate-manifest.json                          5b55d61cc7156e57e8a08056737f54aef9ef79c8133960d3b26f23bf082fae02
 ```
 
 ## 4. Local vs UAT vs Production

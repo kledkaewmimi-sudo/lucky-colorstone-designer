@@ -4226,5 +4226,9 @@
     "passed": 34,
     "failed": 0,
     "skipped": 0
+  },
+  "sql": {
+    "path": "supabase/production/2026-11-23-line-auth-entry-sessions.sql",
+    "sha256": "1044cbd886a69cc810ace891f270b0a4bbf2ab63d4126dca948a1f41744b53a1"
   }
 }
