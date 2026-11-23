@@ -2731,6 +2731,7 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } =
       clearLiffLoginNavigationTimer();
       if (loader) loader.style.display = 'none';
       autoAuthEntryFailure = 'session';
+      lineIdentityFailureCode = 'AUTH_ENTRY_SESSION_FAILED';
       autoAuthEntryFallbackHandoff = initialHandoff;
       trackUatEvent('line_auth_failed', { reason: 'auth_entry_session_failed' }, { stageKey: `line_auth_${Date.now()}` });
       return false;
@@ -2756,6 +2757,7 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } =
     } else {
       autoAuthEntryFailure = 'handoff_create';
     }
+    lineIdentityFailureCode = autoAuthEntryFailure === 'session' ? 'AUTH_ENTRY_SESSION_FAILED' : 'HANDOFF_CREATE_FAILED';
     trackUatEvent('line_auth_failed', { reason: 'auth_entry_start_failed' }, { stageKey: `line_auth_${Date.now()}` });
     return false;
   }
@@ -3695,7 +3697,7 @@ async function openLineConnectEntryForCustomization({
 }
 
 async function requireLineLoginForCustomization(options = {}) {
-  const { showLandingPrompt = false, loginResumeStep = 1 } = options;
+  const { showLandingPrompt = false, loginResumeStep = 1, forceExplicit = false } = options;
   lineDebugTrace('REQUIRE_LINE_LOGIN_ENTER', { captureState: true });
   if (getRequestedOrderId() || State.orderDetailMode || State.paymentCompletedView) return true;
   // LINE identity is mandatory only for the existing mobile and LINE in-app flows.
@@ -3709,12 +3711,13 @@ async function requireLineLoginForCustomization(options = {}) {
       reason: lineIdentityFailureCode || 'F05E3'
     }),
     startLogin: async () => {
-      if (loginResumeStep === 2 && canUseAutoAuthEntryForCustomization()) {
+      if (loginResumeStep === 2 && !forceExplicit && canUseAutoAuthEntryForCustomization()) {
         const started = await startAutoAuthEntryForCustomization({ keepStep1Visible: true });
         if (started) return { started: true };
-        if (autoAuthEntryFailure === 'handoff_create') return { started: false };
-        // A failed auth-entry setup must fall through to the existing explicit
-        // LINE flow rather than trapping the customer at the boundary.
+        // Do not silently fall through to a second automatic LINE login after
+        // auth-entry setup fails. The Step 1 recovery action is the explicit
+        // fallback and is only shown after this genuine failure.
+        return { started: false, reason: autoAuthEntryFailure || 'auth_entry_start_failed' };
       }
       if (canUseLiffLoginFromCurrentBrowser()) {
         showToast("เข้าสู่ระบบด้วย LINE เพื่อเริ่มออกแบบกำไล");
@@ -3920,6 +3923,17 @@ function renderStep1AuthStatus() {
     return;
   }
 
+  // An eligible external mobile browser starts the auth-entry flow from Next.
+  // Keep the normal path free of a second primary login button. The explicit
+  // action is shown only after a genuine failure (state === 'failed').
+  if (canUseAutoAuthEntryForCustomization() && step1AuthState !== 'failed') {
+    container.hidden = true;
+    action.hidden = true;
+    container.removeAttribute('data-state');
+    text.textContent = '';
+    return;
+  }
+
   container.hidden = false;
   container.dataset.state = step1AuthState;
   if (step1AuthState === 'verifying') {
@@ -3952,6 +3966,32 @@ async function startProgressiveLineVerification() {
   }
   if (progressiveLineVerificationPromise) return progressiveLineVerificationPromise;
 
+  if (canUseAutoAuthEntryForCustomization()) {
+    // The normal eligible external-browser path has no second login button.
+    // Next starts auth-entry; keep Step 1 clean while the background LIFF
+    // bootstrap checks for an existing identity.
+    setStep1AuthStatus('idle');
+    progressiveLineVerificationPromise = (async () => {
+      const bootstrap = await startLineBootstrap();
+      if (isLineIdentityAvailable()) {
+        setStep1AuthStatus('verified');
+        return true;
+      }
+      if (!bootstrap?.ok) {
+        setStep1AuthStatus('failed');
+        return false;
+      }
+      setStep1AuthStatus('idle');
+      return false;
+    })().catch(() => {
+      setStep1AuthStatus('failed');
+      return false;
+    }).finally(() => {
+      if (step1AuthState !== 'verified') progressiveLineVerificationPromise = null;
+    });
+    return progressiveLineVerificationPromise;
+  }
+
   setStep1AuthStatus('verifying');
   progressiveLineVerificationPromise = (async () => {
     const bootstrap = await startLineBootstrap();
@@ -3970,7 +4010,7 @@ async function startProgressiveLineVerification() {
   return progressiveLineVerificationPromise;
 }
 
-async function ensureStep1LineAuthorization() {
+async function ensureStep1LineAuthorization({ explicitLogin = false } = {}) {
   if (!requiresLineLoginForCustomization()) return true;
   if (isLineIdentityAvailable()) {
     setStep1AuthStatus('verified');
@@ -3988,7 +4028,7 @@ async function ensureStep1LineAuthorization() {
     return true;
   }
   return withTimeout(
-    requireLineLoginForCustomization({ showLandingPrompt: true, loginResumeStep: 2 }),
+    requireLineLoginForCustomization({ showLandingPrompt: true, loginResumeStep: 2, forceExplicit: explicitLogin }),
     8000,
     'Step 1 LINE authorization'
   );
@@ -4026,7 +4066,7 @@ async function attemptStep1AuthorizationAndContinue({ explicitLogin = false } = 
   }, { stageKey: `line_auth_boundary_${Date.now()}` });
   setStep1AuthStatus('verifying');
   try {
-    const authorized = await ensureStep1LineAuthorization();
+    const authorized = await ensureStep1LineAuthorization({ explicitLogin });
     if (!authorized) {
       setStep1AuthStatus(liffLoginInProgress ? 'verifying' : (lineIdentityFailureCode ? 'failed' : 'required'));
       return false;

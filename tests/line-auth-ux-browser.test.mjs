@@ -24,6 +24,7 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml'
 };
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36';
 
 async function startFixtureServer({ handoffStatus = 201, authEntryStatus = 503, pendingStatus = 200, pendingPayload = null } = {}) {
   let handoffPosts = 0;
@@ -472,6 +473,93 @@ test('expired pending auth-entry fails closed instead of legacy Step 2 resume', 
     assert.equal(result.step2Visible, false, JSON.stringify(result));
     assert.equal(result.authState, 'failed', JSON.stringify(result));
     assert.equal(server.getAuthConsumePosts(), 0, JSON.stringify(result));
+    assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('eligible external mobile shows no second LINE button and Next starts one auth entry', async () => {
+  for (const userAgent of [ANDROID_UA, MOBILE_UA]) {
+    const server = await startFixtureServer({ authEntryStatus: 201 });
+    const browser = await chromium.launch({ headless: true });
+    let context;
+    try {
+      const pageSetup = await createPage(browser, server.origin, { userAgent });
+      context = pageSetup.context;
+      const { page, pageErrors } = pageSetup;
+      await page.evaluate(() => document.querySelector('#btnLandingLogin')?.click());
+      await page.locator('#stepView1.active').waitFor({ state: 'visible', timeout: 5000 });
+      const before = await page.evaluate(() => ({
+        lineButtonHidden: document.querySelector('#btnStep1LineConnect')?.hidden === true,
+        authHidden: document.querySelector('#step1AuthStatus')?.hidden === true,
+        step2Visible: document.querySelector('#stepView2')?.classList.contains('active') === true
+      }));
+      assert.equal(before.lineButtonHidden, true, JSON.stringify({ userAgent, before }));
+      assert.equal(before.authHidden, true, JSON.stringify({ userAgent, before }));
+      assert.equal(before.step2Visible, false, JSON.stringify({ userAgent, before }));
+
+      await page.locator('#wristSizeNext').click();
+      await page.evaluate(() => {
+        const next = document.querySelector('#btnNext');
+        next.click();
+        next.click();
+      });
+      await page.waitForTimeout(800);
+      assert.equal(server.getAuthEntryPosts(), 1, JSON.stringify({ userAgent, posts: server.getAuthEntryPosts() }));
+      const after = await page.evaluate(() => ({
+        step2Visible: document.querySelector('#stepView2')?.classList.contains('active') === true,
+        lineButtonHidden: document.querySelector('#btnStep1LineConnect')?.hidden === true
+      }));
+      assert.equal(after.step2Visible, false, JSON.stringify({ userAgent, after }));
+      assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
+    } finally {
+      await context?.close();
+      await browser.close();
+      await server.close();
+    }
+  }
+});
+
+test('failed auto auth-entry keeps Step 1 and exposes explicit recovery only after failure', async () => {
+  const server = await startFixtureServer({ authEntryStatus: 503 });
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    const pageSetup = await createPage(browser, server.origin, { userAgent: ANDROID_UA });
+    context = pageSetup.context;
+    const { page, pageErrors } = pageSetup;
+    await page.evaluate(() => document.querySelector('#btnLandingLogin')?.click());
+    await page.locator('#stepView1.active').waitFor({ state: 'visible', timeout: 5000 });
+    await page.locator('#wristSizeNext').click();
+    await page.evaluate(() => document.querySelector('#btnNext')?.click());
+    await page.waitForFunction(
+      () => document.querySelector('#step1AuthStatus')?.dataset.state === 'failed',
+      null,
+      { timeout: 5000 }
+    );
+    const failure = await page.evaluate(() => ({
+      step1Visible: document.querySelector('#stepView1')?.classList.contains('active') === true,
+      step2Visible: document.querySelector('#stepView2')?.classList.contains('active') === true,
+      lineButtonHidden: document.querySelector('#btnStep1LineConnect')?.hidden === true,
+      authText: document.querySelector('#step1AuthStatusText')?.textContent || ''
+    }));
+    assert.equal(failure.step1Visible, true, JSON.stringify(failure));
+    assert.equal(failure.step2Visible, false, JSON.stringify(failure));
+    assert.equal(failure.lineButtonHidden, false, JSON.stringify(failure));
+    assert.notEqual(failure.authText, '', JSON.stringify(failure));
+
+    await page.locator('#btnStep1LineConnect').click();
+    await page.waitForTimeout(500);
+    const recovery = await page.evaluate(() => ({
+      loginCalls: window.__lineUxTrace.loginCalls,
+      step2Visible: document.querySelector('#stepView2')?.classList.contains('active') === true
+    }));
+    assert.equal(recovery.loginCalls, 1, JSON.stringify(recovery));
+    assert.equal(recovery.step2Visible, false, JSON.stringify(recovery));
+    assert.equal(server.getAuthEntryPosts(), 1, JSON.stringify(recovery));
     assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
   } finally {
     await context?.close();

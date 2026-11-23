@@ -21,7 +21,8 @@ test('only the dedicated auth entry initializes with automatic login', () => {
 
 test('auth entry is restricted to UAT mobile external browser and boundary resume step 2', () => {
   assert.match(app, /function canUseAutoAuthEntryForCustomization\(\)/);
-  assert.match(app, /loginResumeStep === 2 && canUseAutoAuthEntryForCustomization\(\)/);
+  assert.match(app, /loginResumeStep === 2 && !forceExplicit && canUseAutoAuthEntryForCustomization\(\)/);
+  assert.match(app, /forceExplicit: explicitLogin/);
   assert.match(app, /isLikelyMobileBrowser\(\)/);
   assert.match(app, /AUTO_LOGIN_AT_BOUNDARY/);
   assert.match(app, /detectBrowserContext\(window\.navigator\.userAgent \|\| ''\)\.isInstagram/);
