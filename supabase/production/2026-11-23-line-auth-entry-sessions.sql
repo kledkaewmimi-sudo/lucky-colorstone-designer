@@ -71,6 +71,16 @@ begin
     return;
   end if;
 
+  -- A pending session that has passed its expiry still blocks the partial
+  -- unique index on (browser_id, tab_session_id). Remove only that expired,
+  -- unconsumed row so the same tab can retry immediately after expiry. Never
+  -- remove active or consumed sessions, or another tab's session.
+  delete from public.line_auth_entry_sessions s
+   where s.browser_id = p_browser_id
+     and s.tab_session_id = p_tab_session_id
+     and s.consumed_at is null
+     and s.expires_at <= now();
+
   insert into public.line_auth_entry_sessions (
     session_id, browser_id, tab_session_id, handoff_token, expires_at
   ) values (

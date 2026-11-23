@@ -4222,13 +4222,13 @@
   },
   "tests": {
     "command": "node --test tests/*.test.cjs",
-    "total": 34,
-    "passed": 34,
+    "total": 35,
+    "passed": 35,
     "failed": 0,
     "skipped": 0
   },
   "sql": {
     "path": "supabase/production/2026-11-23-line-auth-entry-sessions.sql",
-    "sha256": "1044cbd886a69cc810ace891f270b0a4bbf2ab63d4126dca948a1f41744b53a1"
+    "sha256": "e9205b1029ede9955bed6b67d80cfa3eef014ce1b59a13c711c51d12c518080f"
   }
 }

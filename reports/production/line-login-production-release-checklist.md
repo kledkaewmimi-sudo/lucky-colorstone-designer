@@ -46,7 +46,7 @@ The owner-confirmed channel ID matches the existing test channel used by the Pha
 | SECURITY DEFINER search path | **PASS with recommendation** | `search_path=public`; references qualified; consider `pg_catalog, public` |
 | One-time consume atomicity | **PASS design** | session + handoff updated in one function/transaction; replay returns not found |
 | Duplicate callback handling | **PASS local tests** | duplicate consume/expired tests pass |
-| Expiry retry after a pending session expired | **FAIL** | expired unconsumed row still blocks the partial unique index; cleanup waits 24 h |
+| Expiry retry after a pending session expired | **PASS locally** | expired unconsumed row for the same browser/tab is removed before insert; production not applied |
 | Local migration apply/repeat/rollback | **PASS local PostgreSQL 14.4** | prior local evidence; no Production execution |
 | Real-device LINE test | **NOT TESTED** | no device execution |
 | Live Production checkout/order/stock | **NOT TESTED** | preparation only |
@@ -88,30 +88,19 @@ supabase/production/2026-11-23-line-auth-entry-sessions.sql
 - Local apply twice and rollback passed on disposable PostgreSQL.
 - Rollback drops only auth-entry functions/table; existing handoffs/orders/payments/customers remain.
 
-### FAIL — expiry retry deadlock
+### FIXED — expiry retry
 
-`create_line_auth_entry_session` uses:
-
-```sql
-create unique index idx_line_auth_entry_one_pending_per_tab
-  on line_auth_entry_sessions (browser_id, tab_session_id)
-  where consumed_at is null;
-```
-
-An expired but unconsumed session still has `consumed_at IS NULL`, so it blocks a new session for the same browser/tab. The create function's `on conflict do nothing` returns no row, and cleanup only deletes after the retention window (default 24 hours). A retry after the 600-second session expiry can therefore be rejected for up to 24 hours.
-
-**Required fix before Production apply (owner review):**
+The local migration now removes only this row before insert:
 
 ```sql
--- Inside create_line_auth_entry_session, before the insert:
-delete from public.line_auth_entry_sessions
- where browser_id = p_browser_id
-   and tab_session_id = p_tab_session_id
-   and consumed_at is null
-   and expires_at <= now();
+delete from public.line_auth_entry_sessions s
+ where s.browser_id = p_browser_id
+   and s.tab_session_id = p_tab_session_id
+   and s.consumed_at is null
+   and s.expires_at <= now();
 ```
 
-This preserves the one-pending-per-tab rule for live sessions and permits a new attempt after expiry. It does not delete consumed sessions or handoffs. The patch must be reviewed and tested locally again; it is **not applied**.
+This permits an immediate retry after the previous session expires while retaining the partial unique index for active sessions. It does not remove consumed sessions, active sessions, other browser/tab sessions, or handoffs. The change is **local only and not applied to Production/UAT**.
 
 ### Recommendation
 
@@ -127,7 +116,7 @@ Apply only after owner approval and a backup:
 supabase/production/2026-11-23-line-auth-entry-sessions.sql
 ```
 
-plus the expiry-retry fix above.
+including the locally tested expiry-retry fix above; not applied.
 
 ### Render environment
 
@@ -188,11 +177,11 @@ No stock reservation, CSP/security rewrite, catalog change, or broad Phase 4/5 c
 
 ```text
 node --test tests/*.test.cjs
-Tests:    34
-Passed:   34
+Tests:    35
+Passed:   35
 Failed:   0
 Skipped:  0
-Duration: 6,504.60 ms
+Duration: 16,964.95 ms
 ```
 
 Local only: Step 1 Next -> LINE redirect contract, callback/session ownership, ID-token claims, duplicate/expiry, design restoration, no token in URL/storage, route ordering, full journey, commerce hashes.
@@ -201,8 +190,7 @@ Not tested: real Android/iPhone/Instagram/LINE in-client, live LINE token exchan
 
 ## 8. Deployment sequence — awaiting authorization
 
-1. Fix and locally re-test the expiry-retry SQL.
-2. Owner approves the final migration and records backup/rollback ownership.
+1. Owner approves the final migration and records backup/rollback ownership.
 3. Apply the auth migration to Production Supabase.
 4. Verify table, functions, RLS, grants, service_role bypass, and cleanup.
 5. Add `LINE_LOGIN_CHANNEL_ID=2010525799` to Production Render.
@@ -224,11 +212,10 @@ Not tested: real Android/iPhone/Instagram/LINE in-client, live LINE token exchan
 
 ## 10. Remaining owner decisions
 
-1. Approve the expiry-retry SQL fix and re-test.
-2. Approve the Production auth migration and backup plan.
+1. Approve the Production auth migration and backup plan.
 3. Approve adding `LINE_LOGIN_CHANNEL_ID=2010525799`.
 4. Approve Production backend/frontend deployment.
 5. Approve real-device and live commerce regression testing.
 6. Confirm the LINE Console endpoint/callback remains the existing root URL.
 
-**Final status: BLOCKED on the missing Production environment variable, absent auth schema, and the expiry-retry SQL fix. No external action was executed.**
+**Final status: BLOCKED on the missing Production environment variable, absent Production auth schema, and pending deployment/real-device authorization. The local expiry-retry fix is complete and tested; no external action was executed.**

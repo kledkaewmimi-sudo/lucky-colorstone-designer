@@ -1,0 +1,43 @@
+✔ CRM normal order renders, preserves Thai text, and exposes the workflow status control (2858.1562ms)
+✔ production candidate customer journey smoke: Landing -> Step 1 -> Step 2 -> Step 3 -> Step 4 (6328.7332ms)
+✔ LINE verifier rejects 4xx/5xx, malformed responses, network errors, and timeout without leaking the token (1016.821ms)
+✔ verify route rejects missing and malformed ID tokens, then accepts a valid retry (15.8154ms)
+✔ consume rejects missing token, malformed token, browser mismatch, and duplicate consume (4.1699ms)
+✔ auth-entry rejects an oversized body before storage and reports a 413 (1.2258ms)
+✔ rate limiting returns 429 and does not create a session for the blocked request (8.0485ms)
+✔ pending lookup is cookie-bound and expired sessions fail closed (2.8956ms)
+✔ client lifecycle is fail-closed for cancelled, closed, refreshed, back/forward, and retry paths (5.1883ms)
+✔ frontend has no UAT environment, origin, LIFF ID, or UAT auth header hardcode (4.3387ms)
+✔ production auth entry uses the production origin, Render host, cookie, and header (0.4479ms)
+✔ Next-only auto-entry is restricted to eligible external production mobile (0.3851ms)
+✔ pending auth-entry recovery happens before the legacy resume branch (0.3255ms)
+✔ identity token is sent to the server but never persisted in browser storage (0.424ms)
+✔ Vercel serves the extensionless auth-entry document before the API catch-all (0.2296ms)
+✔ analytics lifecycle names distinguish auth-entry from legacy source labels (2.6107ms)
+✔ production channel is explicit and never defaults to a UAT LIFF ID (2.7321ms)
+✔ ID token shape rejects empty, oversized, and malformed values (0.7926ms)
+✔ claims require exact issuer, audience, future expiry, sane iat, and subject (0.5373ms)
+✔ verifier accepts a valid LINE response and rejects bad responses without leaking tokens (21.7685ms)
+✔ auth-entry route fails closed without origin, request marker, or verifier config (4.7363ms)
+✔ auth-entry creates a session with a secure host cookie (23.3861ms)
+✔ pending lookup is cookie-bound and returns only opaque session metadata (3.6541ms)
+✔ expired pending session fails closed without touching a handoff (15.486ms)
+✔ replayed or browser-mismatched consume returns not found after valid token verification (6.1356ms)
+✔ slot/session constants do not include raw token or identity fields (3.3053ms)
+✔ auth-entry service RPC names have matching local migration wrappers (2.8702ms)
+✔ frontend catalog and CRM files remain byte-identical to the recovered Production baseline (6.5663ms)
+✔ existing Stripe, webhook, order, and stock functions remain byte-identical (3.7521ms)
+✔ minimal vercel config adds only the auth-entry route and no security-policy headers (0.9573ms)
+✔ Step 1 Next starts auth-entry, saves the design before redirect, and targets Step 2 (1.8115ms)
+✔ auth-entry success restores Step 2; failure returns to Step 1 without clearing saved design (0.8015ms)
+✔ browser entry uses a cookie-bound auth-entry page and never puts a token in the URL (1.3616ms)
+✔ auth session expiry retry and one-pending-session invariants (13547.548ms)
+✔ auth-entry return restores the verified snapshot directly into Step 2 without replaying Landing (1511.595ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16964.9493
