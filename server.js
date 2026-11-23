@@ -298,7 +298,8 @@ async function parseJsonBody(req) {
 function isAuthEntryRoute(pathname) {
   return pathname === '/api/line-id-token/verify'
     || pathname === '/api/auth-entry/sessions'
-    || pathname === '/api/auth-entry/sessions/consume';
+    || pathname === '/api/auth-entry/sessions/consume'
+    || pathname === '/api/auth-entry/sessions/pending';
 }
 
 const INSTAGRAM_ANDROID_ESCAPE_ROUTES = new Set([
@@ -451,9 +452,86 @@ async function consumeUatAuthEntrySession({ sessionId, browserId, tabSessionId }
   }
 }
 
+async function readUatAuthEntryPending({ browserId }) {
+  if (!isSupabaseConfigured() || !HANDOFF_TOKEN_PATTERN.test(browserId)) {
+    return { ok: true, pending: false };
+  }
+  try {
+    const rows = await supabaseRequest('uat_line_auth_entry_sessions', {
+      params: {
+        select: 'session_id,tab_session_id,expires_at,consumed_at',
+        browser_id: `eq.${browserId}`,
+        consumed_at: 'is.null',
+        order: 'created_at.desc',
+        limit: '1'
+      }
+    });
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) return { ok: true, pending: false };
+    if (row.consumed_at) return { ok: true, pending: false, consumed: true };
+    if (!HANDOFF_TOKEN_PATTERN.test(String(row.session_id || ''))
+      || !HANDOFF_TOKEN_PATTERN.test(String(row.tab_session_id || ''))) {
+      return { ok: true, pending: false };
+    }
+    const expiresAt = Date.parse(row.expires_at);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      return { ok: true, pending: false, expired: true };
+    }
+    return {
+      ok: true,
+      pending: true,
+      sessionId: row.session_id,
+      tabSessionId: row.tab_session_id,
+      expiresAt: new Date(expiresAt).toISOString()
+    };
+  } catch {
+    return { ok: false, pending: false };
+  }
+}
+
 async function handleAuthEntryRequest(req, res, pathname) {
   if (isAuthEntryRateLimited(req)) {
     sendAuthEntryJson(res, 429, { error: 'Too many requests.' });
+    return true;
+  }
+
+  if (pathname === '/api/auth-entry/sessions/pending') {
+    if (req.method !== 'GET') {
+      sendAuthEntryJson(res, 405, { error: 'Method not allowed.' });
+      return true;
+    }
+    if (!isAllowedUatHandoffReadOriginRequest(req)) {
+      sendAuthEntryJson(res, 403, { error: 'UAT origin required.' });
+      return true;
+    }
+    if (String(req.headers['x-uat-auth-entry'] || '') !== '1') {
+      sendAuthEntryJson(res, 403, { error: 'Request not permitted.' });
+      return true;
+    }
+    const browserId = getRequestCookie(req, AUTH_ENTRY_COOKIE);
+    if (!HANDOFF_TOKEN_PATTERN.test(browserId)) {
+      sendAuthEntryJson(res, 200, { ok: true, pending: false });
+      return true;
+    }
+    const pending = await readUatAuthEntryPending({ browserId });
+    if (!pending.ok) {
+      sendAuthEntryJson(res, 503, { ok: false, pending: false });
+      return true;
+    }
+    sendAuthEntryJson(res, 200, pending.pending
+      ? {
+        ok: true,
+        pending: true,
+        sessionId: pending.sessionId,
+        tabSessionId: pending.tabSessionId,
+        expiresAt: pending.expiresAt
+      }
+      : {
+        ok: true,
+        pending: false,
+        ...(pending.expired ? { expired: true } : {}),
+        ...(pending.consumed ? { consumed: true } : {})
+      });
     return true;
   }
 

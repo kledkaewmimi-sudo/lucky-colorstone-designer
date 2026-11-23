@@ -1569,13 +1569,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   const returnParams = new URLSearchParams(window.location.search);
   const initialHandoffToken = getInitialHandoffToken(window.location.search);
   const shouldResumeInitialHandoff = !returnParams.has('orderId') && Boolean(initialHandoffToken);
-  const autoAuthEntryPending = !returnParams.has('orderId') && hasPendingAutoAuthEntry();
-  const shouldResumeAutoAuthEntry = autoAuthEntryPending;
+  let autoAuthEntryPending = !returnParams.has('orderId') && hasPendingAutoAuthEntry();
+  let shouldResumeAutoAuthEntry = autoAuthEntryPending;
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
     && isInitialLineIdentityCallback(window.location.search);
+  let autoAuthEntryRecoveryFailed = false;
+  if (!autoAuthEntryPending
+    && !shouldResumeInitialHandoff
+    && !shouldResumeInitialIdentityCallback
+    && !returnParams.has('orderId')
+    && !returnParams.has('explicit_login')) {
+    const recovered = await recoverPendingAutoAuthEntry();
+    if (recovered.pending) {
+      autoAuthEntryPending = true;
+    } else if (!recovered.ok) {
+      autoAuthEntryRecoveryFailed = true;
+    }
+  }
+
+  shouldResumeAutoAuthEntry = autoAuthEntryPending;
   // The head marker covers first paint. Confirm the initial identity callback
   // before any async startup work so it remains hidden through LIFF/profile sync.
-  if (shouldResumeInitialIdentityCallback || shouldResumeInitialHandoff || shouldResumeAutoAuthEntry) {
+  if (shouldResumeInitialIdentityCallback || shouldResumeInitialHandoff || shouldResumeAutoAuthEntry || autoAuthEntryRecoveryFailed) {
     setCallbackBootstrapHold(true);
   }
   await initializeDeferredLoginQaSession();
@@ -1596,6 +1611,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
     || shouldResumeInitialHandoff
     || shouldResumeAutoAuthEntry
+    || autoAuthEntryRecoveryFailed
     || shouldHoldForDeferredCallback
     || shouldHoldForFriendshipResume;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
@@ -1702,6 +1718,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let restored = null;
   if (shouldResumeAutoAuthEntry) {
     restored = await handleAutoAuthEntryReturn();
+  } else if (autoAuthEntryRecoveryFailed) {
+    failAutoAuthEntryReturn('auth_entry_pending_recovery_failed');
+    restored = { ok: false, reason: 'auth_entry_pending_recovery_failed' };
   } else if (shouldResumeInitialHandoff) {
     const handled = await handleInitialHandoffCallback(initialHandoffToken);
     if (!handled) {
@@ -2598,6 +2617,36 @@ function writeAutoAuthEntryState(state) {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function recoverPendingAutoAuthEntry() {
+  if (!IS_UAT_MODE) return { ok: true, pending: false };
+  try {
+    const response = await fetch('/api/auth-entry/sessions/pending', {
+      method: 'GET',
+      headers: { 'X-UAT-Auth-Entry': AUTO_AUTH_ENTRY_HEADER },
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) return { ok: false, pending: false };
+    if (result?.expired === true) return { ok: false, pending: false, expired: true };
+    if (result?.pending !== true) return { ok: true, pending: false };
+    const sessionId = String(result.sessionId || '').trim();
+    const tabSessionId = String(result.tabSessionId || '').trim();
+    const expiresAt = Date.parse(result.expiresAt);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(sessionId)
+      || !/^[A-Za-z0-9_-]{43}$/.test(tabSessionId)
+      || !Number.isFinite(expiresAt)
+      || expiresAt <= Date.now()) {
+      return { ok: false, pending: false };
+    }
+    const pending = { version: 1, tabSessionId, sessionId, expiresAt };
+    if (!writeAutoAuthEntryState(pending)) return { ok: false, pending: false };
+    return { ok: true, pending: true };
+  } catch {
+    return { ok: false, pending: false };
   }
 }
 

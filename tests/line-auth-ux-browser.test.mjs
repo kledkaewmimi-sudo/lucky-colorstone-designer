@@ -25,16 +25,26 @@ const MIME_TYPES = {
 };
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
-async function startFixtureServer({ handoffStatus = 201, authEntryStatus = 503 } = {}) {
+async function startFixtureServer({ handoffStatus = 201, authEntryStatus = 503, pendingStatus = 200, pendingPayload = null } = {}) {
   let handoffPosts = 0;
   let authEntryPosts = 0;
   let authConsumePosts = 0;
+  let pendingGets = 0;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     const json = (payload, status = 200) => {
       response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify(payload));
     };
+    if (url.pathname === '/api/auth-entry/sessions/pending' && request.method === 'GET') {
+      pendingGets += 1;
+      if (pendingStatus !== 200) {
+        json({ ok: false, pending: false }, pendingStatus);
+        return;
+      }
+      json(pendingPayload || { ok: true, pending: false });
+      return;
+    }
     if (url.pathname === '/api/liff-config') {
       json({ environment: 'uat', liffId: 'mock-uat-liff-id' });
       return;
@@ -143,6 +153,7 @@ async function startFixtureServer({ handoffStatus = 201, authEntryStatus = 503 }
     getHandoffPosts: () => handoffPosts,
     getAuthEntryPosts: () => authEntryPosts,
     getAuthConsumePosts: () => authConsumePosts,
+    getPendingGets: () => pendingGets,
     close: () => new Promise((resolve) => server.close(resolve))
   };
 }
@@ -393,6 +404,74 @@ test('root return consumes the pending tab session once and restores exact Step 
     assert.equal(result.handoffInUrl, false, JSON.stringify(result));
     assert.match(result.wrist, /17\.5/);
     assert.equal(server.getAuthConsumePosts(), 1, JSON.stringify(result));
+    assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('root recovers a browser-bound pending session when tab sessionStorage is absent', async () => {
+  const pendingPayload = {
+    ok: true,
+    pending: true,
+    sessionId: 'S'.repeat(43),
+    tabSessionId: 'T'.repeat(43),
+    expiresAt: new Date(Date.now() + 600000).toISOString()
+  };
+  const server = await startFixtureServer({ pendingPayload });
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    const pageSetup = await createPage(browser, server.origin, {
+      loggedIn: true,
+      waitForLanding: false
+    });
+    context = pageSetup.context;
+    const { page, pageErrors } = pageSetup;
+    await page.locator('#stepView2.active').waitFor({ state: 'visible', timeout: 8000 });
+    const result = await page.evaluate(() => ({
+      wrist: document.querySelector('#estimationWristSizeText')?.textContent || '',
+      step2Visible: document.querySelector('#stepView2')?.classList.contains('active') === true,
+      pendingCleared: sessionStorage.getItem('lucky_uat_line_auth_entry_pending') === null
+    }));
+    assert.equal(result.step2Visible, true, JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+    assert.equal(result.pendingCleared, true, JSON.stringify(result));
+    assert.equal(server.getPendingGets(), 1, JSON.stringify(result));
+    assert.equal(server.getAuthConsumePosts(), 1, JSON.stringify(result));
+    assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('expired pending auth-entry fails closed instead of legacy Step 2 resume', async () => {
+  const server = await startFixtureServer({
+    pendingPayload: { ok: true, pending: false, expired: true }
+  });
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    const pageSetup = await createPage(browser, server.origin, {
+      loggedIn: true,
+      waitForLanding: false
+    });
+    context = pageSetup.context;
+    const { page, pageErrors } = pageSetup;
+    await page.locator('#stepView1.active').waitFor({ state: 'visible', timeout: 8000 });
+    const result = await page.evaluate(() => ({
+      step1Visible: document.querySelector('#stepView1')?.classList.contains('active') === true,
+      step2Visible: document.querySelector('#stepView2')?.classList.contains('active') === true,
+      authState: document.querySelector('#step1AuthStatus')?.dataset.state || ''
+    }));
+    assert.equal(result.step1Visible, true, JSON.stringify(result));
+    assert.equal(result.step2Visible, false, JSON.stringify(result));
+    assert.equal(result.authState, 'failed', JSON.stringify(result));
+    assert.equal(server.getAuthConsumePosts(), 0, JSON.stringify(result));
     assert.deepEqual(pageErrors, [], JSON.stringify(pageErrors));
   } finally {
     await context?.close();
