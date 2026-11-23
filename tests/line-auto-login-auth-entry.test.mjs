@@ -93,6 +93,7 @@ test('pending auth-entry recovery is browser-cookie bound and never returns a ha
   assert.match(server, /browser_id: `eq\.\$\{browserId\}`/);
   assert.match(server, /consumed_at: 'is\.null'/);
   assert.match(server, /sessionId: pending\.sessionId/);
+  assert.match(fs.readFileSync('uat-backend-guard.js', 'utf8'), /method === 'GET' && pathname === '\/api\/auth-entry\/sessions\/pending'/);
   const pendingStart = server.indexOf("if (pathname === '/api/auth-entry/sessions/pending')");
   const pendingBlock = server.slice(pendingStart, server.indexOf('if (!isAllowedUatOriginRequest(req))', pendingStart));
   assert.doesNotMatch(pendingBlock, /handoffToken|handoff_token|idToken/);

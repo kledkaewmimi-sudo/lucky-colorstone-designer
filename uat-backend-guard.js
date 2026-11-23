@@ -109,6 +109,7 @@ function isUatSupabaseApiRequest(method, pathname) {
     '/api/line-auth-entry',
     '/api/line-auth-consume'
   ].includes(pathname)) return true;
+  if (method === 'GET' && pathname === '/api/auth-entry/sessions/pending') return true;
   if (method === 'POST' && pathname === '/api/uat/analytics/event') return true;
   if (method === 'POST' && pathname === '/api/lucky/birthday') return true;
   if (method === 'GET' && /^\/api\/auth-handoffs\/[A-Za-z0-9_-]{43}$/.test(pathname)) return true;
