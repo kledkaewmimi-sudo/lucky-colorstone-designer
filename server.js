@@ -2431,6 +2431,16 @@ function normalizeUatAnalyticsEvent(payload = {}) {
 async function saveUatAnalyticsEvent(event) {
   if (!isSupabaseConfigured()) return false;
   const nowIso = new Date().toISOString();
+  // Keep session correlation on the event itself. The journey can be reused
+  // by a returning browser, so platform/browser must not exist only on the
+  // journey row when distinguishing an Android session from an iPhone one.
+  const correlatedProperties = {
+    ...event.properties,
+    ...(event.platform ? { platform: event.platform } : {}),
+    ...(event.browser_family ? { browser_family: event.browser_family } : {}),
+    ...(event.entry_surface ? { entry_surface: event.entry_surface } : {}),
+    ...(event.entry_context ? { entry_context: event.entry_context } : {})
+  };
   await supabaseRequest('uat_analytics_journeys', {
     method: 'POST',
     body: {
@@ -2453,7 +2463,7 @@ async function saveUatAnalyticsEvent(event) {
       stage_key: event.stage_key,
       step: event.step,
       client_ts: event.client_ts,
-      properties: event.properties
+      properties: correlatedProperties
     },
     prefer: 'resolution=ignore-duplicates,return=minimal',
     params: { on_conflict: 'event_id' }
