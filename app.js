@@ -3981,6 +3981,10 @@ async function startProgressiveLineVerification() {
         setStep1AuthStatus('failed');
         return false;
       }
+      if (!canUseAutoAuthEntryForCustomization()) {
+        setStep1AuthStatus('required');
+        return false;
+      }
       setStep1AuthStatus('idle');
       return false;
     })().catch(() => {
