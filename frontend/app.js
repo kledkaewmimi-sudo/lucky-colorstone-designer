@@ -439,7 +439,23 @@ let lineBootstrapPromise = null;
 let progressiveLineVerificationPromise = null;
 let step1ToStep2AuthInProgress = false;
 let step1AuthState = 'idle';
-let manualFallbackReady = false;
+const LINE_AUTH_ATTEMPT_STATE_KEY = 'lucky_prod_line_auth_attempt_state';
+const AUTOMATIC_PLAN_B_ATTEMPTED_KEY = 'lucky_prod_automatic_plan_b_attempted';
+const LINE_TOKEN_REFRESH_ATTEMPTED_KEY = 'lucky_prod_line_token_refresh_attempted';
+let lineAuthAttemptState = null;
+let automaticPlanBAttempted = false;
+let automaticPlanBInProgress = false;
+let lineTokenRefreshAttempted = false;
+let lineTokenRefreshStarted = false;
+try {
+  const rawAttempt = sessionStorage.getItem(LINE_AUTH_ATTEMPT_STATE_KEY);
+  lineAuthAttemptState = rawAttempt ? JSON.parse(rawAttempt) : null;
+  if (!lineAuthAttemptState || typeof lineAuthAttemptState !== 'object') lineAuthAttemptState = null;
+} catch { lineAuthAttemptState = null; }
+try {
+  automaticPlanBAttempted = sessionStorage.getItem(AUTOMATIC_PLAN_B_ATTEMPTED_KEY) === '1';
+  lineTokenRefreshAttempted = sessionStorage.getItem(LINE_TOKEN_REFRESH_ATTEMPTED_KEY) === '1';
+} catch { automaticPlanBAttempted = false; lineTokenRefreshAttempted = false; }
 let customerCatalogStartupPromise = null;
 let customerCatalogRefreshPromise = null;
 let customerCatalogRefreshEventsBound = false;
@@ -1817,7 +1833,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       State.landingDismissed = true;
       persistLandingDismissed();
       syncShellVisibility();
-      offerManualLineFallback('LINE_ID_TOKEN_REJECTED');
+      setStep1AuthStatus('failed');
     }
   }
   if (hasPendingAutoAuthEntryReturn) {
@@ -1835,7 +1851,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       State.landingDismissed = true;
       persistLandingDismissed();
       syncShellVisibility();
-      offerManualLineFallback('AUTH_ENTRY_RESTORE_FAILED');
+      setStep1AuthStatus('failed');
     }
   } else if (shouldResumeInitialIdentityCallback) {
     if (isLineIdentityAvailable()) {
@@ -2834,7 +2850,6 @@ function resetLandingStartState() {
 
 function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
   landingConnectPromptVisible = false;
-  manualFallbackReady = false;
   setLandingSubtitleMessage('');
   resetLandingStartState();
   if (message) {
@@ -2934,7 +2949,6 @@ function enterLineLoginManualRecovery(reason = 'LINE_LOGIN_NAVIGATION_BLOCKED') 
   liffLoginInProgress = false;
   lineIdentityFailureCode = reason;
   if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
-  manualFallbackReady = true;
   setStep1AuthStatus('manual');
 }
 
@@ -2960,7 +2974,7 @@ function armStartupAuthRecovery() {
     State.landingDismissed = true;
     persistLandingDismissed();
     syncShellVisibility();
-    offerManualLineFallback('AUTH_STARTUP_TIMEOUT');
+    setStep1AuthStatus('failed');
     trackAnalyticsEvent('line_auth_failed', { reason: 'auth_startup_timeout' });
     showToast('LINE Login ใช้เวลานานเกินไป กรุณาลองอีกครั้ง');
   }, LINE_AUTH_STARTUP_RECOVERY_MS);
@@ -2978,7 +2992,7 @@ function armLineLoginNavigationGuard() {
 
 window.addEventListener('pagehide', clearLineLoginNavigationGuard);
 
-async function openManualLineEntryFromUserAction() {
+function openManualLineEntryFromUserAction() {
   if (step1AuthState !== 'manual' || State.currentStep !== 1) return false;
   if (lineManualEntryAttempted) {
     saveState();
@@ -2986,20 +3000,12 @@ async function openManualLineEntryFromUserAction() {
     return true;
   }
   lineManualEntryAttempted = true;
-  // Reuse the production auth-entry architecture for Plan B: the server
-  // verifies the LINE ID token, consumes the browser/tab-bound session, and
-  // consumes the single-use design handoff before Step 2.
-  const started = await startAutoAuthEntryForCustomization({
-    keepStep1Visible: true,
-    manualFallback: true
+  const started = openLineConnectEntryForCustomization({
+    returnStartStatus: true,
+    resumeStep: 2,
+    keepStep1Visible: true
   });
-  if (!started) {
-    if (detectBrowserContext(window.navigator.userAgent || '').isInstagram) {
-      setStep1AuthStatus('instagram_external');
-    } else {
-      offerManualLineFallback('LINE_MANUAL_ENTRY_FAILED');
-    }
-  }
+  if (!started) enterLineLoginManualRecovery('LINE_MANUAL_ENTRY_FAILED');
   return started;
 }
 
@@ -3086,6 +3092,175 @@ async function recoverPendingAutoAuthEntry() {
   }
 }
 
+function readLineAuthAttemptState() {
+  if (lineAuthAttemptState && typeof lineAuthAttemptState === 'object') return lineAuthAttemptState;
+  try {
+    const raw = sessionStorage.getItem(LINE_AUTH_ATTEMPT_STATE_KEY);
+    lineAuthAttemptState = raw ? JSON.parse(raw) : null;
+  } catch {
+    lineAuthAttemptState = null;
+  }
+  return lineAuthAttemptState;
+}
+
+function writeLineAuthAttemptState(status, extra = {}) {
+  const previous = readLineAuthAttemptState() || {};
+  lineAuthAttemptState = { ...previous, ...extra, status, updatedAt: Date.now() };
+  try {
+    sessionStorage.setItem(LINE_AUTH_ATTEMPT_STATE_KEY, JSON.stringify(lineAuthAttemptState));
+  } catch {
+    // In-memory state still prevents duplicate work in this document.
+  }
+  return lineAuthAttemptState;
+}
+
+function getLineAuthAttemptId() {
+  return String(readLineAuthAttemptState()?.attemptId || '').slice(0, 64);
+}
+
+function beginLineAuthAttempt() {
+  const current = readLineAuthAttemptState();
+  if (current?.status === 'completed' || current?.status === 'failed') return current;
+  return writeLineAuthAttemptState('in_progress', { attemptId: current?.attemptId || createClientOpaqueId() });
+}
+
+function completeLineAuthAttempt(extra = {}) {
+  writeLineAuthAttemptState('completed', extra);
+}
+
+function failLineAuthAttempt(reason, extra = {}) {
+  writeLineAuthAttemptState('failed', { reason, ...extra });
+}
+
+function clearLineAuthAttemptState() {
+  lineAuthAttemptState = null;
+  try {
+    sessionStorage.removeItem(LINE_AUTH_ATTEMPT_STATE_KEY);
+  } catch {
+    // no-op
+  }
+}
+
+function clearAutomaticPlanBAttempted() {
+  automaticPlanBAttempted = false;
+  try {
+    sessionStorage.removeItem(AUTOMATIC_PLAN_B_ATTEMPTED_KEY);
+  } catch {
+    // no-op
+  }
+}
+
+function getLineIdTokenDiagnostics(idToken) {
+  const token = String(idToken || '');
+  let claims = null;
+  try {
+    if (typeof liff !== 'undefined' && typeof liff.getDecodedIDToken === 'function') {
+      claims = liff.getDecodedIDToken();
+    }
+  } catch {
+    claims = null;
+  }
+  if (!claims && token) {
+    try {
+      const payload = token.split('.')[1] || '';
+      const padded = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
+      claims = JSON.parse(atob(padded));
+    } catch {
+      claims = null;
+    }
+  }
+  return {
+    hasToken: Boolean(token),
+    aud: String(claims?.aud || '').slice(0, 64),
+    iss: String(claims?.iss || '').slice(0, 64),
+    exp: Number(claims?.exp) || 0,
+    iat: Number(claims?.iat) || 0
+  };
+}
+
+function isLineIdTokenExpired(diagnostics, skewSeconds = 60) {
+  const exp = Number(diagnostics?.exp);
+  if (!Number.isFinite(exp) || exp <= 0) return false;
+  return exp <= Math.floor(Date.now() / 1000) + skewSeconds;
+}
+
+async function refreshExpiredLineIdToken(reason = 'LINE_ID_TOKEN_EXPIRED') {
+  if (lineTokenRefreshAttempted) {
+    lineTokenRefreshStarted = false;
+    return false;
+  }
+  lineTokenRefreshAttempted = true;
+  try { sessionStorage.setItem(LINE_TOKEN_REFRESH_ATTEMPTED_KEY, '1'); } catch {}
+  lineTokenRefreshStarted = true;
+  try {
+    if (typeof liff !== 'undefined' && typeof liff.logout === 'function') {
+      await withTimeout(liff.logout(), 5000, 'LINE logout');
+    }
+  } catch {}
+  clearAutoAuthEntryState();
+  const started = await startLiffLoginForCustomization({
+    preserveExistingIntent: true,
+    returnStartStatus: true,
+    resumeStep: 2,
+    keepStep1Visible: true
+  });
+  if (!started) {
+    lineTokenRefreshStarted = false;
+    failLineAuthAttempt(reason);
+    setStep1AuthStatus('instagram_external');
+  }
+  return started === true;
+}
+
+async function startAutomaticPlanB(reason = 'AUTO_LOGIN_FAILED') {
+  if (automaticPlanBAttempted || automaticPlanBInProgress || State.currentStep !== 1) return false;
+  const attempt = readLineAuthAttemptState();
+  if (attempt?.status === 'completed' || attempt?.status === 'failed') return false;
+  beginLineAuthAttempt();
+  automaticPlanBAttempted = true;
+  try { sessionStorage.setItem(AUTOMATIC_PLAN_B_ATTEMPTED_KEY, '1'); } catch {}
+  automaticPlanBInProgress = true;
+  lineIdentityFailureCode = reason;
+  setStep1AuthStatus('verifying');
+  try {
+    const inInstagram = detectBrowserContext(window.navigator.userAgent || '').isInstagram && !isLiffInClient();
+    let started = false;
+    if (inInstagram) {
+      started = await openLineConnectEntryForCustomization({
+        preserveExistingIntent: true,
+        returnStartStatus: true,
+        resumeStep: 2,
+        keepStep1Visible: true
+      }) === true;
+    } else if (canUseLiffLoginFromCurrentBrowser()) {
+      started = await startLiffLoginForCustomization({
+        preserveExistingIntent: true,
+        returnStartStatus: true,
+        resumeStep: 2,
+        keepStep1Visible: true
+      }) === true;
+    } else {
+      started = await openLineConnectEntryForCustomization({
+        preserveExistingIntent: true,
+        returnStartStatus: true,
+        resumeStep: 2,
+        keepStep1Visible: true
+      }) === true;
+    }
+    if (!started) {
+      failLineAuthAttempt(reason);
+      setStep1AuthStatus('instagram_external');
+    }
+    return started;
+  } catch {
+    failLineAuthAttempt(reason);
+    setStep1AuthStatus('instagram_external');
+    return false;
+  } finally {
+    automaticPlanBInProgress = false;
+  }
+}
+
 function canUseAutoAuthEntryForCustomization() {
   if (urlParams.get('explicit_login') === '1') return false;
   return APP_ENV === 'production'
@@ -3154,13 +3329,20 @@ function failAutoAuthEntryStart(reason = 'HANDOFF_CREATE_FAILED') {
   State.landingDismissed = true;
   persistLandingDismissed();
   syncShellVisibility();
-  offerManualLineFallback(reason);
+  if (automaticPlanBAttempted) {
+    failLineAuthAttempt(reason);
+    setStep1AuthStatus('instagram_external');
+  } else {
+    void startAutomaticPlanB(reason);
+  }
   trackAnalyticsEvent('state_restore_failed', { reason });
   trackAnalyticsEvent('line_auth_failed', { reason });
   return false;
 }
 
 function failAutoAuthEntryReturn(reason = 'auth_entry_restore_failed') {
+  const attempt = readLineAuthAttemptState();
+  if (attempt?.status === 'completed') return true;
   clearAutoAuthEntryState();
   clearStartupAuthRecovery();
   if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
@@ -3169,14 +3351,23 @@ function failAutoAuthEntryReturn(reason = 'auth_entry_restore_failed') {
   State.landingDismissed = true;
   persistLandingDismissed();
   syncShellVisibility();
-  offerManualLineFallback(reason);
+  if (automaticPlanBAttempted) {
+    failLineAuthAttempt(reason);
+    setStep1AuthStatus('instagram_external');
+  } else {
+    void startAutomaticPlanB(reason);
+  }
   trackAnalyticsEvent('state_restore_failed', { reason });
   return false;
 }
 
-async function startAutoAuthEntryForCustomization({ keepStep1Visible = false, manualFallback = false } = {}) {
-  if (!manualFallback && !canUseAutoAuthEntryForCustomization()) return false;
-  if (manualFallback && detectBrowserContext(window.navigator.userAgent || '').isInstagram) {
+async function startAutoAuthEntryForCustomization({ keepStep1Visible = false, manualFallback = false, force = false } = {}) {
+  const authAttempt = readLineAuthAttemptState();
+  if (authAttempt?.status === 'completed' || authAttempt?.status === 'failed') return false;
+  beginLineAuthAttempt();
+  if (!manualFallback && !force && !canUseAutoAuthEntryForCustomization()) return false;
+  if (isLiffInClient()) return false;
+  if (detectBrowserContext(window.navigator.userAgent || '').isInstagram && !force) {
     setStep1AuthStatus('instagram_external');
     return false;
   }
@@ -3186,19 +3377,21 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false, ma
   liffLoginInProgress = true;
   trackAnalyticsEvent('line_auth_started', { method: 'auth_entry' });
   showAutoAuthEntryProgress();
+  let initialHandoff = null;
   try {
-    const initialHandoff = await createInitialStateHandoff();
+    initialHandoff = await createInitialStateHandoff();
     if (!initialHandoff?.token) {
       autoAuthEntryFailure = 'handoff_create';
       return failAutoAuthEntryStart('HANDOFF_CREATE_FAILED');
     }
     const tabSessionId = createClientOpaqueId();
-    if (!writeAutoAuthEntryState({
+    const pending = {
       version: 1,
       tabSessionId,
       sessionId: '',
       expiresAt: Date.now() + 10 * 60 * 1000
-    })) {
+    };
+    if (!writeAutoAuthEntryState(pending)) {
       return failAutoAuthEntryStart('AUTH_ENTRY_STORAGE_FAILED');
     }
     saveState();
@@ -3219,24 +3412,25 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false, ma
       if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
       autoAuthEntryFailure = 'session';
       lineIdentityFailureCode = 'AUTH_ENTRY_SESSION_FAILED';
-      offerManualLineFallback('AUTH_ENTRY_SESSION_FAILED');
+      if (keepStep1Visible) void startAutomaticPlanB('AUTH_ENTRY_SESSION_FAILED');
       trackAnalyticsEvent('line_auth_failed', { reason: 'auth_entry_session_failed' });
       return false;
     }
-    const expiresAt = Number.isFinite(Date.parse(result?.expiresAt))
-      ? Date.parse(result.expiresAt)
-      : Date.now() + 10 * 60 * 1000;
-    writeAutoAuthEntryState({ version: 1, tabSessionId, sessionId, expiresAt });
-    rememberCustomizationLoginIntent({ targetStep: 2 });
+    pending.sessionId = sessionId;
+    if (result?.expiresAt && Number.isFinite(Date.parse(result.expiresAt))) {
+      pending.expiresAt = Date.parse(result.expiresAt);
+    }
+    writeAutoAuthEntryState(pending);
+    rememberCustomizationLoginIntent({ targetStep: 2, journeyId: initialHandoff.journeyId || '' });
     window.location.assign(AUTO_AUTH_ENTRY_PATH);
     return true;
   } catch {
     clearAutoAuthEntryState();
     liffLoginInProgress = false;
     if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
-    autoAuthEntryFailure = 'start';
-    lineIdentityFailureCode = 'AUTH_ENTRY_START_FAILED';
-    offerManualLineFallback('AUTH_ENTRY_START_FAILED');
+    autoAuthEntryFailure = initialHandoff?.token ? 'session' : 'handoff_create';
+    lineIdentityFailureCode = autoAuthEntryFailure === 'session' ? 'AUTH_ENTRY_SESSION_FAILED' : 'HANDOFF_CREATE_FAILED';
+    if (keepStep1Visible) void startAutomaticPlanB(lineIdentityFailureCode);
     trackAnalyticsEvent('line_auth_failed', { reason: 'auth_entry_start_failed' });
     return false;
   }
@@ -3271,6 +3465,7 @@ function applyInitialHandoffSnapshot(snapshot) {
 }
 
 async function handleAutoAuthEntryReturn() {
+  if (readLineAuthAttemptState()?.status === 'completed') return { ok: true, duplicate: true };
   const pending = readAutoAuthEntryState();
   if (!pending) return { ok: false, reason: 'missing_auth_entry_session' };
   clearLineLoginNavigationGuard();
@@ -3284,10 +3479,16 @@ async function handleAutoAuthEntryReturn() {
     const idToken = typeof liff !== 'undefined' && typeof liff.getIDToken === 'function'
       ? await withTimeout(liff.getIDToken(), 5000, 'LINE ID token')
       : '';
+    const tokenDiagnostics = getLineIdTokenDiagnostics(idToken);
     if (!idToken) {
       failAutoAuthEntryReturn('ID_TOKEN_UNAVAILABLE');
       trackAnalyticsEvent('line_auth_failed', { reason: 'id_token_missing' });
       return { ok: false, reason: 'id_token_unavailable' };
+    }
+    if (isLineIdTokenExpired(tokenDiagnostics)) {
+      const refreshed = await refreshExpiredLineIdToken('LINE_ID_TOKEN_EXPIRED');
+      if (refreshed) return { ok: false, reason: 'id_token_refresh_started' };
+      return { ok: false, reason: failAutoAuthEntryReturn('LINE_ID_TOKEN_EXPIRED') || 'id_token_expired' };
     }
     const response = await fetch('/api/line-auth-consume', {
       method: 'POST',
@@ -3316,6 +3517,7 @@ async function handleAutoAuthEntryReturn() {
     clearAutoAuthEntryState();
     clearStartupAuthRecovery();
     clearCustomizationLoginIntent();
+    completeLineAuthAttempt({ source: 'auth_entry_consume', journeyId: result.journeyId || '' });
     rememberCustomizationLoginIntent({ targetStep: 2, journeyId: result.journeyId || '' });
     customizationResumeInProgress = false;
     liffLoginInProgress = false;
@@ -3779,6 +3981,7 @@ async function completeCustomizationStartResume() {
     if (loader) loader.style.display = 'none';
     customizationResumeInProgress = false;
     if (resumeStep === 2) {
+      completeLineAuthAttempt({ source: 'customization_resume' });
       setStep1AuthStatus('verified');
       await goToStep(2);
     }
@@ -3790,7 +3993,8 @@ async function completeCustomizationStartResume() {
     saveState();
     if (loader) loader.style.display = 'none';
     customizationResumeInProgress = false;
-    setStep1AuthStatus('required');
+    lineIdentityFailureCode = lineIdentityFailureCode || 'LINE_AUTH_CANCELLED';
+    setStep1AuthStatus('instagram_external');
     return;
   }
 
@@ -3860,8 +4064,10 @@ function startLiffLoginForCustomization({
     trackAnalyticsEvent('line_auth_error', {
       message: loginResult.error?.message || loginResult.reason
     });
-    if (keepStep1Visible) setStep1AuthStatus('failed');
-    else resetLandingStartAfterFailure();
+    if (keepStep1Visible) {
+      if (automaticPlanBAttempted) setStep1AuthStatus('instagram_external');
+      else void startAutomaticPlanB(loginResult.reason || 'LINE_LOGIN_START_FAILED');
+    } else resetLandingStartAfterFailure();
     return false;
   }
   armLineLoginNavigationGuard();
@@ -3915,8 +4121,10 @@ function openLineConnectEntryForCustomization({
       message: entryResult.error?.message || entryResult.reason,
       method: 'entry_url'
     });
-    if (keepStep1Visible) setStep1AuthStatus('failed');
-    else resetLandingStartAfterFailure();
+    if (keepStep1Visible) {
+      if (automaticPlanBAttempted) setStep1AuthStatus('instagram_external');
+      else void startAutomaticPlanB(entryResult.reason || 'LINE_LOGIN_START_FAILED');
+    } else resetLandingStartAfterFailure();
     return false;
   }
   armLineLoginNavigationGuard();
@@ -4161,18 +4369,13 @@ function renderStep1AuthStatus() {
     action.hidden = true;
     return;
   }
-  if (step1AuthState === 'manual' && !manualFallbackReady) {
-    container.hidden = true;
+  if (step1AuthState === 'manual') {
+    // The verified flow has no manual LINE login button. A terminal failure
+    // becomes the external-browser instruction instead.
+    container.hidden = false;
+    container.dataset.state = 'instagram_external';
+    text.textContent = 'กรุณาเปิดเว็บไซต์นี้ผ่าน Safari หรือ Chrome เพื่อเข้าสู่ระบบ LINE';
     action.hidden = true;
-    container.removeAttribute('data-state');
-    text.textContent = '';
-    return;
-  }
-  if (step1AuthState === 'failed' && !manualFallbackReady) {
-    container.hidden = true;
-    action.hidden = true;
-    container.removeAttribute('data-state');
-    text.textContent = '';
     return;
   }
 
@@ -4181,9 +4384,7 @@ function renderStep1AuthStatus() {
   // Eligible external mobile browsers start auth-entry from Next. The normal
   // path has no second primary login button; show it only after a genuine
   // failure or for in-app/explicit contexts.
-  if (canUseAutoAuthEntryForCustomization()
-    && step1AuthState !== 'failed'
-    && step1AuthState !== 'manual') {
+  if (canUseAutoAuthEntryForCustomization() && step1AuthState !== 'failed' && step1AuthState !== 'manual') {
     container.hidden = true;
     action.hidden = true;
     container.removeAttribute('data-state');
@@ -4205,12 +4406,6 @@ function renderStep1AuthStatus() {
 
   container.hidden = false;
   container.dataset.state = step1AuthState;
-  if (step1AuthState === 'manual') {
-    text.textContent = LINE_CONNECT_RETRY_MESSAGE;
-    action.textContent = 'เข้าสู่ระบบด้วย LINE';
-    action.hidden = false;
-    return;
-  }
   if (step1AuthState === 'verifying') {
     text.textContent = 'กรุณารอสักครู่ ระบบกำลังเชื่อมต่อบัญชี LINE ของคุณ';
     action.hidden = true;
@@ -4227,12 +4422,6 @@ function renderStep1AuthStatus() {
 function setStep1AuthStatus(state) {
   step1AuthState = state;
   renderStep1AuthStatus();
-}
-
-function offerManualLineFallback(reason = 'LINE_AUTO_LOGIN_FAILED') {
-  manualFallbackReady = true;
-  lineIdentityFailureCode = reason;
-  setStep1AuthStatus('manual');
 }
 
 async function startProgressiveLineVerification() {
@@ -4327,55 +4516,79 @@ async function ensureStep1LineAuthorization() {
 
 async function attemptStep1AuthorizationAndContinue({ explicitLogin = false } = {}) {
   if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
-
-  if (requiresLineLoginForCustomization() && !isLineIdentityAvailable()
-    && detectBrowserContext(window.navigator.userAgent || '').isInstagram
-    && !isLiffInClient()) {
+  const authAttempt = readLineAuthAttemptState();
+  if (authAttempt?.status === 'failed') {
     setStep1AuthStatus('instagram_external');
     return false;
   }
+  if (authAttempt?.status === 'completed' && isLineIdentityAvailable()) {
+    // This Step 1 boundary already completed server verification and handoff
+    // consumption. Backward navigation must not start another authorization.
+    setStep1AuthStatus('verified');
+    await goToStep(2);
+    return true;
+  }
+  if (authAttempt?.status === 'completed') {
+    clearLineAuthAttemptState();
+    clearAutomaticPlanBAttempted();
+  }
+  if (!authAttempt || authAttempt.status === 'idle') beginLineAuthAttempt();
 
-  if (!explicitLogin && requiresLineLoginForCustomization() && !isLineIdentityAvailable()
-    && canUseAutoAuthEntryForCustomization()) {
-    step1AuthActionStarted = true;
-    setStep1AuthStatus('verifying');
-    const started = await startAutoAuthEntryForCustomization({ keepStep1Visible: true });
-    if (!started) {
-      offerManualLineFallback('AUTO_AUTH_ENTRY_FAILED');
-      DOM.btnNext.disabled = false;
-      configureFooterNavigation();
-    }
+  // A local LIFF profile is not proof of server verification. Force the
+  // production auth-entry boundary for an external mobile identity.
+  if (!explicitLogin && requiresLineLoginForCustomization() && isLineIdentityAvailable()
+    && !isLiffInClient()
+    && !detectBrowserContext(window.navigator.userAgent || '').isInstagram) {
+    const started = await startAutoAuthEntryForCustomization({
+      keepStep1Visible: true,
+      force: true
+    });
+    if (started) return false;
+    if (automaticPlanBAttempted) setStep1AuthStatus('instagram_external');
+    else await startAutomaticPlanB('SERVER_VERIFICATION_REQUIRED');
     return false;
   }
 
+  if (!explicitLogin && requiresLineLoginForCustomization()
+    && detectBrowserContext(window.navigator.userAgent || '').isInstagram
+    && !isLiffInClient()) {
+    const started = await startAutomaticPlanB('INSTAGRAM_IAB');
+    if (!started) setStep1AuthStatus('instagram_external');
+    return false;
+  }
+
+  if (!explicitLogin && requiresLineLoginForCustomization() && !isLineIdentityAvailable()) {
+    if (canUseAutoAuthEntryForCustomization()) {
+      step1AuthActionStarted = true;
+      setStep1AuthStatus('verifying');
+      const started = await startAutoAuthEntryForCustomization({ keepStep1Visible: true });
+      if (started) return false;
+      if (automaticPlanBAttempted) setStep1AuthStatus('instagram_external');
+      else await startAutomaticPlanB('AUTO_AUTH_ENTRY_FAILED');
+      return false;
+    }
+    if (!canUseAutoAuthEntryForCustomization()) {
+      await startAutomaticPlanB('AUTO_LOGIN_UNAVAILABLE');
+      return false;
+    }
+  }
+
   step1ToStep2AuthInProgress = true;
-  step1AuthActionStarted = true;
   DOM.btnNext.disabled = true;
+  step1AuthActionStarted = true;
   setStep1AuthStatus('verifying');
   try {
-    if (
-      !isLineIdentityAvailable()
-      && !isLiffLoggedIn()
-      && !liffLoginInProgress
-      && !isLiffInClient()
-      && canUseLiffLoginFromCurrentBrowser()
-    ) {
-      const loginStarted = startLiffLoginForCustomization({
-        returnStartStatus: true,
-        resumeStep: 2,
-        keepStep1Visible: true
-      });
-      if (!loginStarted) {
-        enterLineLoginManualRecovery(lineIdentityFailureCode || 'LINE_LOGIN_START_FAILED');
+    const authorized = await ensureStep1LineAuthorization({ explicitLogin });
+    if (!authorized?.ok) {
+      if (!liffLoginInProgress && automaticPlanBAttempted) {
+        setStep1AuthStatus('instagram_external');
+      } else {
+        setStep1AuthStatus(liffLoginInProgress ? 'verifying' : (lineIdentityFailureCode ? 'failed' : 'required'));
       }
       return false;
     }
-
-    const authorized = await ensureStep1LineAuthorization();
-    if (!authorized?.ok) {
-      if (liffLoginInProgress) setStep1AuthStatus('verifying');
-      return false;
-    }
+    completeLineAuthAttempt({ source: 'step1_authorization' });
+    clearAutomaticPlanBAttempted();
     setStep1AuthStatus('verified');
     await goToStep(2);
     return true;
@@ -4383,7 +4596,8 @@ async function attemptStep1AuthorizationAndContinue({ explicitLogin = false } = 
     lineDebugTrace('STEP1_LINE_AUTH_FAILED', {
       details: { error: sanitizeLineDebugText(error?.message || error, 180) }
     });
-    setStep1AuthStatus('failed');
+    lineIdentityFailureCode = lineIdentityFailureCode || 'LINE_AUTH_TIMEOUT';
+    void startAutomaticPlanB(lineIdentityFailureCode);
     return false;
   } finally {
     step1ToStep2AuthInProgress = false;
@@ -4400,7 +4614,8 @@ function setupProgressiveStep1AuthEvents() {
   if (!DOM.btnStep1LineConnect || DOM.btnStep1LineConnect.dataset.authHandlerReady === 'true') return;
   DOM.btnStep1LineConnect.dataset.authHandlerReady = 'true';
   DOM.btnStep1LineConnect.addEventListener('click', () => {
-    void openManualLineEntryFromUserAction();
+    if (openManualLineEntryFromUserAction()) return;
+    void attemptStep1AuthorizationAndContinue({ explicitLogin: true });
   });
 }
 
@@ -4767,8 +4982,14 @@ async function verifyExplicitLineIdentity() {
     const idToken = typeof liff !== 'undefined' && typeof liff.getIDToken === 'function'
       ? await withTimeout(liff.getIDToken(), 5000, 'LINE ID token')
       : '';
+    const tokenDiagnostics = getLineIdTokenDiagnostics(idToken);
     if (!idToken) {
       trackAnalyticsEvent('line_auth_failed', { reason: 'id_token_missing' });
+      return false;
+    }
+    if (isLineIdTokenExpired(tokenDiagnostics)) {
+      const refreshed = await refreshExpiredLineIdToken('LINE_ID_TOKEN_EXPIRED');
+      lineTokenRefreshStarted = refreshed === true;
       return false;
     }
     const response = await fetch('/api/line-id-token/verify', {

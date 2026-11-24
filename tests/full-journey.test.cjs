@@ -103,6 +103,16 @@ test('production candidate customer journey smoke: Landing -> Step 1 -> Step 2 -
     assert.equal(await page.locator('#wristWheelDisplay').count(), 1);
     assert.equal(await page.locator('#btnNext').isEnabled(), true);
 
+    // This smoke test covers designer navigation after the server-verified
+    // auth boundary; authentication itself is covered by the auth tests.
+    await page.evaluate(() => {
+      sessionStorage.setItem('lucky_prod_line_auth_attempt_state', JSON.stringify({
+        status: 'completed',
+        attemptId: 'A'.repeat(43),
+        updatedAt: Date.now()
+      }));
+    });
+
     await page.locator('#btnNext').click();
     await page.waitForSelector('#stepView2.active', { timeout: 15000 });
     assert.equal(await page.locator('#beadSizeOptionsList .bead-size-card').count(), 4);
