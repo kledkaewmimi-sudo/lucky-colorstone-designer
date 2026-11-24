@@ -59,6 +59,7 @@ const CUSTOMIZATION_LOGIN_INTENT_KEY = 'lucky_colorstone_customize_login_intent'
 const LINE_OA_FRIENDSHIP_RESUME_KEY = 'lucky_colorstone_line_oa_friendship_resume';
 const LINE_OA_FRIENDSHIP_RESUME_FALLBACK_KEY = 'lucky_colorstone_line_oa_friendship_resume_fallback';
 const LINE_OA_FRIENDSHIP_RESUME_TTL_MS = 20 * 60 * 1000;
+const LINE_OA_HANDOFF_QUERY_KEY = 'line_oa_handoff';
 const WRIST_PICKER_HINT_DISMISSED_KEY = 'lucky_colorstone_wrist_picker_hint_dismissed';
 const STEP3_CATEGORY_HINT_SEEN_KEY = 'lucky_step3_category_hint_seen';
 const STEP3_INFO_HINT_SEEN_KEY = 'lucky_step3_info_hint_seen';
@@ -1698,11 +1699,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     setCallbackBootstrapHold(true);
   }
   const returnParams = new URLSearchParams(window.location.search);
+  const lineOaHandoffToken = getLineOaHandoffToken(window.location.search);
+  const shouldResumeLineOaHandoff = !returnParams.has('orderId') && Boolean(lineOaHandoffToken);
+  if (shouldResumeLineOaHandoff) clearLineOaHandoffQueryParam();
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
     && isInitialLineIdentityCallback(window.location.search);
   // The head marker covers first paint. Confirm the initial identity callback
   // before any async startup work so it remains hidden through LIFF/profile sync.
-  if (shouldResumeInitialIdentityCallback) {
+  if (shouldResumeInitialIdentityCallback || shouldResumeLineOaHandoff) {
     setCallbackBootstrapHold(true);
   }
   await initializeDeferredLoginQaSession();
@@ -1723,18 +1727,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldHoldForFriendshipResume = !returnParams.has('orderId')
     && hasLineOaFriendshipResumePending();
   const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
+    || shouldResumeLineOaHandoff
     || shouldHoldForDeferredCallback
     || shouldHoldForFriendshipResume
     || hasPendingAutoAuthEntryReturn;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
-    && (shouldResumeInitialIdentityCallback || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
+    && (shouldResumeInitialIdentityCallback || shouldResumeLineOaHandoff || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
   progressiveStartupEligible = shouldStartFreshCustomization
     && !shouldHoldForCallbackBootstrap
     && !shouldOpenStep4FromUrl;
   // A cross-context V2 callback must apply validated handoff continuity before
   // the first analytics event can create a replacement browser session.
-  const deferAnalyticsUntilCallbackRestore = shouldHoldForDeferredCallback;
+  const deferAnalyticsUntilCallbackRestore = shouldHoldForDeferredCallback || shouldResumeLineOaHandoff;
   setCallbackBootstrapHold(shouldHoldForCallbackBootstrap);
   startupOrderReturnInProgress = shouldOpenStep4FromUrl;
 
@@ -1744,7 +1749,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // A public/manual entry is deliberately a new design session. Only a bounded
   // active LINE callback/resume context may load prior customization state.
-  if (shouldResumeInitialIdentityCallback) {
+  if (shouldResumeInitialIdentityCallback && !shouldResumeLineOaHandoff) {
     // Initial identity callbacks must never revive a stale bracelet. The marker
     // is recognized before UI rendering, then the callback resumes a clean Step 1.
     resetCustomizationSessionForFreshEntry();
@@ -1769,7 +1774,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (shouldHoldForDeferredCallback || hasPendingAutoAuthEntryReturn) {
     // Preserve pre-login canonical state until the V2/auth-entry recovery
     // controller has verified LINE identity and reconciled the handoff below.
-  } else if (!shouldStartFreshCustomization) {
+  } else if (!shouldStartFreshCustomization && !shouldResumeLineOaHandoff) {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
   if (shouldHoldForCallbackBootstrap || customizationResumeInProgress) armStartupAuthRecovery();
@@ -1852,6 +1857,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       persistLandingDismissed();
       syncShellVisibility();
       setStep1AuthStatus('failed');
+    }
+  } else if (shouldResumeLineOaHandoff) {
+    const resumed = await resumeLineOaHandoffReturn(lineOaHandoffToken);
+    restored = { ok: resumed, reason: resumed ? '' : 'line_oa_resume_failed' };
+    if (!resumed && State.currentStep !== 3) {
+      await restoreDeferredCallbackDesignToStep3Fallback();
     }
   } else if (shouldResumeInitialIdentityCallback) {
     if (isLineIdentityAvailable()) {
@@ -3741,6 +3752,131 @@ async function getLineOaAddFriendUrl() {
   }
 }
 
+function getLineOaHandoffToken(search = '') {
+  let candidate = String(search || '');
+  for (let depth = 0; depth < 4 && candidate; depth += 1) {
+    const query = candidate.includes('?') ? candidate.slice(candidate.indexOf('?') + 1) : candidate.replace(/^\?/, '');
+    const params = new URLSearchParams(query);
+    const token = String(params.get(LINE_OA_HANDOFF_QUERY_KEY) || '').trim();
+    if (/^[A-Za-z0-9_-]{43}$/.test(token)) return token;
+    const nested = params.get('liff.state');
+    if (!nested) break;
+    candidate = nested;
+  }
+  try {
+    const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+    const hashToken = String(hashParams.get(LINE_OA_HANDOFF_QUERY_KEY) || '').trim();
+    if (/^[A-Za-z0-9_-]{43}$/.test(hashToken)) return hashToken;
+  } catch {
+    // Hash parsing is best-effort; the query token is primary.
+  }
+  return '';
+}
+
+function getLineOaEntryUrl({ handoffToken = '' } = {}) {
+  const entry = new URL(getLiffEntryUrl());
+  if (/^[A-Za-z0-9_-]{43}$/.test(String(handoffToken || ''))) {
+    // Carry the opaque token in both forms because LIFF may forward only
+    // liff.state to the endpoint in some mobile contexts.
+    entry.searchParams.set(LINE_OA_HANDOFF_QUERY_KEY, String(handoffToken));
+    entry.searchParams.set('liff.state', `?${LINE_OA_HANDOFF_QUERY_KEY}=${String(handoffToken)}`);
+  }
+  return entry.toString();
+}
+
+function clearLineOaHandoffQueryParam() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    let changed = false;
+    if (params.has(LINE_OA_HANDOFF_QUERY_KEY)) {
+      params.delete(LINE_OA_HANDOFF_QUERY_KEY);
+      changed = true;
+    }
+    const nested = params.get('liff.state');
+    if (nested) {
+      const nestedQuery = nested.includes('?') ? nested.slice(nested.indexOf('?') + 1) : nested.replace(/^\?/, '');
+      const nestedParams = new URLSearchParams(nestedQuery);
+      if (nestedParams.has(LINE_OA_HANDOFF_QUERY_KEY)) {
+        nestedParams.delete(LINE_OA_HANDOFF_QUERY_KEY);
+        const cleanNested = nestedParams.toString();
+        if (cleanNested) params.set('liff.state', `?${cleanNested}`);
+        else params.delete('liff.state');
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    const cleanSearch = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`);
+  } catch {
+    // Best-effort URL cleanup; never block the friendship resume.
+  }
+}
+
+async function createLineOaResumeHandoff() {
+  const saved = saveGuestDesignSnapshot();
+  if (!saved?.ok || !saved.snapshot) return null;
+  return createDeferredLineAuthHandoff({
+    targetStep: 3,
+    designSnapshot: saved.snapshot,
+    analyticsContinuity: getDeferredLineAuthAnalyticsContinuity()
+  });
+}
+
+async function restoreLineOaResumeSnapshot(token) {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(String(token || ''))) return false;
+  const restored = await consumeDeferredLineAuthHandoff(token);
+  if (!restored?.ok || !applyInitialHandoffSnapshot(restored.snapshot)) return false;
+  // The shared handoff applier defaults to Step 1; OA resume belongs on Step 3.
+  State.currentStep = 3;
+  State.landingDismissed = true;
+  persistLandingDismissed();
+  syncShellVisibility();
+  saveState();
+  return true;
+}
+
+async function resumeLineOaHandoffReturn(token) {
+  const restored = await restoreLineOaResumeSnapshot(token);
+  if (!restored) return false;
+
+  // A LIFF entry can land in a fresh storage partition without a local
+  // lineUserId. Rehydrate the current profile before the friendship check.
+  if (!isLineIdentityAvailable() && isLiffLoggedIn()) {
+    await syncLineProfileWithBoundedRetry().catch(() => false);
+  }
+
+  const friendship = await getLineOaFriendshipStatus();
+  if (friendship.friendFlag) {
+    lineOaFriendshipRequired = false;
+    lineOaFriendshipStep4ResumePending = false;
+    clearLineOaFriendshipResumePending();
+    trackVerifiedLineOaConnection();
+    State.currentStep = 3;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    saveState();
+    return await goToStep(4);
+  }
+
+  lineOaFriendshipRequired = true;
+  lineOaFriendshipStep4ResumePending = true;
+  setLineOaFriendshipResumePending();
+
+  // If the return is already in Full LIFF, open Native Add Friend/Unblock
+  // immediately. Do not force another Next tap and a second LIFF entry.
+  if (canUseNativeLineOaFriendshipPrompt()) {
+    const addFriend = await openLineOaAddFriendExperience();
+    if (addFriend.source === 'liff_request_friendship') {
+      const resumed = await recheckLineOaFriendshipAndResume();
+      if (resumed) return true;
+    }
+  }
+
+  showToast('กรุณาเพิ่มเพื่อน LINE OA แล้วกด Next อีกครั้ง', 5000);
+  return false;
+}
+
 function canUseNativeLineOaFriendshipPrompt() {
   if (!isLiffInClient() || typeof liff === 'undefined' || typeof liff.requestFriendship !== 'function') return false;
   const liffContext = typeof liff.getContext === 'function' ? liff.getContext() : null;
@@ -3769,7 +3905,11 @@ async function openLineOaAddFriendExperience() {
   if (!isLiffInClient()) {
     showLineOaFriendshipTransition();
     try {
-      window.location.assign(getLiffEntryUrl());
+      // External browsers can return in a different storage partition (for
+      // example, Instagram/Safari -> LINE webview). Keep the design in a
+      // server handoff and pass only its opaque token through LIFF.
+      const resumeHandoff = await createLineOaResumeHandoff().catch(() => null);
+      window.location.assign(getLineOaEntryUrl({ handoffToken: resumeHandoff?.token || '' }));
       return { opened: true, source: 'liff_entry' };
     } catch (error) {
       hideLineOaFriendshipTransition();
