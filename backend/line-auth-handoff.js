@@ -12,17 +12,19 @@ function normalizeId(value) {
   return id && id.length <= 120 ? id : '';
 }
 
-function normalizeDesignSnapshot(value) {
+function normalizeDesignSnapshot(value, { allowEmptyInitial = false } = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1) return null;
   const design = value.design;
   if (!design || typeof design !== 'object' || Array.isArray(design)) return null;
   const wristSize = Number(design.wristSize);
-  const beadSize = String(design.beadSize || '');
+  const beadSize = design.beadSize == null ? '' : String(design.beadSize);
   const components = Array.isArray(design.components) ? design.components : null;
   const selectedCharmIds = Array.isArray(design.selectedCharmIds) ? design.selectedCharmIds : null;
   const mixedPlacingSize = Number(design.mixedPlacingSize);
   if (!Number.isFinite(wristSize) || wristSize < 14 || wristSize > 20 || Math.round(wristSize * 2) !== wristSize * 2) return null;
-  if (!['4', '6', '10', 'mixed'].includes(beadSize) || !components || components.length > 240 || !selectedCharmIds || selectedCharmIds.length > 2) return null;
+  const emptyInitial = allowEmptyInitial && !beadSize && components?.length === 0 && selectedCharmIds?.length === 0;
+  if (!emptyInitial && !['4', '6', '10', 'mixed'].includes(beadSize)) return null;
+  if (!components || components.length > 240 || !selectedCharmIds || selectedCharmIds.length > 2) return null;
   if (beadSize === 'mixed' && ![4, 6, 10].includes(mixedPlacingSize)) return null;
   const normalizedComponents = components.map((component) => {
     const type = String(component?.type || '').trim().toLowerCase();
@@ -47,8 +49,8 @@ function normalizeDesignSnapshot(value) {
     step,
     design: {
       wristSize,
-      beadSize,
-      mixedPlacingSize: beadSize === 'mixed' ? mixedPlacingSize : Number(beadSize),
+      beadSize: emptyInitial ? null : beadSize,
+      mixedPlacingSize: beadSize === 'mixed' ? mixedPlacingSize : (emptyInitial ? 6 : Number(beadSize)),
       selectedCharmIds: charms,
       components: normalizedComponents
     }
@@ -76,7 +78,7 @@ function normalizeContinuity(value = {}) {
 
 function normalizeHandoffPayload(input = {}, now = Date.now(), ttlMs = HANDOFF_TTL_MS) {
   const targetStep = Number(input.targetStep);
-  const designSnapshot = normalizeDesignSnapshot(input.designSnapshot);
+  const designSnapshot = normalizeDesignSnapshot(input.designSnapshot, { allowEmptyInitial: targetStep === 2 });
   if (!designSnapshot || ![1, 2, 3, 4].includes(targetStep)) return null;
   const createdAt = Number(now);
   const resolvedTtlMs = Number(ttlMs);

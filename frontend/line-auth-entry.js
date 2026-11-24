@@ -2,12 +2,16 @@ const FALLBACK_TIMEOUT_MS = 15000;
 const INIT_TIMEOUT_MS = 15000;
 const statusNode = document.getElementById('status');
 const fallbackNode = document.getElementById('fallback');
+const spinnerNode = document.querySelector('.spinner');
 let fallbackTimer = null;
 let initTimer = null;
 
 function showFallback() {
   if (statusNode) statusNode.textContent = 'ไม่สามารถเริ่ม LINE Login อัตโนมัติได้ กรุณากลับไปหน้าออกแบบ';
   if (fallbackNode) fallbackNode.hidden = false;
+  if (spinnerNode) spinnerNode.style.display = 'none';
+  if (fallbackTimer) window.clearTimeout(fallbackTimer);
+  if (initTimer) window.clearTimeout(initTimer);
 }
 
 function returnToDesigner() {

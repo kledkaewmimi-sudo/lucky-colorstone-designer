@@ -42,6 +42,10 @@
     }());
   </script>
 
+  <!-- The Instagram handoff is initiated only from the branded CTA in app.js.
+       Never auto-navigate from the document head: the customer must see the
+       explanation screen and trigger the supported external-browser scheme. -->
+
   <!-- Meta Pixel: public browser identifier; no access token is exposed here. -->
   <script>
     (function (f, b, e, v, n, t, s) {
@@ -70,6 +74,19 @@
     <div class="callback-bootstrap-content">
       <div class="pastel-spinner" aria-hidden="true"></div>
       <p>กำลังกลับเข้าสู่แบบกำไลของคุณ</p>
+    </div>
+  </div>
+
+  <!-- Owner-approved Instagram redirect images; the CTA is the only clickable region. -->
+  <div class="instagram-handoff-screen" id="instagramHandoffScreen" hidden role="dialog" aria-modal="true"
+    aria-label="เปิดเว็บไซต์ Lucky Colorstone ผ่านเบราว์เซอร์ภายนอก">
+    <div class="instagram-handoff-frame">
+      <img class="instagram-handoff-image" id="instagramHandoffImage"
+        src="/assets/instagram-handoff/safari.jpg"
+        alt="Lucky Colorstone เปิดผ่าน Safari เพื่อเข้าสู่ระบบ LINE และเริ่มออกแบบ"
+        width="891" height="1508" decoding="async">
+      <button class="instagram-handoff-cta-hotspot" id="instagramHandoffCta" type="button"
+        aria-label="เปิดผ่านเบราว์เซอร์"></button>
     </div>
   </div>
 

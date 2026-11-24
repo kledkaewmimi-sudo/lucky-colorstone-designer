@@ -8252,3 +8252,61 @@ body:has(.lumi-shell){height:100%;overflow:hidden;overscroll-behavior:none}
   }
 }
 
+
+
+
+/* ==========================================
+   Instagram owner-approved image redirect
+   ========================================== */
+.instagram-handoff-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #f3eff9;
+  overflow: hidden;
+}
+
+.instagram-handoff-screen[hidden] {
+  display: none;
+}
+
+.instagram-handoff-frame {
+  position: relative;
+  width: min(100vw, 59.1dvh);
+  max-width: 100vw;
+  aspect-ratio: 891 / 1508;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.instagram-handoff-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Transparent click target aligned to the embedded CTA. */
+.instagram-handoff-cta-hotspot {
+  position: absolute;
+  left: 8.98%;
+  top: 55.10%;
+  width: 80.81%;
+  height: 7.16%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+

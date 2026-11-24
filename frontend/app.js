@@ -30,6 +30,7 @@ import {
   trackTikTokEvent
 } from './tiktok-browser-tracking.js';
 import { resolveLiffEnvironmentConfig } from './liff-environment-config.js';
+import { detectBrowserContext, buildExternalDestination, buildAndroidChromeIntent, buildInstagramExternalBrowserUrl } from './instagram-browser-transition.js';
 import { createLumiCatalogSnapshot } from './lumi/contracts/catalog-snapshot.js';
 import { commitLumiStep3Import, prepareLumiStep3Import } from './lumi/import/step3-import.js';
 import { isLumiEnabled } from './lumi/foundation/feature-flag.js';
@@ -111,6 +112,7 @@ const step2Debug = {
 };
 const LINE_DEBUG_NO_NAVIGATION_MS = 1500;
 const LINE_LOGIN_NAVIGATION_GUARD_MS = 10000;
+const LINE_AUTH_STARTUP_RECOVERY_MS = 20000;
 const LINE_MANUAL_RECOVERY_TEXT = 'LINE did not open in this browser. Use the page menu to open this page in Safari or Chrome, then try again.';
 // The accepted UAT candidate ships without the temporary sticky debug overlay.
 const STICKY_DEBUG_ENABLED = false;
@@ -410,6 +412,7 @@ let landingConnectPromptVisible = false;
 let lineBootstrapFailureReason = '';
 let step1AuthActionStarted = false;
 let lineLoginNavigationGuardTimer = null;
+let startupAuthRecoveryTimer = null;
 let lineManualEntryAttempted = false;
 let lineSessionRecoveryAttempted = false;
 let landingPressTimer = null;
@@ -436,6 +439,7 @@ let lineBootstrapPromise = null;
 let progressiveLineVerificationPromise = null;
 let step1ToStep2AuthInProgress = false;
 let step1AuthState = 'idle';
+let manualFallbackReady = false;
 let customerCatalogStartupPromise = null;
 let customerCatalogRefreshPromise = null;
 let customerCatalogRefreshEventsBound = false;
@@ -1577,6 +1581,89 @@ function setupLineDebugRuntimeListeners() {
 
 lineDebugTrace('BOOT', { captureState: true });
 
+const INSTAGRAM_AUTO_ESCAPE_ATTEMPTED_KEY = 'lucky_prod_instagram_auto_escape_attempted';
+
+function getInstagramTransitionDestination() {
+  return buildExternalDestination({
+    origin: window.location.origin,
+    pathname: window.location.pathname || '/',
+    search: window.location.search || ''
+  });
+}
+function getInstagramHandoffCtaLabel(context) {
+  if (context?.platform === 'android') return 'เปิดผ่าน Chrome';
+  if (context?.platform === 'ios') return 'เปิดผ่าน Safari';
+  return 'เปิดผ่านเบราว์เซอร์';
+}
+
+function showInstagramHandoffScreen(context) {
+  const screen = document.getElementById('instagramHandoffScreen');
+  const image = document.getElementById('instagramHandoffImage');
+  const cta = document.getElementById('instagramHandoffCta');
+  if (!screen) return false;
+  const platform = context?.platform === 'android' ? 'android' : (context?.platform === 'ios' ? 'ios' : 'browser');
+  if (image) {
+    image.src = platform === 'android'
+      ? '/assets/instagram-handoff/chrome.jpg'
+      : '/assets/instagram-handoff/safari.jpg';
+    image.alt = platform === 'android'
+      ? 'Lucky Colorstone เปิดผ่าน Chrome เพื่อเข้าสู่ระบบ LINE และเริ่มออกแบบ'
+      : 'Lucky Colorstone เปิดผ่าน Safari เพื่อเข้าสู่ระบบ LINE และเริ่มออกแบบ';
+  }
+  if (cta) cta.setAttribute('aria-label', getInstagramHandoffCtaLabel(context));
+  screen.hidden = false;
+  if (screen.dataset.handoffBound !== '1' && cta) {
+    screen.dataset.handoffBound = '1';
+    cta.addEventListener('click', () => {
+      attemptInstagramExternalBrowser(context);
+    });
+  }
+  return true;
+}
+
+function attemptInstagramExternalBrowser(context) {
+  const targetUrl = getInstagramTransitionDestination();
+  if (!targetUrl) return false;
+  try {
+    sessionStorage.setItem(INSTAGRAM_AUTO_ESCAPE_ATTEMPTED_KEY, '1');
+  } catch {
+    // Storage may be blocked; the explicit CTA still runs once for this tap.
+  }
+  trackAnalyticsEvent('external_browser_launch_attempted', {
+    platform: context.platform,
+    browser: 'instagram',
+    automatic: false
+  });
+
+  try {
+    if (context.platform === 'android') {
+      window.location.href = buildAndroidChromeIntent(targetUrl);
+    } else if (context.platform === 'ios') {
+      window.location.href = buildInstagramExternalBrowserUrl(targetUrl);
+    } else {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function setupInstagramBrowserTransition() {
+  const context = detectBrowserContext(window.navigator.userAgent || '');
+  if (!context.isInstagram || context.isLine) return false;
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.has('handoff') || params.has('liff.state') || params.has('orderId')
+    || params.has('line_auth') || params.has('code') || params.has('state')) return false;
+  if (window.location.pathname !== '/') return false;
+
+  trackAnalyticsEvent('instagram_browser_detected', {
+    platform: context.platform,
+    browser: 'instagram'
+  });
+  return showInstagramHandoffScreen(context);
+}
+
 // ==========================================
 // 4. Initialisation
 // ==========================================
@@ -1586,6 +1673,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupStep2DebugPanel();
   setupLineDebugPanel();
   setupLineDebugRuntimeListeners();
+  setupInstagramBrowserTransition();
   lineDebugTrace('DOM_READY', { captureState: true });
   // The document-head marker prevents a first-paint landing flash while the QA
   // status request below is still resolving. Confirm the real callback state
@@ -1668,6 +1756,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (!shouldStartFreshCustomization) {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
+  if (shouldHoldForCallbackBootstrap || customizationResumeInProgress) armStartupAuthRecovery();
   syncShellVisibility();
   // The landing CTA must be interactive before LIFF and catalog bootstrapping finish.
   // Its handler waits for this bootstrap promise and continues the original first tap.
@@ -1728,7 +1817,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       State.landingDismissed = true;
       persistLandingDismissed();
       syncShellVisibility();
-      setStep1AuthStatus('failed');
+      offerManualLineFallback('LINE_ID_TOKEN_REJECTED');
     }
   }
   if (hasPendingAutoAuthEntryReturn) {
@@ -1746,7 +1835,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       State.landingDismissed = true;
       persistLandingDismissed();
       syncShellVisibility();
-      setStep1AuthStatus('failed');
+      offerManualLineFallback('AUTH_ENTRY_RESTORE_FAILED');
     }
   } else if (shouldResumeInitialIdentityCallback) {
     if (isLineIdentityAvailable()) {
@@ -2745,6 +2834,7 @@ function resetLandingStartState() {
 
 function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
   landingConnectPromptVisible = false;
+  manualFallbackReady = false;
   setLandingSubtitleMessage('');
   resetLandingStartState();
   if (message) {
@@ -2844,7 +2934,36 @@ function enterLineLoginManualRecovery(reason = 'LINE_LOGIN_NAVIGATION_BLOCKED') 
   liffLoginInProgress = false;
   lineIdentityFailureCode = reason;
   if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+  manualFallbackReady = true;
   setStep1AuthStatus('manual');
+}
+
+function clearStartupAuthRecovery() {
+  if (startupAuthRecoveryTimer) {
+    window.clearTimeout(startupAuthRecoveryTimer);
+    startupAuthRecoveryTimer = null;
+  }
+}
+
+function armStartupAuthRecovery() {
+  clearStartupAuthRecovery();
+  startupAuthRecoveryTimer = window.setTimeout(() => {
+    startupAuthRecoveryTimer = null;
+    if (isLineIdentityAvailable()) return;
+    if (!customizationResumeInProgress && !liffLoginInProgress && !hasPendingAutoAuthEntry()) return;
+    liffLoginInProgress = false;
+    customizationResumeInProgress = false;
+    clearCustomizationLoginIntent();
+    clearAutoAuthEntryState();
+    if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+    State.currentStep = 1;
+    State.landingDismissed = true;
+    persistLandingDismissed();
+    syncShellVisibility();
+    offerManualLineFallback('AUTH_STARTUP_TIMEOUT');
+    trackAnalyticsEvent('line_auth_failed', { reason: 'auth_startup_timeout' });
+    showToast('LINE Login ใช้เวลานานเกินไป กรุณาลองอีกครั้ง');
+  }, LINE_AUTH_STARTUP_RECOVERY_MS);
 }
 
 function armLineLoginNavigationGuard() {
@@ -2859,7 +2978,7 @@ function armLineLoginNavigationGuard() {
 
 window.addEventListener('pagehide', clearLineLoginNavigationGuard);
 
-function openManualLineEntryFromUserAction() {
+async function openManualLineEntryFromUserAction() {
   if (step1AuthState !== 'manual' || State.currentStep !== 1) return false;
   if (lineManualEntryAttempted) {
     saveState();
@@ -2867,12 +2986,20 @@ function openManualLineEntryFromUserAction() {
     return true;
   }
   lineManualEntryAttempted = true;
-  const started = openLineConnectEntryForCustomization({
-    returnStartStatus: true,
-    resumeStep: 2,
-    keepStep1Visible: true
+  // Reuse the production auth-entry architecture for Plan B: the server
+  // verifies the LINE ID token, consumes the browser/tab-bound session, and
+  // consumes the single-use design handoff before Step 2.
+  const started = await startAutoAuthEntryForCustomization({
+    keepStep1Visible: true,
+    manualFallback: true
   });
-  if (!started) enterLineLoginManualRecovery('LINE_MANUAL_ENTRY_FAILED');
+  if (!started) {
+    if (detectBrowserContext(window.navigator.userAgent || '').isInstagram) {
+      setStep1AuthStatus('instagram_external');
+    } else {
+      offerManualLineFallback('LINE_MANUAL_ENTRY_FAILED');
+    }
+  }
   return started;
 }
 
@@ -2964,7 +3091,7 @@ function canUseAutoAuthEntryForCustomization() {
   return APP_ENV === 'production'
     && requiresLineLoginForCustomization()
     && !isLiffInClient()
-    && !isSocialInAppBrowser()
+    && !detectBrowserContext(window.navigator.userAgent || '').isInstagram
     && isLikelyMobileBrowser()
     && !isLineIdentityAvailable()
     && !getRequestedOrderId();
@@ -3018,20 +3145,41 @@ function showAutoAuthEntryProgress() {
   if (DOM.btnNext) DOM.btnNext.disabled = true;
 }
 
-function failAutoAuthEntryReturn(reason = 'auth_entry_restore_failed') {
-  clearAutoAuthEntryState();
+function failAutoAuthEntryStart(reason = 'HANDOFF_CREATE_FAILED') {
+  liffLoginInProgress = false;
+  clearCustomizationLoginIntent();
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
   lineIdentityFailureCode = reason;
   State.currentStep = 1;
   State.landingDismissed = true;
   persistLandingDismissed();
   syncShellVisibility();
-  setStep1AuthStatus('failed');
+  offerManualLineFallback(reason);
+  trackAnalyticsEvent('state_restore_failed', { reason });
+  trackAnalyticsEvent('line_auth_failed', { reason });
+  return false;
+}
+
+function failAutoAuthEntryReturn(reason = 'auth_entry_restore_failed') {
+  clearAutoAuthEntryState();
+  clearStartupAuthRecovery();
+  if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+  lineIdentityFailureCode = reason;
+  State.currentStep = 1;
+  State.landingDismissed = true;
+  persistLandingDismissed();
+  syncShellVisibility();
+  offerManualLineFallback(reason);
   trackAnalyticsEvent('state_restore_failed', { reason });
   return false;
 }
 
-async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } = {}) {
-  if (!canUseAutoAuthEntryForCustomization()) return false;
+async function startAutoAuthEntryForCustomization({ keepStep1Visible = false, manualFallback = false } = {}) {
+  if (!manualFallback && !canUseAutoAuthEntryForCustomization()) return false;
+  if (manualFallback && detectBrowserContext(window.navigator.userAgent || '').isInstagram) {
+    setStep1AuthStatus('instagram_external');
+    return false;
+  }
   if (liffLoginInProgress) return false;
 
   autoAuthEntryFailure = '';
@@ -3042,7 +3190,7 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } =
     const initialHandoff = await createInitialStateHandoff();
     if (!initialHandoff?.token) {
       autoAuthEntryFailure = 'handoff_create';
-      return failAutoAuthEntryReturn('HANDOFF_CREATE_FAILED');
+      return failAutoAuthEntryStart('HANDOFF_CREATE_FAILED');
     }
     const tabSessionId = createClientOpaqueId();
     if (!writeAutoAuthEntryState({
@@ -3051,7 +3199,7 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } =
       sessionId: '',
       expiresAt: Date.now() + 10 * 60 * 1000
     })) {
-      return failAutoAuthEntryReturn('AUTH_ENTRY_STORAGE_FAILED');
+      return failAutoAuthEntryStart('AUTH_ENTRY_STORAGE_FAILED');
     }
     saveState();
     const response = await fetch('/api/line-auth-entry', {
@@ -3071,7 +3219,7 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } =
       if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
       autoAuthEntryFailure = 'session';
       lineIdentityFailureCode = 'AUTH_ENTRY_SESSION_FAILED';
-      setStep1AuthStatus('failed');
+      offerManualLineFallback('AUTH_ENTRY_SESSION_FAILED');
       trackAnalyticsEvent('line_auth_failed', { reason: 'auth_entry_session_failed' });
       return false;
     }
@@ -3088,7 +3236,7 @@ async function startAutoAuthEntryForCustomization({ keepStep1Visible = false } =
     if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
     autoAuthEntryFailure = 'start';
     lineIdentityFailureCode = 'AUTH_ENTRY_START_FAILED';
-    setStep1AuthStatus('failed');
+    offerManualLineFallback('AUTH_ENTRY_START_FAILED');
     trackAnalyticsEvent('line_auth_failed', { reason: 'auth_entry_start_failed' });
     return false;
   }
@@ -3166,12 +3314,17 @@ async function handleAutoAuthEntryReturn() {
     }
     applyDeferredLineAuthAnalyticsContinuity(result.analyticsContinuity);
     clearAutoAuthEntryState();
+    clearStartupAuthRecovery();
+    clearCustomizationLoginIntent();
+    rememberCustomizationLoginIntent({ targetStep: 2, journeyId: result.journeyId || '' });
+    customizationResumeInProgress = false;
     liffLoginInProgress = false;
     if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
     State.currentStep = 2;
     State.landingDismissed = true;
     persistLandingDismissed();
     syncShellVisibility();
+    saveState();
     trackAnalyticsEvent('line_auth_success', { method: 'auth_entry', verified: true });
     trackAnalyticsEvent('state_restore_success', { method: 'auth_entry', restored_step: 2 });
     return { ok: true, targetStep: 2, journeyId: result.journeyId || '' };
@@ -3610,6 +3763,12 @@ function restoreCustomizationIntentAfterLogin() {
 
 async function completeCustomizationStartResume() {
   const loader = DOM.liffLoadingOverlay;
+  if (State.currentStep > 1) {
+    customizationResumeInProgress = false;
+    clearCustomizationLoginIntent();
+    if (loader) loader.style.display = 'none';
+    return;
+  }
   const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
   const resumeIntent = parseCustomizationLoginIntent(rawIntent);
   const resumeStep = resumeIntent?.version === 1 && resumeIntent.targetStep === 2 ? 2 : 1;
@@ -3995,12 +4154,36 @@ function renderStep1AuthStatus() {
   const action = DOM.btnStep1LineConnect;
   if (!container || !text || !action) return;
 
+  if (step1AuthState === 'instagram_external') {
+    container.hidden = false;
+    container.dataset.state = 'instagram_external';
+    text.textContent = 'กรุณาเปิดเว็บไซต์นี้ผ่าน Safari หรือ Chrome เพื่อเข้าสู่ระบบ LINE';
+    action.hidden = true;
+    return;
+  }
+  if (step1AuthState === 'manual' && !manualFallbackReady) {
+    container.hidden = true;
+    action.hidden = true;
+    container.removeAttribute('data-state');
+    text.textContent = '';
+    return;
+  }
+  if (step1AuthState === 'failed' && !manualFallbackReady) {
+    container.hidden = true;
+    action.hidden = true;
+    container.removeAttribute('data-state');
+    text.textContent = '';
+    return;
+  }
+
   const quietBackgroundState = !step1AuthActionStarted
     && (step1AuthState === 'verifying' || step1AuthState === 'required');
   // Eligible external mobile browsers start auth-entry from Next. The normal
   // path has no second primary login button; show it only after a genuine
   // failure or for in-app/explicit contexts.
-  if (canUseAutoAuthEntryForCustomization() && step1AuthState !== 'failed') {
+  if (canUseAutoAuthEntryForCustomization()
+    && step1AuthState !== 'failed'
+    && step1AuthState !== 'manual') {
     container.hidden = true;
     action.hidden = true;
     container.removeAttribute('data-state');
@@ -4023,8 +4206,8 @@ function renderStep1AuthStatus() {
   container.hidden = false;
   container.dataset.state = step1AuthState;
   if (step1AuthState === 'manual') {
-    text.textContent = LINE_MANUAL_RECOVERY_TEXT;
-    action.textContent = lineManualEntryAttempted ? 'Reload and try again' : 'Open LINE';
+    text.textContent = LINE_CONNECT_RETRY_MESSAGE;
+    action.textContent = 'เข้าสู่ระบบด้วย LINE';
     action.hidden = false;
     return;
   }
@@ -4044,6 +4227,12 @@ function renderStep1AuthStatus() {
 function setStep1AuthStatus(state) {
   step1AuthState = state;
   renderStep1AuthStatus();
+}
+
+function offerManualLineFallback(reason = 'LINE_AUTO_LOGIN_FAILED') {
+  manualFallbackReady = true;
+  lineIdentityFailureCode = reason;
+  setStep1AuthStatus('manual');
 }
 
 async function startProgressiveLineVerification() {
@@ -4139,13 +4328,20 @@ async function ensureStep1LineAuthorization() {
 async function attemptStep1AuthorizationAndContinue({ explicitLogin = false } = {}) {
   if (step1ToStep2AuthInProgress || State.currentStep !== 1) return false;
 
+  if (requiresLineLoginForCustomization() && !isLineIdentityAvailable()
+    && detectBrowserContext(window.navigator.userAgent || '').isInstagram
+    && !isLiffInClient()) {
+    setStep1AuthStatus('instagram_external');
+    return false;
+  }
+
   if (!explicitLogin && requiresLineLoginForCustomization() && !isLineIdentityAvailable()
     && canUseAutoAuthEntryForCustomization()) {
     step1AuthActionStarted = true;
     setStep1AuthStatus('verifying');
     const started = await startAutoAuthEntryForCustomization({ keepStep1Visible: true });
     if (!started) {
-      setStep1AuthStatus('failed');
+      offerManualLineFallback('AUTO_AUTH_ENTRY_FAILED');
       DOM.btnNext.disabled = false;
       configureFooterNavigation();
     }
@@ -4204,8 +4400,7 @@ function setupProgressiveStep1AuthEvents() {
   if (!DOM.btnStep1LineConnect || DOM.btnStep1LineConnect.dataset.authHandlerReady === 'true') return;
   DOM.btnStep1LineConnect.dataset.authHandlerReady = 'true';
   DOM.btnStep1LineConnect.addEventListener('click', () => {
-    if (openManualLineEntryFromUserAction()) return;
-    void attemptStep1AuthorizationAndContinue({ explicitLogin: true });
+    void openManualLineEntryFromUserAction();
   });
 }
 
