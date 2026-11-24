@@ -1699,19 +1699,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     setCallbackBootstrapHold(true);
   }
   const returnParams = new URLSearchParams(window.location.search);
+  const lineOaHandoffRequested = hasLineOaHandoffMarker(window.location.search);
   const lineOaHandoffToken = getLineOaHandoffToken(window.location.search);
   const shouldResumeLineOaHandoff = !returnParams.has('orderId') && Boolean(lineOaHandoffToken);
-  if (shouldResumeLineOaHandoff) clearLineOaHandoffQueryParam();
+  const shouldPreserveForLineOaHandoff = !returnParams.has('orderId')
+    && lineOaHandoffRequested
+    && !shouldResumeLineOaHandoff;
+  if (lineOaHandoffRequested) clearLineOaHandoffQueryParam();
   const shouldResumeInitialIdentityCallback = !returnParams.has('orderId')
     && isInitialLineIdentityCallback(window.location.search);
   // The head marker covers first paint. Confirm the initial identity callback
   // before any async startup work so it remains hidden through LIFF/profile sync.
-  if (shouldResumeInitialIdentityCallback || shouldResumeLineOaHandoff) {
+  if (shouldResumeInitialIdentityCallback || lineOaHandoffRequested) {
     setCallbackBootstrapHold(true);
   }
   await initializeDeferredLoginQaSession();
-  const autoAuthEntryRecovery = await recoverPendingAutoAuthEntry();
-  const hasPendingAutoAuthEntryReturn = autoAuthEntryRecovery.pending === true;
+  // A valid OA handoff is the authoritative return path. Do not let a stale
+  // auth-entry session hijack startup and reset the bracelet to Step 1.
+  if (lineOaHandoffRequested) clearAutoAuthEntryState();
+  const autoAuthEntryRecovery = lineOaHandoffRequested
+    ? { ok: true, pending: false }
+    : await recoverPendingAutoAuthEntry();
+  const hasPendingAutoAuthEntryReturn = !lineOaHandoffRequested
+    && autoAuthEntryRecovery.pending === true;
   const shouldOpenStep4FromUrl = !IS_UAT_MODE && (returnParams.get('step') === '4' || returnParams.has('stripe') || returnParams.has('orderId'));
   // Classify callback intent before the legacy resume branch can reset Step 3 state.
   // A valid flagged V2 callback is held until LIFF identity is available below.
@@ -1727,12 +1737,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shouldHoldForFriendshipResume = !returnParams.has('orderId')
     && hasLineOaFriendshipResumePending();
   const shouldHoldForCallbackBootstrap = shouldResumeInitialIdentityCallback
-    || shouldResumeLineOaHandoff
+    || lineOaHandoffRequested
     || shouldHoldForDeferredCallback
     || shouldHoldForFriendshipResume
     || hasPendingAutoAuthEntryReturn;
   const hasValidCustomizationResume = !deferredLoginQaActivationAttempted
-    && (shouldResumeInitialIdentityCallback || shouldResumeLineOaHandoff || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
+    && (shouldResumeInitialIdentityCallback || lineOaHandoffRequested || shouldResumeCustomizationStart || shouldHoldForCallbackBootstrap);
   const shouldStartFreshCustomization = !shouldOpenStep4FromUrl && !hasValidCustomizationResume;
   progressiveStartupEligible = shouldStartFreshCustomization
     && !shouldHoldForCallbackBootstrap
@@ -1774,10 +1784,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else if (shouldHoldForDeferredCallback || hasPendingAutoAuthEntryReturn) {
     // Preserve pre-login canonical state until the V2/auth-entry recovery
     // controller has verified LINE identity and reconciled the handoff below.
-  } else if (!shouldStartFreshCustomization && !shouldResumeLineOaHandoff) {
+  } else if (!shouldStartFreshCustomization && !shouldResumeLineOaHandoff && !shouldPreserveForLineOaHandoff) {
     resetStep3DesignState('normal-startup', { resetToStep1WhenPastDesign: true });
   }
-  if (shouldHoldForCallbackBootstrap || customizationResumeInProgress) armStartupAuthRecovery();
+  if ((shouldHoldForCallbackBootstrap || customizationResumeInProgress) && !lineOaHandoffRequested) {
+    armStartupAuthRecovery();
+  }
   syncShellVisibility();
   // The landing CTA must be interactive before LIFF and catalog bootstrapping finish.
   // Its handler waits for this bootstrap promise and continues the original first tap.
@@ -1826,6 +1838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   clearOAuthQueryParams();
   let restored = null;
   if (!hasPendingAutoAuthEntryReturn
+    && !lineOaHandoffRequested
     && State.currentStep > 1
     && requiresLineLoginForCustomization()
     && !getRequestedOrderId()
@@ -1841,7 +1854,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       setStep1AuthStatus('failed');
     }
   }
-  if (hasPendingAutoAuthEntryReturn) {
+  if (shouldResumeLineOaHandoff) {
+    const resumed = await resumeLineOaHandoffReturn(lineOaHandoffToken);
+    restored = { ok: resumed, reason: resumed ? '' : 'line_oa_resume_failed' };
+    if (!resumed && State.currentStep !== 3) {
+      await restoreDeferredCallbackDesignToStep3Fallback();
+    }
+  } else if (shouldPreserveForLineOaHandoff) {
+    // An invalid/expired OA token must not erase a valid local design. Keep the
+    // customer's Step 3 state and fail closed instead of resetting to Landing.
+    if (State.currentStep === 3) {
+      State.landingDismissed = true;
+      persistLandingDismissed();
+      syncShellVisibility();
+    }
+  } else if (hasPendingAutoAuthEntryReturn) {
     const autoAuthEntryReturn = await handleAutoAuthEntryReturn();
     if (autoAuthEntryReturn.ok) {
       restored = { ok: true };
@@ -1857,12 +1884,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       persistLandingDismissed();
       syncShellVisibility();
       setStep1AuthStatus('failed');
-    }
-  } else if (shouldResumeLineOaHandoff) {
-    const resumed = await resumeLineOaHandoffReturn(lineOaHandoffToken);
-    restored = { ok: resumed, reason: resumed ? '' : 'line_oa_resume_failed' };
-    if (!resumed && State.currentStep !== 3) {
-      await restoreDeferredCallbackDesignToStep3Fallback();
     }
   } else if (shouldResumeInitialIdentityCallback) {
     if (isLineIdentityAvailable()) {
@@ -3752,6 +3773,24 @@ async function getLineOaAddFriendUrl() {
   }
 }
 
+function hasLineOaHandoffMarker(search = '') {
+  let candidate = String(search || '');
+  for (let depth = 0; depth < 4 && candidate; depth += 1) {
+    const query = candidate.includes('?') ? candidate.slice(candidate.indexOf('?') + 1) : candidate.replace(/^\?/, '');
+    const params = new URLSearchParams(query);
+    if (params.has(LINE_OA_HANDOFF_QUERY_KEY)) return true;
+    const nested = params.get('liff.state');
+    if (!nested) break;
+    candidate = nested;
+  }
+  try {
+    const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+    return hashParams.has(LINE_OA_HANDOFF_QUERY_KEY);
+  } catch {
+    return false;
+  }
+}
+
 function getLineOaHandoffToken(search = '') {
   let candidate = String(search || '');
   for (let depth = 0; depth < 4 && candidate; depth += 1) {
@@ -3836,7 +3875,11 @@ async function restoreLineOaResumeSnapshot(token) {
 }
 
 async function resumeLineOaHandoffReturn(token) {
+  // A valid OA return owns the bootstrap; never let a generic auth recovery
+  // timer replace the restored Step 3 with Step 1.
+  clearStartupAuthRecovery();
   const restored = await restoreLineOaResumeSnapshot(token);
+  clearStartupAuthRecovery();
   if (!restored) return false;
 
   // A LIFF entry can land in a fresh storage partition without a local
@@ -3846,6 +3889,7 @@ async function resumeLineOaHandoffReturn(token) {
   }
 
   const friendship = await getLineOaFriendshipStatus();
+  clearStartupAuthRecovery();
   if (friendship.friendFlag) {
     lineOaFriendshipRequired = false;
     lineOaFriendshipStep4ResumePending = false;

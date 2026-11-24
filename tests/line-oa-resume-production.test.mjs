@@ -21,16 +21,24 @@ const MIME = {
   '.svg': 'image/svg+xml'
 };
 const TOKEN = 'A'.repeat(43);
+const INTENT_TOKEN = 'C'.repeat(43);
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
-async function fixture() {
-  const counts = { reads: 0, consumes: 0 };
+async function fixture({ pendingAuth = false } = {}) {
+  const counts = { reads: 0, consumes: 0, posts: 0, handoffBodies: [] };
   const server = createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     const json = (body, status = 200) => {
       response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify(body));
     };
+    if (url.pathname === '/api/auth-handoffs' && request.method === 'POST') {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      counts.posts += 1;
+      counts.handoffBodies.push(JSON.parse(body || '{}'));
+      return json({ token: TOKEN, expiresAt: Date.now() + 600000 }, 201);
+    }
     if (url.pathname === '/api/liff-config') return json({ environment: 'production', liffId: '2010525799-qImIuhla' });
     if (url.pathname === '/api/line-id-token/verify') return json({ verified: true });
     if (url.pathname === `/api/auth-handoffs/${TOKEN}`) {
@@ -44,7 +52,7 @@ async function fixture() {
       counts.consumes += 1;
       return json({ consumed: true });
     }
-    if (url.pathname === '/api/auth-entry/sessions/pending') return json({ ok: true, pending: false });
+    if (url.pathname === '/api/auth-entry/sessions/pending') return json(pendingAuth ? { ok: true, pending: true, sessionId: 'F'.repeat(43), tabSessionId: 'G'.repeat(43), expiresAt: new Date(Date.now() + 600000).toISOString() } : { ok: true, pending: false });
     if (url.pathname === '/api/settings' || url.pathname === '/api/social-proof') return json({});
     if (url.pathname === '/api/stones' || url.pathname === '/api/charms' || url.pathname === '/api/spacers') return json([]);
     if (url.pathname.startsWith('/api/')) return json({});
@@ -65,7 +73,7 @@ async function fixture() {
   return { origin: `http://127.0.0.1:${server.address().port}`, counts, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
-async function open(browser, origin, { friendFlag = false } = {}) {
+async function open(browser, origin, { friendFlag = false, search = `?line_oa_handoff=${TOKEN}` } = {}) {
   const context = await browser.newContext({ userAgent: UA, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
   await context.addInitScript((flag) => {
     localStorage.setItem('lucky_colorstone_state', JSON.stringify({
@@ -90,7 +98,7 @@ async function open(browser, origin, { friendFlag = false } = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(String(error?.message || error)));
   await page.route('https://static.line-scdn.net/liff/edge/2/sdk.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '// fixture' }));
-  await page.goto(`${origin}/?line_oa_handoff=${TOKEN}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${origin}/${search}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => {
     const step3 = document.querySelector('#stepView3');
     const step4 = document.querySelector('#stepView4');
@@ -134,4 +142,235 @@ test('Production existing friend passes the centralized OA gate without opening 
   const gate = app.slice(start, end);
   assert.match(gate, /if \(friendship\.friendFlag\) \{\s*trackVerifiedLineOaConnection\(\);\s*return true;\s*\}/);
   assert.doesNotMatch(gate, /liff\.login|startLiffLoginForCustomization/);
+});
+
+test('Production OA handoff is not converted to Step 1 by the startup auth recovery timeout', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    context = await browser.newContext({ userAgent: UA, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
+    await context.addInitScript((token) => {
+      localStorage.setItem('lucky_colorstone_state', JSON.stringify({
+        wristSize: 16,
+        beadSize: null,
+        currentStep: 1,
+        lineUserId: ''
+      }));
+      sessionStorage.setItem('lucky_prod_line_auth_entry_pending', JSON.stringify({
+        version: 1,
+        tabSessionId: 'D'.repeat(43),
+        sessionId: 'E'.repeat(43),
+        expiresAt: Date.now() + 600000
+      }));
+      window.__prodOaTimerTrace = { loginCalls: 0 };
+      window.liff = {
+        init: async () => {},
+        isInClient: () => false,
+        isLoggedIn: () => false,
+        getContext: () => ({ viewType: 'external' }),
+        login: () => { window.__prodOaTimerTrace.loginCalls += 1; },
+        getIDToken: async () => 'mock.header.signature',
+        getProfile: async () => ({ userId: 'U_PROD_OA', displayName: 'QA' }),
+        getFriendship: async () => ({ friendFlag: false })
+      };
+    }, TOKEN);
+    const page = await context.newPage();
+    await page.route('https://static.line-scdn.net/liff/edge/2/sdk.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '// fixture' }));
+    await page.goto(`${server.origin}/?line_oa_handoff=${TOKEN}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(21500);
+    const result = await page.evaluate(() => ({
+      step3: document.querySelector('#stepView3')?.classList.contains('active') === true,
+      step1: document.querySelector('#stepView1')?.classList.contains('active') === true,
+      wrist: document.querySelector('#canvasWristContext')?.textContent || '',
+      loginCalls: window.__prodOaTimerTrace.loginCalls
+    }));
+    assert.equal(result.step3, true, JSON.stringify(result));
+    assert.equal(result.step1, false, JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+    assert.equal(result.loginCalls, 0, JSON.stringify(result));
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production OA handoff takes precedence over a stale auth-entry return', async () => {
+  const server = await fixture({ pendingAuth: true });
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    context = await browser.newContext({ userAgent: UA, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
+    await context.addInitScript(() => {
+      localStorage.setItem('lucky_colorstone_state', JSON.stringify({ wristSize: 16, beadSize: null, currentStep: 1, lineUserId: 'U_PROD_OA' }));
+      window.liff = {
+        init: async () => {},
+        isInClient: () => false,
+        isLoggedIn: () => true,
+        getContext: () => ({ viewType: 'external' }),
+        login: () => {},
+        getIDToken: async () => 'mock.header.signature',
+        getProfile: async () => ({ userId: 'U_PROD_OA', displayName: 'QA' }),
+        getFriendship: async () => ({ friendFlag: false })
+      };
+    });
+    const page = await context.newPage();
+    await page.route('https://static.line-scdn.net/liff/edge/2/sdk.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '// fixture' }));
+    await page.goto(`${server.origin}/?line_oa_handoff=${TOKEN}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4000);
+    const result = await page.evaluate(() => ({
+      step3: document.querySelector('#stepView3')?.classList.contains('active') === true,
+      step1: document.querySelector('#stepView1')?.classList.contains('active') === true,
+      wrist: document.querySelector('#canvasWristContext')?.textContent || ''
+    }));
+    assert.equal(result.step3, true, JSON.stringify(result));
+    assert.equal(result.step1, false, JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production Step 3 external OA flow creates a targetStep 3 handoff and carries its token into LIFF', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    context = await browser.newContext({ userAgent: UA, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
+    await context.addInitScript(({ components, intentToken }) => {
+      localStorage.setItem('lucky_colorstone_state', JSON.stringify({
+        wristSize: 17.5, beadSize: '6', currentStep: 3, lineUserId: 'U_PROD_OA', selectedStones: components
+      }));
+      localStorage.setItem('lucky_colorstone_customize_login_intent', JSON.stringify({
+        version: 2, ts: Date.now(), step: 3, targetStep: 4,
+        handoffToken: intentToken, mode: 'guest_design_handoff'
+      }));
+      window.liff = {
+        init: async () => {}, isInClient: () => false, isLoggedIn: () => true,
+        getContext: () => ({ viewType: 'external' }), login: () => {},
+        getIDToken: async () => 'mock.header.signature',
+        getProfile: async () => ({ userId: 'U_PROD_OA', displayName: 'QA' }),
+        getFriendship: async () => ({ friendFlag: false })
+      };
+    }, { components: Array.from({ length: 29 }, (_, i) => ({ componentType: 'stone', stoneId: 'stone1', size: 6, uniqueId: i + 1 })), intentToken: INTENT_TOKEN });
+    const page = await context.newPage();
+    await page.route('https://static.line-scdn.net/liff/edge/2/sdk.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '// fixture' }));
+    await page.route('https://liff.line.me/**', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body>LIFF</body></html>' }));
+    await page.goto(`${server.origin}/`, { waitUntil: 'domcontentloaded' });
+    const liffRequest = await page.waitForRequest((request) => request.url().includes('liff.line.me'), { timeout: 10000 });
+    assert.equal(server.counts.posts, 1);
+    assert.equal(server.counts.handoffBodies[0].targetStep, 3);
+    assert.ok(server.counts.handoffBodies[0].designSnapshot);
+    assert.match(liffRequest.url(), new RegExp(`line_oa_handoff=${TOKEN}`));
+    assert.match(liffRequest.url(), new RegExp(`liff\\.state=.*line_oa_handoff`));
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production OA token is recovered from a nested liff.state callback', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let setup;
+  try {
+    setup = await open(browser, server.origin, { search: `?liff.state=${encodeURIComponent(`?line_oa_handoff=${TOKEN}`)}` });
+    const result = await setup.page.evaluate(() => ({
+      step3: document.querySelector('#stepView3')?.classList.contains('active') === true,
+      step1: document.querySelector('#stepView1')?.classList.contains('active') === true,
+      wrist: document.querySelector('#canvasWristContext')?.textContent || ''
+    }));
+    assert.equal(result.step3, true, JSON.stringify(result));
+    assert.equal(result.step1, false, JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+  } finally {
+    await setup?.context.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production existing OA friend goes directly to Step 4', async () => {
+  const app = await readFile(join(ROOT, 'app.js'), 'utf8');
+  const start = app.indexOf('async function canEnterOperationalStep4');
+  const end = app.indexOf('async function resumeLineOaFriendshipAfterReturn', start);
+  const gate = app.slice(start, end);
+  assert.match(gate, /if \(friendship\.friendFlag\) \{\s*trackVerifiedLineOaConnection\(\);\s*return true;\s*\}/);
+  assert.doesNotMatch(gate, /liff\.login|startLiffLoginForCustomization/);
+});
+
+test('Production cancelled OA friendship remains on Step 3 with the design and no Login', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let setup;
+  try {
+    setup = await open(browser, server.origin);
+    const result = await setup.page.evaluate(() => ({
+      step3: document.querySelector('#stepView3')?.classList.contains('active') === true,
+      step4: document.querySelector('#stepView4')?.classList.contains('active') === true,
+      wrist: document.querySelector('#canvasWristContext')?.textContent || '',
+      loginCalls: window.__prodOaTrace.loginCalls
+    }));
+    assert.equal(result.step3, true, JSON.stringify(result));
+    assert.equal(result.step4, false, JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+    assert.equal(result.loginCalls, 0, JSON.stringify(result));
+  } finally {
+    await setup?.context.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production malformed OA token does not erase a valid Step 3 design', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    context = await browser.newContext({ userAgent: UA, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
+    await context.addInitScript(() => {
+      localStorage.setItem('lucky_colorstone_state', JSON.stringify({
+        wristSize: 17.5, beadSize: '6', currentStep: 3, lineUserId: 'U_PROD_OA',
+        selectedStones: Array.from({ length: 29 }, (_, i) => ({ componentType: 'stone', stoneId: 'stone1', size: 6, uniqueId: i + 1 }))
+      }));
+      window.liff = {
+        init: async () => {}, isInClient: () => false, isLoggedIn: () => true,
+        getContext: () => ({ viewType: 'external' }), login: () => {},
+        getIDToken: async () => 'mock.header.signature',
+        getProfile: async () => ({ userId: 'U_PROD_OA' }),
+        getFriendship: async () => ({ friendFlag: false })
+      };
+    });
+    const page = await context.newPage();
+    await page.route('https://static.line-scdn.net/liff/edge/2/sdk.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '// fixture' }));
+    await page.goto(`${server.origin}/?line_oa_handoff=malformed`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    const result = await page.evaluate(() => ({
+      step3: document.querySelector('#stepView3')?.classList.contains('active') === true,
+      landing: document.querySelector('#landingView')?.style.display || '',
+      wrist: document.querySelector('#canvasWristContext')?.textContent || ''
+    }));
+    assert.equal(result.step3, true, JSON.stringify(result));
+    assert.notEqual(result.landing, 'flex', JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production OA friendship code never calls liff.login or liff.logout', async () => {
+  const app = await readFile(join(ROOT, 'app.js'), 'utf8');
+  const start = app.indexOf('function getLineOaHandoffToken');
+  const end = app.indexOf('function requiresLineOaFriendshipForOperationalStep4');
+  const oa = app.slice(start, end + 500);
+  assert.doesNotMatch(oa, /liff\.login\s*\(/);
+  assert.doesNotMatch(oa, /liff\.logout\s*\(/);
+  assert.match(oa, /liff\.requestFriendship\s*\(/);
+  assert.match(oa, /goToStep\(4\)/);
 });
