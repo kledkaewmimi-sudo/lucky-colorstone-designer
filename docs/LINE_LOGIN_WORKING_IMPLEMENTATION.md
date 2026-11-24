@@ -1,6 +1,6 @@
 # LINE Login — Working Implementation Reference
 
-Status: UAT verified by owner-reported real-device tests; Production release not yet performed.
+Status: UAT verified by owner-reported real-device tests; Production release deployed (browser smoke PASS; real-device Production test pending).
 Last updated: 2026-11-24 Asia/Bangkok.
 
 ## Purpose
@@ -405,7 +405,30 @@ UAT working commit:
 935f069d8581ae39623a0a6bcd96241ccbffd99d
 ```
 
-Production release commit: see the Production release report. It must include these fixes and preserve the Production-specific configuration and approved redirect assets.
+Production release commits:
+
+```text
+69d50d5e158a468211e49ae7e009e4a1092e3184
+6bc97859bd15faacdedd0362b068c32f12b9d043
+```
+
+The release is based on the live Production `app.js` plus the verified auth/navigation
+changes, preserving Production configuration and the approved redirect assets.
+
+Production deployment:
+
+```text
+dpl_9Q77YefGBUGWqV9E9adFhmyEMeFf
+https://lucky-colorstone-designer-lj03jhamn-lucky-colorstone.vercel.app
+https://customize.luckycolorstone.com/
+```
+
+Previous Production deployment:
+
+```text
+dpl_3FCDAKcSVKuWX57QAp38seNY732e
+commit 630cc00f8de6fc1c932b3213e4d04f5ff11b5bd6
+```
 
 ## Do not regress
 
