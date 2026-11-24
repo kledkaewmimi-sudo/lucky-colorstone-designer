@@ -4369,7 +4369,7 @@ function renderStep1AuthStatus() {
     action.hidden = true;
     return;
   }
-  if (step1AuthState === 'manual') {
+  if (step1AuthState === 'manual' || step1AuthState === 'failed') {
     // The verified flow has no manual LINE login button. A terminal failure
     // becomes the external-browser instruction instead.
     container.hidden = false;
@@ -4412,11 +4412,9 @@ function renderStep1AuthStatus() {
     return;
   }
 
-  text.textContent = step1AuthState === 'failed'
-    ? LINE_CONNECT_RETRY_MESSAGE
-    : 'เข้าสู่ระบบด้วย LINE';
+  text.textContent = 'กรุณาเปิดเว็บไซต์นี้ผ่าน Safari หรือ Chrome เพื่อเข้าสู่ระบบ LINE';
   action.textContent = 'เข้าสู่ระบบด้วย LINE';
-  action.hidden = false;
+  action.hidden = true;
 }
 
 function setStep1AuthStatus(state) {
