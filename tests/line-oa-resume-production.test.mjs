@@ -22,6 +22,7 @@ const MIME = {
 };
 const TOKEN = 'A'.repeat(43);
 const INTENT_TOKEN = 'C'.repeat(43);
+const SNAPSHOT_COMPONENTS = Array.from({ length: 29 }, (_, i) => ({ componentType: 'stone', stoneId: 'stone1', size: 6, uniqueId: i + 1 }));
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
 async function fixture({ pendingAuth = false } = {}) {
@@ -45,14 +46,14 @@ async function fixture({ pendingAuth = false } = {}) {
       counts.reads += 1;
       return json({ payload: { targetStep: 3, designSnapshot: {
         version: 1, step: 3,
-        design: { wristSize: 17.5, beadSize: '6', mixedPlacingSize: 6, selectedCharmIds: [], components: [] }
+        design: { wristSize: 17.5, beadSize: '6', mixedPlacingSize: 6, selectedCharmIds: [], components: SNAPSHOT_COMPONENTS }
       } } });
     }
     if (url.pathname === `/api/auth-handoffs/${TOKEN}/consume`) {
       counts.consumes += 1;
       return json({ ok: true, payload: { targetStep: 3, designSnapshot: {
         version: 1, step: 3,
-        design: { wristSize: 17.5, beadSize: '6', mixedPlacingSize: 6, selectedCharmIds: [], components: [] }
+        design: { wristSize: 17.5, beadSize: '6', mixedPlacingSize: 6, selectedCharmIds: [], components: SNAPSHOT_COMPONENTS }
       } } });
     }
     if (url.pathname === '/api/auth-entry/sessions/pending') return json(pendingAuth ? { ok: true, pending: true, sessionId: 'F'.repeat(43), tabSessionId: 'G'.repeat(43), expiresAt: new Date(Date.now() + 600000).toISOString() } : { ok: true, pending: false });
@@ -389,4 +390,59 @@ test('Production external OA flow never enters LIFF without a valid server hando
   assert.ok(flow.indexOf('if (!/^[A-Za-z0-9_-]{43}$/.test(handoffToken))') < flow.indexOf('window.location.assign(entryUrl)'));
   assert.match(flow, /State\.currentStep = 3/);
   assert.match(flow, /return \{ opened: false, source: 'liff_handoff_unavailable' \}/);
+});
+
+test('Production Full LIFF opens the native friendship prompt without another login', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    context = await browser.newContext({ userAgent: UA, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
+    await context.addInitScript(() => {
+      localStorage.setItem('lucky_colorstone_state', JSON.stringify({ wristSize: 16, beadSize: null, currentStep: 1, lineUserId: 'U_PROD_OA' }));
+      window.__fullLiffTrace = { requestFriendship: 0, login: 0 };
+      window.liff = {
+        init: async () => {},
+        isInClient: () => true,
+        isLoggedIn: () => true,
+        getContext: () => ({ viewType: 'full' }),
+        login: () => { window.__fullLiffTrace.login += 1; },
+        getIDToken: async () => 'mock.header.signature',
+        getProfile: async () => ({ userId: 'U_PROD_OA', displayName: 'QA' }),
+        getFriendship: async () => ({ friendFlag: false }),
+        requestFriendship: async () => { window.__fullLiffTrace.requestFriendship += 1; }
+      };
+    });
+    const page = await context.newPage();
+    await page.route('https://static.line-scdn.net/liff/edge/2/sdk.js', (route) => route.fulfill({ contentType: 'text/javascript', body: '// fixture' }));
+    await page.goto(`${server.origin}/?line_oa_handoff=${TOKEN}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.querySelector('#stepView3')?.classList.contains('active'), { timeout: 15000 });
+    await page.waitForTimeout(1200);
+    const result = await page.evaluate(() => ({
+      step3: document.querySelector('#stepView3')?.classList.contains('active') === true,
+      step4: document.querySelector('#stepView4')?.classList.contains('active') === true,
+      wrist: document.querySelector('#canvasWristContext')?.textContent || '',
+      ...window.__fullLiffTrace
+    }));
+    assert.equal(result.step3, true, JSON.stringify(result));
+    assert.equal(result.step4, false, JSON.stringify(result));
+    assert.match(result.wrist, /17\.5/);
+    assert.equal(result.requestFriendship, 1, JSON.stringify(result));
+    assert.equal(result.login, 0, JSON.stringify(result));
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production consume contract accepts the API { ok: true, payload } response', async () => {
+  const app = await readFile(join(ROOT, 'app.js'), 'utf8');
+  const start = app.indexOf('async function consumeDeferredLineAuthHandoff');
+  const end = app.indexOf('async function restoreDeferredLineCallbackBeforeReset', start);
+  const consume = app.slice(start, end);
+  assert.match(consume, /consumeResult\?\.ok === true/);
+  assert.match(consume, /consumeResult\?\.consumed === true/);
+  assert.match(consume, /consumeResult\?\.payload \|\| readResult\.payload/);
+  assert.match(consume, /snapshot: consumedPayload\.designSnapshot/);
 });
