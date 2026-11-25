@@ -1932,6 +1932,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Perform the first render without waiting for catalog hydration.
   await renderApp();
+  // The one-transition friendship grant is consumed only after the final
+  // startup render, so nested Step 4 render paths cannot repeat the check.
+  lineOaFriendshipVerifiedForStep4 = false;
   // Release the visual hold only after the final callback outcome has been
   // rendered. This avoids exposing landing/default steps between LIFF return
   // and the restored Step 4 (or the safe Step 3 fallback).
@@ -1953,6 +1956,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     rejectCustomerStartupBootstrap(error);
     resetLandingStartAfterFailure('');
     if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
+    lineOaFriendshipVerifiedForStep4 = false;
     setCallbackBootstrapHold(false);
   }
 });
@@ -6141,10 +6145,7 @@ async function goToStep(step) {
       await renderApp();
     }
   } finally {
-    if (step === 4) {
-      step4AuthorizationInProgress = false;
-      lineOaFriendshipVerifiedForStep4 = false;
-    }
+    if (step === 4) step4AuthorizationInProgress = false;
   }
   if (step === 3 && previousStep !== 3) refreshCustomerCatalogForStep3Entry();
   trackStepView(step);
