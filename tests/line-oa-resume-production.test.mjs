@@ -457,3 +457,11 @@ test('Production index holds first paint for an OA handoff return', async () => 
   assert.match(html, /lineOaCallback \|\| validV2Intent/);
   assert.match(html, /callback-bootstrap-hold/);
 });
+
+test('Production friendship verification is reused only for the current transition', async () => {
+  const app = await readFile(join(ROOT, 'app.js'), 'utf8');
+  assert.match(app, /let lineOaFriendshipVerifiedForStep4 = false/);
+  assert.match(app, /if \(lineOaFriendshipVerifiedForStep4\) return true/);
+  assert.match(app, /lineOaFriendshipVerifiedForStep4 = false/);
+  assert.match(app, /The one-transition friendship grant is consumed only after the final/);
+});
