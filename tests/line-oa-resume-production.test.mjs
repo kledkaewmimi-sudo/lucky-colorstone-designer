@@ -381,7 +381,7 @@ test('Production external OA flow never enters LIFF without a valid server hando
   const end = app.indexOf('async function recheckLineOaFriendshipAndResume', start);
   const flow = app.slice(start, end);
   assert.match(flow, /const handoffToken = String\(resumeHandoff\?\.token \|\| ''\)\.trim\(\)/);
-  assert.match(flow, /if \(!\/\^\[A-Za-z0-9_\-\]\{43\}\$\/\.test\(handoffToken\)\)/);
+  assert.ok(flow.includes("if (!/^[A-Za-z0-9_-]{43}$/.test(handoffToken))"));
   assert.match(flow, /if \(!entryUrl \|\| !entryUrl\.includes\(.*line_oa_handoff=/s);
   assert.ok(flow.indexOf('if (!/^[A-Za-z0-9_-]{43}$/.test(handoffToken))') < flow.indexOf('window.location.assign(entryUrl)'));
   assert.match(flow, /State\.currentStep = 3/);
