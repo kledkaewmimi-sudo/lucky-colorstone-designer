@@ -429,6 +429,7 @@ let deferredLoginQaEnabled = false;
 let lineOaFriendshipRequired = false;
 let lineOaFriendshipRecheckInFlight = false;
 let lineOaFriendshipStep4ResumePending = false;
+let lineOaFriendshipVerifiedForStep4 = false;
 let resolveCustomerStartupBootstrap;
 let rejectCustomerStartupBootstrap;
 const customerStartupBootstrapPromise = new Promise((resolve, reject) => {
@@ -3875,6 +3876,7 @@ async function restoreLineOaResumeSnapshot(token) {
 }
 
 async function resumeLineOaHandoffReturn(token) {
+  lineOaFriendshipVerifiedForStep4 = false;
   // A valid OA return owns the bootstrap; never let a generic auth recovery
   // timer replace the restored Step 3 with Step 1.
   clearStartupAuthRecovery();
@@ -3893,6 +3895,7 @@ async function resumeLineOaHandoffReturn(token) {
   if (friendship.friendFlag) {
     lineOaFriendshipRequired = false;
     lineOaFriendshipStep4ResumePending = false;
+    lineOaFriendshipVerifiedForStep4 = true;
     clearLineOaFriendshipResumePending();
     trackVerifiedLineOaConnection();
     State.currentStep = 3;
@@ -4008,6 +4011,7 @@ async function openLineOaAddFriendExperience() {
 
 async function recheckLineOaFriendshipAndResume() {
   if (lineOaFriendshipRecheckInFlight) return false;
+  lineOaFriendshipVerifiedForStep4 = false;
   lineOaFriendshipRecheckInFlight = true;
   const shouldHoldCallbackUi = lineOaFriendshipRequired
     || lineOaFriendshipStep4ResumePending
@@ -4022,9 +4026,11 @@ async function recheckLineOaFriendshipAndResume() {
     }
     trackVerifiedLineOaConnection();
     lineOaFriendshipRequired = false;
+    lineOaFriendshipVerifiedForStep4 = true;
     if (lineOaFriendshipStep4ResumePending) {
       if (!isLineIdentityAvailable() || State.currentStep !== 3) {
         lineOaFriendshipRequired = true;
+        lineOaFriendshipVerifiedForStep4 = false;
         showToast('ไม่สามารถดำเนินการต่อได้ โปรดลองอีกครั้ง');
         return false;
       }
@@ -4032,6 +4038,7 @@ async function recheckLineOaFriendshipAndResume() {
       clearLineOaFriendshipResumePending();
       return await goToStep(4);
     }
+    lineOaFriendshipVerifiedForStep4 = false;
     const rawIntent = localStorage.getItem(CUSTOMIZATION_LOGIN_INTENT_KEY);
     const restored = await restoreDeferredLineCallbackBeforeReset(rawIntent);
     if (!restored.ok) {
@@ -4059,6 +4066,10 @@ function requiresLineOaFriendshipForOperationalStep4() {
 async function canEnterOperationalStep4({ queueStep3Resume = false, openAddFriend = false } = {}) {
   if (!requiresLineOaFriendshipForOperationalStep4()) return true;
   if (!isLineIdentityAvailable()) return false;
+  // A check completed moments earlier for the same OA transition is safe to
+  // reuse while the Step 4 render is in flight. This is a one-transition
+  // authorization, not a persistent friendship cache.
+  if (lineOaFriendshipVerifiedForStep4) return true;
 
   const friendship = await getLineOaFriendshipStatus();
   if (friendship.friendFlag) {
@@ -5227,27 +5238,37 @@ async function consumeDeferredLineAuthHandoff(token) {
   }
   try {
     const handoffUrl = `/api/auth-handoffs/${encodeURIComponent(token)}`;
-    const readResponse = await fetch(handoffUrl);
-    const readResult = await readResponse.json().catch(() => null);
-    if (!readResponse.ok || !readResult?.payload?.designSnapshot) {
-      return { ok: false, reason: readResponse.status === 404 ? 'not_found' : 'unavailable' };
-    }
+    // The production consume endpoint atomically returns the snapshot. Avoid a
+    // redundant GET on the successful path; keep GET only as a legacy fallback
+    // for old { consumed: true } responses that do not carry the payload.
     const consumeResponse = await fetch(`${handoffUrl}/consume`, {
       method: 'POST'
     });
     const consumeResult = await consumeResponse.json().catch(() => null);
-    // The production API returns { ok: true, payload }; older fixtures/clients
-    // used { consumed: true }. Accept both response contracts, but only restore
-    // the snapshot returned by the successful atomic consume when available.
-    const consumedPayload = consumeResult?.payload || readResult.payload;
     const consumeConfirmed = consumeResult?.ok === true || consumeResult?.consumed === true;
-    if (!consumeResponse.ok || !consumeConfirmed || !consumedPayload?.designSnapshot) {
-      return { ok: false, reason: consumeResponse.status === 404 ? 'not_found' : 'unavailable' };
+    let consumedPayload = consumeResult?.payload || null;
+    if (consumeResponse.ok && consumeConfirmed && consumedPayload?.designSnapshot) {
+      return {
+        ok: true,
+        snapshot: consumedPayload.designSnapshot,
+        analyticsContinuity: consumedPayload.analyticsContinuity || null
+      };
+    }
+    if (consumeResponse.ok && consumeConfirmed) {
+      const readResponse = await fetch(handoffUrl);
+      const readResult = await readResponse.json().catch(() => null);
+      if (readResponse.ok && readResult?.payload?.designSnapshot) {
+        consumedPayload = readResult.payload;
+        return {
+          ok: true,
+          snapshot: consumedPayload.designSnapshot,
+          analyticsContinuity: consumedPayload.analyticsContinuity || null
+        };
+      }
     }
     return {
-      ok: true,
-      snapshot: consumedPayload.designSnapshot,
-      analyticsContinuity: consumedPayload.analyticsContinuity || null
+      ok: false,
+      reason: consumeResponse.status === 404 ? 'not_found' : 'unavailable'
     };
   } catch {
     return { ok: false, reason: 'unavailable' };
@@ -6087,12 +6108,19 @@ async function goToStep(step) {
   if (step === 4) {
     const fitEligibility = getCurrentCheckoutFitEligibility();
     if (!fitEligibility.eligible) {
+      lineOaFriendshipVerifiedForStep4 = false;
       showToast(fitEligibility.reason);
       return false;
     }
     const canEnterStep4 = await canEnterOperationalStep4({ queueStep3Resume: State.currentStep === 3 });
-    if (!canEnterStep4) return false;
-    if (State.currentStep !== previousStep) return false;
+    if (!canEnterStep4) {
+      lineOaFriendshipVerifiedForStep4 = false;
+      return false;
+    }
+    if (State.currentStep !== previousStep) {
+      lineOaFriendshipVerifiedForStep4 = false;
+      return false;
+    }
     step4AuthorizationInProgress = true;
   }
   if (State.currentStep === 3 && step !== 3) {
@@ -6113,7 +6141,10 @@ async function goToStep(step) {
       await renderApp();
     }
   } finally {
-    if (step === 4) step4AuthorizationInProgress = false;
+    if (step === 4) {
+      step4AuthorizationInProgress = false;
+      lineOaFriendshipVerifiedForStep4 = false;
+    }
   }
   if (step === 3 && previousStep !== 3) refreshCustomerCatalogForStep3Entry();
   trackStepView(step);

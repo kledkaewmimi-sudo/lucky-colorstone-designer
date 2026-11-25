@@ -131,6 +131,7 @@ test('Production OA resume restores Step 3 from the server handoff without a rep
     assert.equal(result.loginCalls, 0, JSON.stringify(result));
     assert.equal(result.initCalls, 1, JSON.stringify(result));
     assert.equal(server.counts.consumes, 1, JSON.stringify(server.counts));
+    assert.equal(server.counts.reads, 0, JSON.stringify(server.counts));
     assert.deepEqual(pageSetup.errors, []);
   } finally {
     await pageSetup?.context.close();
@@ -443,7 +444,8 @@ test('Production consume contract accepts the API { ok: true, payload } response
   const consume = app.slice(start, end);
   assert.match(consume, /consumeResult\?\.ok === true/);
   assert.match(consume, /consumeResult\?\.consumed === true/);
-  assert.match(consume, /consumeResult\?\.payload \|\| readResult\.payload/);
+  assert.match(consume, /let consumedPayload = consumeResult\?\.payload \|\| null/);
+  assert.match(consume, /const readResponse = await fetch\(handoffUrl\)/);
   assert.match(consume, /snapshot: consumedPayload\.designSnapshot/);
 });
 
