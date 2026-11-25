@@ -5236,13 +5236,18 @@ async function consumeDeferredLineAuthHandoff(token) {
       method: 'POST'
     });
     const consumeResult = await consumeResponse.json().catch(() => null);
-    if (!consumeResponse.ok || consumeResult?.consumed !== true) {
+    // The production API returns { ok: true, payload }; older fixtures/clients
+    // used { consumed: true }. Accept both response contracts, but only restore
+    // the snapshot returned by the successful atomic consume when available.
+    const consumedPayload = consumeResult?.payload || readResult.payload;
+    const consumeConfirmed = consumeResult?.ok === true || consumeResult?.consumed === true;
+    if (!consumeResponse.ok || !consumeConfirmed || !consumedPayload?.designSnapshot) {
       return { ok: false, reason: consumeResponse.status === 404 ? 'not_found' : 'unavailable' };
     }
     return {
       ok: true,
-      snapshot: readResult.payload.designSnapshot,
-      analyticsContinuity: readResult.payload.analyticsContinuity || null
+      snapshot: consumedPayload.designSnapshot,
+      analyticsContinuity: consumedPayload.analyticsContinuity || null
     };
   } catch {
     return { ok: false, reason: 'unavailable' };
