@@ -50,7 +50,10 @@ async function fixture({ pendingAuth = false } = {}) {
     }
     if (url.pathname === `/api/auth-handoffs/${TOKEN}/consume`) {
       counts.consumes += 1;
-      return json({ consumed: true });
+      return json({ ok: true, payload: { targetStep: 3, designSnapshot: {
+        version: 1, step: 3,
+        design: { wristSize: 17.5, beadSize: '6', mixedPlacingSize: 6, selectedCharmIds: [], components: [] }
+      } } });
     }
     if (url.pathname === '/api/auth-entry/sessions/pending') return json(pendingAuth ? { ok: true, pending: true, sessionId: 'F'.repeat(43), tabSessionId: 'G'.repeat(43), expiresAt: new Date(Date.now() + 600000).toISOString() } : { ok: true, pending: false });
     if (url.pathname === '/api/settings' || url.pathname === '/api/social-proof') return json({});
