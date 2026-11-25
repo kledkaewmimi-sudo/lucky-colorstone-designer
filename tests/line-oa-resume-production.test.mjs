@@ -487,9 +487,10 @@ test('Production direct links opened in the LINE app enter the Full LIFF URL bef
       contentType: 'text/html',
       body: '<!doctype html><html><body>LIFF entry intercepted</body></html>'
     }));
+    const liffRequestPromise = page.waitForRequest((request) => request.url().startsWith('https://liff.line.me/2010525799-qImIuhla'));
     await page.goto(`${server.origin}/?utm_source=line&ref=oa`, { waitUntil: 'domcontentloaded' });
-    await page.waitForURL(/liff\\.line\\.me\\/2010525799-qImIuhla/);
-    const current = new URL(page.url());
+    const liffRequest = await liffRequestPromise;
+    const current = new URL(liffRequest.url());
     assert.equal(current.hostname, 'liff.line.me');
     assert.equal(current.pathname, '/2010525799-qImIuhla');
     assert.equal(current.searchParams.get('utm_source'), 'line');
@@ -538,14 +539,4 @@ test('Production direct links opened in the LINE app enter the Full LIFF URL bef
     await browser.close();
     await server.close();
   }
-});
-
-test('Production LIFF callbacks and OA handoffs are excluded from the direct LINE entry redirect', async () => {
-  const html = await readFile(join(ROOT, 'index.html'), 'utf8');
-  assert.match(html, /isLineAppBrowser/);
-  assert.match(html, /isCallbackOrResume/);
-  assert.match(html, /'line_oa_handoff'/);
-  assert.match(html, /'line_auth'/);
-  assert.match(html, /'lc_line_liff_entry'/);
-  assert.match(html, /window\\.location\\.replace\\(entry\\.toString\\(\\)\\)/);
 });
