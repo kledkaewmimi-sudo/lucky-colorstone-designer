@@ -3953,7 +3953,38 @@ async function openLineOaAddFriendExperience() {
       // example, Instagram/Safari -> LINE webview). Keep the design in a
       // server handoff and pass only its opaque token through LIFF.
       const resumeHandoff = await createLineOaResumeHandoff().catch(() => null);
-      window.location.assign(getLineOaEntryUrl({ handoffToken: resumeHandoff?.token || '' }));
+      const handoffToken = String(resumeHandoff?.token || '').trim();
+      // Never enter LIFF without a server-backed design handoff. Doing so loses
+      // the bracelet when LINE returns in a different browser storage partition.
+      if (!/^[A-Za-z0-9_-]{43}$/.test(handoffToken)) {
+        hideLineOaFriendshipTransition();
+        lineOaFriendshipRequired = true;
+        lineOaFriendshipStep4ResumePending = false;
+        clearLineOaFriendshipResumePending();
+        State.currentStep = 3;
+        State.landingDismissed = true;
+        persistLandingDismissed();
+        syncShellVisibility();
+        saveState();
+        showToast('บันทึกแบบกำไลเพื่อเชื่อมต่อ LINE ไม่สำเร็จ กรุณาลองอีกครั้ง');
+        console.warn('LINE OA handoff was not created; staying on Step 3.');
+        return { opened: false, source: 'liff_handoff_unavailable' };
+      }
+      const entryUrl = getLineOaEntryUrl({ handoffToken });
+      if (!entryUrl || !entryUrl.includes(`line_oa_handoff=${handoffToken}`)) {
+        hideLineOaFriendshipTransition();
+        lineOaFriendshipRequired = true;
+        lineOaFriendshipStep4ResumePending = false;
+        clearLineOaFriendshipResumePending();
+        State.currentStep = 3;
+        State.landingDismissed = true;
+        persistLandingDismissed();
+        syncShellVisibility();
+        saveState();
+        showToast('ไม่สามารถเตรียมการเชื่อมต่อ LINE ได้ กรุณาลองอีกครั้ง');
+        return { opened: false, source: 'liff_handoff_url_invalid' };
+      }
+      window.location.assign(entryUrl);
       return { opened: true, source: 'liff_entry' };
     } catch (error) {
       hideLineOaFriendshipTransition();
