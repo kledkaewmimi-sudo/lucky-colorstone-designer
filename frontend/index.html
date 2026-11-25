@@ -19,7 +19,7 @@
       try {
         const ua = String(navigator.userAgent || '');
         const params = new URLSearchParams(window.location.search || '');
-        const isLineAppBrowser = /Line\\//i.test(ua);
+        const isLineAppBrowser = /Line\//i.test(ua);
         const alreadyEnteredLiff = params.has('lc_line_liff_entry')
           || params.has('liff.state')
           || params.has('liffClientId')
@@ -30,13 +30,14 @@
           'orderId', 'stripe', 'step'
         ].some((key) => params.has(key));
         const lineEntryKey = 'lucky_colorstone_line_liff_entry_v1';
-        const alreadyRedirected = sessionStorage.getItem(lineEntryKey) === '1';
+        let alreadyRedirected = false;
+        try { alreadyRedirected = sessionStorage.getItem(lineEntryKey) === '1'; } catch {}
         if (isLineAppBrowser
           && window.location.pathname === '/'
           && !alreadyEnteredLiff
           && !isCallbackOrResume
           && !alreadyRedirected) {
-          sessionStorage.setItem(lineEntryKey, '1');
+          try { sessionStorage.setItem(lineEntryKey, '1'); } catch {}
           const entry = new URL('https://liff.line.me/2010525799-qImIuhla');
           for (const [key, value] of params) {
             if (/^(utm_[a-z0-9_]+|fbclid|gclid|gbraid|wbraid|ref)$/i.test(key)) {
