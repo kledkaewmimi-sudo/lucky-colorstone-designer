@@ -12,6 +12,49 @@
   <link rel="stylesheet" href="/planner-banner.css">
   <link rel="preload" as="image" href="/assets/hero/slide-01.webp" fetchpriority="high">
   <script>
+    // A normal website URL opened from a LINE chat is only the LINE in-app
+    // browser, not necessarily a Full LIFF session. Enter through the LIFF URL
+    // once so friendship APIs are available later in the design flow.
+    (function () {
+      try {
+        const ua = String(navigator.userAgent || '');
+        const params = new URLSearchParams(window.location.search || '');
+        const isLineAppBrowser = /Line\//i.test(ua);
+        const alreadyEnteredLiff = params.has('lc_line_liff_entry')
+          || params.has('liff.state')
+          || params.has('liffClientId')
+          || params.has('liffRedirectUri')
+          || /LIFF/i.test(ua);
+        const isCallbackOrResume = [
+          'code', 'state', 'line_auth', 'line_oa_handoff', 'handoff',
+          'orderId', 'stripe', 'step'
+        ].some((key) => params.has(key));
+        const lineEntryKey = 'lucky_colorstone_line_liff_entry_v1';
+        let alreadyRedirected = false;
+        try { alreadyRedirected = sessionStorage.getItem(lineEntryKey) === '1'; } catch {}
+        if (isLineAppBrowser
+          && window.location.pathname === '/'
+          && !alreadyEnteredLiff
+          && !isCallbackOrResume
+          && !alreadyRedirected) {
+          try { sessionStorage.setItem(lineEntryKey, '1'); } catch {}
+          const entry = new URL('https://liff.line.me/2010525799-qImIuhla');
+          for (const [key, value] of params) {
+            if (/^(utm_[a-z0-9_]+|fbclid|gclid|gbraid|wbraid|ref)$/i.test(key)) {
+              entry.searchParams.append(key, value);
+            }
+          }
+          entry.searchParams.set('lc_line_liff_entry', '1');
+          window.location.replace(entry.toString());
+          return;
+        }
+      } catch {
+        // If storage or URL APIs are unavailable, leave the normal site usable.
+      }
+    }());
+  </script>
+
+  <script>
     // Prevent the static landing markup from painting while a valid deferred
     // LINE callback is returning. app.js confirms this state before release.
     (function () {
