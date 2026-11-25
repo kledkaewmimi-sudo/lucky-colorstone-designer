@@ -510,3 +510,42 @@ test('Production LIFF callbacks and OA handoffs are not redirected back into the
   assert.match(html, /lc_line_liff_entry/);
   assert.match(html, /window\.location\.replace\(entry\.toString\(\)\)/);
 });
+
+
+test('Production direct links opened in the LINE app enter the Full LIFF URL before app startup', async () => {
+  const server = await fixture();
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  try {
+    const lineUa = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36 Line/14.20.0';
+    context = await browser.newContext({ userAgent: lineUa, viewport: { width: 390, height: 844 }, isMobile: true, serviceWorkers: 'block' });
+    const page = await context.newPage();
+    await page.route('https://liff.line.me/**', (route) => route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<!doctype html><html><body>LIFF entry intercepted</body></html>'
+    }));
+    await page.goto(`${server.origin}/?utm_source=line&ref=oa`, { waitUntil: 'domcontentloaded' });
+    await page.waitForURL(/liff\\.line\\.me\\/2010525799-qImIuhla/);
+    const current = new URL(page.url());
+    assert.equal(current.hostname, 'liff.line.me');
+    assert.equal(current.pathname, '/2010525799-qImIuhla');
+    assert.equal(current.searchParams.get('utm_source'), 'line');
+    assert.equal(current.searchParams.get('ref'), 'oa');
+    assert.equal(current.searchParams.get('lc_line_liff_entry'), '1');
+  } finally {
+    await context?.close();
+    await browser.close();
+    await server.close();
+  }
+});
+
+test('Production LIFF callbacks and OA handoffs are excluded from the direct LINE entry redirect', async () => {
+  const html = await readFile(join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /isLineAppBrowser/);
+  assert.match(html, /isCallbackOrResume/);
+  assert.match(html, /'line_oa_handoff'/);
+  assert.match(html, /'line_auth'/);
+  assert.match(html, /'lc_line_liff_entry'/);
+  assert.match(html, /window\\.location\\.replace\\(entry\\.toString\\(\\)\\)/);
+});
