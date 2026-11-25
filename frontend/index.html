@@ -27,13 +27,21 @@
         const params = new URLSearchParams(window.location.search);
         let callbackCandidate = window.location.search;
         let initialIdentityCallback = false;
+        let lineOaCallback = false;
         for (let depth = 0; depth < 4 && callbackCandidate; depth += 1) {
           const callbackQuery = callbackCandidate.includes('?') ? callbackCandidate.slice(callbackCandidate.indexOf('?') + 1) : callbackCandidate.replace(/^\?/, '');
           const callbackParams = new URLSearchParams(callbackQuery);
           if (callbackParams.get('line_auth') === 'identity') { initialIdentityCallback = true; break; }
+          if (callbackParams.has('line_oa_handoff')) { lineOaCallback = true; break; }
           callbackCandidate = callbackParams.get('liff.state') || '';
         }
-        if (initialIdentityCallback || validV2Intent || friendshipResume || validFriendshipFallback) {
+        try {
+          const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+          if (hashParams.has('line_oa_handoff')) lineOaCallback = true;
+        } catch {
+          // Hash parsing is best-effort; the query state remains authoritative.
+        }
+        if (initialIdentityCallback || lineOaCallback || validV2Intent || friendshipResume || validFriendshipFallback) {
           document.documentElement.classList.add('callback-bootstrap-hold');
         }
       } catch {

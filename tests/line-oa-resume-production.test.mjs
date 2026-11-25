@@ -446,3 +446,12 @@ test('Production consume contract accepts the API { ok: true, payload } response
   assert.match(consume, /consumeResult\?\.payload \|\| readResult\.payload/);
   assert.match(consume, /snapshot: consumedPayload\.designSnapshot/);
 });
+
+test('Production index holds first paint for an OA handoff return', async () => {
+  const html = await readFile(join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /lineOaCallback/);
+  assert.match(html, /callbackParams\.has\('line_oa_handoff'\)/);
+  assert.match(html, /hashParams\.has\('line_oa_handoff'\)/);
+  assert.match(html, /lineOaCallback \|\| validV2Intent/);
+  assert.match(html, /callback-bootstrap-hold/);
+});
