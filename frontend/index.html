@@ -84,6 +84,9 @@
         } catch {
           // Hash parsing is best-effort; the query state remains authoritative.
         }
+        if (lineOaCallback) {
+          document.documentElement.classList.add('line-oa-friendship-callback');
+        }
         if (initialIdentityCallback || lineOaCallback || validV2Intent || friendshipResume || validFriendshipFallback) {
           document.documentElement.classList.add('callback-bootstrap-hold');
         }
@@ -124,7 +127,8 @@
   <div class="callback-bootstrap-overlay" id="callbackBootstrapOverlay" role="status" aria-live="polite" aria-hidden="true">
     <div class="callback-bootstrap-content">
       <div class="pastel-spinner" aria-hidden="true"></div>
-      <p>กำลังกลับเข้าสู่แบบกำไลของคุณ</p>
+      <p class="callback-default-message">กำลังกลับเข้าสู่แบบกำไลของคุณ</p>
+      <p class="callback-friendship-message">LOADING…<br>เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป</p>
     </div>
   </div>
 
