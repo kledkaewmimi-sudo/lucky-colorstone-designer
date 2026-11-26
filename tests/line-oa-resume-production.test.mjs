@@ -512,14 +512,18 @@ test('Production LIFF callbacks and OA handoffs are not redirected back into the
   assert.match(html, /window\.location\.replace\(entry\.toString\(\)\)/);
 });
 
-test('Step 1 LINE callback does not show Add Friend copy; Step 3 friendship transition remains unchanged', async () => {
+test('Step 1 keeps its original callback copy while LIFF friendship return shows Add Friend copy', async () => {
   const html = await readFile(join(ROOT, 'index.html'), 'utf8');
+  const css = await readFile(join(ROOT, 'index.css'), 'utf8');
   const app = await readFile(join(ROOT, 'app.js'), 'utf8');
   const callbackStart = html.indexOf('id="callbackBootstrapOverlay"');
-  const callbackEnd = html.indexOf('</div>\\n  </div>', callbackStart);
+  const callbackEnd = html.indexOf('<!-- Owner-approved Instagram redirect images', callbackStart);
   const callback = html.slice(callbackStart, callbackEnd);
-  assert.match(callback, /<p>กำลังกลับเข้าสู่แบบกำไลของคุณ<\\/p>/);
-  assert.doesNotMatch(callback, /LOADING…|เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป/);
+  assert.match(callback, /callback-default-message[^>]*>กำลังกลับเข้าสู่แบบกำไลของคุณ/);
+  assert.match(callback, /callback-friendship-message[^>]*>LOADING…<br>เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป/);
+  assert.match(html, /if \\(lineOaCallback\\) \\{[\\s\\S]*?line-oa-friendship-callback/);
+  assert.match(css, /html\\.line-oa-friendship-callback[\\s\\S]*?callback-default-message[\\s\\S]*?display: none/);
+  assert.match(css, /html\\.line-oa-friendship-callback[\\s\\S]*?callback-friendship-message[\\s\\S]*?display: block/);
   const start = app.indexOf('function showLineOaFriendshipTransition');
   const end = app.indexOf('function hideLineOaFriendshipTransition', start);
   const transition = app.slice(start, end);
