@@ -5214,6 +5214,18 @@ button.stone-card {
   line-height: 1.5;
 }
 
+.callback-bootstrap-content .callback-friendship-message {
+  display: none;
+}
+
+html.line-oa-friendship-callback .callback-bootstrap-content .callback-default-message {
+  display: none;
+}
+
+html.line-oa-friendship-callback .callback-bootstrap-content .callback-friendship-message {
+  display: block;
+}
+
 html.callback-bootstrap-hold .callback-bootstrap-overlay {
   display: flex;
 }
