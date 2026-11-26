@@ -512,13 +512,14 @@ test('Production LIFF callbacks and OA handoffs are not redirected back into the
   assert.match(html, /window\.location\.replace\(entry\.toString\(\)\)/);
 });
 
-test('LINE callback keeps the original transition and shows the requested Add Friend loading copy', async () => {
+test('Step 1 LINE callback does not show Add Friend copy; Step 3 friendship transition remains unchanged', async () => {
   const html = await readFile(join(ROOT, 'index.html'), 'utf8');
-  const css = await readFile(join(ROOT, 'index.css'), 'utf8');
   const app = await readFile(join(ROOT, 'app.js'), 'utf8');
-  assert.match(html, /pastel-spinner[\\s\\S]*?<p>LOADING…<br>เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป<\\/p>/);
-  assert.match(css, /callback-bootstrap-content p[\\s\\S]*?font-size: 16px[\\s\\S]*?font-weight: 700/);
-  assert.doesNotMatch(css, /callback-bootstrap-content[\\s\\S]*?border-radius: 24px[\\s\\S]*?background: #fff/);
+  const callbackStart = html.indexOf('id="callbackBootstrapOverlay"');
+  const callbackEnd = html.indexOf('</div>\\n  </div>', callbackStart);
+  const callback = html.slice(callbackStart, callbackEnd);
+  assert.match(callback, /<p>กำลังกลับเข้าสู่แบบกำไลของคุณ<\\/p>/);
+  assert.doesNotMatch(callback, /LOADING…|เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป/);
   const start = app.indexOf('function showLineOaFriendshipTransition');
   const end = app.indexOf('function hideLineOaFriendshipTransition', start);
   const transition = app.slice(start, end);
