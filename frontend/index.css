@@ -5201,16 +5201,32 @@ button.stone-card {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 24px;
+  width: min(344px, calc(100vw - 48px));
+  padding: 30px 24px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(63, 43, 76, 0.08);
   color: var(--color-navy);
   text-align: center;
 }
 
-.callback-bootstrap-content p {
+.callback-bootstrap-content .loading-title,
+.callback-bootstrap-content .loading-text {
+  display: block;
   margin: 0;
   font-family: var(--font-ui-thai);
+  text-align: center;
+}
+
+.callback-bootstrap-content .loading-title {
   font-size: 16px;
   font-weight: 700;
+  line-height: 1.35;
+}
+
+.callback-bootstrap-content .loading-text {
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.5;
 }
 
