@@ -511,3 +511,16 @@ test('Production LIFF callbacks and OA handoffs are not redirected back into the
   assert.match(html, /lc_line_liff_entry/);
   assert.match(html, /window\.location\.replace\(entry\.toString\(\)\)/);
 });
+
+test('LINE login return uses the same calm loading card and Add Friend copy is exact', async () => {
+  const html = await readFile(join(ROOT, 'index.html'), 'utf8');
+  const css = await readFile(join(ROOT, 'index.css'), 'utf8');
+  const app = await readFile(join(ROOT, 'app.js'), 'utf8');
+  assert.match(html, /callback-bootstrap-content[\\s\\S]*?pastel-spinner[\\s\\S]*?loading-title[\\s\\S]*?loading-text/);
+  assert.match(css, /callback-bootstrap-content[\\s\\S]*?border-radius: 24px[\\s\\S]*?background: #fff/);
+  const start = app.indexOf('function showLineOaFriendshipTransition');
+  const end = app.indexOf('function hideLineOaFriendshipTransition', start);
+  const transition = app.slice(start, end);
+  assert.match(transition, /title: 'LOADING…'/);
+  assert.match(transition, /body: 'เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป'/);
+});
