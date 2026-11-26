@@ -2908,8 +2908,8 @@ function setLiffTransitionState({ title = '', body = '' } = {}) {
 
 function showLineOaFriendshipTransition() {
   setLiffTransitionState({
-    title: 'กำลังเชื่อมต่อ LINE',
-    body: 'เพิ่มเพื่อน Lucky Colorstone เพื่อรับข้อมูลคำสั่งซื้อและดำเนินการต่อ'
+    title: 'LOADING…',
+    body: 'เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป'
   });
   if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'flex';
 }
