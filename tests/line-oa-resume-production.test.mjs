@@ -523,6 +523,6 @@ test('Step 1 LINE callback does not show Add Friend copy; Step 3 friendship tran
   const start = app.indexOf('function showLineOaFriendshipTransition');
   const end = app.indexOf('function hideLineOaFriendshipTransition', start);
   const transition = app.slice(start, end);
-  assert.match(transition, /title: 'กำลังเชื่อมต่อ LINE'/);
-  assert.match(transition, /body: 'เพิ่มเพื่อน Lucky Colorstone เพื่อรับข้อมูลคำสั่งซื้อและดำเนินการต่อ'/);
+  assert.match(transition, /title: 'LOADING…'/);
+  assert.match(transition, /body: 'เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป'/);
 });
