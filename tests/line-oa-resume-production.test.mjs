@@ -512,6 +512,19 @@ test('Production LIFF callbacks and OA handoffs are not redirected back into the
   assert.match(html, /window\.location\.replace\(entry\.toString\(\)\)/);
 });
 
+test('Instagram campaign landing launches external browser from its main CTA and auto-enters Step 1', async () => {
+  const html = await readFile(join(ROOT, 'index.html'), 'utf8');
+  const css = await readFile(join(ROOT, 'index.css'), 'utf8');
+  const app = await readFile(join(ROOT, 'app.js'), 'utf8');
+  assert.match(app, /function setupInstagramBrowserTransition\([\\s\\S]*?return true;[\\s\\S]*?Keep the campaign landing page visible in Instagram/);
+  assert.match(app, /url\\.searchParams\\.set\\('instagram_start', '1'\\)/);
+  assert.match(app, /if \\(browserContext\\.isInstagram && !browserContext\\.isLine\\) \\{[\\s\\S]*?attemptInstagramExternalBrowser\\(browserContext\\)/);
+  assert.match(html, /instagram_start[\\s\\S]*?instagram-start-pending/);
+  assert.match(css, /html\\.instagram-start-pending \\.landing-page[\\s\\S]*?visibility: hidden/);
+  assert.match(app, /returnParams\\.get\\('instagram_start'\\) === '1'[\\s\\S]*?DOM\\.btnLandingLogin\\?\\.click\\(\\)/);
+  assert.match(app, /cleanUrl\\.searchParams\\.delete\\('instagram_start'\\)/);
+});
+
 test('Step 1 keeps its original callback copy while LIFF friendship return shows Add Friend copy', async () => {
   const html = await readFile(join(ROOT, 'index.html'), 'utf8');
   const css = await readFile(join(ROOT, 'index.css'), 'utf8');
