@@ -55,6 +55,18 @@
   </script>
 
   <script>
+    // A customer arriving from Instagram's external-browser handoff should
+    // continue straight into Step 1 without seeing the landing page again.
+    (function () {
+      try {
+        if (new URLSearchParams(window.location.search).get('instagram_start') === '1') {
+          document.documentElement.classList.add('instagram-start-pending');
+        }
+      } catch {}
+    }());
+  </script>
+
+  <script>
     // Prevent the static landing markup from painting while a valid deferred
     // LINE callback is returning. app.js confirms this state before release.
     (function () {
@@ -129,6 +141,7 @@
       <div class="pastel-spinner" aria-hidden="true"></div>
       <p class="callback-default-message">กำลังกลับเข้าสู่แบบกำไลของคุณ</p>
       <p class="callback-friendship-message">LOADING…<br>เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป</p>
+      <p class="instagram-start-message">กำลังเตรียมแบบกำไลของคุณ…</p>
     </div>
   </div>
 
