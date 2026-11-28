@@ -1806,6 +1806,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Its handler waits for this bootstrap promise and continues the original first tap.
   setupLandingEvents();
   setupProgressiveStep1AuthEvents();
+  if (returnParams.get('instagram_start') === '1') {
+    // Consume the one-shot entry flag before starting so refreshes cannot
+    // repeatedly trigger the designer flow.
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('instagram_start');
+    window.history.replaceState({}, document.title, cleanUrl.toString());
+    window.requestAnimationFrame(() => DOM.btnLandingLogin?.click());
+  }
   if (!deferAnalyticsUntilCallbackRestore) {
     initAnalytics();
     if (!State.landingDismissed) {
@@ -2896,6 +2904,7 @@ function resetLandingStartState() {
 }
 
 function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
+  document.documentElement.classList.remove('instagram-start-pending');
   landingConnectPromptVisible = false;
   setLandingSubtitleMessage('');
   resetLandingStartState();
@@ -4890,6 +4899,7 @@ function setupLandingEvents() {
       if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
       markStartupPerformance('T1_progressive_step1_ready');
       await renderApp();
+      document.documentElement.classList.remove('instagram-start-pending');
       void startProgressiveLineVerification();
       trackStepView(1);
       markStartupPerformance('T2_progressive_step1_rendered');
@@ -4950,6 +4960,7 @@ function setupLandingEvents() {
     persistLandingDismissed();
     markStartupPerformance('T3_minimum_designer_ready');
     await renderApp();
+    document.documentElement.classList.remove('instagram-start-pending');
     trackStepView(1);
     markStartupPerformance('T4_step1_rendered');
     window.requestAnimationFrame(() => markStartupPerformance('T5_step1_interactive'));
