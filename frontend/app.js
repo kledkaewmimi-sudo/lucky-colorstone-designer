@@ -1602,11 +1602,19 @@ lineDebugTrace('BOOT', { captureState: true });
 const INSTAGRAM_AUTO_ESCAPE_ATTEMPTED_KEY = 'lucky_prod_instagram_auto_escape_attempted';
 
 function getInstagramTransitionDestination() {
-  return buildExternalDestination({
+  const destination = buildExternalDestination({
     origin: window.location.origin,
     pathname: window.location.pathname || '/',
     search: window.location.search || ''
   });
+  if (!destination) return '';
+  try {
+    const url = new URL(destination);
+    url.searchParams.set('instagram_start', '1');
+    return url.toString();
+  } catch {
+    return '';
+  }
 }
 function getInstagramHandoffCtaLabel(context) {
   if (context?.platform === 'android') return 'เปิดผ่าน Chrome';
@@ -1679,7 +1687,9 @@ function setupInstagramBrowserTransition() {
     platform: context.platform,
     browser: 'instagram'
   });
-  return showInstagramHandoffScreen(context);
+  // Keep the campaign landing page visible in Instagram. The native browser
+  // confirmation is triggered only when the customer taps the main CTA.
+  return true;
 }
 
 // ==========================================
@@ -4854,6 +4864,12 @@ function setupLandingEvents() {
     event.preventDefault();
     event.stopImmediatePropagation();
     lineDebugTrace('LANDING_START_CLICK', { captureState: true });
+
+    const browserContext = detectBrowserContext(window.navigator.userAgent || '');
+    if (browserContext.isInstagram && !browserContext.isLine) {
+      attemptInstagramExternalBrowser(browserContext);
+      return;
+    }
 
     if (landingStartInProgress) return;
     landingStartInProgress = true;
