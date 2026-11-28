@@ -1602,11 +1602,19 @@ lineDebugTrace('BOOT', { captureState: true });
 const INSTAGRAM_AUTO_ESCAPE_ATTEMPTED_KEY = 'lucky_prod_instagram_auto_escape_attempted';
 
 function getInstagramTransitionDestination() {
-  return buildExternalDestination({
+  const destination = buildExternalDestination({
     origin: window.location.origin,
     pathname: window.location.pathname || '/',
     search: window.location.search || ''
   });
+  if (!destination) return '';
+  try {
+    const url = new URL(destination);
+    url.searchParams.set('instagram_start', '1');
+    return url.toString();
+  } catch {
+    return '';
+  }
 }
 function getInstagramHandoffCtaLabel(context) {
   if (context?.platform === 'android') return 'เปิดผ่าน Chrome';
@@ -1679,7 +1687,9 @@ function setupInstagramBrowserTransition() {
     platform: context.platform,
     browser: 'instagram'
   });
-  return showInstagramHandoffScreen(context);
+  // Keep the campaign landing page visible in Instagram. The native browser
+  // confirmation is triggered only when the customer taps the main CTA.
+  return true;
 }
 
 // ==========================================
@@ -1796,6 +1806,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Its handler waits for this bootstrap promise and continues the original first tap.
   setupLandingEvents();
   setupProgressiveStep1AuthEvents();
+  if (returnParams.get('instagram_start') === '1') {
+    // Consume the one-shot entry flag before starting so refreshes cannot
+    // repeatedly trigger the designer flow.
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('instagram_start');
+    window.history.replaceState({}, document.title, cleanUrl.toString());
+    window.requestAnimationFrame(() => DOM.btnLandingLogin?.click());
+  }
   if (!deferAnalyticsUntilCallbackRestore) {
     initAnalytics();
     if (!State.landingDismissed) {
@@ -2886,6 +2904,7 @@ function resetLandingStartState() {
 }
 
 function resetLandingStartAfterFailure(message = LINE_CONNECT_RETRY_MESSAGE) {
+  document.documentElement.classList.remove('instagram-start-pending');
   landingConnectPromptVisible = false;
   setLandingSubtitleMessage('');
   resetLandingStartState();
@@ -2908,8 +2927,8 @@ function setLiffTransitionState({ title = '', body = '' } = {}) {
 
 function showLineOaFriendshipTransition() {
   setLiffTransitionState({
-    title: 'กำลังเชื่อมต่อ LINE',
-    body: 'เพิ่มเพื่อน Lucky Colorstone เพื่อรับข้อมูลคำสั่งซื้อและดำเนินการต่อ'
+    title: 'LOADING…',
+    body: 'เพิ่มเพื่อนเพื่อเข้าสู่ขั้นตอนถัดไป'
   });
   if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'flex';
 }
@@ -4855,6 +4874,12 @@ function setupLandingEvents() {
     event.stopImmediatePropagation();
     lineDebugTrace('LANDING_START_CLICK', { captureState: true });
 
+    const browserContext = detectBrowserContext(window.navigator.userAgent || '');
+    if (browserContext.isInstagram && !browserContext.isLine) {
+      attemptInstagramExternalBrowser(browserContext);
+      return;
+    }
+
     if (landingStartInProgress) return;
     landingStartInProgress = true;
     lineDebugTrace('START_HANDLER_ENTER', { captureState: true });
@@ -4874,6 +4899,7 @@ function setupLandingEvents() {
       if (DOM.liffLoadingOverlay) DOM.liffLoadingOverlay.style.display = 'none';
       markStartupPerformance('T1_progressive_step1_ready');
       await renderApp();
+      document.documentElement.classList.remove('instagram-start-pending');
       void startProgressiveLineVerification();
       trackStepView(1);
       markStartupPerformance('T2_progressive_step1_rendered');
@@ -4934,6 +4960,7 @@ function setupLandingEvents() {
     persistLandingDismissed();
     markStartupPerformance('T3_minimum_designer_ready');
     await renderApp();
+    document.documentElement.classList.remove('instagram-start-pending');
     trackStepView(1);
     markStartupPerformance('T4_step1_rendered');
     window.requestAnimationFrame(() => markStartupPerformance('T5_step1_interactive'));

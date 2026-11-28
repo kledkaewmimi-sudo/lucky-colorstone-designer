@@ -5214,14 +5214,45 @@ button.stone-card {
   line-height: 1.5;
 }
 
+.callback-bootstrap-content .callback-friendship-message {
+  display: none;
+}
+
+html.line-oa-friendship-callback .callback-bootstrap-content .callback-default-message {
+  display: none;
+}
+
+html.line-oa-friendship-callback .callback-bootstrap-content .callback-friendship-message {
+  display: block;
+}
+
 html.callback-bootstrap-hold .callback-bootstrap-overlay {
   display: flex;
 }
 
 html.callback-bootstrap-hold .landing-page,
-html.callback-bootstrap-hold .app-container {
+html.callback-bootstrap-hold .app-container,
+html.instagram-start-pending .landing-page,
+html.instagram-start-pending .app-container {
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+html.instagram-start-pending .callback-bootstrap-overlay {
+  display: flex;
+}
+
+.callback-bootstrap-content .instagram-start-message {
+  display: none;
+}
+
+html.instagram-start-pending .callback-bootstrap-content .callback-default-message,
+html.instagram-start-pending .callback-bootstrap-content .callback-friendship-message {
+  display: none;
+}
+
+html.instagram-start-pending .callback-bootstrap-content .instagram-start-message {
+  display: block;
 }
 
 .liff-loading-overlay {
